@@ -2,6 +2,7 @@ import type {Tab} from './ui/TabBar';
 import type {Surface} from './WalletContext';
 import type {Intent} from './engine';
 import {isDraft, isIntent, type Draft} from './send/rules';
+import {presaleRoutes} from './presale';
 
 /**
  * In-memory navigation (spec §1.6): a stack of routes in a reducer — push, pop, replace, reset, back to a
@@ -41,6 +42,17 @@ export type Route =
   | {screen: 'created'}
   | {screen: 'imported'}
   | {screen: 'resume'; account: string};
+/**
+ * B1d §1.1: a route the presale entry adds (src/app/presale/index.ts — none in B1d-1a, none in the build without
+ * presale). Its screen is outside the closed list below, and its own validator decides it: exactly its keys, each one
+ * checked. It can only add a screen — a name the list already holds, or a TAB_ONLY hand-over name, is decided by
+ * that list, never by it (final review I1): `created`/`imported`/`resume` are first routes from the tab's hash only,
+ * and a presale route cannot make them pushable.
+ */
+export interface PresaleRoute {
+  screen: string;
+  isRoute(o: Readonly<Record<string, unknown>>): boolean;
+}
 export type RouteAction = {type: 'push'; route: Route} | {type: 'pop'} | {type: 'tab'; tab: Tab} | {type: 'replace'; route: Route} | {type: 'reset'; routes: Route[]};
 
 export const SCREENS: ReadonlySet<string> = new Set<Route['screen']>(['tab', 'receive', 'tx', 'about', 'send', 'review', 'confirm', 'status', 'security', 'accounts', 'passkey', 'delete', 'contacts', 'connected']);
@@ -61,7 +73,8 @@ const only = (o: Record<string, unknown>, keys: string[]): boolean => Object.key
 function isRoute(r: unknown): r is Route {
   if (typeof r !== 'object' || r === null) return false;
   const o = r as Record<string, unknown>;
-  if (typeof o.screen !== 'string' || !SCREENS.has(o.screen)) return false;
+  if (typeof o.screen !== 'string') return false;
+  if (!SCREENS.has(o.screen)) return !TAB_ONLY.has(o.screen) && presaleRoutes.some(p => p.screen === o.screen && p.isRoute(o));
   if (o.screen === 'tab') return typeof o.tab === 'string' && TABS.has(o.tab);
   if (BARE.has(o.screen)) return only(o, ['screen']);
   if (o.screen === 'contacts') return only(o, ['screen', 'pick']) && typeof o.pick === 'boolean';

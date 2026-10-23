@@ -27,8 +27,8 @@ export function fakeReader(overrides: Partial<SolanaReader> = {}): SolanaReader 
 
 /**
  * Deterministic deps: a settable clock, counting random bytes, prices for SOL/USDC/USDT, a sleep
- * that never resolves (no poller runs unless a test asks for one), and a broadcast that fails
- * unless a test overrides it.
+ * that never resolves (no poller runs unless a test asks for one), and a broadcast and a geo check
+ * that fail unless a test overrides them.
  */
 export function fakeDeps(overrides: Partial<WalletDeps> = {}): WalletDeps & {clock: {t: number}; broadcasts: Uint8Array[]} {
   const clock = {t: 1_000_000};
@@ -41,6 +41,9 @@ export function fakeDeps(overrides: Partial<WalletDeps> = {}): WalletDeps & {clo
     },
     prices: async () => ({solana: 150, usdc: 1, usdt: 1}),
     stagePrice: async () => 0.1501,
+    geo: async () => {
+      throw new Error('unexpected geo check');
+    },
     now: () => clock.t,
     randomBytes: n => {
       counter += 1;

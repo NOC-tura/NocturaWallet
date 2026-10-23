@@ -1,0 +1,172 @@
+#!/usr/bin/env node
+// B1d §6.2 (C38, D15): the off-build gate — `node scripts/check-no-presale.mjs <offDir> <onDir>` (npm run gates:
+// dist-nopresale dist). Each directory's app.features.json must say what it is. Then three rules, each with its control:
+//  1. Modules: the off build's module maps (every *.modules.json next to its packages) carry nothing under
+//     src/background/presale/, src/app/presale/, src/unlock/presale.ts or core/referral/, and of core/presale/ only
+//     CORE_PRESALE_ALLOWED; core/geo/ is allowed whole (D15). Of ../web/ (fix round 1, review I1) only WEB_ALLOWED —
+//     web/src/presale/** imports only erased core/presale types, so a denylist would miss it; only an allowlist closes
+//     it, same as core/presale/. Positive control: the on build carries every ON_BUILD module and both carry every
+//     BOTH_BUILDS module, so a renamed or moved module fails instead of passing silently.
+//     The maps are the evidence, not the packages: the two packages were byte-identical through B1d-1a's Task 4; from
+//     Task 5 the on build carries the presale background modules, so the maps — not the files — remain the evidence.
+//  2. Strings: no file of the off build's app/, chrome/, firefox/ contains a MARKER; each marker is found in the on build.
+//  3. Must stay: B1b/B1c's presale copy and the decoder's instruction names are found in the off build.
+// ON_BUILD, BOTH_BUILDS, MARKERS and MUST_STAY are staged per plan (review 2 M2): each plan extends them, never loosens them.
+import {existsSync, readFileSync, readdirSync} from 'node:fs';
+import {dirname, join, relative, resolve, sep} from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {isMain} from './isMain.mjs';
+
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const PACKAGES = ['app', 'chrome', 'firefox'];
+const DECODER = 'src/background/dapp/decode/presaleIdl.ts';
+
+export const OFF_FORBIDDEN = ['src/background/presale/', 'src/app/presale/', 'src/unlock/presale.ts', 'core/referral/'];
+export const CORE_PRESALE_ALLOWED = ['core/presale/addresses.ts', 'core/presale/allocation.ts', 'core/presale/stagePrices.ts'];
+// Fix round 1 (review I1): of `../web/`, only its shared UI and stylesheets — never `web/src/presale/**`, whose
+// modules can import nothing but erased `core/presale` types and so are never caught by rule 1's other branches.
+export const WEB_ALLOWED = ['../web/src/ui/', '../web/src/styles/'];
+
+// B1d-1a: the three on-path entries (§1.1), the program state presale/{layouts,state}.ts and core/presale/limits.ts
+// (§2.1); 1b adds presale/{quote,buy}.ts; B1d-2 adds presale/{record,referral}.ts and core/referral/index.ts.
+export const ON_BUILD = [
+  'src/background/presale/api.ts',
+  'src/app/presale/index.ts',
+  'src/unlock/presale.ts',
+  'src/background/presale/layouts.ts',
+  'src/background/presale/state.ts',
+  'core/presale/limits.ts',
+];
+// The intent-kind registry (C19 — both builds sign and read through it); the jurisdiction gate and its fetcher (D15:
+// the off build did not lose the gate).
+export const BOTH_BUILDS = ['src/background/intents.ts', 'src/background/geo/gate.ts', 'core/geo/fetch.ts'];
+// Armed by B1d-1b: 1a ships no presale string (Q42 is "both").
+export const MARKERS = [];
+// Q42a (B1d-1a: the generic pending row, both builds); 1b adds F12's Q49–Q51. Q42b ("Transaction") is too short to
+// be a string search. The decoder's instruction names are read from its source (DECODER).
+export const MUST_STAY = ['Presale purchase', 'PRESALE PURCHASE', 'Transaction · pending', 'Transaction · taking longer than usual'];
+
+const MIN_MARKER = 8;
+
+/** A module id as the maps write it (package-relative: `../core/…`), without query or hash, rooted at the repository's `core/`. */
+const normalize = id => String(id).replace(/[?#].*$/, '').replace(/^\.\.\/(?=core\/)/, '');
+
+/** Every module of the given parsed module maps; throws INCONCLUSIVE when there is none to read, or a chunk's module list is not an array (a string is iterable character by character and would otherwise pass silently). */
+export function moduleIds(maps) {
+  const out = new Set();
+  for (const m of maps) {
+    if (m === null || typeof m !== 'object' || m.chunks === null || typeof m.chunks !== 'object') throw new Error('INCONCLUSIVE: a module map has no chunks');
+    for (const ids of Object.values(m.chunks)) {
+      if (!Array.isArray(ids)) throw new Error(`INCONCLUSIVE: a chunk's module list is not an array (${JSON.stringify(ids)})`);
+      for (const id of ids) out.add(normalize(id));
+    }
+  }
+  if (out.size === 0) throw new Error('INCONCLUSIVE: the module maps carry no module');
+  return out;
+}
+
+/** §6.2 item 1: every module the off build may not carry. */
+export function offModuleViolations(ids) {
+  const out = [];
+  for (const id of [...ids].sort()) {
+    if (OFF_FORBIDDEN.some(f => (f.endsWith('/') ? id.startsWith(f) : id === f))) out.push(`off build carries ${id} — a presale module (${OFF_FORBIDDEN.join(', ')})`);
+    else if (id.startsWith('core/presale/') && !CORE_PRESALE_ALLOWED.includes(id)) out.push(`off build carries ${id} — of core/presale/ it may carry only ${CORE_PRESALE_ALLOWED.join(', ')}`);
+    else if (id.startsWith('../web/') && !WEB_ALLOWED.some(w => id.startsWith(w))) out.push(`off build carries ${id} — of ../web/ it may carry only ${WEB_ALLOWED.join(', ')}`);
+  }
+  return out;
+}
+
+export function missingModules(build, ids, required) {
+  return required.filter(id => !ids.has(id)).map(id => `${build} build does not carry ${id} — renamed or moved? the positive control must name it`);
+}
+
+export function featureViolations(dir, features, presale) {
+  const ok = features !== null && typeof features === 'object' && Object.keys(features).length === 1 && features.presale === presale;
+  return ok ? [] : [`${dir}/app.features.json must be {"presale":${presale}} — the directory is not the build the gate reads it as`];
+}
+
+/** §6.2 item 2: `files` are {path, bytes}; a marker in an off-build file is a violation, a marker in no on-build file too. */
+export function markerViolations(offFiles, onFiles, markers) {
+  for (const m of markers) if (m.length < MIN_MARKER) throw new Error(`a marker must be at least ${MIN_MARKER} characters (${JSON.stringify(m)})`);
+  const out = [];
+  for (const m of markers) {
+    const b = Buffer.from(m, 'utf8');
+    for (const f of offFiles) if (f.bytes.includes(b)) out.push(`off build: ${f.path} contains the presale marker ${JSON.stringify(m)}`);
+    if (!onFiles.some(f => f.bytes.includes(b))) out.push(`on build: no file contains the presale marker ${JSON.stringify(m)} — the marker does not describe the on build`);
+  }
+  return out;
+}
+
+/** §6.2 item 3. */
+export function missingStrings(build, files, strings) {
+  return strings
+    .filter(s => !files.some(f => f.bytes.includes(Buffer.from(s, 'utf8'))))
+    .map(s => `${build} build: no file contains ${JSON.stringify(s)} — the switch stripped what both builds need`);
+}
+
+/** The names of PRESALE_INSTRUCTIONS, read from the decoder's source (the table is generated, one `{name: '…', discriminator:` per row). */
+export function decoderInstructionNames(source) {
+  return [...source.matchAll(/\{name: '(\w+)', discriminator:/g)].map(m => m[1]);
+}
+
+const filesUnder = (dir, base = dir) =>
+  readdirSync(dir, {withFileTypes: true}).flatMap(e =>
+    e.isDirectory() ? filesUnder(join(dir, e.name), base) : [{path: relative(base, join(dir, e.name)).split(sep).join('/'), bytes: readFileSync(join(dir, e.name))}],
+  );
+
+/** Reads one build directory: its features, its module ids, its packages' files — each `problems` entry INCONCLUSIVE. */
+function readBuild(dir, label) {
+  const problems = [];
+  const featuresFile = join(dir, 'app.features.json');
+  const features = existsSync(featuresFile) ? JSON.parse(readFileSync(featuresFile, 'utf8')) : undefined;
+  let ids;
+  if (!existsSync(join(dir, 'app.modules.json'))) problems.push(`INCONCLUSIVE: the ${label} build ${dir} has no app.modules.json`);
+  else {
+    try {
+      ids = moduleIds(
+        readdirSync(dir)
+          .filter(f => f.endsWith('.modules.json'))
+          .sort()
+          .map(f => JSON.parse(readFileSync(join(dir, f), 'utf8'))),
+      );
+    } catch (e) {
+      problems.push(`${e.message} (${label} build ${dir})`);
+    }
+  }
+  const missing = PACKAGES.filter(p => !existsSync(join(dir, p)));
+  if (missing.length > 0) problems.push(`INCONCLUSIVE: the ${label} build ${dir} has no ${missing.join(', ')}`);
+  const files = missing.length > 0 ? undefined : PACKAGES.flatMap(p => filesUnder(join(dir, p), dir));
+  return {features, ids, files, problems};
+}
+
+export function checkNoPresale(offDir, onDir, o = {}) {
+  const {markers = MARKERS, mustStay = MUST_STAY, onBuild = ON_BUILD, bothBuilds = BOTH_BUILDS} = o;
+  const decoderSource = o.decoderSource ?? readFileSync(join(ROOT, DECODER), 'utf8');
+  const off = readBuild(offDir, 'off');
+  const on = readBuild(onDir, 'on');
+  const out = [...off.problems, ...on.problems];
+  out.push(...featureViolations(offDir, off.features, false), ...featureViolations(onDir, on.features, true));
+  if (off.ids !== undefined) out.push(...offModuleViolations(off.ids), ...missingModules('off', off.ids, bothBuilds));
+  if (on.ids !== undefined) out.push(...missingModules('on', on.ids, [...onBuild, ...bothBuilds]));
+  const names = decoderInstructionNames(decoderSource);
+  if (names.length === 0) out.push(`INCONCLUSIVE: no instruction names read from ${DECODER}`);
+  if (off.files !== undefined && on.files !== undefined) out.push(...markerViolations(off.files, on.files, markers));
+  if (off.files !== undefined) out.push(...missingStrings('off', off.files, [...mustStay, ...names]));
+  return out;
+}
+
+if (isMain(import.meta.url)) {
+  const [offArg, onArg] = process.argv.slice(2);
+  if (offArg === undefined || onArg === undefined) {
+    console.error('usage: node scripts/check-no-presale.mjs <offDir> <onDir>');
+    process.exit(1);
+  }
+  const problems = checkNoPresale(resolve(ROOT, offArg), resolve(ROOT, onArg));
+  if (problems.length > 0) {
+    for (const p of problems) console.error(p);
+    process.exit(1);
+  }
+  console.log(
+    `no presale ok (${offArg} off, ${onArg} on): the off build's module maps carry no presale module and of core/presale/ only ${CORE_PRESALE_ALLOWED.length} allowed; the on build carries ${ON_BUILD.length + BOTH_BUILDS.length} required modules; ${MARKERS.length} markers (none in the off build, each in the on build); ${MUST_STAY.length} strings and the decoder's instruction names stay in the off build`,
+  );
+}

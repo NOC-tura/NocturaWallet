@@ -8,6 +8,7 @@ import {RefusedBanner} from '../ui/Banner';
 import {LockedButton} from '../ui/LockedButton';
 import {useCopy} from '../ui/useCopy';
 import type {Intent, Pending, PendingState} from '../engine';
+import {GENERIC_TEXT} from '../generic';
 
 /** The fixed strings #54 shows (spec §4.8, D23); adapted ones are marked there. */
 export const STUCK_TEXT = {
@@ -72,7 +73,9 @@ const OPEN: readonly PendingState[] = ['pending', 'stuck'];
  * fails, #21 shows that instead (until then this screen shows only its neutral top bar); when it expires, this
  * screen shows its expired layout — the engine's `expired` (the record's, or a resend answer's), never a judgement of
  * the screen's own. No fee is shown on any of its layouts: none of them has paid one (feePaidLamports is null for
- * stuck and expired, and a re-send pays nothing new).
+ * stuck and expired, and a re-send pays nothing new). A record without an intent (B1d §1.3: another kind, Q42): the
+ * original's card names it "Transaction" and shows no amount and no recipient; "Send again" is the same (it re-sends
+ * the record's own bytes); there is nothing to prepare again, so the expired layout has no [Try again].
  */
 export function Stuck({
   record,
@@ -114,7 +117,8 @@ export function Stuck({
     };
   }, [record.id, record.state, record.account, elsewhere]);
   const refused = m.net.mode === 'refused';
-  const amount = `${showExact(record.intent.token, record.intent.amount)} ${record.intent.token}`;
+  const intent = record.intent;
+  const amount = intent === null ? null : `${showExact(intent.token, intent.amount)} ${intent.token}`;
   const {mm, ss} = mmss(record.createdAt, now);
   const hash = shortAddress(record.signature);
   const state = OPEN.includes(record.state) ? moved ?? record.state : record.state;
@@ -174,8 +178,8 @@ export function Stuck({
           </div>
         </div>
         <div className="sticky-bar">
-          {canRetry ? (
-            <LockedButton className="btn btn-primary" disabled={refused} onPress={() => onTryAgain(record.intent)}>
+          {canRetry && intent !== null ? (
+            <LockedButton className="btn btn-primary" disabled={refused} onPress={() => onTryAgain(intent)}>
               {STUCK_TEXT.tryAgain}
             </LockedButton>
           ) : null}
@@ -261,10 +265,12 @@ export function Stuck({
                 {mm}:{ss} elapsed
               </span>
             </div>
-            <div className="row">
-              <span className="k">Amount</span>
-              <span className="v amount noc-numeral">{amount}</span>
-            </div>
+            {amount === null ? null : (
+              <div className="row">
+                <span className="k">Amount</span>
+                <span className="v amount noc-numeral">{amount}</span>
+              </div>
+            )}
             <div className="row">
               <span className="k">Tx hash</span>
               <span className="v mono noc-mono">{hash}</span>
@@ -294,18 +300,22 @@ export function Stuck({
           <div className="orig-card">
             <div className="head">
               <span className="label">{STUCK_TEXT.original}</span>
-              <span className="pill">Send</span>
+              <span className="pill">{intent === null ? GENERIC_TEXT.line : 'Send'}</span>
             </div>
-            <div className="row">
-              <span className="k">Amount</span>
-              <span className="v amount noc-numeral">{amount}</span>
-            </div>
-            <div className="row">
-              <span className="k">Recipient</span>
-              <span className="v mono noc-mono">
-                <AddressGroups address={record.intent.recipient} />
-              </span>
-            </div>
+            {amount === null ? null : (
+              <div className="row">
+                <span className="k">Amount</span>
+                <span className="v amount noc-numeral">{amount}</span>
+              </div>
+            )}
+            {intent === null ? null : (
+              <div className="row">
+                <span className="k">Recipient</span>
+                <span className="v mono noc-mono">
+                  <AddressGroups address={intent.recipient} />
+                </span>
+              </div>
+            )}
             <div className="row">
               <span className="k">Tx hash</span>
               <span className="v mono noc-mono">

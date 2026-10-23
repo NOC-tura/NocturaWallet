@@ -1,5 +1,6 @@
 import type {Ext} from '../ext';
 import {createMutex} from './mutex';
+import {KIND_NAME} from './intents';
 import type {SendIntent} from './sendTypes';
 
 /**
@@ -43,7 +44,10 @@ export interface PendingRecord {
   detail: string | null;
   /** See DetailCode. A stored value that is missing (a record from before it) or unknown reads as null; the record is kept. */
   detailCode: DetailCode | null;
-  /** What the user sent (#12's intent); null only for a dApp's transaction (B1c-2: `origin` set — the dApp built it). */
+  /**
+   * What the user sent (#12's intent); null for a dApp's transaction (B1c-2: `origin` set — the dApp built it) and for
+   * the wallet's own transaction of another kind than a send (B1d §1.3: `origin` null, what it was in `extra`).
+   */
   intent: SendIntent | null;
   /**
    * B1c-2 (spec B1c §1.5, §3.3): the site whose `signAndSendTransaction` this is — its signed bytes recorded here before
@@ -73,6 +77,19 @@ export interface PendingRecord {
    * digit strings: a display field never drops a record (a pending send must never be hidden).
    */
   fee: PendingFee | null;
+  /**
+   * B1d §1.3 (review H1): what the wallet's own transaction of another kind than a send was — its kind and that kind's
+   * display data, never used to decide anything. Null for a send and a dApp record, and for any stored value that is
+   * not an object with a kind name: a display field never drops a record. Written only when set, so a send's and a dApp
+   * record's stored form is what it was before kinds existed.
+   */
+  extra: PendingExtra | null;
+}
+
+/** See PendingRecord.extra. `data` is the kind's, as stored. */
+export interface PendingExtra {
+  kind: string;
+  data: unknown;
 }
 
 /** The two parts of what a pending send pays, base-unit decimal strings. */
@@ -97,12 +114,17 @@ const ORIGIN = /^https:\/\/[^\s/?#@]+$/;
 /** A dApp record's origin (B1c-2): an https origin, with its intent null; the wallet's own send has no origin and an intent. */
 const isDappOrigin = (x: unknown): x is string => typeof x === 'string' && ORIGIN.test(x);
 
-/** A stored element is a claim: only an exact record shape is read; anything else is dropped. `failure` and `fee` are checked by recordOf. */
-function isRecord(x: unknown): x is Omit<PendingRecord, 'failure' | 'fee' | 'detailCode' | 'origin' | 'firstBroadcast'> & {failure?: unknown; fee?: unknown; detailCode?: unknown; origin?: unknown; firstBroadcast?: unknown} {
+/**
+ * A stored element is a claim: only an exact record shape is read; anything else is dropped. Three shapes: a dApp's (an
+ * https origin, no intent), the wallet's send (no origin, a send intent) and the wallet's other kinds (B1d §1.3: no
+ * origin, no intent). `failure`, `fee` and `extra` are checked by recordOf.
+ */
+function isRecord(x: unknown): x is Omit<PendingRecord, 'failure' | 'fee' | 'detailCode' | 'origin' | 'firstBroadcast' | 'extra'> & {failure?: unknown; fee?: unknown; detailCode?: unknown; origin?: unknown; firstBroadcast?: unknown; extra?: unknown} {
   if (typeof x !== 'object' || x === null || Array.isArray(x)) return false;
   const r = x as Record<string, unknown>;
   const i = r.intent as Record<string, unknown> | null;
   const dapp = isDappOrigin(r.origin) && i === null;
+  const own = r.origin === undefined || r.origin === null;
   return (
     typeof r.id === 'string' &&
     typeof r.account === 'string' &&
@@ -115,13 +137,14 @@ function isRecord(x: unknown): x is Omit<PendingRecord, 'failure' | 'fee' | 'det
     isNum(r.lastSentAt) &&
     (r.detail === null || typeof r.detail === 'string') &&
     (r.expiryNullSeenAt === null || isNum(r.expiryNullSeenAt)) &&
-    (dapp || ((r.origin === undefined || r.origin === null) && typeof i === 'object' && i !== null && typeof i.token === 'string' && typeof i.recipient === 'string' && typeof i.amount === 'string'))
+    (dapp || (own && i === null) || (own && typeof i === 'object' && i !== null && typeof i.token === 'string' && typeof i.recipient === 'string' && typeof i.amount === 'string'))
   );
 }
 
 /**
  * A record from before E8 has no `failure`: it reads as null, so no migration is needed. Any other value drops the
- * record. `fee` (plan 3) reads as null when it is missing or not two digit strings — the record itself is kept.
+ * record. `fee` (plan 3) reads as null when it is missing or not two digit strings — the record itself is kept; so does
+ * `extra` (B1d §1.3), which only the wallet's own record without an intent can carry.
  */
 function recordOf(x: unknown): PendingRecord | null {
   if (!isRecord(x)) return null;
@@ -130,9 +153,18 @@ function recordOf(x: unknown): PendingRecord | null {
   const origin = isDappOrigin(x.origin) ? x.origin : null;
   // Only a dApp record can be owed a first broadcast; anything else (the wallet's own, missing, unknown) is `done`.
   const firstBroadcast: FirstBroadcast = origin !== null && (x.firstBroadcast === 'held' || x.firstBroadcast === 'due') ? x.firstBroadcast : 'done';
+  const extra = origin === null && x.intent === null ? extraOf(x.extra) : null;
   const f = x.failure;
-  if (f === undefined || f === null) return {...x, failure: null, fee, detailCode, origin, firstBroadcast};
-  return f === 'landed' || f === 'not-sent' ? {...x, failure: f, fee, detailCode, origin, firstBroadcast} : null;
+  if (f === undefined || f === null) return {...x, failure: null, fee, detailCode, origin, firstBroadcast, extra};
+  return f === 'landed' || f === 'not-sent' ? {...x, failure: f, fee, detailCode, origin, firstBroadcast, extra} : null;
+}
+
+/** An object whose `kind` is a kind name, its `data` as stored (missing → null); anything else is null. */
+function extraOf(x: unknown): PendingExtra | null {
+  if (typeof x !== 'object' || x === null || Array.isArray(x)) return null;
+  const {kind, data} = x as Record<string, unknown>;
+  if (typeof kind !== 'string' || !KIND_NAME.test(kind)) return null;
+  return {kind, data: data === undefined ? null : data};
 }
 
 const DIGITS = /^\d{1,20}$/;
@@ -177,7 +209,15 @@ export function viewOf(r: PendingRecord): PendingView {
     expiryNullSeenAt: r.expiryNullSeenAt,
     failure: r.failure,
     fee: r.fee === null ? null : {networkLamports: r.fee.networkLamports, markupLamports: r.fee.markupLamports},
+    extra: r.extra === null ? null : {kind: r.extra.kind, data: r.extra.data},
   };
+}
+
+/** What is written: `extra` only when set (see PendingRecord.extra). */
+function storedForm(r: PendingRecord): PendingRecord | Omit<PendingRecord, 'extra'> {
+  if (r.extra !== null) return r;
+  const {extra: _none, ...rest} = r;
+  return rest;
 }
 
 /** Every open record, plus the newest closed ones up to MAX_RECORDS in all. */
@@ -196,7 +236,7 @@ function trim(records: PendingRecord[]): PendingRecord[] {
 export async function updatePending(ext: Ext, change: (records: PendingRecord[]) => PendingRecord[]): Promise<PendingRecord[]> {
   return serial(async () => {
     const next = trim(change(await readPending(ext)));
-    await ext.local.set(PENDING_KEY, next);
+    await ext.local.set(PENDING_KEY, next.map(storedForm));
     return next;
   });
 }

@@ -11,6 +11,8 @@
 // purpose, same pattern as check-rpc-methods.mjs's SPEC_ALLOWED against core/solana/rpc.ts's list.
 import {readFileSync} from 'node:fs';
 import {join} from 'node:path';
+import {distDir} from './distDir.mjs';
+import {isMain} from './isMain.mjs';
 import {PERMISSIONS, HOST_PERMISSIONS, EXTENSION_CSP, MIN_CHROME_VERSION, MIN_FIREFOX_VERSION} from '../manifest/source.mjs';
 
 // The one host anything in the extension ever fetches (extension/src/background/deps.ts — RPC
@@ -108,15 +110,16 @@ export function comparePermissions(manifest, browser) {
   return problems;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMain(import.meta.url)) {
+  const DIST = distDir();
   let bad = 0;
   for (const browser of ['chrome', 'firefox']) {
-    const m = JSON.parse(readFileSync(join('dist', browser, 'manifest.json'), 'utf8'));
+    const m = JSON.parse(readFileSync(join(DIST, browser, 'manifest.json'), 'utf8'));
     for (const p of comparePermissions(m, browser)) {
       console.error(`${browser}: ${p}`);
       bad += 1;
     }
   }
   if (bad) process.exit(1);
-  console.log('permissions ok: both manifests match manifest/source.mjs');
+  console.log(`permissions ok (${DIST}): both manifests match manifest/source.mjs`);
 }

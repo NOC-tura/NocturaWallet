@@ -12,6 +12,8 @@
 import {existsSync, readFileSync} from 'node:fs';
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {isMain} from './isMain.mjs';
+import {distDir} from './distDir.mjs';
 
 export const CONTENT = {
   provider: {own: 'src/provider/', packages: ['@wallet-standard/wallet', '@wallet-standard/base']},
@@ -53,23 +55,24 @@ export function devOriginViolations(backgroundJs) {
   return ['localhost', '127.0.0.1'].filter(h => backgroundJs.includes(h)).map(h => `background.js names ${h} — a store build accepts no development origin`);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMain(import.meta.url)) {
   const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+  const DIST = distDir();
   const read = p => (existsSync(p) ? readFileSync(p, 'utf8') : undefined);
   const problems = [];
   for (const name of Object.keys(CONTENT)) {
-    const map = read(join(ROOT, 'dist', `app.${name}.modules.json`));
+    const map = read(join(ROOT, DIST, `app.${name}.modules.json`));
     problems.push(...pageBundleViolations(name, map === undefined ? undefined : JSON.parse(map)));
-    const app = read(join(ROOT, 'dist', 'app', `${name}.js`));
+    const app = read(join(ROOT, DIST, 'app', `${name}.js`));
     problems.push(...classicScriptViolations(name, app));
     for (const browser of ['chrome', 'firefox']) {
-      if (read(join(ROOT, 'dist', browser, `${name}.js`)) !== app) problems.push(`dist/${browser}/${name}.js differs from dist/app/${name}.js`);
+      if (read(join(ROOT, DIST, browser, `${name}.js`)) !== app) problems.push(`${DIST}/${browser}/${name}.js differs from ${DIST}/app/${name}.js`);
     }
   }
-  for (const d of ['app', 'chrome', 'firefox']) problems.push(...devOriginViolations(read(join(ROOT, 'dist', d, 'background.js'))).map(p => `dist/${d}: ${p}`));
+  for (const d of ['app', 'chrome', 'firefox']) problems.push(...devOriginViolations(read(join(ROOT, DIST, d, 'background.js'))).map(p => `${DIST}/${d}: ${p}`));
   if (problems.length > 0) {
     for (const p of problems) console.error(p);
     process.exit(1);
   }
-  console.log('page bundles ok: provider.js carries only src/provider and @wallet-standard, relay.js only src/relay; both classic scripts; background.js accepts no development origin');
+  console.log(`page bundles ok (${DIST}): provider.js carries only src/provider and @wallet-standard, relay.js only src/relay; both classic scripts; background.js accepts no development origin`);
 }

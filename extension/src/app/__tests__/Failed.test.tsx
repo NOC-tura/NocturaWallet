@@ -38,6 +38,7 @@ const record = (over: Partial<Pending>): Pending => ({
   state: 'failed',
   detail: null,
   intent: INTENT,
+  extra: null,
   expiryNullSeenAt: null,
   failure: null,
   detailCode: null,

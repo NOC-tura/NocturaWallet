@@ -4,6 +4,8 @@ import react from '@vitejs/plugin-react';
 import {writeFileSync} from 'node:fs';
 import {relative, resolve, sep} from 'node:path';
 import {isStylesheet, scanCss} from './scripts/css-scan.mjs';
+import {presaleFlag} from './scripts/presaleFlag.mjs';
+import {presaleSwitch} from './scripts/presaleSwitch.mjs';
 
 // core/ and web/src/ui/ are imported by relative path, and a bare import in one of their files would
 // otherwise resolve upwards from there — to web/node_modules or the repository root's node_modules
@@ -74,47 +76,71 @@ function chunkModules(write: boolean): Plugin {
   };
 }
 
-export default defineConfig({
-  base: './',
-  plugins: [sharedResolvesFromHere(), react(), chunkModules(true)],
-  server: {fs: {allow: [resolve(__dirname, '..')]}},
-  build: {
-    outDir: 'dist/app',
-    emptyOutDir: true,
-    target: 'es2022',
-    modulePreload: false,
-    rollupOptions: {
-      input: {
-        background: resolve(__dirname, 'src/background/index.ts'),
-        popup: resolve(__dirname, 'popup.html'),
-        wallet: resolve(__dirname, 'wallet.html'),
-        unlock: resolve(__dirname, 'unlock.html'),
-        // B1c §1.7: the approval window.
-        approve: resolve(__dirname, 'approve.html'),
-      },
-      output: {
-        // The manifest names background.js; a hash there would change the manifest.
-        entryFileNames: chunk => (chunk.name === 'background' ? 'background.js' : 'assets/[name]-[hash].js'),
-        chunkFileNames: 'assets/[name]-[hash].js',
-        assetFileNames: 'assets/[name]-[hash][extname]',
+/**
+ * B1d §1.1: the build without presale is this config with NOCTURA_PRESALE=0 (scripts/build.mjs --no-presale); both
+ * mechanisms — the plugin and the constant — follow the one flag here, in the worker build too, exactly as in
+ * vite.content.config.ts (the parity test, scripts/__tests__/presaleSwitch.test.mjs, imports both factories).
+ */
+export function appConfig(env: Record<string, string | undefined>): UserConfig {
+  const presale = presaleFlag(env);
+  return {
+    base: './',
+    // CI repro fix: pin the oxc transform's tsconfig to this package's own file. Left unpinned, a file whose own
+    // directory's tsconfig.json does not list it in `include` (this file, among extension/'s own config files)
+    // falls through to the auto-discovered NEAREST covering tsconfig — which walks up past extension/'s and finds
+    // the repo root's, `extends`ing `@react-native/typescript-config`: present in a full local install (masking
+    // the bug) but absent when CI installs only web/ and extension/. Pinning here is transform-only — it does not
+    // change what `npx tsc --noEmit` type-checks (a separate, unrelated resolution), so tsconfig.json's own
+    // `include` stays untouched (adding these config files there surfaces real pre-existing strict-mode errors
+    // in them, unrelated to this bug).
+    tsconfig: resolve(__dirname, 'tsconfig.json'),
+    define: {__NOCTURA_PRESALE__: JSON.stringify(presale)},
+    plugins: [sharedResolvesFromHere(), presaleSwitch(presale), react(), chunkModules(true)],
+    server: {fs: {allow: [resolve(__dirname, '..')]}},
+    build: {
+      outDir: 'dist/app',
+      emptyOutDir: true,
+      target: 'es2022',
+      modulePreload: false,
+      rollupOptions: {
+        input: {
+          background: resolve(__dirname, 'src/background/index.ts'),
+          popup: resolve(__dirname, 'popup.html'),
+          wallet: resolve(__dirname, 'wallet.html'),
+          unlock: resolve(__dirname, 'unlock.html'),
+          // B1c §1.7: the approval window.
+          approve: resolve(__dirname, 'approve.html'),
+        },
+        output: {
+          // The manifest names background.js; a hash there would change the manifest.
+          entryFileNames: chunk => (chunk.name === 'background' ? 'background.js' : 'assets/[name]-[hash].js'),
+          chunkFileNames: 'assets/[name]-[hash].js',
+          assetFileNames: 'assets/[name]-[hash][extname]',
+        },
       },
     },
-  },
-  worker: {format: 'es', plugins: () => [chunkModules(false)]},
-  test: {
-    // node by default; the component tests say `// @vitest-environment happy-dom` on their first line
-    // (vitest 5 has no environmentMatchGlobs).
-    environment: 'node',
-    globals: true,
-    include: [
-      'src/**/*.test.ts',
-      'src/**/*.test.tsx',
-      'manifest/**/*.test.mjs',
-      'scripts/**/*.test.mjs',
-      '../core/keys/**/*.test.ts',
-      '../core/solana/**/*.test.ts',
-      '../core/fees/**/*.test.ts',
-      '../core/portfolio/**/*.test.ts',
-    ],
-  },
-} as UserConfig);
+    worker: {format: 'es', plugins: () => [presaleSwitch(presale), chunkModules(false)]},
+    test: {
+      // node by default; the component tests say `// @vitest-environment happy-dom` on their first line
+      // (vitest 5 has no environmentMatchGlobs).
+      environment: 'node',
+      globals: true,
+      include: [
+        'src/**/*.test.ts',
+        'src/**/*.test.tsx',
+        'manifest/**/*.test.mjs',
+        'scripts/**/*.test.mjs',
+        '../core/keys/**/*.test.ts',
+        '../core/solana/**/*.test.ts',
+        '../core/fees/**/*.test.ts',
+        '../core/portfolio/**/*.test.ts',
+        '../core/geo/**/*.test.ts',
+        // Final review Minor 3: core/presale/limits.ts is an ON_BUILD module the extension ships (the only funds
+        // arithmetic in 1a) — its own test must run through the extension's runner too, not only web's.
+        '../core/presale/**/*.test.ts',
+      ],
+    },
+  };
+}
+
+export default defineConfig(appConfig(process.env));

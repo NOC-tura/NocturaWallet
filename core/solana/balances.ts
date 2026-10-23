@@ -1,8 +1,8 @@
 import type {SolanaReader} from './rpc';
 import {MAINNET_NOC_MINT, MAINNET_USDC_MINT, MAINNET_USDT_MINT, NOC_DECIMALS} from '../presale/addresses';
-import {SPL_TOKEN_PROGRAM} from '../presale/buyInstructions';
+import {SPL_TOKEN_PROGRAM} from './encoding';
 
-/** The classic SPL Token program — one literal, owned by core/presale/buyInstructions.ts. */
+/** The classic SPL Token program — one literal, owned by core/solana/encoding.ts. */
 export {SPL_TOKEN_PROGRAM};
 
 export type WalletToken = 'SOL' | 'NOC' | 'USDC' | 'USDT';

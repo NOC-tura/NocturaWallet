@@ -4,7 +4,7 @@ import type {WalletDeps} from './deps';
 import {addKnownRecipient} from './knownRecipients';
 import {readWalletView} from './accountsStore';
 import {randomId} from './digest';
-import {inFlightFor, isOpen, readPending, updatePending, viewOf, type FirstBroadcast, type PendingFee, type PendingRecord, type PendingView} from './pendingStore';
+import {inFlightFor, isOpen, readPending, updatePending, viewOf, type FirstBroadcast, type PendingExtra, type PendingFee, type PendingRecord, type PendingView} from './pendingStore';
 import {COOLING_AGAIN_DETAIL, FORBIDDEN_DETAIL, ResendRefused, SendRefused, SentUnconfirmed, type ResendRefusal, type SendIntent} from './sendTypes';
 import {BroadcastRejected, BroadcastSubstituted, firstSignature} from '../../../core/solana/broadcast';
 import {RpcCoolingDown, RpcForbidden, type SignatureStatus} from '../../../core/solana/rpc';
@@ -66,7 +66,7 @@ async function deliver(ext: Ext, deps: WalletDeps, record: PendingRecord, attemp
 export async function submitSigned(
   ext: Ext,
   deps: WalletDeps,
-  input: {account: string; wire: Uint8Array; lastValidBlockHeight: number; intent: SendIntent; fee: PendingFee | null},
+  input: {account: string; wire: Uint8Array; lastValidBlockHeight: number; fee: PendingFee | null} & ({intent: SendIntent; extra?: null} | {intent: null; extra: PendingExtra}),
 ): Promise<PendingView> {
   const now = deps.now();
   const record: PendingRecord = {
@@ -86,6 +86,7 @@ export async function submitSigned(
     expiryNullSeenAt: null,
     failure: null,
     fee: input.fee,
+    extra: input.intent === null ? input.extra : null,
   };
   const guard = {refused: false};
   await updatePending(ext, records => {
@@ -142,6 +143,7 @@ export async function recordDappSend(ext: Ext, deps: WalletDeps, input: {account
     expiryNullSeenAt: null,
     failure: null,
     fee: null,
+    extra: null,
   };
   await updatePending(ext, records => [...records, record]);
   await armPendingAlarm(ext).catch((e: unknown) => console.warn('pending alarm not armed; the poller still runs', e));

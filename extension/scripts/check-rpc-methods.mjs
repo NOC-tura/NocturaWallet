@@ -60,6 +60,7 @@
 import {existsSync, readFileSync, statSync} from 'node:fs';
 import {dirname, join, posix, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {isMain} from './isMain.mjs';
 import {listSourceFiles} from './check-vault-isolation.mjs';
 
 // The spec's list, §4 "RPC — reads", copied here on purpose: core/solana/rpc.ts must equal it.
@@ -236,7 +237,7 @@ export function checkRepo(root) {
   return [...problems, ...methodViolations(texts, allowed), ...networkViolations(texts)];
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMain(import.meta.url)) {
   const problems = checkRepo(resolve(dirname(fileURLToPath(import.meta.url)), '..'));
   if (problems.length > 0) {
     for (const p of problems) console.error(p);

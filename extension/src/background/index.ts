@@ -8,6 +8,7 @@ import {acceptPagePort} from './dapp/pageApi';
 import {QUEUE_ALARM} from './dapp/queue';
 import {onApprovalWindowRemoved, onQueueAlarm} from './dapp/window';
 import type {PortLike} from './dapp/ports';
+import {registerPresale} from './presale/api';
 
 interface BgApi {
   runtime: {
@@ -32,6 +33,8 @@ const deps = browserDeps(ext);
 // Firefox). Caught, not left to reject unhandled — a browser that refuses the call must not
 // stop the listeners below from registering.
 void ext.pinSessionAccess().catch(e => console.warn('storage.session access level not pinned', e));
+// B1d §1.1: presale joins here, before any listener can deliver a message (the stub in the build without it).
+registerPresale({ext, deps});
 
 api.runtime.onMessage.addListener((msg, sender, reply) => {
   handleMessage(ext, msg, sender, deps).then(reply, () => reply({ok: false, error: 'internal'}));

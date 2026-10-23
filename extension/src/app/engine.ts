@@ -86,7 +86,13 @@ export interface Pending {
   detail: string | null;
   /** What `detail` says about the last broadcast, as a code (background DetailCode): screens choose on this, never on the text. */
   detailCode: DetailCode | null;
-  intent: Intent;
+  /**
+   * The send's intent, or null: the wallet's own transaction of another kind (B1d §1.3, C19 — a purchase), which a
+   * screen shows through its kind's renderer when the build has one, else generically (Q42): no amount, no recipient.
+   */
+  intent: Intent | null;
+  /** B1d §1.3: that other kind and its display data, never used to decide anything; null for a send. */
+  extra: PendingExtra | null;
   expiryNullSeenAt: number | null;
   failure: 'landed' | 'not-sent' | null;
   /**
@@ -94,6 +100,11 @@ export interface Pending {
    * for a record from before plan 3. Shown only through feePaidLamports, never summed by a screen.
    */
   fee: {networkLamports: bigint; markupLamports: bigint} | null;
+}
+/** B1d §1.3 (background PendingExtra): a kind name and that kind's data, as the background stored it. */
+export interface PendingExtra {
+  kind: string;
+  data: unknown;
 }
 export type HistoryKind = 'sent' | 'received' | 'purchase' | 'other';
 export interface HistoryItem {
@@ -380,12 +391,15 @@ function pendingOf(x: unknown): Pending | undefined {
   const o = obj(x);
   if (o === undefined || typeof o.id !== 'string' || !isAddress(o.account) || typeof o.signature !== 'string' || !SIGNATURE.test(o.signature)) return undefined;
   const state = oneOf(o.state, STATES);
-  const intent = intentOf(o.intent);
+  const intent = o.intent === null ? null : intentOf(o.intent);
+  // Read only on a record without an intent, as the background reads it (pendingStore.ts): a send's extra is null,
+  // whatever was stored — never a reason to drop the send (review 1 L4).
+  const extra = intent === null ? extraOf(o.extra) : null;
   const failure = o.failure === null ? null : oneOf(o.failure, ['landed', 'not-sent'] as const);
   const expiry = o.expiryNullSeenAt === null ? null : isTime(o.expiryNullSeenAt) ? o.expiryNullSeenAt : undefined;
   const fee = feeOf(o.fee);
   const detailCode = o.detailCode === null ? null : oneOf(o.detailCode, DETAIL_CODES);
-  if (state === undefined || intent === undefined || failure === undefined || expiry === undefined || fee === undefined || detailCode === undefined) return undefined;
+  if (state === undefined || intent === undefined || extra === undefined || failure === undefined || expiry === undefined || fee === undefined || detailCode === undefined) return undefined;
   if (!isInt(o.lastValidBlockHeight) || !isTime(o.createdAt) || !isTime(o.lastSentAt) || !(o.detail === null || typeof o.detail === 'string')) return undefined;
   return {
     id: o.id,
@@ -398,10 +412,21 @@ function pendingOf(x: unknown): Pending | undefined {
     detail: o.detail,
     detailCode,
     intent,
+    extra,
     expiryNullSeenAt: expiry,
     failure,
     fee,
   };
+}
+
+/** The background's KIND_NAME (intents.ts): a kind's name. */
+const KIND = /^[a-z][a-z0-9-]{0,31}$/;
+/** `null`, or a kind name and its data (any JSON, copied as it came); a missing field or any other value is undefined (failed). */
+function extraOf(x: unknown): PendingExtra | null | undefined {
+  if (x === null) return null;
+  const o = obj(x);
+  if (o === undefined || typeof o.kind !== 'string' || !KIND.test(o.kind) || !('data' in o)) return undefined;
+  return {kind: o.kind, data: o.data};
 }
 
 /** `null`, or exactly two base-unit strings; a missing field or any other value is undefined (failed). */

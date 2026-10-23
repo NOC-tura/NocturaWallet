@@ -12,6 +12,7 @@ import {useNow} from '../useNow';
 import {Stuck, STUCK_TEXT} from './Stuck';
 import {Failed} from './Failed';
 import {feePaidLamports, type Intent, type Pending, type PendingState} from '../engine';
+import {GENERIC_TEXT} from '../generic';
 
 /** The fixed strings #21 shows (spec §4.6); adapted ones are marked there. */
 export const STATUS_TEXT = {
@@ -213,28 +214,42 @@ function Tracked({account, id, since, canRetry, onDone, onDetails, onActivity, o
     );
   }
 
-  const token = record.intent.token;
-  const usd = usdOf(token, record.intent.amount, m.prices);
-  // The fiat line: --fg-secondary on success and slow, --fg-tertiary while broadcasting (index.html #s21).
-  const amountCard = (big: boolean, dim: boolean) => (
-    <div className="amount-card">
-      <span className="eyebrow">Amount</span>
-      <div className="amount-line">
-        <span className={`amount noc-numeral${big ? ' noc-balance-lg app-amount-big' : ''}`}>{showExact(token, record.intent.amount)}</span>
-        <span className="ticker">{token}</span>
+  const intent = record.intent;
+  // The fiat line: --fg-secondary on success and slow, --fg-tertiary while broadcasting (index.html #s21). A record
+  // without an intent (B1d §1.3: another kind) has Q42's line in the amount's place, and no To row: no amount, no
+  // recipient, no fiat.
+  const amountCard = (big: boolean, dim: boolean) => {
+    if (intent === null) {
+      return (
+        <div className="amount-card">
+          <div className="amount-line">
+            <span className="amount">{GENERIC_TEXT.line}</span>
+          </div>
+        </div>
+      );
+    }
+    const usd = usdOf(intent.token, intent.amount, m.prices);
+    return (
+      <div className="amount-card">
+        <span className="eyebrow">Amount</span>
+        <div className="amount-line">
+          <span className={`amount noc-numeral${big ? ' noc-balance-lg app-amount-big' : ''}`}>{showExact(intent.token, intent.amount)}</span>
+          <span className="ticker">{intent.token}</span>
+        </div>
+        {usd === null ? null : <span className={`noc-caption noc-numeral ${dim ? 'app-dim' : 'app-secondary'}`}>≈ {showUsd(usd)} USD</span>}
       </div>
-      {usd === null ? null : <span className={`noc-caption noc-numeral ${dim ? 'app-dim' : 'app-secondary'}`}>≈ {showUsd(usd)} USD</span>}
-    </div>
-  );
-  const toRow = (
-    <div className="meta-row">
-      <span className="lbl">To</span>
-      <span className="val mono noc-mono">
-        <AddressGroups address={record.intent.recipient} />
-      </span>
-      <CopyIcon value={record.intent.recipient} label="Copy recipient" />
-    </div>
-  );
+    );
+  };
+  const toRow =
+    intent === null ? null : (
+      <div className="meta-row">
+        <span className="lbl">To</span>
+        <span className="val mono noc-mono">
+          <AddressGroups address={intent.recipient} />
+        </span>
+        <CopyIcon value={intent.recipient} label="Copy recipient" />
+      </div>
+    );
   const hashRow = (
     <div className="meta-row">
       <span className="lbl">Tx hash</span>

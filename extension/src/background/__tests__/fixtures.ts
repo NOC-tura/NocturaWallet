@@ -113,6 +113,7 @@ export const pendingRecord = (over: Partial<PendingRecord> = {}): PendingRecord 
   expiryNullSeenAt: null,
   failure: null,
   fee: null,
+  extra: null,
   ...over,
 });
 

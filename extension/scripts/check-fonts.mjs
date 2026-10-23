@@ -11,6 +11,8 @@
 import {existsSync, readdirSync, readFileSync} from 'node:fs';
 import {dirname, join, posix, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {isMain} from './isMain.mjs';
+import {distDir} from './distDir.mjs';
 
 export const FONTS = ['Geist-Variable.woff2', 'GeistMono-Variable.woff2'];
 
@@ -65,12 +67,13 @@ export function vaultPageFontViolations(distApp) {
   return out;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
-  const dist = join(resolve(dirname(fileURLToPath(import.meta.url)), '..'), 'dist', 'app');
+if (isMain(import.meta.url)) {
+  const DIST = distDir();
+  const dist = join(resolve(dirname(fileURLToPath(import.meta.url)), '..'), DIST, 'app');
   const problems = [...fontViolations(dist), ...vaultPageFontViolations(dist)];
   if (problems.length > 0) {
     for (const p of problems) console.error(p);
     process.exit(1);
   }
-  console.log('fonts ok: both Geist files are in dist/app/fonts, every font URL in the CSS resolves there, and the vault page loads Geist');
+  console.log(`fonts ok: both Geist files are in ${DIST}/app/fonts, every font URL in the CSS resolves there, and the vault page loads Geist`);
 }

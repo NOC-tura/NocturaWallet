@@ -530,10 +530,10 @@ describe('vault isolation (which files the source rule reads)', () => {
   });
   afterEach(() => rmSync(root, {recursive: true, force: true}));
 
-  it('reads every source file under the package except node_modules, dist, tests, e2e and scripts', () => {
+  it('reads every source file under the package except node_modules, both builds (dist, dist-nopresale), tests, e2e and scripts', () => {
     for (const rel of [
       'src/app/popup.tsx', 'src/ui/a.tsx', 'leak/prf.ts', 'x.mjs', 'vite.config.ts', 'manifest/source.mjs', 'deep/a/b.js',
-      'node_modules/p/index.js', 'dist/app/background.js', 'src/vault/__tests__/a.test.ts', 'e2e/a.spec.ts',
+      'node_modules/p/index.js', 'dist/app/background.js', 'dist-nopresale/app/background.js', 'src/vault/__tests__/a.test.ts', 'e2e/a.spec.ts',
       'scripts/check.mjs', 'popup.html', 'notes.md',
     ]) touch(rel);
     expect(listSourceFiles(root).sort()).toEqual(['deep/a/b.js', 'leak/prf.ts', 'manifest/source.mjs', 'src/app/popup.tsx', 'src/ui/a.tsx', 'vite.config.ts', 'x.mjs']);
@@ -744,11 +744,23 @@ describe('vault isolation (built output)', () => {
     ['node_modules/@scure/base/node_modules/evil/index.js', 'assets/base-1.js'],
     ['node_modules/@solana/web3.js/lib/index.browser.esm.js', 'assets/unlock-1.js'],
     ['\0virtual:app', 'assets/unlock-1.js'],
+    // B1d §1.1: of the three off-build stubs, only the vault page's own may be bundled with it.
+    ['src/presale-off/app.ts', 'assets/unlock-1.js'],
+    ['src/presale-off/background.ts', 'assets/unlock-1.js'],
   ])('fails when a chunk the vault page loads carries %s', (id, chunk) => {
     sheets();
     const map = MAP();
     map.chunks[chunk] = [...map.chunks[chunk], id];
     expect(vaultPageModuleViolations(dir, map)).toEqual([`${chunk} (reachable from unlock.html) carries ${JSON.stringify(id)} — only vault-page code and its five packages may be bundled with the seed`]);
+  });
+
+  it('B1d §1.1: the vault-page stub of the off build (src/presale-off/unlock.ts) is vault-page code, as its entry src/unlock/presale.ts is', () => {
+    sheets();
+    for (const id of ['src/presale-off/unlock.ts', 'src/unlock/presale.ts']) {
+      const map = MAP();
+      map.chunks['assets/unlock-1.js'] = [...map.chunks['assets/unlock-1.js'], id];
+      expect(vaultPageModuleViolations(dir, map)).toEqual([]);
+    }
   });
 
   it('fails a reachable chunk missing from the map, a missing map, and a map that does not describe the vault page', () => {

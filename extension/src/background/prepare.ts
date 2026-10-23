@@ -10,6 +10,7 @@ import {readSettings} from './settings';
 import {sendReauthReasons, usdMicros, type SendReauthReason} from './reauthPolicy';
 import {CHALLENGE_TTL_MS, challengeInfo, challengeSatisfied, dropChallengesFor, issueChallenge, rebaseChallenge, type SendAboutRefresh} from './reauthChallenges';
 import {digestOf, randomId} from './digest';
+import {SEND_KIND, intentKind, registerIntentKind, type IntentKind} from './intents';
 import {SendRefused, type SendIntent} from './sendTypes';
 import {estimatePriorityFee} from '../../../core/solana/priorityFee';
 import {
@@ -39,10 +40,16 @@ export const MAX_PREPARED = 5;
 const MAX_U64 = 18_446_744_073_709_551_615n;
 const TOKENS: readonly string[] = ['SOL', 'NOC', 'USDC', 'USDT'];
 
-export interface PreparedSend {
+/**
+ * B1d §1.3: a prepared entry of any kind — what the shared pipeline (send.ts) signs. `intent` is the kind's own intent,
+ * read back through its `parseIntent`; `shown` is the kind's, of which the pipeline reads only the fee parts it records.
+ */
+export interface PreparedEntry {
   id: string;
   account: string;
-  intent: SendIntent;
+  /** The intent kind (intents.ts): `send` for B1b's send. Part of the integrity digest, and the domain of `intentDigest`. */
+  kind: string;
+  intent: unknown;
   /** The unsigned v0 message, base64 — exactly what will be signed. */
   message: string;
   lastValidBlockHeight: number;
@@ -56,6 +63,14 @@ export interface PreparedSend {
   challengeId: string | null;
   /** preparedIntegrity of every field above: an entry changed after prepare is refused at send. */
   integrity: string;
+  /** What prepare showed — the fee parts the pending record keeps, and the simulation every kind's entry has. Not signed, not bound. */
+  shown: {fees: {networkLamports: string; markupLamports: string}; simulation: object};
+}
+
+/** B1b's send as a prepared entry of kind `send`. */
+export interface PreparedSend extends PreparedEntry {
+  kind: typeof SEND_KIND;
+  intent: SendIntent;
   /** What prepare showed, kept so wallet.preparedFor can show it again. Not signed, not bound. */
   shown: {fees: PreparedView['fees']; solRequiredLamports: string; reasons: SendReauthReason[]; simulation: SimulationView};
 }
@@ -98,15 +113,27 @@ export type ResumableView = PreparedView & {intent: SendIntent; expired: boolean
 
 /** The re-auth binding of a send: who sends what to whom — amounts as decimal strings. */
 export function sendIntentDigest(account: string, intent: SendIntent): string {
-  return digestOf('send', {account, token: intent.token, recipient: intent.recipient, amount: intent.amount});
+  return digestOf(SEND_KIND, sendDigestValue(account, intent));
 }
 
-/** Message integrity of a stored prepared send: every field that decides what is signed, or whether re-auth is asked. */
-export function preparedIntegrity(p: Omit<PreparedSend, 'integrity' | 'shown'>): string {
-  return digestOf('prepared', {
+function sendDigestValue(account: string, intent: SendIntent): {account: string; token: string; recipient: string; amount: string} {
+  return {account, token: intent.token, recipient: intent.recipient, amount: intent.amount};
+}
+
+/**
+ * Message integrity of a stored prepared entry: every field that decides what is signed, or whether re-auth is asked,
+ * and its kind (B1d §1.3) — a send's under B1b's domain `prepared`, so it is what it was before kinds existed; any other
+ * kind's under `prepared/<kind>`. The intent is its kind's own rebuilt form (for a send exactly B1b's token, recipient,
+ * amount); an entry whose kind is not registered, or whose intent its kind does not read, is `prepared-invalid`.
+ */
+export function preparedIntegrity(p: Omit<PreparedEntry, 'integrity' | 'shown'>): string {
+  const kind = intentKind(p.kind);
+  const intent = kind === undefined ? null : kind.parseIntent(p.intent);
+  if (intent === null) throw new SendRefused('prepared-invalid');
+  return digestOf(p.kind === SEND_KIND ? 'prepared' : `prepared/${p.kind}`, {
     id: p.id,
     account: p.account,
-    intent: {token: p.intent.token, recipient: p.intent.recipient, amount: p.intent.amount},
+    intent,
     message: p.message,
     lastValidBlockHeight: p.lastValidBlockHeight,
     createdAt: p.createdAt,
@@ -134,6 +161,15 @@ export function parseIntent(x: unknown): SendIntent | null {
   return {token: token as WalletToken, recipient, amount};
 }
 
+/** B1d §1.3 (C19): B1b's send, registered unconditionally — in both builds, before any message can be handled. */
+export const SEND_INTENT: IntentKind<SendIntent> = {
+  kind: SEND_KIND,
+  parseIntent,
+  digestValue: sendDigestValue,
+  beforeSign: async () => undefined,
+};
+registerIntentKind(SEND_INTENT);
+
 /**
  * USD per whole token for the dollar re-auth rule. NOC has no market price; it is valued at the
  * current presale stage price (owner decision B). A price that cannot be read is `undefined`, which
@@ -151,10 +187,11 @@ async function unitPrice(deps: WalletDeps, token: WalletToken): Promise<number |
   }
 }
 
-function isPreparedShape(x: unknown): x is PreparedSend {
+function isPreparedShape(x: unknown): x is PreparedEntry {
   if (typeof x !== 'object' || x === null) return false;
   const p = x as Record<string, unknown>;
-  if (typeof p.id !== 'string' || typeof p.integrity !== 'string' || typeof p.createdAt !== 'number' || typeof p.shown !== 'object' || p.shown === null) return false;
+  // An entry from before kinds (B1d §1.3) has none: not ours to sign — its intent is prepared again (fail closed).
+  if (typeof p.id !== 'string' || typeof p.kind !== 'string' || typeof p.integrity !== 'string' || typeof p.createdAt !== 'number' || typeof p.shown !== 'object' || p.shown === null) return false;
   // An entry from before E2 has no simulation to show: not ours to resume.
   const sim = (p.shown as Record<string, unknown>).simulation;
   return typeof sim === 'object' && sim !== null;
@@ -220,7 +257,9 @@ export function rentRefusal(err: unknown, keys: readonly string[], sender: strin
   return null;
 }
 
-async function loadPrepared(ext: Ext): Promise<PreparedSend[]> {
+const isSend = (p: PreparedEntry): p is PreparedSend => p.kind === SEND_KIND;
+
+async function loadPrepared(ext: Ext): Promise<PreparedEntry[]> {
   const v = await ext.session.get(PREPARED_KEY);
   // An entry of another shape (an older build's) is not ours to sign or show.
   return Array.isArray(v) ? (v as unknown[]).filter(isPreparedShape) : [];
@@ -405,6 +444,7 @@ export async function prepareSend(
   const bound = {
     id: randomId(deps.randomBytes),
     account,
+    kind: SEND_KIND,
     intent,
     message: messageB64,
     lastValidBlockHeight: latest.lastValidBlockHeight,
@@ -413,9 +453,17 @@ export async function prepareSend(
     challengeId,
   };
   const prepared: PreparedSend = {...bound, integrity: preparedIntegrity(bound), shown: {fees, solRequiredLamports: solRequired.toString(), reasons, simulation}};
-  // Under sessionMutex, the mutex the lock takes (lock() clears storage.session in one section of it,
-  // lockHook.ts): a lock that landed while this send was being read, simulated or challenged is seen
-  // here, and nothing is written back after it.
+  await storePrepared(ext, deps, prepared);
+  return viewOf(ext, deps, prepared);
+}
+
+/**
+ * Stores a prepared entry of any kind (B1d §1.3), replacing every entry of its account — of every kind, so an account
+ * has at most one. Under sessionMutex, the mutex the lock takes (lock() clears storage.session in one section of it,
+ * lockHook.ts): a lock that landed while this entry was being read, simulated or challenged is seen here, and nothing
+ * is written back after it.
+ */
+export async function storePrepared(ext: Ext, deps: Pick<WalletDeps, 'now'>, prepared: PreparedEntry): Promise<void> {
   await sessionMutex(async () => {
     if ((await getSession(ext)) === null) {
       // Locked meanwhile. A challenge issued after the lock's clear would outlive it: remove just
@@ -427,10 +475,9 @@ export async function prepareSend(
     const now = deps.now();
     // Other accounts' entries stay while their challenge can live: past 30 s they are unsendable,
     // but wallet.preparedFor still resumes them (see there).
-    const keep = (await loadPrepared(ext)).filter(p => p.account !== account && now - p.createdAt < CHALLENGE_TTL_MS).slice(-(MAX_PREPARED - 1));
+    const keep = (await loadPrepared(ext)).filter(p => p.account !== prepared.account && now - p.createdAt < CHALLENGE_TTL_MS).slice(-(MAX_PREPARED - 1));
     await ext.session.set(PREPARED_KEY, [...keep, prepared]);
   });
-  return viewOf(ext, deps, prepared);
 }
 
 async function viewOf(ext: Ext, deps: Pick<WalletDeps, 'now'>, p: PreparedSend): Promise<PreparedView> {
@@ -459,7 +506,8 @@ async function viewOf(ext: Ext, deps: Pick<WalletDeps, 'now'>, p: PreparedSend):
  */
 export async function preparedFor(ext: Ext, deps: Pick<WalletDeps, 'now'>, account: string): Promise<ResumableView | null> {
   const now = deps.now();
-  const mine = (await loadPrepared(ext)).filter(p => p.account === account && now - p.createdAt < CHALLENGE_TTL_MS);
+  // A send only (B1d §1.3): another kind's entry is resumed by its own message (presale.preparedFor, B1d-1b).
+  const mine = (await loadPrepared(ext)).filter(isSend).filter(p => p.account === account && now - p.createdAt < CHALLENGE_TTL_MS);
   const newest = mine.reduce<PreparedSend | null>((a, p) => (a === null || p.createdAt >= a.createdAt ? p : a), null);
   if (newest === null) return null;
   const challengeDead = newest.challengeId !== null && (await challengeInfo(ext, now, newest.challengeId)) === null;
@@ -482,12 +530,12 @@ export async function discardPrepared(ext: Ext, account: string): Promise<void> 
   });
 }
 
-export async function peekPrepared(ext: Ext, id: string): Promise<PreparedSend | null> {
+export async function peekPrepared(ext: Ext, id: string): Promise<PreparedEntry | null> {
   return (await loadPrepared(ext)).find(p => p.id === id) ?? null;
 }
 
 /** Single use: removed as it is taken, so a second "Send" with the same id finds nothing. */
-export async function takePrepared(ext: Ext, deps: Pick<WalletDeps, 'now'>, id: string): Promise<PreparedSend> {
+export async function takePrepared(ext: Ext, deps: Pick<WalletDeps, 'now'>, id: string): Promise<PreparedEntry> {
   return sessionMutex(async () => {
     const all = await loadPrepared(ext);
     const found = all.find(p => p.id === id);

@@ -43,7 +43,9 @@ export function failedKind(p: Pending): Kind {
  * #44 tx-failed (spec §4.7): the design's categories the engine can report, chosen by `failure` (E8). Removed,
  * loudly: insufficient-fee (the engine never reports it; priority is automatic, D15), the slippage content (no
  * swaps), the RPC picker (reads and broadcast are fixed to the coordinator). `[Try again]` is a fresh prepare of
- * the same intent at #19 (rule 6: a LockedButton); the explorer link is Solscan's, checked (§6.5).
+ * the same intent at #19 (rule 6: a LockedButton); the explorer link is Solscan's, checked (§6.5). A record without an
+ * intent (B1d §1.3: another kind, Q42) has nothing to prepare again: no [Try again] or [Edit transaction] (the explorer
+ * link in their place, the back arrow closes), and its kept payload is its block height — no recipient, no amount.
  */
 export function Failed({
   record,
@@ -68,10 +70,14 @@ export function Failed({
   const m = useWallet();
   const kind = failedKind(record);
   const refused = m.net.mode === 'refused';
-  const edit = () => onEdit(draftOf(record.intent));
+  const intent = record.intent;
+  const retry = canRetry && intent !== null;
+  const edit = () => {
+    if (intent !== null) onEdit(draftOf(intent));
+  };
   // The design's back arrow returns to #12 with the form kept: the same as [Edit transaction] — while the record's
   // account is selected. Otherwise it closes to #11.
-  const back = canRetry ? edit : onClose;
+  const back = retry ? edit : onClose;
   useEscape(back);
   const head = kind === 'blockhash-expired' ? FAILED_TEXT.expiredHead : kind === 'rejected-by-program' ? FAILED_TEXT.rejectedHead : kind === 'network-error' ? FAILED_TEXT.notSentHead : FAILED_TEXT.genericHead;
   // The sub: expired, the engine's own line (its NOT_CONFIRMED; expiredSub only when the record has none); rejected, the
@@ -85,8 +91,8 @@ export function Failed({
         : kind === 'network-error'
           ? FAILED_TEXT.notSentSub
           : record.detail ?? '';
-  const tryAgain = !canRetry ? null : (
-    <LockedButton className="btn btn-primary" disabled={refused} onPress={() => onTryAgain(record.intent)}>
+  const tryAgain = !retry ? null : (
+    <LockedButton className="btn btn-primary" disabled={refused} onPress={() => onTryAgain(intent)}>
       <ExtIcon name="refresh" size={18} />
       {FAILED_TEXT.tryAgain}
     </LockedButton>
@@ -127,30 +133,34 @@ export function Failed({
           <>
             <div className="s9-payload-card">
               <span className="label">{FAILED_TEXT.payload}</span>
-              <div className="row">
-                <span className="k">To</span>
-                <span className="v mono noc-mono">
-                  <AddressGroups address={record.intent.recipient} />
-                </span>
-              </div>
-              <div className="row">
-                <span className="k">Amount</span>
-                <span className="v noc-numeral">
-                  {showExact(record.intent.token, record.intent.amount)} {record.intent.token}
-                </span>
-              </div>
+              {intent === null ? null : (
+                <>
+                  <div className="row">
+                    <span className="k">To</span>
+                    <span className="v mono noc-mono">
+                      <AddressGroups address={intent.recipient} />
+                    </span>
+                  </div>
+                  <div className="row">
+                    <span className="k">Amount</span>
+                    <span className="v noc-numeral">
+                      {showExact(intent.token, intent.amount)} {intent.token}
+                    </span>
+                  </div>
+                </>
+              )}
               <div className="row">
                 <span className="k">Valid until block</span>
                 <span className="v noc-numeral">{record.lastValidBlockHeight}</span>
               </div>
             </div>
-            <p className="noc-caption app-muted">{FAILED_TEXT.expiredFoot}</p>
+            {intent === null ? null : <p className="noc-caption app-muted">{FAILED_TEXT.expiredFoot}</p>}
           </>
         ) : null}
       </div>
       <div className="sticky-bar">
-        {kind === 'generic' ? explorer : tryAgain}
-        {kind === 'blockhash-expired' && canRetry ? (
+        {kind === 'generic' || (intent === null && kind !== 'rejected-by-program') ? explorer : tryAgain}
+        {kind === 'blockhash-expired' && retry ? (
           <button type="button" className="btn btn-secondary" onClick={edit}>
             {FAILED_TEXT.edit}
           </button>

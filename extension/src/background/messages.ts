@@ -16,6 +16,7 @@ import {decide, decideRequestOf, pending} from './dapp/decide';
 import {runUnlockHook} from './dapp/queue';
 import {dropAccountGrants, listBlocked, listGrants, revokeAll, revokeGrant, undoRevoke, unblock} from './dapp/grantsApi';
 import {reauthWaiting} from './dapp/signTx';
+import {PRESALE_MESSAGE_TYPES} from './presale/api';
 
 /** What the browser reports about a message's origin (runtime.MessageSender). */
 export interface Sender {
@@ -60,6 +61,8 @@ export const PRIVILEGED = [
   'dapp.blocked.remove',
   // B1c-2 (D11): the popup's offer of #10 for a site's transaction.
   'dapp.reauth',
+  // B1d §1.4: the presale entry's (none in the build without presale, none in B1d-1a).
+  ...PRESALE_MESSAGE_TYPES,
 ] as const;
 /**
  * Only the vault page itself may hand over keys, report a re-authentication it proved, hand over

@@ -1,6 +1,6 @@
 import {Buffer} from 'buffer';
 import {ComputeBudgetProgram, PublicKey, SystemProgram, TransactionInstruction} from '@solana/web3.js';
-import {encodeU64LE, findAssociatedTokenAddress} from '../presale/buyInstructions';
+import {encodeU64LE, findAssociatedTokenAddress} from './encoding';
 
 /**
  * SOL and SPL transfer building, shared by the app and the extension (spec §4 "Moves into core/").

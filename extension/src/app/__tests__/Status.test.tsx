@@ -387,6 +387,7 @@ const view = (over: Partial<Pending> = {}): Pending => ({
   detail: null,
   detailCode: null,
   intent: {token: 'SOL', recipient: ACCOUNT.publicKey, amount: 2_480_000_000n},
+  extra: null,
   expiryNullSeenAt: null,
   failure: null,
   fee: {networkLamports: 5_050n, markupLamports: 20_000n},
