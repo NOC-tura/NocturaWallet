@@ -64,6 +64,62 @@ export const PRESALE_TEXT = {
   regionLine: (reason: string): string => `Not available here — ${reason}`,
 } as const;
 
+/**
+ * #20's purchase variant (§4.2; Q07–Q10, Q44 — controller copy, owner-delegated 2026-10-19; §4.2's own row labels and
+ * B1b's #20 labels where it keeps them). Q57 and Q58 are new in B1d-1b Task 5 — controller copy, flagged to the owner:
+ * B1b's "You have a send waiting." and "Confirmed. Review the fresh quote and send." name a send.
+ */
+export const CONFIRM_PURCHASE_TEXT = {
+  /** Q07, Q08. */
+  title: 'Confirm purchase',
+  about: 'You are about to buy',
+  receive: 'You receive (est.)',
+  stage: 'Stage',
+  stageOf: (stage: number): string => `${stage} of 10`,
+  price: 'Price',
+  perNoc: (price: string): string => `${price} / NOC`,
+  from: 'From',
+  to: 'To',
+  /** Q10. */
+  presale: 'Noctura presale',
+  fees: 'Fees',
+  networkFee: 'Network fee',
+  priority: 'Priority',
+  /** Q09. */
+  setup: 'Account setup (first purchase)',
+  total: 'Total',
+  /** §4.2's "Simulation" receipt block with Q44 (#19's facts, C33). */
+  simulation: 'Simulation',
+  slot: (slot: string): string => `Simulated at slot ${slot}`,
+  programs: 'Programs',
+  programsValue: 'Compute Budget · Noctura presale',
+  buy: 'Buy NOC',
+  quote: (seconds: number): string => `Quote valid ${seconds} s`,
+  /** Q57 (new, flagged). */
+  resume: 'You have a purchase waiting.',
+  /** Q58 (new, flagged). */
+  confirmed: 'Confirmed. Review the fresh quote and buy.',
+} as const;
+
+/**
+ * A purchase record on #21, #44 and #54 (§4.2; Q31, Q32 — controller copy, owner-delegated 2026-10-19). Q53–Q55 are new
+ * in B1d-1b Task 5 — controller copy, flagged to the owner: they replace B1b's send words ("Sending…", "Sent", "Sent
+ * successfully", "…the amount did not move") that the generic rendering (Q42) keeps.
+ */
+export const RECORD_TEXT = {
+  /** Q31. */
+  badge: 'Presale',
+  /** Q32. */
+  line: (amount: string, currency: PresaleCurrency): string => `Buying NOC with ${amount} ${currency}`,
+  /** Q53. */
+  sending: 'Buying NOC…',
+  /** Q54 a, b. */
+  sent: 'Purchased',
+  sentOk: 'Purchase confirmed',
+  /** Q55. */
+  rejectedSub: 'The presale program returned an error. The network fee was charged; no NOC was bought.',
+} as const;
+
 /** The reason of a closed region answer, as #50b's sub says it (§4.3; for `sanctioned`, Q21's first sentence). */
 export const GEO_REASON_TEXT: Record<GeoReason, string> = {
   sanctioned: "This wallet doesn't offer the presale in your region.",

@@ -726,6 +726,27 @@ a.btn {
 .s-stat .top-bar .step.app-success {
   color: var(--success);
 }
+/* B1d-1b Task 5: #20's purchase variant — the label column wide enough for §4.2's "You receive (est.)" on two lines
+   (B1b's 80 px column, drawn for From / To / Network, broke it over three; found in the visual check). */
+.s-conf .detail-grid.app-pre-grid .detail-row {
+  grid-template-columns: 112px 1fr;
+}
+/* B1d-1b Task 5: #44's amount line for a purchase (Q32), under the head: no UA paragraph margin, so it sits with the head
+   and the sub below keeps the design's spacing (two stacked margins opened a gap; found in the visual check). */
+.s9-fail-hero .sub.app-fail-line {
+  margin: 0;
+}
+/* B1d-1b Task 5: #21's kind badge (Q31 "Presale", StatusPill `badge`; approved, undrawn) — #27's status pill shape at
+   the top bar's size, in the accent: it names the kind, not the outcome. */
+.s-stat .top-bar .status-pill.app-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: var(--radius-pill);
+  font: 600 12px/16px var(--font-body);
+  background: color-mix(in oklab, var(--accent) 14%, transparent);
+  color: var(--accent);
+}
 .s-stat .stage-label.app-warning,
 .s-stat .top-bar .step.app-warning,
 .s-stat .meta-row .val.app-warning {

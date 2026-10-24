@@ -4,6 +4,7 @@ import {createEngine, type Engine, type HistoryItem, type Intent} from './engine
 import {browserPlatform, type Platform} from './platform';
 import {FLOW, TAB_ONLY, firstRoute, pickStack, presaleNav, presaleRouteOf, routeReducer, type Route} from './router';
 import {draftOf, type Draft} from './send/rules';
+import {presaleSlots} from './presale';
 import {TabBar} from './ui/TabBar';
 import {CancelledToast} from './ui/CancelledToast';
 import {Home} from './screens/Home';
@@ -63,14 +64,16 @@ function Shell({first, onLeaveHandOver}: {first: Route[]; onLeaveHandOver: () =>
   // Esc goes back one step on a pushed screen (a sheet handles its own Esc; a flow screen its own step). A sheet open
   // over a pushed screen (#15's contact sheet, the accounts manager's remove sheet) takes Esc alone: it closes, and the
   // screen under it stays (plan 2).
+  const ownEscape = presaleRouteOf(route)?.ownEscape === true;
   useEffect(() => {
-    if (stack.length < 2 || accounts || FLOW.has(route.screen)) return;
+    // B1d-1b: a presale screen that handles Esc itself (#20's purchase variant) is left to it, as the flow's screens are.
+    if (stack.length < 2 || accounts || FLOW.has(route.screen) || ownEscape) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && document.querySelector('[role="dialog"][aria-modal="true"]') === null) go({type: 'pop'});
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [stack.length, accounts, route.screen]);
+  }, [stack.length, accounts, route.screen, ownEscape]);
 
   // §7.1 ruling (fix round 1): a lock ends the flow. #19, #20 and #21 do not survive it — on unlock the app is at #12
   // holding the draft (the user's own text, from #12 or #19's intent), or at #11 when there is none. Nothing then
@@ -104,7 +107,9 @@ function Shell({first, onLeaveHandOver}: {first: Route[]; onLeaveHandOver: () =>
   }, [selectedNow]);
 
   // Spec §1.6 step 3: a popup opened while a prepared send waits shows #20 in resume mode — which reads it again
-  // and waits for a tap (D38). Once per popup, and only while the user has not gone anywhere yet.
+  // and waits for a tap (D38). Once per popup, and only while the user has not gone anywhere yet. B1d §4.2: with no
+  // send waiting, the presale entry is asked for its own (a purchase whose #10 was proven with the popup closed) — at
+  // most one prepared entry per account (B1d §1.3), so whichever answers; the build without presale has no slot.
   const resumeChecked = useRef(false);
   const selected = m.account?.publicKey ?? null;
   const {engine, phase, surface} = m;
@@ -113,15 +118,23 @@ function Shell({first, onLeaveHandOver}: {first: Route[]; onLeaveHandOver: () =>
     resumeChecked.current = true;
     let alive = true;
     let answered = false;
-    void engine.preparedFor(selected).then(r => {
+    const untouched = () => {
+      const now = stackRef.current;
+      return now.length === 1 && now[0]?.screen === 'tab' && now[0].tab === 'home';
+    };
+    void engine.preparedFor(selected).then(async r => {
       // Locked, another account selected, or unmounted while it read: the answer is dropped — it never pushes #20
       // under the locked screen or for an account no longer shown. The check runs again once unlocked.
       if (!alive) return;
-      answered = true;
-      const now = stackRef.current;
-      if (r.ok && r.data !== null && now.length === 1 && now[0]?.screen === 'tab' && now[0].tab === 'home') {
-        go({type: 'push', route: {screen: 'confirm', account: selected, entry: 'resume'}});
+      if (r.ok && r.data !== null) {
+        answered = true;
+        if (untouched()) go({type: 'push', route: {screen: 'confirm', account: selected, entry: 'resume'}});
+        return;
       }
+      const other = r.ok && presaleSlots !== null ? await presaleSlots.resume(engine, selected) : null;
+      if (!alive) return;
+      answered = true;
+      if (other !== null && untouched()) go({type: 'push', route: other as Route});
     });
     return () => {
       alive = false;
@@ -136,6 +149,26 @@ function Shell({first, onLeaveHandOver}: {first: Route[]; onLeaveHandOver: () =>
   useEffect(() => {
     if (resumeElsewhere) go({type: 'reset', routes: [HOME]});
   }, [resumeElsewhere]);
+
+  // B1d §4.2: the tab's hand-over may follow a purchase's #10 — the presale entry is asked first, and its route (#20's
+  // purchase variant, `resume`) is pushed over the hand-over; with none (or no slot: the build without presale), the
+  // send's #20 as before. At most one prepared entry per account (B1d §1.3), so the order decides nothing.
+  const [tabResume, setTabResume] = useState<'asking' | 'send'>(presaleSlots === null ? 'send' : 'asking');
+  const resumeFor = route.screen === 'resume' && route.account === selected ? route.account : null;
+  useEffect(() => {
+    if (resumeFor === null || presaleSlots === null) return;
+    let alive = true;
+    void presaleSlots.resume(engine, resumeFor).then(next => {
+      if (!alive) return;
+      const top = stackRef.current[stackRef.current.length - 1];
+      if (next !== null && top?.screen === 'resume') go({type: 'push', route: next as Route});
+      else setTabResume('send');
+    });
+    return () => {
+      alive = false;
+    };
+  }, [resumeFor, engine]);
+  const presaleNavigation = presaleNav(go, HOME);
 
   /** #15's pick hand-back (spec §1.4, review M4): router.ts pickStack; with no `send` route below, a plain pop (review L8). */
   const pickRecipient = (address: string) => {
@@ -184,7 +217,7 @@ function Shell({first, onLeaveHandOver}: {first: Route[]; onLeaveHandOver: () =>
 
   let screen;
   if (presale !== undefined) {
-    screen = presale.render(route, presaleNav(go, HOME));
+    screen = presale.render(route, presaleNavigation);
   } else if (route.screen === 'tab') {
     if (route.tab === 'home') {
       screen = (
@@ -275,7 +308,7 @@ function Shell({first, onLeaveHandOver}: {first: Route[]; onLeaveHandOver: () =>
   } else if (route.screen === 'resume') {
     // The UI tab's hand-over (D38): the hash chose this screen and carries no data — #20 reads wallet.preparedFor.
     // Only for the selected account: until it is known, nothing; another one, the effect above ends the flow.
-    screen = route.account === selected ? confirmFor(route.account, {entry: 'resume'}) : <div className="screen s-conf" aria-busy="true" />;
+    screen = route.account === selected && tabResume === 'send' ? confirmFor(route.account, {entry: 'resume'}) : <div className="screen s-conf" aria-busy="true" />;
   } else if (route.screen === 'status') {
     // #21 follows its record's account whoever is selected; #44's and #54's [Try again] and [Edit transaction] start a
     // flow for that account, so — #27's owner rule (final review I1) — only while it is the one selected, and a tap
@@ -296,6 +329,8 @@ function Shell({first, onLeaveHandOver}: {first: Route[]; onLeaveHandOver: () =>
         onEdit={draft => {
           if (account === selected) toSend(draft, null);
         }}
+        // A kind's own flow (#23) only for the selected account's record, as [Try again]; otherwise #11.
+        onRoute={next => (account === selected ? presaleNavigation.reset([next]) : go({type: 'reset', routes: [HOME]}))}
       />
     );
   } else if (route.screen === 'security') {

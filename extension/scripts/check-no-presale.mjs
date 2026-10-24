@@ -28,8 +28,8 @@ export const CORE_PRESALE_ALLOWED = ['core/presale/addresses.ts', 'core/presale/
 export const WEB_ALLOWED = ['../web/src/ui/', '../web/src/styles/'];
 
 // B1d-1a: the three on-path entries (§1.1), the program state presale/{layouts,state}.ts and core/presale/limits.ts
-// (§2.1); 1b adds presale/quote.ts (Task 1), presale/buy.ts (Task 2) and #23's popup modules (Task 4); B1d-2 adds
-// presale/{record,referral}.ts and core/referral/index.ts.
+// (§2.1); 1b adds presale/quote.ts (Task 1), presale/buy.ts (Task 2), #23's popup modules (Task 4) and #20's purchase
+// variant with the record slot (Task 5); B1d-2 adds presale/{record,referral}.ts and core/referral/index.ts.
 export const ON_BUILD = [
   'src/background/presale/api.ts',
   'src/app/presale/index.ts',
@@ -43,6 +43,8 @@ export const ON_BUILD = [
   'src/app/presale/Presale.tsx',
   'src/app/presale/client.ts',
   'src/app/presale/text.ts',
+  'src/app/presale/PresaleConfirm.tsx',
+  'src/app/presale/records.ts',
 ];
 // The intent-kind registry (C19 — both builds sign and read through it); the jurisdiction gate and its fetcher (D15:
 // the off build did not lose the gate).
@@ -50,7 +52,10 @@ export const BOTH_BUILDS = ['src/background/intents.ts', 'src/background/geo/gat
 // Armed by B1d-1b (1a shipped none — Q42 is "both"): Task 1's three presale message types (§6.2: "every presale.*
 // message type"), Task 2's prepare and the purchase's intent kind, Task 3's four sign and resume types, Task 4's #23
 // copy (§6.2's named strings and the §10 rows #23 shows whose source is new / approved and whose build is on — each
-// literal part of 8 characters or more); later tasks add theirs.
+// literal part of 8 characters or more), Task 5's route and the copy of #20's purchase variant, #10's description and
+// the record words of #21, #44 and #54 (Q31 "Presale" is shorter than a marker; Q54a "Purchased" is one ordinary word,
+// so Q54 is armed by "Purchase confirmed"); later tasks add theirs. A marker is never one bare word (review 1 L1): a
+// shared string that merely contains it would fail the off build as a leak that is not one.
 export const MARKERS = [
   'presale.view',
   'presale.banner',
@@ -84,12 +89,30 @@ export const MARKERS = [
   'Keep at least 0.00089088 SOL, or buy with less',
   'Your presale account changed — review again',
   'The presale is busy right now — try again.',
+  'presale-confirm',
+  'Confirm purchase',
+  'You are about to buy',
+  'You receive (est.)',
+  'Account setup (first purchase)',
+  'Noctura presale',
+  'Simulated at slot ',
+  'Compute Budget · Noctura presale',
+  'You have a purchase waiting.',
+  'Confirmed. Review the fresh quote and buy.',
+  'Re-auth required for your first presale purchase from this account.',
+  'Confirm buying NOC with',
+  'Purchase cancelled. Nothing was sent.',
+  'Buying NOC with ',
+  'Buying NOC…',
+  'Purchase confirmed',
+  'The presale program returned an error. The network fee was charged; no NOC was bought.',
 ];
 // Q42a (B1d-1a: the generic pending row, both builds); 1b adds F12's Q49–Q51. Q42b ("Transaction") is too short to
 // be a string search. The decoder's instruction names are read from its source (DECODER).
 export const MUST_STAY = ['Presale purchase', 'PRESALE PURCHASE', 'Transaction · pending', 'Transaction · taking longer than usual'];
 
 const MIN_MARKER = 8;
+const BARE_WORD = /^[A-Za-z]+$/;
 
 /** A module id as the maps write it (package-relative: `../core/…`), without query or hash, rooted at the repository's `core/`. */
 const normalize = id => String(id).replace(/[?#].*$/, '').replace(/^\.\.\/(?=core\/)/, '');
@@ -131,6 +154,7 @@ export function featureViolations(dir, features, presale) {
 /** §6.2 item 2: `files` are {path, bytes}; a marker in an off-build file is a violation, a marker in no on-build file too. */
 export function markerViolations(offFiles, onFiles, markers) {
   for (const m of markers) if (m.length < MIN_MARKER) throw new Error(`a marker must be at least ${MIN_MARKER} characters (${JSON.stringify(m)})`);
+  for (const m of markers) if (BARE_WORD.test(m)) throw new Error(`a marker must not be one bare word (${JSON.stringify(m)}) — arm the string by a longer part`);
   const out = [];
   for (const m of markers) {
     const b = Buffer.from(m, 'utf8');

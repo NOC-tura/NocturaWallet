@@ -45,13 +45,24 @@ describe('App’s way to a presale route (B1d-1b Task 4)', () => {
     expect(presaleRouteOf({screen: 'x-other'} as unknown as Route)).toBeUndefined();
   });
 
-  it('presaleNav: pop, home (a reset to the given route) and push — each one reducer action, the push decided by the reducer', () => {
+  it('presaleNav: pop, home (a reset to the given route), push and reset (the given route, then these) — each one reducer action, the reducer deciding', () => {
     const actions: RouteAction[] = [];
     const nav = presaleNav(a => void actions.push(a), HOME[0] as Route);
     nav.pop();
     nav.home();
     nav.push({screen: 'x-presale', n: 1});
-    expect(actions).toEqual([{type: 'pop'}, {type: 'reset', routes: HOME}, {type: 'push', route: {screen: 'x-presale', n: 1}}]);
+    nav.reset([{screen: 'x-presale', n: 1}, {screen: 'receive'}]);
+    expect(actions).toEqual([
+      {type: 'pop'},
+      {type: 'reset', routes: HOME},
+      {type: 'push', route: {screen: 'x-presale', n: 1}},
+      {type: 'reset', routes: [...HOME, {screen: 'x-presale', n: 1}, {screen: 'receive'}]},
+    ]);
+    const reset = actions[3];
+    if (reset === undefined) throw new Error('no reset');
+    expect(routeReducer([{screen: 'about'}], reset)).toEqual([...HOME, {screen: 'x-presale', n: 1}, {screen: 'receive'}]);
+    // One route the reducer refuses refuses the whole stack (negative control).
+    expect(routeReducer(HOME, {type: 'reset', routes: [...HOME, {screen: 'x-presale', n: 2} as unknown as Route]})).toBe(HOME);
     const [, , pushed] = actions;
     if (pushed === undefined) throw new Error('no push');
     expect(routeReducer(HOME, pushed)).toEqual([...HOME, {screen: 'x-presale', n: 1}]);

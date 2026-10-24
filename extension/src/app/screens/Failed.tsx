@@ -7,6 +7,8 @@ import {RefusedBanner} from '../ui/Banner';
 import {LockedButton} from '../ui/LockedButton';
 import {useEscape} from '../ui/useEscape';
 import type {Intent, Pending} from '../engine';
+import {kindRecord} from '../generic';
+import type {PresaleRouteValue} from '../router';
 
 /** The fixed strings #44 shows (spec §4.7); adapted ones are marked there. */
 export const FAILED_TEXT = {
@@ -46,6 +48,10 @@ export function failedKind(p: Pending): Kind {
  * the same intent at #19 (rule 6: a LockedButton); the explorer link is Solscan's, checked (§6.5). A record without an
  * intent (B1d §1.3: another kind, Q42) has nothing to prepare again: no [Try again] or [Edit transaction] (the explorer
  * link in their place, the back arrow closes), and its kept payload is its block height — no recipient, no amount.
+ * B1d §4.2: a record of a kind the presale entry renders (a purchase) has that kind's words — its amount line under the
+ * head (Q32), its own sub when the program refused it on chain (Q55: the network fee paid, nothing bought), its payload
+ * (what was paid, to whom) — and its [Try again] and back arrow start that kind's flow again (#23 with the amount); the
+ * footer about "same recipient, same amount" is not shown (that flow prepares again at the current price).
  */
 export function Failed({
   record,
@@ -54,6 +60,7 @@ export function Failed({
   onEdit,
   onDetails,
   onClose,
+  onRoute,
 }: {
   record: Pending;
   /**
@@ -66,18 +73,23 @@ export function Failed({
   onDetails: (signature: string) => void;
   /** The back arrow and Esc while another account is selected: #11, never that account's #12 with this draft. */
   onClose: () => void;
+  /** B1d §4.2: a purchase's [Try again] and back arrow — the presale entry's route (#23 with the amount). */
+  onRoute: (route: PresaleRouteValue) => void;
 }) {
   const m = useWallet();
   const kind = failedKind(record);
   const refused = m.net.mode === 'refused';
   const intent = record.intent;
-  const retry = canRetry && intent !== null;
+  const words = kindRecord(record);
+  // A fresh attempt: a send's intent prepared again at #19, or the kind's own flow (B1d §4.2); none for a generic record.
+  const again = intent !== null ? () => onTryAgain(intent) : words !== null ? () => onRoute(words.again) : null;
+  const retry = canRetry && again !== null;
   const edit = () => {
     if (intent !== null) onEdit(draftOf(intent));
   };
   // The design's back arrow returns to #12 with the form kept: the same as [Edit transaction] — while the record's
-  // account is selected. Otherwise it closes to #11.
-  const back = retry ? edit : onClose;
+  // account is selected. Otherwise it closes to #11. A purchase's goes back to its own form (#23 with the amount).
+  const back = !retry || again === null ? onClose : intent !== null ? edit : again;
   useEscape(back);
   const head = kind === 'blockhash-expired' ? FAILED_TEXT.expiredHead : kind === 'rejected-by-program' ? FAILED_TEXT.rejectedHead : kind === 'network-error' ? FAILED_TEXT.notSentHead : FAILED_TEXT.genericHead;
   // The sub: expired, the engine's own line (its NOT_CONFIRMED; expiredSub only when the record has none); rejected, the
@@ -85,14 +97,14 @@ export function Failed({
   // draws it); generic, the detail.
   const sub =
     kind === 'rejected-by-program'
-      ? FAILED_TEXT.rejectedSub
+      ? words?.rejectedSub ?? FAILED_TEXT.rejectedSub
       : kind === 'blockhash-expired'
         ? record.detail ?? FAILED_TEXT.expiredSub
         : kind === 'network-error'
           ? FAILED_TEXT.notSentSub
           : record.detail ?? '';
-  const tryAgain = !retry ? null : (
-    <LockedButton className="btn btn-primary" disabled={refused} onPress={() => onTryAgain(intent)}>
+  const tryAgain = !retry || again === null ? null : (
+    <LockedButton className="btn btn-primary" disabled={refused} onPress={again}>
       <ExtIcon name="refresh" size={18} />
       {FAILED_TEXT.tryAgain}
     </LockedButton>
@@ -117,6 +129,7 @@ export function Failed({
             </div>
           </div>
           <h1 className="head">{head}</h1>
+          {words === null ? null : <p className="sub app-fail-line noc-numeral">{words.line}</p>}
           {sub === '' ? null : <p className="sub">{sub}</p>}
         </div>
         {kind === 'generic' ? null : (
@@ -133,6 +146,18 @@ export function Failed({
           <>
             <div className="s9-payload-card">
               <span className="label">{FAILED_TEXT.payload}</span>
+              {words === null ? null : (
+                <>
+                  <div className="row">
+                    <span className="k">To</span>
+                    <span className="v">{words.to}</span>
+                  </div>
+                  <div className="row">
+                    <span className="k">Amount</span>
+                    <span className="v noc-numeral">{words.amount}</span>
+                  </div>
+                </>
+              )}
               {intent === null ? null : (
                 <>
                   <div className="row">
@@ -159,8 +184,8 @@ export function Failed({
         ) : null}
       </div>
       <div className="sticky-bar">
-        {kind === 'generic' || (intent === null && kind !== 'rejected-by-program') ? explorer : tryAgain}
-        {kind === 'blockhash-expired' && retry ? (
+        {kind === 'generic' || (again === null && kind !== 'rejected-by-program') ? explorer : tryAgain}
+        {kind === 'blockhash-expired' && retry && intent !== null ? (
           <button type="button" className="btn btn-secondary" onClick={edit}>
             {FAILED_TEXT.edit}
           </button>

@@ -626,7 +626,7 @@ describe('Buy (§3.3, rule 6): the background prepares; #23 hands its purchase o
 });
 
 describe('the route (§4): `presale`, carrying nothing; its exits are nav’s', () => {
-  const navSpy = () => ({pop: vi.fn(), home: vi.fn(), push: vi.fn()});
+  const navSpy = () => ({pop: vi.fn(), home: vi.fn(), push: vi.fn(), reset: vi.fn()});
 
   it('exactly {screen: "presale"}', () => {
     expect(PRESALE_ROUTE.screen).toBe('presale');

@@ -187,3 +187,28 @@ describe('Esc over a sheet on a pushed screen (plan 2)', () => {
     expect(await screen.findByRole('heading', {name: 'Settings'})).toBeTruthy();
   });
 });
+
+// B1d §4.2 (resume paths): the build with presale asks its entry for a waiting purchase — once, after the send's check —
+// when the popup opens and when the UI tab's hand-over route mounts; the build without presale has no slot and asks
+// nothing (a purchase entry left there is unsendable and expires, C19). This file runs in both vitest runs.
+describe(`the resume paths in this build (${process.env.NOCTURA_PRESALE === '0' ? 'off' : 'on'})`, () => {
+  const off = process.env.NOCTURA_PRESALE === '0';
+
+  it(off ? 'off: the popup asks wallet.preparedFor only' : 'on: the popup asks wallet.preparedFor, then presale.preparedFor — once each', async () => {
+    const sent: string[] = [];
+    await renderApp({spy: m => void sent.push((m as {type: string}).type)});
+    expect(await screen.findByText('TOKENS')).toBeTruthy();
+    await waitFor(() => expect(sent).toContain('wallet.preparedFor'));
+    await waitFor(() => expect(sent.filter(t => t === 'presale.preparedFor')).toHaveLength(off ? 0 : 1));
+    expect(sent.filter(t => t === 'wallet.preparedFor')).toHaveLength(1);
+    if (!off) expect(sent.indexOf('presale.preparedFor')).toBeGreaterThan(sent.indexOf('wallet.preparedFor'));
+  });
+
+  it(off ? 'off: the tab’s hand-over is the send’s #20 at once (nothing to resume → #12)' : 'on: the tab’s hand-over asks the presale entry first; nothing there → the send’s #20 (nothing to resume → #12)', async () => {
+    const sent: string[] = [];
+    await renderApp({surface: 'tab', hash: `#/send/resume?account=${ACCOUNT.publicKey}`, spy: m => void sent.push((m as {type: string}).type)});
+    expect(await screen.findByText('Send', {selector: '.title'})).toBeTruthy();
+    expect(sent.filter(t => t === 'presale.preparedFor')).toHaveLength(off ? 0 : 1);
+    if (!off) expect(sent.indexOf('presale.preparedFor')).toBeLessThan(sent.indexOf('wallet.preparedFor'));
+  });
+});

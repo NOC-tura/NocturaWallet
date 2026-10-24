@@ -1,12 +1,15 @@
 import {createEngine, type Transport} from '../../engine';
-import {PREPARE_REFUSALS, presaleClient, presaleViewOf, purchaseDataOf, purchaseViewOf, quoteOf} from '../client';
+import {PREPARE_REFUSALS, presaleClient, presaleViewOf, purchaseDataOf, purchaseViewOf, quoteOf, resumableOf} from '../client';
 import {registerPresale} from '../../../background/presale/api';
 import {handleMessage, registerPresaleHandler} from '../../../background/messages';
 import {PENDING_KEY} from '../../../background/pendingStore';
 import type {GeoAnswer} from '../../../background/geo/gate';
 import {fakeDeps} from '../../../background/__tests__/fakeDeps';
 import {fakeExt} from '../../../background/__tests__/fakeExt';
-import {HOLDING_LARGE, pendingRecord, unlocked} from '../../../background/__tests__/fixtures';
+import {HOLDING_LARGE, pendingRecord, signedWire, unlocked} from '../../../background/__tests__/fixtures';
+import {viewOf} from '../../../background/pendingStore';
+import {firstSignature} from '../../../../../core/solana/broadcast';
+import {base64} from '@scure/base';
 import {ACCOUNT, NOW_MS, TREASURY_ADDRESS, chainMap, chainReader, configData, program, type Chain} from '../../../background/presale/__tests__/chain';
 import {MAINNET_USDC_MINT} from '../../../../../core/presale/addresses';
 
@@ -199,5 +202,81 @@ describe('the shape checks: anything else the background did not promise is fail
     ]) {
       expect(purchaseViewOf(b)).toBeUndefined();
     }
+  });
+});
+
+// B1d-1b Task 5: what #20's purchase variant asks — presale.preparedFor, presale.buy, presale.discardPrepared — and
+// prepareBuy carrying a challenge. The messages as the background parses them; each reply's shape checked.
+describe('the client for #20’s purchase variant', () => {
+  const GOOD = {
+    id: 'ab'.repeat(16),
+    currency: 'SOL',
+    amount: '2000000000',
+    stage: 0,
+    priceTicks: '1501',
+    nocBase: '2643837441705',
+    spentCents: '39684',
+    destination: TREASURY_ADDRESS,
+    referrer: null,
+    fees: {networkLamports: '11000', priorityLamports: '6000', rentLamports: '2189480'},
+    reauth: {challengeId: 'cd'.repeat(16), reasons: ['first-purchase'], proven: true},
+    validUntil: 1_000,
+    simulation: {slot: 1, elapsedMs: 2, programs: ['compute-budget', 'presale'], instructionCount: 3},
+  };
+  const canned = (answer: unknown) => {
+    const sent: unknown[] = [];
+    const client = presaleClient(createEngine(async m => (sent.push(m), answer), async () => undefined));
+    return {sent, client};
+  };
+  const record = (over: Parameters<typeof pendingRecord>[0] = {}) =>
+    viewOf(pendingRecord({id: 'b1', account: ACCOUNT, signature: firstSignature(signedWire(7n)), wire: base64.encode(signedWire(7n)), intent: null, extra: {kind: 'presale-buy', data: DATA}, ...over}));
+  const wire = (x: unknown): unknown => JSON.parse(JSON.stringify(x, (_k, v) => (typeof v === 'bigint' ? v.toString() : v)));
+
+  it('resumableOf: a prepared purchase with its `expired`; without it, or not a boolean, refused', () => {
+    expect(resumableOf({...GOOD, expired: true})).toMatchObject({id: GOOD.id, expired: true, reauth: {proven: true}});
+    expect(resumableOf({...GOOD, expired: false})?.expired).toBe(false);
+    expect(resumableOf(GOOD)).toBeUndefined();
+    expect(resumableOf({...GOOD, expired: 'no'})).toBeUndefined();
+    expect(resumableOf({...GOOD, stage: 10, expired: false})).toBeUndefined();
+  });
+
+  it('preparedFor: {type, account}; null, or a resumable purchase; anything else failed', async () => {
+    const none = canned({ok: true, data: null});
+    expect(await none.client.preparedFor(ACCOUNT)).toEqual({ok: true, data: null});
+    expect(none.sent).toEqual([{type: 'presale.preparedFor', account: ACCOUNT}]);
+    expect((await canned({ok: true, data: {...GOOD, expired: false}}).client.preparedFor(ACCOUNT)).ok).toBe(true);
+    expect(await canned({ok: true, data: GOOD}).client.preparedFor(ACCOUNT)).toEqual({ok: false, error: 'failed'});
+    expect(await canned({ok: false, error: 'locked'}).client.preparedFor(ACCOUNT)).toEqual({ok: false, error: 'locked'});
+  });
+
+  it('buy: {type, id}; the wallet’s own purchase record only — a send’s record, or a record of another kind, is failed; the refusals typed with their data', async () => {
+    const ok = canned({ok: true, data: wire(record())});
+    const r = await ok.client.buy(GOOD.id);
+    expect(ok.sent).toEqual([{type: 'presale.buy', id: GOOD.id}]);
+    expect(r.ok && r.data.extra?.kind).toBe('presale-buy');
+    expect(await canned({ok: true, data: wire(record({intent: {token: 'SOL', recipient: TREASURY_ADDRESS, amount: '1'}, extra: null}))}).client.buy(GOOD.id)).toEqual({ok: false, error: 'failed'});
+    expect(await canned({ok: true, data: wire(record({extra: {kind: 'later-kind', data: DATA}}))}).client.buy(GOOD.id)).toEqual({ok: false, error: 'failed'});
+    expect(await canned({ok: false, error: 'reauth-required', data: {challengeId: 'cd'.repeat(16)}}).client.buy(GOOD.id)).toEqual({ok: false, error: 'reauth-required', data: {challengeId: 'cd'.repeat(16)}});
+    for (const code of ['price-changed', 'state-changed', 'geo-closed', 'presale-closed', 'blocked', 'above-user-limit', 'check-pending', 'prepared-expired']) {
+      expect((await canned({ok: false, error: code}).client.buy(GOOD.id)) as unknown).toEqual({ok: false, error: code});
+    }
+    expect(await canned({ok: false, error: 'simulation-failed'}).client.buy(GOOD.id)).toEqual({ok: false, error: 'failed'});
+  });
+
+  it('discardPrepared: {type, account}, answered {ok: true} with no data; a reply carrying data is failed', async () => {
+    const d = canned({ok: true});
+    expect(await d.client.discardPrepared(ACCOUNT)).toEqual({ok: true, data: null});
+    expect(d.sent).toEqual([{type: 'presale.discardPrepared', account: ACCOUNT}]);
+    expect(await canned({ok: true, data: 1}).client.discardPrepared(ACCOUNT)).toEqual({ok: false, error: 'failed'});
+  });
+
+  it('prepareBuy carries a challenge id only when given one', async () => {
+    const c = canned({ok: true, data: GOOD});
+    await c.client.prepareBuy(ACCOUNT, {currency: 'SOL', amount: 2_000_000_000n, stage: 0}, 'cd'.repeat(16));
+    await c.client.prepareBuy(ACCOUNT, {currency: 'SOL', amount: 2_000_000_000n, stage: 0});
+    expect(c.sent).toEqual([
+      {type: 'presale.prepareBuy', account: ACCOUNT, intent: {currency: 'SOL', amount: '2000000000', stage: 0}, challengeId: 'cd'.repeat(16)},
+      {type: 'presale.prepareBuy', account: ACCOUNT, intent: {currency: 'SOL', amount: '2000000000', stage: 0}},
+    ]);
   });
 });

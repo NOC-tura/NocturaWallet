@@ -25,6 +25,7 @@ import {
   type StageView,
 } from './client';
 import {GEO_REASON_TEXT, PRESALE_TEXT, dollarsText, fillWidth, millionsNoc, priceText, raisedText, shortSignature, solPriceText} from './text';
+import type {PresaleAgain} from './routes';
 
 /** C35: #23a re-reads the snapshot and the gate this often while it is visible. */
 export const REREAD_MS = 25_000;
@@ -203,11 +204,18 @@ function Pending23b({record, line}: {record: Pending; line: string | null}) {
  * Buy (rule 6, a LockedButton) hands the background's prepared purchase to `onPrepared`.
  */
 export function Presale({
+  again = null,
   onBack,
   onDone,
   onPrepared,
   onRegion,
 }: {
+  /**
+   * B1d-1b Task 5: #23 again with what the user was buying — #20's back and its sign-time refusals that keep the
+   * purchase, #44's and #54's [Try again]: the currency and amount in the field, the refusal's line or notice, and the
+   * challenge id the next Buy carries. Null: a fresh #23.
+   */
+  again?: PresaleAgain | null;
   onBack: () => void;
   /** 23b's [Done] → #11. */
   onDone: () => void;
@@ -223,14 +231,18 @@ export function Presale({
   const [view, setView] = useState<{account: string; reply: ViewReply} | null>(null);
   /** 23b's record as its own poll last read it, for the record the view showed. */
   const [polled, setPolled] = useState<{id: string; record: Pending} | null>(null);
-  const [currency, setCurrency] = useState<PresaleCurrency>('SOL');
-  const [text, setText] = useState('');
+  const [currency, setCurrency] = useState<PresaleCurrency>(again?.currency ?? 'SOL');
+  const [text, setText] = useState(() => (again === null ? '' : plainAmount(BigInt(again.amount), TOKEN_INFO[again.currency].decimals)));
   /** The text MAX wrote: while the field still holds it, the quote asked is MAX's (`'max'`), not the number. */
   const [maxText, setMaxText] = useState<string | null>(null);
   const [quoted, setQuoted] = useState<{key: string; quote: Quote | 'stale'} | null>(null);
   /** A prepare's line (§5: limit and balance codes), for the amount it was asked for. */
-  const [refusal, setRefusal] = useState<{key: string; line: Line} | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [refusal, setRefusal] = useState<{key: string; line: Line} | null>(() =>
+    again === null || again.code === null || !isLine(again.code) ? null : {key: `${again.currency}|${plainAmount(BigInt(again.amount), TOKEN_INFO[again.currency].decimals)}`, line: again.code},
+  );
+  const [notice, setNotice] = useState<string | null>(() => (again === null || again.code === null || isLine(again.code) ? null : refusalOf(again.code).notice));
+  /** The purchase's challenge #20 handed back: the next Buy carries it (§3.3 step 6). */
+  const carried = useRef(again?.challengeId ?? null);
   const [sheet, setSheet] = useState(false);
   const [shown, setShown] = useState(visible);
 
@@ -385,7 +397,7 @@ export function Presale({
     if (!ready || open === null || account === null || amount === null) return;
     setNotice(null);
     const asked = key;
-    const r = await client.prepareBuy(account, {currency, amount, stage: open.state.stage});
+    const r = await client.prepareBuy(account, {currency, amount, stage: open.state.stage}, carried.current ?? undefined);
     if (!alive.current) return;
     if (r.ok) {
       onPrepared(account, r.data);

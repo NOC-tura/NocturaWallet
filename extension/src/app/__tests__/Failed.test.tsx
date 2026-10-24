@@ -26,7 +26,7 @@ const SPEC = {
   genericHead: 'Transaction failed',
 };
 const caption = () => document.querySelector('.scroll-area > .noc-caption')?.textContent ?? null;
-const nav = {onTryAgain: vi.fn(), onEdit: vi.fn(), onDetails: vi.fn(), onClose: vi.fn()};
+const nav = {onTryAgain: vi.fn(), onEdit: vi.fn(), onDetails: vi.fn(), onClose: vi.fn(), onRoute: vi.fn()};
 const INTENT = {token: 'SOL' as const, recipient: RECIPIENT, amount: 2_480_000_000n};
 const record = (over: Partial<Pending>): Pending => ({
   id: 'r1',

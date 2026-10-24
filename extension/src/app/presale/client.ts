@@ -113,13 +113,47 @@ export const PREPARE_REFUSALS = [
 export type PrepareRefusal = (typeof PREPARE_REFUSALS)[number];
 const SESSION = ['malformed', 'locked', 'unknown-account', 'unavailable'] as const;
 type SessionRefusal = (typeof SESSION)[number];
+/**
+ * The refusals of presale.buy (§1.4, §3.3, §5) #20 translates: the purchase's sign-time codes and B1b's pipeline's;
+ * anything else is `failed`. `reauth-required` carries `{challengeId}`, `check-pending` `{id, signature}`.
+ */
+export const BUY_REFUSALS = [
+  'malformed',
+  'locked',
+  'unknown-account',
+  'unavailable',
+  'unknown-prepared',
+  'prepared-expired',
+  'prepared-invalid',
+  'reauth-required',
+  'in-flight',
+  'check-pending',
+  'unreachable',
+  'coordinator-refused',
+  'presale-unavailable',
+  'presale-closed',
+  'blocked',
+  'geo-closed',
+  'price-changed',
+  'state-changed',
+  'below-min',
+  'above-max-tx',
+  'above-user-limit',
+] as const;
+export type BuyRefusal = (typeof BUY_REFUSALS)[number];
+/** §1.4 presale.preparedFor: the account's prepared purchase as #20 shows it; `expired` past its 30 s (re-prepare it). */
+export type ResumablePurchase = PurchaseView & {expired: boolean};
 
 export interface PresaleClient {
   view(account: string, refresh?: 'gate'): Promise<Reply<PresaleView, SessionRefusal>>;
   /** `stale`: the account's last view is older than the quote's 30 s (§1.4) — ask a view, then again. */
   quote(account: string, currency: PresaleCurrency, amount: bigint | 'max'): Promise<Reply<Quote | 'stale', SessionRefusal>>;
   pending(account: string): Promise<Reply<Pending | null, SessionRefusal>>;
-  prepareBuy(account: string, intent: {currency: PresaleCurrency; amount: bigint; stage: number}): Promise<Reply<PurchaseView, PrepareRefusal>>;
+  /** `challengeId`: the purchase's live challenge, carried into the new prepare (§3.3 step 6) — the background decides whether it still applies. */
+  prepareBuy(account: string, intent: {currency: PresaleCurrency; amount: bigint; stage: number}, challengeId?: string): Promise<Reply<PurchaseView, PrepareRefusal>>;
+  preparedFor(account: string): Promise<Reply<ResumablePurchase | null, SessionRefusal>>;
+  buy(id: string): Promise<Reply<Pending, BuyRefusal>>;
+  discardPrepared(account: string): Promise<Reply<null, SessionRefusal>>;
 }
 
 type J = Record<string, unknown>;
@@ -293,12 +327,33 @@ export function purchaseViewOf(x: unknown): PurchaseView | undefined {
   };
 }
 
+export function resumableOf(x: unknown): ResumablePurchase | undefined {
+  const o = obj(x);
+  if (o === undefined || typeof o.expired !== 'boolean') return undefined;
+  const {expired, ...rest} = o;
+  const view = purchaseViewOf(rest);
+  return view === undefined ? undefined : {...view, expired};
+}
+
+/** The pending record presale.buy answers: the wallet's own purchase (`intent: null`, this kind), nothing else. */
+const purchaseRecordOf = (x: unknown): Pending | undefined => {
+  const p = pendingIn(x);
+  return p === null ? undefined : p;
+};
+
 export function presaleClient(engine: Engine): PresaleClient {
   return {
     view: (account, refresh) => engine.request({type: 'presale.view', account, ...(refresh === undefined ? {} : {refresh})}, SESSION, presaleViewOf),
     quote: (account, currency, amount) => engine.request({type: 'presale.quote', account, currency, amount: amount === 'max' ? 'max' : amount.toString()}, SESSION, quoteOf),
     pending: (account: string) => engine.request({type: 'presale.pending', account}, SESSION, x => (x === null ? null : pendingIn(x))),
-    prepareBuy: (account, intent) =>
-      engine.request({type: 'presale.prepareBuy', account, intent: {currency: intent.currency, amount: intent.amount.toString(), stage: intent.stage}}, PREPARE_REFUSALS, purchaseViewOf),
+    prepareBuy: (account, intent, challengeId) =>
+      engine.request(
+        {type: 'presale.prepareBuy', account, intent: {currency: intent.currency, amount: intent.amount.toString(), stage: intent.stage}, ...(challengeId === undefined ? {} : {challengeId})},
+        PREPARE_REFUSALS,
+        purchaseViewOf,
+      ),
+    preparedFor: account => engine.request({type: 'presale.preparedFor', account}, SESSION, x => (x === null ? null : resumableOf(x))),
+    buy: id => engine.request({type: 'presale.buy', id}, BUY_REFUSALS, purchaseRecordOf),
+    discardPrepared: account => engine.request({type: 'presale.discardPrepared', account}, SESSION, x => (x === undefined ? null : undefined)),
   };
 }

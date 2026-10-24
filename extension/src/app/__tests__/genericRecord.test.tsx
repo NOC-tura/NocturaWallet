@@ -17,6 +17,10 @@ import type {Pending} from '../engine';
 // purchase (`intent: null`, `extra` of kind presale-buy) in both builds while no kind renderer exists (B1d-1a) — is
 // shown generically on #11, #26, #21, #44 and #54: Q42's words, the transaction's own facts (signature, explorer link,
 // fee, block height, B1b's resend), never an amount, a recipient or anything from `extra.data`. Runs in both vitest runs.
+// B1d-1b Task 5: the build with presale renders a purchase on #21, #44 and #54 (presale/__tests__/records.test.tsx), so
+// there the record is of a kind no entry registers — the same data, the same generic rendering; the build without
+// presale keeps the purchase itself (C19: an update that turns presale off shows it generically).
+const off = process.env.NOCTURA_PRESALE === '0';
 const SELECTORS = selectorsOf(UI_SHEETS);
 // Q42, as literals: a wrong constant must not pass by being compared with itself.
 const Q42 = {pending: 'Transaction · pending', slow: 'Transaction · taking longer than usual', line: 'Transaction'};
@@ -24,7 +28,7 @@ const WIRE = signedWire(9n);
 const SIGNATURE = firstSignature(WIRE);
 /** B1d §2.3's display data: every value here must stay off the screen. */
 const DATA = {currency: 'USDC', amount: '25000000', stage: '2', priceTicks: '1501', nocBase: '1998667554963357', spentCents: '2500', destination: RECIPIENT, referrer: null};
-const EXTRA = {kind: 'presale-buy', data: DATA};
+const EXTRA = {kind: off ? 'presale-buy' : 'later-kind', data: DATA};
 const FEE = {networkLamports: '5050', markupLamports: '0'};
 /** A stored purchase record, B1d §2.3's shape (as pendingKinds.test.ts's PURCHASE). */
 const purchase = (over: Partial<PendingRecord> = {}): PendingRecord =>
@@ -57,7 +61,7 @@ function expectGeneric(el: Element = document.body) {
 const meta = () => [...document.querySelectorAll('.meta-row')].map(r => [r.querySelector('.lbl')?.textContent, r.querySelector('.val')?.textContent]);
 const cardRows = (card: string) => [...document.querySelectorAll(`${card} .row`)].map(r => [r.querySelector('.k')?.textContent, r.querySelector('.v')?.textContent]);
 const nav = {onSend: vi.fn(), onReceive: vi.fn(), onPending: vi.fn(), onAccounts: vi.fn(), onTx: vi.fn()};
-const status = {onDone: vi.fn(), onDetails: vi.fn(), onActivity: vi.fn(), onTryAgain: vi.fn(), onEdit: vi.fn()};
+const status = {onDone: vi.fn(), onDetails: vi.fn(), onActivity: vi.fn(), onTryAgain: vi.fn(), onEdit: vi.fn(), onRoute: vi.fn()};
 
 afterEach(() => {
   vi.useRealTimers();
@@ -166,7 +170,7 @@ describe('#21: a record without an intent (Q42b)', () => {
 });
 
 describe('#44: a record without an intent — no [Try again], no [Edit transaction] (nothing to prepare again)', () => {
-  const renderFailed = (p: Pending) => renderInWallet(<Failed record={p} canRetry onTryAgain={status.onTryAgain} onEdit={status.onEdit} onDetails={status.onDetails} onClose={status.onDone} />);
+  const renderFailed = (p: Pending) => renderInWallet(<Failed record={p} canRetry onTryAgain={status.onTryAgain} onEdit={status.onEdit} onDetails={status.onDetails} onClose={status.onDone} onRoute={status.onRoute} />);
 
   it('blockhash-expired: the kept payload is its block height only; the footer about the same recipient and amount is not shown; the explorer link instead of [Try again]', async () => {
     await renderFailed(view({state: 'expired', detail: 'Not confirmed — no funds moved.'}));
@@ -177,6 +181,9 @@ describe('#44: a record without an intent — no [Try again], no [Edit transacti
     expect(screen.queryByRole('button', {name: FAILED_TEXT.tryAgain})).toBeNull();
     expect(screen.queryByRole('button', {name: FAILED_TEXT.edit})).toBeNull();
     expect(screen.getByRole('link', {name: FAILED_TEXT.explorer}).getAttribute('href')).toContain(SIGNATURE);
+    // The explorer link once — in the sticky bar, in [Try again]'s place (1a gap: never a second one).
+    expect(document.querySelectorAll('a[href*="solscan.io"]')).toHaveLength(1);
+    expect(document.querySelector('.sticky-bar a[href*="solscan.io"]')).not.toBeNull();
     expectGeneric();
     // The back arrow closes (it would open #12 with the draft for a send).
     fireEvent.click(screen.getByRole('button', {name: 'Back'}));
@@ -191,6 +198,10 @@ describe('#44: a record without an intent — no [Try again], no [Edit transacti
     expect(screen.queryByRole('button', {name: FAILED_TEXT.tryAgain})).toBeNull();
     fireEvent.click(screen.getByRole('button', {name: FAILED_TEXT.details}));
     expect(status.onDetails).toHaveBeenCalledWith(SIGNATURE);
+    // The explorer link once — the reason banner's own; the sticky bar has [View details] only (1a gap).
+    expect(document.querySelectorAll('a[href*="solscan.io"]')).toHaveLength(1);
+    expect(document.querySelector('.s9-reason-banner a[href*="solscan.io"]')).not.toBeNull();
+    expect([...document.querySelectorAll('.sticky-bar > *')].map(e => e.textContent)).toEqual([FAILED_TEXT.details]);
     expectGeneric();
   });
 
@@ -199,6 +210,7 @@ describe('#44: a record without an intent — no [Try again], no [Edit transacti
     expect(await screen.findByText(FAILED_TEXT.notSentHead)).toBeTruthy();
     expect(screen.queryByRole('button', {name: FAILED_TEXT.tryAgain})).toBeNull();
     expect(screen.getByRole('link', {name: FAILED_TEXT.explorer})).toBeTruthy();
+    expect(document.querySelectorAll('a[href*="solscan.io"]')).toHaveLength(1);
     expectGeneric();
   });
 });
@@ -206,7 +218,7 @@ describe('#44: a record without an intent — no [Try again], no [Edit transacti
 describe('#54: a record without an intent', () => {
   const NOW = 1_000_000_094_000;
   const renderStuck = (p: Pending, deps: Parameters<typeof renderInWallet>[1] = {}) =>
-    renderInWallet(<Stuck record={p} now={NOW} canRetry onClose={status.onDone} onActivity={status.onActivity} onTryAgain={status.onTryAgain} />, {
+    renderInWallet(<Stuck record={p} now={NOW} canRetry onClose={status.onDone} onActivity={status.onActivity} onTryAgain={status.onTryAgain} onRoute={status.onRoute} />, {
       ...seed([purchase({state: p.state, createdAt: p.createdAt, lastSentAt: p.lastSentAt})]),
       ...deps,
     });

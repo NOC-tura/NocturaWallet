@@ -97,7 +97,7 @@ describe('the off-build module rule', () => {
 
 // §6.2 item 1's positive control, staged per plan (review 2 M2): the lists only grow, and each plan's modules are named.
 describe('the positive-control lists (staged: B1d-1a Task 2)', () => {
-  it('the on build must carry the three on-path entries — the plugin maps something real — the program state (Task 5), the quote (B1d-1b Task 1), the purchase (Task 2) and #23 (Task 4)', () => {
+  it('the on build must carry the three on-path entries — the plugin maps something real — the program state (Task 5), the quote (B1d-1b Task 1), the purchase (Task 2), #23 (Task 4) and #20’s purchase variant with the record slot (Task 5)', () => {
     expect(ON_BUILD).toEqual([
       ...PRESALE_ENTRIES.map(e => e.entry),
       'src/background/presale/layouts.ts',
@@ -109,6 +109,8 @@ describe('the positive-control lists (staged: B1d-1a Task 2)', () => {
       'src/app/presale/Presale.tsx',
       'src/app/presale/client.ts',
       'src/app/presale/text.ts',
+      'src/app/presale/PresaleConfirm.tsx',
+      'src/app/presale/records.ts',
     ]);
   });
 
@@ -158,7 +160,7 @@ describe('app.features.json', () => {
 describe('strings', () => {
   const file = (path, text) => ({path, bytes: Buffer.from(text, 'utf8')});
 
-  it('armed by B1d-1b: Task 1 adds its three presale message types (§6.2: "every presale.* message type"), Task 2 its prepare and the intent kind, Task 3 its four sign and resume types, Task 4 #23’s copy', () => {
+  it('armed by B1d-1b: Task 1 adds its three presale message types (§6.2: "every presale.* message type"), Task 2 its prepare and the intent kind, Task 3 its four sign and resume types, Task 4 #23’s copy, Task 5 #20’s, #10’s and the record words', () => {
     expect(MARKERS.slice(0, 9)).toEqual(['presale.view', 'presale.banner', 'presale.quote', 'presale.prepareBuy', 'presale.pending', 'presale.preparedFor', 'presale.buy', 'presale.discardPrepared', 'presale-buy']);
     // §6.2's named strings #23 shows, then Q01, Q02, Q04–Q06, Q11–Q16, Q19, Q40c, Q41c, Q41d, Q43, Q52 (each literal part ≥ 8 characters).
     expect(MARKERS.slice(9)).toEqual([
@@ -185,6 +187,25 @@ describe('strings', () => {
       'Keep at least 0.00089088 SOL, or buy with less',
       'Your presale account changed — review again',
       'The presale is busy right now — try again.',
+      // Task 5: §6.2's route name, then Q07, Q08, §4.2's receive label, Q09, Q10, Q44's two parts, Q57, Q58, Q17, Q18's
+      // literal part, Q56, Q32's literal part, Q53, Q54 a and b, Q55.
+      'presale-confirm',
+      'Confirm purchase',
+      'You are about to buy',
+      'You receive (est.)',
+      'Account setup (first purchase)',
+      'Noctura presale',
+      'Simulated at slot ',
+      'Compute Budget · Noctura presale',
+      'You have a purchase waiting.',
+      'Confirmed. Review the fresh quote and buy.',
+      'Re-auth required for your first presale purchase from this account.',
+      'Confirm buying NOC with',
+      'Purchase cancelled. Nothing was sent.',
+      'Buying NOC with ',
+      'Buying NOC…',
+      'Purchase confirmed',
+      'The presale program returned an error. The network fee was charged; no NOC was bought.',
     ]);
   });
 
@@ -199,6 +220,12 @@ describe('strings', () => {
 
   it('refuses a marker shorter than 8 characters (it would match unrelated code)', () => {
     expect(() => markerViolations([], [file('app/a.js', 'presale')], ['presale'])).toThrow(/at least 8/);
+  });
+
+  it('refuses a marker that is one bare word — any shared string containing it would read as a leak (review 1 L1); a phrase passes', () => {
+    for (const m of ['Purchased', 'Programs']) expect(() => markerViolations([], [file('app/a.js', m)], [m])).toThrow(/one bare word/);
+    expect(markerViolations([], [file('app/a.js', 'Purchase confirmed presale-buy')], ['Purchase confirmed', 'presale-buy'])).toEqual([]);
+    for (const m of MARKERS) expect([m, /^[A-Za-z]+$/.test(m)]).toEqual([m, false]);
   });
 
   it('must stay: B1b/B1c presale copy, Q42 and the decoder instruction names are found in the off build', () => {
