@@ -28,8 +28,10 @@ export const CORE_PRESALE_ALLOWED = ['core/presale/addresses.ts', 'core/presale/
 export const WEB_ALLOWED = ['../web/src/ui/', '../web/src/styles/'];
 
 // B1d-1a: the three on-path entries (§1.1), the program state presale/{layouts,state}.ts and core/presale/limits.ts
-// (§2.1); 1b adds presale/quote.ts (Task 1), presale/buy.ts (Task 2), #23's popup modules (Task 4) and #20's purchase
-// variant with the record slot (Task 5); B1d-2 adds presale/{record,referral}.ts and core/referral/index.ts.
+// (§2.1); 1b adds presale/quote.ts (Task 1), presale/buy.ts (Task 2), #23's popup modules (Task 4), #20's purchase
+// variant with the record slot (Task 5), #50b (Task 6) and core/presale/{buyInstructions,referrer}.ts — the purchase's
+// builder and its referrer allocation, in the on build's module map since Tasks 1–2 (Task 8); B1d-2 adds
+// presale/{record,referral}.ts and core/referral/index.ts.
 export const ON_BUILD = [
   'src/background/presale/api.ts',
   'src/app/presale/index.ts',
@@ -46,6 +48,8 @@ export const ON_BUILD = [
   'src/app/presale/PresaleConfirm.tsx',
   'src/app/presale/records.ts',
   'src/app/presale/Geo.tsx',
+  'core/presale/buyInstructions.ts',
+  'core/presale/referrer.ts',
 ];
 // The intent-kind registry (C19 — both builds sign and read through it); the jurisdiction gate and its fetcher (D15:
 // the off build did not lose the gate); the country's name #48's F12 banner shows (B1d-1b Task 7, §3.6).
@@ -55,8 +59,9 @@ export const BOTH_BUILDS = ['src/background/intents.ts', 'src/background/geo/gat
 // copy (§6.2's named strings and the §10 rows #23 shows whose source is new / approved and whose build is on — each
 // literal part of 8 characters or more), Task 5's route and the copy of #20's purchase variant, #10's description and
 // the record words of #21, #44 and #54 (Q31 "Presale" is shorter than a marker; Q54a "Purchased" is one ordinary word,
-// so Q54 is armed by "Purchase confirmed"), Task 6's #11 banner, pending row and #50b; later tasks add theirs. A marker
-// is never one bare word (review 1 L1): a shared string that merely contains it would fail the off build as a leak that
+// so Q54 is armed by "Purchase confirmed"), Task 6's #11 banner, pending row and #50b; Q44's label "Programs" is one
+// ordinary word too, armed by its value "Compute Budget · Noctura presale" (Task 5); B1d-2 adds its own. A marker is
+// never one bare word (review 1 L1): a shared string that merely contains it would fail the off build as a leak that
 // is not one.
 export const MARKERS = [
   'presale.view',

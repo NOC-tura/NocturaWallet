@@ -97,7 +97,7 @@ describe('the off-build module rule', () => {
 
 // §6.2 item 1's positive control, staged per plan (review 2 M2): the lists only grow, and each plan's modules are named.
 describe('the positive-control lists (staged: B1d-1a Task 2)', () => {
-  it('the on build must carry the three on-path entries — the plugin maps something real — the program state (Task 5), the quote (B1d-1b Task 1), the purchase (Task 2), #23 (Task 4), #20’s purchase variant with the record slot (Task 5) and #50b (Task 6)', () => {
+  it('the on build must carry the three on-path entries — the plugin maps something real — the program state (Task 5), the quote (B1d-1b Task 1), the purchase (Task 2), #23 (Task 4), #20’s purchase variant with the record slot (Task 5), #50b (Task 6) and the purchase’s builder and referrer resolution from core/presale (Task 8)', () => {
     expect(ON_BUILD).toEqual([
       ...PRESALE_ENTRIES.map(e => e.entry),
       'src/background/presale/layouts.ts',
@@ -112,6 +112,8 @@ describe('the positive-control lists (staged: B1d-1a Task 2)', () => {
       'src/app/presale/PresaleConfirm.tsx',
       'src/app/presale/records.ts',
       'src/app/presale/Geo.tsx',
+      'core/presale/buyInstructions.ts',
+      'core/presale/referrer.ts',
     ]);
   });
 
@@ -161,7 +163,7 @@ describe('app.features.json', () => {
 describe('strings', () => {
   const file = (path, text) => ({path, bytes: Buffer.from(text, 'utf8')});
 
-  it('armed by B1d-1b: Task 1 adds its three presale message types (§6.2: "every presale.* message type"), Task 2 its prepare and the intent kind, Task 3 its four sign and resume types, Task 4 #23’s copy, Task 5 #20’s, #10’s and the record words, Task 6 #11’s and #50b’s', () => {
+  it('armed by B1d-1b: Task 1 adds its three presale message types (§6.2: "every presale.* message type"), Task 2 its prepare and the intent kind, Task 3 its four sign and resume types, Task 4 #23’s copy, Task 5 #20’s, #10’s and the record words, Task 6 #11’s and #50b’s (Q44’s label "Programs" is one bare word: its value is the marker)', () => {
     expect(MARKERS.slice(0, 9)).toEqual(['presale.view', 'presale.banner', 'presale.quote', 'presale.prepareBuy', 'presale.pending', 'presale.preparedFor', 'presale.buy', 'presale.discardPrepared', 'presale-buy']);
     // §6.2's named strings #23 shows, then Q01, Q02, Q04–Q06, Q11–Q16, Q19, Q40c, Q41c, Q41d, Q43, Q52 (each literal part ≥ 8 characters).
     expect(MARKERS.slice(9)).toEqual([
@@ -235,6 +237,15 @@ describe('strings', () => {
       'Your region could not be determined from your IP.',
       'The region check is unavailable — try again later.',
     ]);
+  });
+
+  // Task 8 (§6.2 item 2): every presale message type the background registers is a marker — read from api.ts, so a type
+  // added later without its marker fails here.
+  it('every presale.* message type of api.ts is a marker', () => {
+    const api = readFileSync(join(ROOT, 'src/background/presale/api.ts'), 'utf8');
+    const types = [...(/PRESALE_MESSAGE_TYPES: readonly string\[\] = \[([^\]]*)\]/.exec(api)?.[1] ?? '').matchAll(/'([^']+)'/g)].map(m => m[1]);
+    expect(types).toHaveLength(8);
+    for (const t of types) expect([t, MARKERS.includes(t)]).toEqual([t, true]);
   });
 
   it('a marker in any off-build file is a violation; each marker must be found in the on build', () => {

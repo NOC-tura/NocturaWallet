@@ -1,6 +1,27 @@
 import type {BrowserContext, Route} from '@playwright/test';
 import {randomBytes} from 'node:crypto';
 import {base58, base64} from '@scure/base';
+import {presalePurchase} from './historyFixtures';
+import {
+  ALLOCATION_RENT,
+  CONFIG_PDA,
+  PRESALE_PROGRAM,
+  USDC_MINT,
+  USDT_MINT,
+  USER_ACCOUNT_RENT,
+  allocationData,
+  allocationOf,
+  allocationPda,
+  configOf,
+  purchaseCurrency,
+  restrictedList,
+  solCents,
+  stableCents,
+  tokensFor,
+  userData,
+  userPda,
+  type Currency,
+} from './presaleChain';
 
 /** The chain's height when the fake starts; a blockhash handed out at height h is valid through h + 150. */
 export const FAKE_START_HEIGHT = 1000;
@@ -9,6 +30,8 @@ const RPC = 'https://api.noc-tura.io/api/v1/rpc';
 const BROADCAST = 'https://api.noc-tura.io/api/v1/tx/broadcast';
 const PRICES = 'https://api.noc-tura.io/api/v1/wallet/prices';
 const STATS = 'https://api.noc-tura.io/api/v1/stats';
+const GEO_CHECK = 'https://api.noc-tura.io/api/v1/geo/check';
+const GEO_LIST = 'https://api.noc-tura.io/api/v1/geo/restricted-list';
 /** rpcResult's answer for a method it does not implement (listed in `unexpected` too). */
 const METHOD_NOT_FOUND: unique symbol = Symbol('method not found');
 const SYSTEM_PROGRAM = '11111111111111111111111111111111';
@@ -81,11 +104,59 @@ export interface FakeCoordinator {
   mints: Map<string, {program: 'token' | 'token-2022'; data: Uint8Array}>;
   /** Per owner, newest first: the signatures getSignaturesForAddress pages through, and each getTransaction result. */
   history: Map<string, {signature: string; tx: unknown}[]>;
+  /** B1d-1b Task 8 (spec B1d §6.3): the presale program's accounts and what it does to a purchase. */
+  presale: FakePresale;
+  /** B1d-1b Task 8: the coordinator's jurisdiction routes, /geo/check and /geo/restricted-list. */
+  geo: FakeGeo;
   /**
    * Holds every answer until the returned function is called — how a visual spec keeps a loading
    * state (#40's, #8's "Checking…") on screen deterministically while it is asserted and shot.
    */
   hold(): () => void;
+}
+
+/**
+ * B1d §6.3: the presale program on this chain. Its accounts (the config and each buyer's UserAccount and
+ * PresaleAllocation PDAs, owned by the program) are answered by getMultipleAccounts and getAccountInfo; the treasury is
+ * any system account (`lamports`) and its two vault ATAs are token accounts listed under the treasury in
+ * `tokenAccounts`. A purchase instruction in a simulated transaction is run as the program runs it — its PDAs checked
+ * (ConstraintSeeds 2006), its cents (SOL at `solUsd`, a stablecoin at 100 a unit) against the config's minimum (6022) and
+ * maximum (6023), the paying token account's balance (1), the PDAs it creates paid by the payer at mainnet's rent — and
+ * the post-state reports the allocation, the user account, the destination the instruction names and the paying
+ * account after it. The broadcast route applies the same effects to the chain (the purchase lands at its broadcast).
+ */
+export interface FakePresale {
+  accounts: Map<string, {lamports: number; data: Uint8Array}>;
+  /** The program's own SOL price (its Pyth read), dollars. */
+  solUsd: number;
+  /** 'unreachable': a getMultipleAccounts that names the config gets no answer at all (aborted). */
+  read: 'ok' | 'unreachable';
+  /** The simulation reports the destination the purchase names unchanged: the payment went somewhere else (C28). */
+  wrongDestination: boolean;
+  /** Each purchase the program ran in a simulation, in order. */
+  simulated: PresaleEffect[];
+  /** Each purchase that landed through the broadcast route. */
+  landed: PresaleEffect[];
+}
+export interface PresaleEffect {
+  currency: Currency;
+  amount: bigint;
+  cents: bigint;
+  tokens: bigint;
+  /** The program's 0-indexed stage it priced at. */
+  stage: number;
+  user: string;
+  destination: string;
+  source: string | null;
+  /** The rent of the PDAs it creates, lamports. */
+  rent: number;
+}
+/** B1d §6.3: /geo/check's answer (a location, no answer, a body of the wrong shape) and the list's body; each read counted. */
+export interface FakeGeo {
+  check: {countryCode: string; isVpn: boolean} | 'unreachable' | 'malformed';
+  list: unknown;
+  checks: number;
+  lists: number;
 }
 
 /**
@@ -229,6 +300,8 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
     tokenAccounts: new Map(),
     mints: new Map(WALLET_MINTS.map(([mint, decimals]) => [mint, {program: 'token' as const, data: mintData({decimals, mintAuthority: null, freezeAuthority: null})}])),
     history: new Map(),
+    presale: {accounts: new Map(), solUsd: 150, read: 'ok', wrongDestination: false, simulated: [], landed: []},
+    geo: {check: {countryCode: 'SI', isVpn: false}, list: restrictedList(), checks: 0, lists: 0},
     hold: () => {
       let release: () => void = () => undefined;
       held = new Promise<void>(r => (release = r));
@@ -357,6 +430,14 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
       }
     }
     const fee = 5_000 * signers + Number((price * limit + 999_999n) / 1_000_000n);
+    // B1d §6.3: a presale purchase, as the program runs it — its refusal, or the SOL it takes and the post-states it leaves.
+    const purchase = purchaseIn(keys, instructions);
+    if (purchase !== null && 'error' in purchase) return {context: context(), value: {err: purchase.error, logs: [], accounts: null, unitsConsumed: 0, returnData: null}};
+    if (purchase !== null) {
+      fake.presale.simulated.push(purchase.effect);
+      out += (purchase.effect.currency === 'SOL' ? Number(purchase.effect.amount) : 0) + purchase.effect.rent;
+    }
+    const presalePost = purchase === null ? new Map<string, unknown>() : purchasePost(purchase.effect);
     const after = lamportsOf(payer) - out - fee;
     fake.simulatedPayerAfter.push(after);
     /** A system account's post-state: its owner program and data as Assign / Allocate left them (B1c-3). */
@@ -367,6 +448,9 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
     const accounts = (addresses ?? []).map(a => {
       if (a === payer) return systemAccount(a, after);
       if (closed.has(a)) return null;
+      if (presalePost.has(a)) return presalePost.get(a);
+      const owned = programAccountAt(a);
+      if (owned !== null) return owned;
       const t = tokenAccountAt(a);
       if (t !== null) {
         const amount = BigInt(t.amount) - (tokenOut.get(a) ?? 0n);
@@ -385,6 +469,102 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
       return lamports > 0 ? systemAccount(a, lamports) : null;
     });
     return {context: context(), value: {err: null, logs: ['Program 11111111111111111111111111111111 success'], accounts, unitsConsumed: 450, returnData: null}};
+  };
+
+  /** B1d §6.3: an account the presale program owns, as the node reports it, or null. */
+  const programAccountAt = (address: string): {lamports: number; owner: string; data: [string, 'base64']; executable: false; rentEpoch: number; space: number} | null => {
+    const a = fake.presale.accounts.get(address);
+    return a === undefined ? null : {lamports: a.lamports, owner: PRESALE_PROGRAM, data: [base64.encode(a.data), 'base64'], executable: false, rentEpoch: 18446744073709552000, space: a.data.length};
+  };
+
+  /**
+   * B1d §6.3: the transaction's presale purchase run as the program runs it — null when it has none; its refusal as the
+   * node reports a program error; else what it does. The accounts are the IDL's (config, user account, allocation,
+   * referrer allocation, then SOL: Pyth, the buyer, the treasury, System; a stablecoin: the paying token account, the
+   * vault ATA, the mint, the buyer, Token, System).
+   */
+  const purchaseIn = (keys: string[], instructions: {program: number; accounts: number[]; data: Uint8Array}[]): {effect: PresaleEffect} | {error: unknown} | null => {
+    const index = instructions.findIndex(ix => keys[ix.program] === PRESALE_PROGRAM && purchaseCurrency(ix.data) !== null);
+    const ix = instructions[index];
+    if (ix === undefined) return null;
+    const currency = purchaseCurrency(ix.data) as Currency;
+    const amount = ix.data.length >= 16 ? new DataView(ix.data.buffer, ix.data.byteOffset, ix.data.byteLength).getBigUint64(8, true) : 0n;
+    const acc = ix.accounts.map(a => keys[a] ?? '');
+    const user = (currency === 'SOL' ? acc[5] : acc[7]) ?? '';
+    const fail = (code: number) => ({error: {InstructionError: [index, {Custom: code}]}});
+    const config = fake.presale.accounts.get(acc[0] ?? '');
+    if (acc[0] !== CONFIG_PDA || config === undefined || acc[1] !== userPda(user) || acc[2] !== allocationPda(user)) return fail(2006);
+    const c = configOf(config.data);
+    const cents = currency === 'SOL' ? solCents(amount, fake.presale.solUsd) : stableCents(amount);
+    if (cents < c.minCents) return fail(6022);
+    if (cents > c.maxCents) return fail(6023);
+    const source = currency === 'SOL' ? null : (acc[4] ?? '');
+    if (source !== null) {
+      const t = tokenAccountAt(source);
+      if (t === null || t.owner !== user || t.mint !== (currency === 'USDC' ? USDC_MINT : USDT_MINT) || BigInt(t.amount) < amount) return fail(1);
+    }
+    const rent = (fake.presale.accounts.has(acc[1] ?? '') ? 0 : USER_ACCOUNT_RENT) + (fake.presale.accounts.has(acc[2] ?? '') ? 0 : ALLOCATION_RENT);
+    return {effect: {currency, amount, cents, tokens: tokensFor(cents, c.stage), stage: c.stage, user, destination: (currency === 'SOL' ? acc[6] : acc[5]) ?? '', source, rent}};
+  };
+
+  /** The presale program's accounts after a purchase (each the account the purchase made or changed). */
+  const purchaseAccounts = (e: PresaleEffect): Map<string, {lamports: number; data: Uint8Array}> => {
+    const allocation = allocationPda(e.user);
+    const before = fake.presale.accounts.get(allocation);
+    const was = before === undefined ? {user: e.user, totalBase: 0n, spentCents: 0n, count: 0} : allocationOf(before.data);
+    const user = userPda(e.user);
+    return new Map([
+      [allocation, {lamports: before?.lamports ?? ALLOCATION_RENT, data: allocationData({user: e.user, totalBase: was.totalBase + e.tokens, spentCents: was.spentCents + e.cents, count: was.count + 1})}],
+      [user, fake.presale.accounts.get(user) ?? {lamports: USER_ACCOUNT_RENT, data: userData()}],
+    ]);
+  };
+
+  /**
+   * A simulation's post-state of a purchase, by address: the program's accounts it made or changed, the destination it
+   * names (a token account gains the amount; any other account, the lamports) — unless `wrongDestination`, which
+   * leaves it as it was — and the paying token account less the amount. The payer is the caller's.
+   */
+  const purchasePost = (e: PresaleEffect): Map<string, unknown> => {
+    const post = new Map<string, unknown>();
+    for (const [address, a] of purchaseAccounts(e)) post.set(address, {lamports: a.lamports, owner: PRESALE_PROGRAM, data: [base64.encode(a.data), 'base64'], executable: false, rentEpoch: 18446744073709552000, space: a.data.length});
+    const token = (address: string, delta: bigint) => {
+      const t = tokenAccountAt(address);
+      return t === null ? null : {lamports: TOKEN_ACCOUNT_RENT, owner: t.program, data: [base64.encode(tokenAccountData(t.mint, t.owner, BigInt(t.amount) + delta)), 'base64'], executable: false, rentEpoch: 18446744073709552000, space: 165};
+    };
+    if (!fake.presale.wrongDestination) {
+      const gained = token(e.destination, e.amount);
+      const lamports = lamportsOf(e.destination) + Number(e.amount);
+      post.set(e.destination, gained ?? {lamports, owner: SYSTEM_PROGRAM, data: ['', 'base64'], executable: false, rentEpoch: 18446744073709552000, space: 0});
+    }
+    if (e.source !== null) post.set(e.source, token(e.source, -e.amount));
+    return post;
+  };
+
+  /** A transaction's fee as simulate takes it: 5 000 per signature and the priority its ComputeBudget instructions set. */
+  const feeOf = (tx: ReturnType<typeof parseV0>): number => {
+    let price = 0n;
+    let limit = 0n;
+    for (const ix of tx.instructions) {
+      if (tx.keys[ix.program] !== COMPUTE_BUDGET) continue;
+      const view = new DataView(ix.data.buffer, ix.data.byteOffset, ix.data.byteLength);
+      if (ix.data[0] === 2) limit = BigInt(view.getUint32(1, true));
+      if (ix.data[0] === 3) price = view.getBigUint64(1, true);
+    }
+    return 5_000 * tx.signers + Number((price * limit + 999_999n) / 1_000_000n);
+  };
+
+  /** The broadcast route's purchase landing: the chain as the program leaves it (the payer's fee and rent, every balance it moves). */
+  const land = (e: PresaleEffect, fee: number, signature: string) => {
+    for (const [address, a] of purchaseAccounts(e)) fake.presale.accounts.set(address, a);
+    fake.lamports.set(e.user, lamportsOf(e.user) - fee - e.rent - (e.currency === 'SOL' ? Number(e.amount) : 0));
+    const move = (address: string, delta: bigint) => {
+      for (const list of fake.tokenAccounts.values()) for (const t of list) if (t.pubkey === address) t.amount = String(BigInt(t.amount) + delta);
+    };
+    if (e.currency === 'SOL') fake.lamports.set(e.destination, lamportsOf(e.destination) + Number(e.amount));
+    else move(e.destination, e.amount);
+    if (e.source !== null) move(e.source, -e.amount);
+    fake.history.set(e.user, [{signature, tx: presalePurchase(e.user, e.currency === 'SOL' ? Number(e.amount) : 0, Math.floor(Date.now() / 1000))}, ...(fake.history.get(e.user) ?? [])]);
+    fake.presale.landed.push(e);
   };
 
   /** A token account listed in `tokenAccounts`, with its owner and its program (B1c-3: classic unless listed Token-2022), or null. */
@@ -455,6 +635,8 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
         return {
           context: context(),
           value: (params[0] as string[]).map(a => {
+            const owned = programAccountAt(a);
+            if (owned !== null) return owned;
             const t = tokenAccountAt(a);
             if (t !== null) return {lamports: TOKEN_ACCOUNT_RENT, owner: t.program, data: [base64.encode(tokenAccountData(t.mint, t.owner, BigInt(t.amount))), 'base64'], executable: false, rentEpoch: 18446744073709552000, space: 165};
             const mint = mintAt(a);
@@ -464,6 +646,8 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
           }),
         };
       case 'getAccountInfo': {
+        const owned = programAccountAt(params[0] as string);
+        if (owned !== null) return {context: context(), value: owned};
         const kind = fake.accountKinds.get(params[0] as string);
         // A token account listed in `tokenAccounts` exists (an associated token account the engine asks about included).
         const token = tokenAccountAt(params[0] as string);
@@ -520,14 +704,17 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
       fake.hits.push({url, rpcMethod: null});
       return route.abort('internetdisconnected');
     }
+    // ICO (2026-10-23): a CrowdSec ban is always a 403 with an HTML body — the wallet reads the status alone.
     if (fake.network === 'forbidden') {
       fake.hits.push({url, rpcMethod: null});
-      return json(route, 403, {error: 'forbidden'});
+      return route.fulfill({status: 403, contentType: 'text/html', body: '<html><head><title>403 Forbidden</title></head><body>Forbidden</body></html>'});
     }
     if (url === RPC && req.method() === 'POST') {
       const body = JSON.parse(req.postData() ?? '{}') as {jsonrpc?: string; id?: number; method?: string; params?: unknown[]};
       const method = body.method ?? '';
       fake.hits.push({url, rpcMethod: method});
+      // B1d §6.3: the presale's chain reads get no answer (the request leaves, nothing comes back).
+      if (fake.presale.read === 'unreachable' && method === 'getMultipleAccounts' && Array.isArray(body.params?.[0]) && (body.params[0] as unknown[]).includes(CONFIG_PDA)) return route.abort('internetdisconnected');
       if (body.jsonrpc !== '2.0' || !Array.isArray(body.params)) fake.unexpected.push(`rpc ${method}: not a JSON-RPC 2.0 request`);
       const result = rpcResult(method, body.params ?? []);
       // A method the fake does not implement answers as the coordinator's proxy answers a method outside its
@@ -549,10 +736,23 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
       if (fake.broadcastReject) return json(route, 400, {error: 'rejected', message: 'Blockhash not found'});
       fake.broadcasts.push(signature);
       fake.broadcastWires.push(transaction ?? '');
+      // B1d §6.3: a purchase lands as the program runs it — a refusal lands nothing (the fake's chain has no failed-tx state).
+      const tx = parseV0(wire);
+      const purchase = purchaseIn(tx.keys, tx.instructions);
+      if (purchase !== null && 'effect' in purchase) land(purchase.effect, feeOf(tx), signature);
       return json(route, 200, {signature});
     }
     if (url.startsWith(PRICES) && req.method() === 'GET') {
       return json(route, 200, {success: true, data: {solana: {usd: 150}, 'usd-coin': {usd: 1}, tether: {usd: 1}}});
+    }
+    if (url === GEO_CHECK && req.method() === 'GET') {
+      fake.geo.checks += 1;
+      if (fake.geo.check === 'unreachable') return route.abort('internetdisconnected');
+      return json(route, 200, fake.geo.check === 'malformed' ? {country: 'SI'} : fake.geo.check);
+    }
+    if (url === GEO_LIST && req.method() === 'GET') {
+      fake.geo.lists += 1;
+      return json(route, 200, fake.geo.list);
     }
     if (url === STATS && req.method() === 'GET') {
       // The presale stage, for NOC's value in the dollar re-auth rule (owner decision B).
