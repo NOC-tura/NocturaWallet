@@ -21,6 +21,13 @@ export interface KindHost {
   deps: WalletDeps;
 }
 
+/**
+ * B1d §1.3 (`describe`): what #10 is shown for a challenge of a kind other than the shared three (`send`, `settings`,
+ * `dapp` — reauthChallenges.ts) — the kind's own description, built by the kind from the same values as its digest.
+ * The shared store keeps it only while its kind is registered and that kind's `isAbout` accepts it exactly.
+ */
+export type KindAbout = {readonly kind: string} & Readonly<Record<string, unknown>>;
+
 export interface IntentKind<I> {
   readonly kind: string;
   /** Untrusted or stored input → the intent rebuilt key by key (its one JSON form), or null. */
@@ -34,6 +41,14 @@ export interface IntentKind<I> {
   beforeSign(host: KindHost, entry: PreparedEntry, intent: I): Promise<void>;
   /** The pending record's `extra.data` — display only, plain JSON. Not asked of `send`: its record carries its intent. */
   pendingData?(entry: PreparedEntry, intent: I): unknown;
+  /** The exact shape of this kind's challenge description (KindAbout): true only for what the kind itself issues. Not asked of `send`. */
+  isAbout?(about: KindAbout): boolean;
+  /**
+   * A re-prepare of the same intent renews its live challenge (B1b's D39, as `rebaseChallenge` does for a send): the
+   * stored description with every field a re-prepare recomputes taken from `fresh`, the identity fields from `stored`
+   * only — or null when `fresh` describes another intent. Not asked of `send`.
+   */
+  rebaseAbout?(stored: KindAbout, fresh: KindAbout): KindAbout | null;
 }
 
 const kinds = new Map<string, IntentKind<unknown>>();

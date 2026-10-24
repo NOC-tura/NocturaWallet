@@ -6,7 +6,7 @@ import {digestOf} from '../digest';
 import {getSession} from '../session';
 import {readSettings} from '../settings';
 import {recipientFacts} from '../knownRecipients';
-import {FLAG_ROW, MAX_DAPP_OUTGOING, challengeInfo, challengeSatisfied, dropChallenge, isAbout, issueChallenge, type ChallengeAbout, type DappFlag, type DappOutgoing} from '../reauthChallenges';
+import {FLAG_ROW, MAX_DAPP_OUTGOING, challengeInfo, challengeSatisfied, dropChallenge, isAbout, isDappAbout, issueChallenge, type ChallengeAbout, type DappFlag, type DappOutgoing} from '../reauthChallenges';
 import {readContacts} from '../contacts';
 import {decodeInstructions, type DecodedInstruction} from './decode/decode';
 import {resolveKeys} from './decode/keys';
@@ -335,7 +335,7 @@ export async function reauthGate(ext: Ext, deps: Pick<WalletDeps, 'now' | 'rando
   // added to one list and not the other) is answered `malformed`, Reject only — never issueChallenge's TypeError
   // escaping dapp.decide. The challenge's `about` is only ever this `fresh`, so this is the one place to ask.
   if (!isAbout(fresh)) return 'malformed';
-  const stillCovers = current !== null && current.kind === 'dapp' && reasonsCovered(fresh.reasons, current.reasons) && !outgoingGrew(fresh, current) && flagsCovered(fresh.flags, current.flags);
+  const stillCovers = current !== null && isDappAbout(current) && reasonsCovered(fresh.reasons, current.reasons) && !outgoingGrew(fresh, current) && flagsCovered(fresh.flags, current.flags);
   if (!stillCovers) {
     const id = await issueChallenge(ext, deps, digest, fresh);
     const superseded = e.challengeId;
@@ -502,7 +502,7 @@ export async function reauthWaiting(ext: Ext, deps: Pick<WalletDeps, 'now'>): Pr
     if (h === undefined || h.state !== 'queued' || !isTxType(h.type) || h.challengeId === null) return {ok: true as const, data: null};
     // Read-only loads of the challenge store (no mutex of their own): safe inside the section.
     const about = await challengeInfo(ext, tx.now, h.challengeId);
-    if (about === null || about.kind !== 'dapp') return {ok: true as const, data: null};
+    if (about === null || !isDappAbout(about)) return {ok: true as const, data: null};
     if (await challengeSatisfied(ext, tx.now, h.challengeId, dappDigest(h))) return {ok: true as const, data: null};
     return {ok: true as const, data: {challengeId: h.challengeId, site: about.site}};
   });

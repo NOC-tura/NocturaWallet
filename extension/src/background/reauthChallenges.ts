@@ -7,6 +7,7 @@ import type {FeeReason} from '../../../core/fees/transferMarkup';
 import {WALLET_TOKENS} from '../../../core/solana/balances';
 import {SITE} from '../shared/site';
 import {ALLOWANCE_WORD, APPROVAL_SYMBOLS, OVERRIDE_WORDS, type RedFlagKind} from './dapp/redFlags';
+import {intentKind, type KindAbout} from './intents';
 
 /** How long the vault page has to prove the factor (brief decision 6), counted from the last prepare of the same intent. */
 export const CHALLENGE_TTL_MS = 120_000;
@@ -91,6 +92,18 @@ export const FLAG_ROW: Record<RedFlagKind, FlagRow> = {
   dependent: 'F10',
 };
 
+/**
+ * What a stored challenge stands for: one of the shared three, or (B1d §1.3) a registered kind's own description —
+ * `presale-buy` in the build with presale — accepted only through that kind's `isAbout`. In the build without it no
+ * other kind is registered, so such a record is dropped as malformed (fail closed).
+ */
+export type StoredAbout = ChallengeAbout | KindAbout;
+const SHARED_KINDS: readonly string[] = ['send', 'settings', 'dapp'];
+const sendAbout = (a: StoredAbout): a is Extract<ChallengeAbout, {kind: 'send'}> => a.kind === 'send';
+const settingsAbout = (a: StoredAbout): a is Extract<ChallengeAbout, {kind: 'settings'}> => a.kind === 'settings';
+/** A stored about whose kind is `dapp` (isAbout admits no other shape under that name). */
+export const isDappAbout = (a: StoredAbout): a is Extract<ChallengeAbout, {kind: 'dapp'}> => a.kind === 'dapp';
+
 /** The fields a re-prepare of the same intent may refresh; the identity fields (account, token, recipient, amount) never change. */
 export type SendAboutRefresh = Pick<
   Extract<ChallengeAbout, {kind: 'send'}>,
@@ -102,7 +115,7 @@ interface Challenge {
   issuedAt: number;
   expiresAt: number;
   satisfied: boolean;
-  about: ChallengeAbout;
+  about: StoredAbout;
 }
 // A Map, not an object: no id can resolve to an inherited property.
 type Store = Map<string, Challenge>;
@@ -144,9 +157,14 @@ const isIntOrNull = (x: unknown): boolean => x === null || isInt(x);
  * The exact shape of `about`: a stored record with any other shape is dropped, and `issueChallenge` throws for one
  * (final review M1: signTx.ts's reauthGate asks this first, so dapp.decide answers a refusal instead).
  */
-export function isAbout(x: unknown): x is ChallengeAbout {
+export function isAbout(x: unknown): x is StoredAbout {
   if (typeof x !== 'object' || x === null || Array.isArray(x)) return false;
   const a = x as Record<string, unknown>;
+  // B1d §1.3: a registered kind's own description, judged by that kind alone (never a shared kind's name).
+  if (typeof a.kind === 'string' && !SHARED_KINDS.includes(a.kind)) {
+    const k = intentKind(a.kind);
+    return k?.isAbout !== undefined && k.isAbout(a as KindAbout);
+  }
   if (a.kind === 'settings') return isIntOrNull(a.autoLockMinutes) && isIntOrNull(a.reauthUsdCents) && Object.keys(a).length === 3;
   if (a.kind === 'dapp') {
     const outgoing = a.outgoing;
@@ -273,7 +291,7 @@ function live(store: Store, now: number): Store {
 // lockHook.ts): a lock can never land between a read and its write and be undone by the write.
 
 /** A new challenge for the action whose digest is given; the vault page proves, the action consumes. */
-export async function issueChallenge(ext: Ext, deps: Pick<WalletDeps, 'now' | 'randomBytes'>, digest: string, about: ChallengeAbout): Promise<string> {
+export async function issueChallenge(ext: Ext, deps: Pick<WalletDeps, 'now' | 'randomBytes'>, digest: string, about: StoredAbout): Promise<string> {
   if (digest.length === 0) throw new TypeError('issueChallenge: empty digest');
   if (!isAbout(about)) throw new TypeError('issueChallenge: malformed about');
   const id = randomId(deps.randomBytes);
@@ -298,7 +316,7 @@ export async function rebaseChallenge(ext: Ext, now: number, id: string, digest:
   return sessionMutex(async () => {
     const store = live(await load(ext), now);
     const c = store.get(id);
-    if (c === undefined || c.digest !== digest || c.about.kind !== 'send') return false;
+    if (c === undefined || c.digest !== digest || !sendAbout(c.about)) return false;
     // With a clock that only moves forward, a live challenge has issuedAt + CHALLENGE_MAX_LIFE_MS ≥
     // expiresAt > now, so this does not shorten it; a clock stepped backwards can shorten it, which
     // fails closed (a new challenge, a new proof).
@@ -326,8 +344,32 @@ export async function rebaseChallenge(ext: Ext, now: number, id: string, digest:
   });
 }
 
+/**
+ * B1d §1.3 (`rebaseChallenge`'s counterpart for a kind with its own description — `rebaseChallenge` stays send-only): a
+ * re-prepare of the same intent of that kind renews its live challenge — true, with `expiresAt` = min(now +
+ * CHALLENGE_TTL_MS, issuedAt + CHALLENGE_MAX_LIFE_MS), `satisfied` kept, and the description the kind's `rebaseAbout`
+ * builds from the stored one and `fresh`. False — nothing changed — for an expired, unknown or other-digest challenge,
+ * one of another kind, a shared kind, or a description the kind refuses.
+ */
+export async function rebaseKindChallenge(ext: Ext, now: number, id: string, digest: string, fresh: KindAbout): Promise<boolean> {
+  if (!CHALLENGE_ID.test(id) || SHARED_KINDS.includes(fresh.kind)) return false;
+  const kind = intentKind(fresh.kind);
+  if (kind?.rebaseAbout === undefined) return false;
+  const rebaseAbout = kind.rebaseAbout;
+  return sessionMutex(async () => {
+    const store = live(await load(ext), now);
+    const c = store.get(id);
+    if (c === undefined || c.digest !== digest || c.about.kind !== fresh.kind) return false;
+    const about = rebaseAbout(c.about as KindAbout, fresh);
+    if (about === null || about.kind !== fresh.kind || !isAbout(about)) return false;
+    store.set(id, {...c, expiresAt: Math.min(now + CHALLENGE_TTL_MS, c.issuedAt + CHALLENGE_MAX_LIFE_MS), about});
+    await save(ext, store);
+    return true;
+  });
+}
+
 /** vault.challengeInfo: the action a live challenge stands for, or null (unknown, malformed or expired). */
-export async function challengeInfo(ext: Ext, now: number, id: string): Promise<ChallengeAbout | null> {
+export async function challengeInfo(ext: Ext, now: number, id: string): Promise<StoredAbout | null> {
   if (!CHALLENGE_ID.test(id)) return null;
   const c = (await load(ext)).get(id);
   return c !== undefined && c.expiresAt > now ? c.about : null;
@@ -400,7 +442,7 @@ export async function takeSettingsChallenge(ext: Ext, now: number, id: string): 
   return sessionMutex(async () => {
     const store = live(await load(ext), now);
     const c = store.get(id);
-    if (c === undefined || c.about.kind !== 'settings') return 'unknown-challenge';
+    if (c === undefined || !settingsAbout(c.about)) return 'unknown-challenge';
     if ((await getSession(ext)) === null) return 'locked';
     store.delete(id);
     await save(ext, store);

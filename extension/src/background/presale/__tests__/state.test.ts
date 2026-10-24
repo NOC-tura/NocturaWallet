@@ -1,5 +1,5 @@
 import {PublicKey} from '@solana/web3.js';
-import {readPresaleConfig, readPresaleState, referrerAllocationOf, type PresaleSnapshot, type PresaleState} from '../state';
+import {readPresaleConfig, readPresaleState, readPresaleStateAt, referrerAllocationOf, type PresaleSnapshot, type PresaleState} from '../state';
 import {CONFIG_LAYOUT, PRESALE_ALLOCATION_LAYOUT, USER_ACCOUNT_LAYOUT} from '../layouts';
 import {fakeReader} from '../../__tests__/fakeDeps';
 import {MAINNET_ADMIN_ADDRESS, MAINNET_SOL_TREASURY, MAINNET_USDC_MINT, MAINNET_USDT_MINT, MAINNET_VAULT_USDC_ATA, MAINNET_VAULT_USDT_ATA} from '../../../../../core/presale/addresses';
@@ -15,6 +15,7 @@ import {
   NOW_S,
   OTHER,
   REFERRER,
+  SNAPSHOT_SLOT,
   TOKEN_2022,
   TREASURY,
   TREASURY_ADDRESS,
@@ -279,6 +280,32 @@ describe('readPresaleState — every rule refuses on its own (never open on doub
       },
     });
     expect(await readPresaleState(reader, ACCOUNT, NOW_MS)).toEqual({kind: 'unavailable', code});
+  });
+});
+
+// B1d-1b Task 2 (§3.3 step 5, C39): the purchase's snapshot carries the slot it was read at — the same read, the same rules.
+describe('readPresaleStateAt — readPresaleState with the slot of its one read', () => {
+  const at = async (o: Partial<Chain> = {}) => {
+    const calls: string[][] = [];
+    return {read: await readPresaleStateAt(chainReader(chainMap(o), calls), ACCOUNT, NOW_MS), calls};
+  };
+
+  it('the same state as readPresaleState for the same chain — open, inactive, blocked, malformed — with the reply’s slot; one call of the six', async () => {
+    const pdas = derivePresalePdas(new PublicKey(ACCOUNT));
+    for (const o of [{}, {user: program(userData()), allocation: program(allocationData())}, {config: program(configData({active: 0}))}, {user: program(userData({blocked: 1}))}, {treasury: null}]) {
+      const {read, calls} = await at(o);
+      expect(read).toEqual({state: await stateOf(o), slot: SNAPSHOT_SLOT});
+      expect(calls).toEqual([[CONFIG_PDA, pdas.userAccount.toBase58(), pdas.userAllocation.toBase58(), TREASURY_ADDRESS, USDC_VAULT, USDT_VAULT]]);
+    }
+  });
+
+  it('a failed read: unavailable with no slot — a 403 refused, anything else read-failed; a wrong length malformed; a non-key read nothing', async () => {
+    const failing = (error: Error) => fakeReader({getAccountsDataAt: async () => Promise.reject(error)});
+    expect(await readPresaleStateAt(failing(new RpcForbidden('getMultipleAccounts')), ACCOUNT, NOW_MS)).toEqual({state: {kind: 'unavailable', code: 'refused'}, slot: null});
+    expect(await readPresaleStateAt(failing(new RequestUnreachable('rpc', 'offline')), ACCOUNT, NOW_MS)).toEqual({state: {kind: 'unavailable', code: 'read-failed'}, slot: null});
+    const short = fakeReader({getAccountsDataAt: async () => ({slot: 5, accounts: [CHAIN.config]})});
+    expect(await readPresaleStateAt(short, ACCOUNT, NOW_MS)).toEqual({state: MALFORMED, slot: 5});
+    expect(await readPresaleStateAt(fakeReader(), 'not a key', NOW_MS)).toEqual({state: MALFORMED, slot: null});
   });
 });
 

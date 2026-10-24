@@ -190,9 +190,15 @@ export function chainMap(o: Partial<Chain> = {}): Map<string, AccountData | null
   ]);
 }
 
-/** A reader whose getAccountsData answers from `chain` by address (an address it does not hold throws); each call's addresses are pushed to `calls`. */
+/** The slot the chain answers getAccountsDataAt at (B1d-1b Task 2) — below fixtures' SIMULATED_SLOT, as a live read is. */
+export const SNAPSHOT_SLOT = 271_408_900;
+
+/**
+ * A reader whose getAccountsData answers from `chain` by address (an address it does not hold throws); each call's
+ * addresses are pushed to `calls`. getAccountsDataAt is the same read at SNAPSHOT_SLOT unless overridden.
+ */
 export function chainReader(chain: Map<string, AccountData | null>, calls: string[][] = [], overrides: Partial<SolanaReader> = {}): SolanaReader {
-  return fakeReader({
+  const reader = fakeReader({
     getAccountsData: async addresses => {
       calls.push([...addresses]);
       return addresses.map(a => {
@@ -203,4 +209,5 @@ export function chainReader(chain: Map<string, AccountData | null>, calls: strin
     },
     ...overrides,
   });
+  return {...reader, getAccountsDataAt: overrides.getAccountsDataAt ?? (async addresses => ({slot: SNAPSHOT_SLOT, accounts: await reader.getAccountsData(addresses)}))};
 }

@@ -111,7 +111,7 @@ describe('buildStablecoinPurchaseInstruction', () => {
   ] as const)('builds the %s instruction with the right disc, amount, and 10 accounts', (token, mint, disc) => {
     const amount = 25_000_000n; // 25 USDC/USDT (6 dp)
     const {referrerAllocation} = derivePresalePdas(USER);
-    const ix = buildStablecoinPurchaseInstruction(USER, token, amount, referrerAllocation, TREASURY);
+    const ix = buildStablecoinPurchaseInstruction(USER, token, amount, referrerAllocation, TREASURY, findAssociatedTokenAddress(USER, new PublicKey(mint)));
     expect([...ix.data.subarray(0, 8)]).toEqual(disc);
     // 25_000_000 = 0x017D7840 → LE
     expect([...ix.data.subarray(8, 16)]).toEqual([0x40, 0x78, 0x7d, 0x01, 0x00, 0x00, 0x00, 0x00]);

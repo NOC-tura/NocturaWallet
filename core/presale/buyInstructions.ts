@@ -148,10 +148,15 @@ export function buildStablecoinPurchaseInstruction(
   referrerAllocation: PublicKey,
   /** `config.sol_treasury`, read from chain by the caller — never a constant. */
   treasury: PublicKey,
+  /**
+   * The token account the payment is taken from (slot 4). The program checks only its owner (`user`) and mint, not
+   * that it is the derived ATA (B1d C2): the extension passes the account that actually holds the tokens; the app and
+   * the web pass `derivedStablecoinAccount(user, token)`, as they always did. Required, like `treasury`.
+   */
+  sourceTokenAccount: PublicKey,
 ): TransactionInstruction {
   const {mint, disc} = STABLECOIN[token];
   const {config, userAccount, userAllocation} = derivePresalePdas(user);
-  const userAta = findAssociatedTokenAddress(user, mint);
   const treasuryAta = findAssociatedTokenAddress(treasury, mint);
   const data = Buffer.concat([Buffer.from(disc), encodeU64LE(amountBaseUnits)]);
   return new TransactionInstruction({
@@ -161,7 +166,7 @@ export function buildStablecoinPurchaseInstruction(
       {pubkey: userAccount, isSigner: false, isWritable: true},
       {pubkey: userAllocation, isSigner: false, isWritable: true},
       {pubkey: referrerAllocation, isSigner: false, isWritable: true},
-      {pubkey: userAta, isSigner: false, isWritable: true},
+      {pubkey: sourceTokenAccount, isSigner: false, isWritable: true},
       {pubkey: treasuryAta, isSigner: false, isWritable: true},
       {pubkey: mint, isSigner: false, isWritable: false},
       {pubkey: user, isSigner: true, isWritable: true},
@@ -193,6 +198,8 @@ export function buildStablecoinBuyInstructions(
   priorityFeeMicroLamports: number,
   resolved: {referrerAllocation: PublicKey; registerReferrer: PublicKey | null},
   treasury: PublicKey,
+  /** The paying token account — see buildStablecoinPurchaseInstruction. */
+  sourceTokenAccount: PublicKey,
 ): TransactionInstruction[] {
   return [
     ComputeBudgetProgram.setComputeUnitLimit({units: COMPUTE_UNIT_LIMIT}),
@@ -200,8 +207,13 @@ export function buildStablecoinBuyInstructions(
     ...(resolved.registerReferrer
       ? [buildRegisterReferrerInstruction(user, resolved.registerReferrer)]
       : []),
-    buildStablecoinPurchaseInstruction(user, token, amountBaseUnits, resolved.referrerAllocation, treasury),
+    buildStablecoinPurchaseInstruction(user, token, amountBaseUnits, resolved.referrerAllocation, treasury, sourceTokenAccount),
   ];
+}
+
+/** The user's derived associated token account of a stablecoin: the paying account the app and the web use. */
+export function derivedStablecoinAccount(user: PublicKey, token: StablecoinToken): PublicKey {
+  return findAssociatedTokenAddress(user, STABLECOIN[token].mint);
 }
 
 /** Base units per whole token: 9 for SOL, 6 for both stablecoins. */

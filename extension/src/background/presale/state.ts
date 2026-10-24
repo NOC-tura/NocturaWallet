@@ -144,30 +144,52 @@ function configFacts(config: AccountData | null | undefined, nowMs: number): {da
  * accounts: config, the user account and the allocation of `account`, the treasury and its two vault ATAs.
  */
 export async function readPresaleState(reader: SolanaReader, account: string, nowMs: number): Promise<PresaleState> {
-  // A key that does not parse is a doubtful read like any other: unavailable, never an exception (fail closed).
+  const at = snapshotAddresses(account);
+  if (at === null) return unavailable('malformed');
+  let accounts: (AccountData | null)[];
+  try {
+    accounts = await reader.getAccountsData(at.addresses);
+  } catch (e) {
+    return unavailable(failedRead(e));
+  }
+  return stateFrom(accounts, at.me, nowMs);
+}
+
+/**
+ * readPresaleState's read with the slot it was answered at (B1d §3.3 step 5, C39: a purchase's simulation is compared
+ * with it) — the same six accounts in the same one call, the same rules. `slot` is null when nothing was read.
+ */
+export async function readPresaleStateAt(reader: SolanaReader, account: string, nowMs: number): Promise<{state: PresaleState; slot: number | null}> {
+  const at = snapshotAddresses(account);
+  if (at === null) return {state: unavailable('malformed'), slot: null};
+  let read: {slot: number; accounts: (AccountData | null)[]};
+  try {
+    read = await reader.getAccountsDataAt(at.addresses);
+  } catch (e) {
+    return {state: unavailable(failedRead(e)), slot: null};
+  }
+  return {state: stateFrom(read.accounts, at.me, nowMs), slot: read.slot};
+}
+
+/** The six accounts of the snapshot, in order — or null for a key that does not parse (fail closed, never an exception). */
+function snapshotAddresses(account: string): {me: PublicKey; addresses: string[]} | null {
   let me: PublicKey;
   let pdas: ReturnType<typeof derivePresalePdas>;
   try {
     me = new PublicKey(account);
     pdas = derivePresalePdas(me);
   } catch {
-    return unavailable('malformed');
+    return null;
   }
-  const addresses = [
-    pdas.config.toBase58(),
-    pdas.userAccount.toBase58(),
-    pdas.userAllocation.toBase58(),
-    MAINNET_SOL_TREASURY,
-    MAINNET_VAULT_USDC_ATA,
-    MAINNET_VAULT_USDT_ATA,
-  ];
-  let accounts: (AccountData | null)[];
-  try {
-    accounts = await reader.getAccountsData(addresses);
-  } catch (e) {
-    return unavailable(failedRead(e));
-  }
-  if (accounts.length !== addresses.length) return unavailable('malformed');
+  return {
+    me,
+    addresses: [pdas.config.toBase58(), pdas.userAccount.toBase58(), pdas.userAllocation.toBase58(), MAINNET_SOL_TREASURY, MAINNET_VAULT_USDC_ATA, MAINNET_VAULT_USDT_ATA],
+  };
+}
+
+/** Rules 1–8 on the six accounts as read. */
+function stateFrom(accounts: readonly (AccountData | null)[], me: PublicKey, nowMs: number): PresaleState {
+  if (accounts.length !== 6) return unavailable('malformed');
   const [config, user, allocation, treasury, usdcVault, usdtVault] = accounts;
 
   // Rules 1–4.

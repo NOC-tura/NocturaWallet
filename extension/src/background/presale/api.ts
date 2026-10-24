@@ -9,6 +9,9 @@ import {isOpen, readPending, viewOf, type PendingView} from '../pendingStore';
 import {usdMicros} from '../reauthPolicy';
 import {readPresaleConfig, readPresaleState, type PresaleSnapshot, type PresaleState, type StageFacts, type UnavailableCode} from './state';
 import {PRESALE_CURRENCIES, quote, type PresaleBalances, type PresaleCurrency, type QuoteLine} from './quote';
+import {PRESALE_BUY_KIND, PurchaseRefused, gateAnswer, parsePurchaseIntent, preparePurchase} from './buy';
+import {CHALLENGE_ID} from '../reauthChallenges';
+import {SendRefused} from '../sendTypes';
 import {MAINNET_USDC_MINT, MAINNET_USDT_MINT} from '../../../../core/presale/addresses';
 import {SPL_TOKEN_PROGRAM} from '../../../../core/solana/encoding';
 import {RpcForbidden, type SolanaReader} from '../../../../core/solana/rpc';
@@ -19,10 +22,7 @@ import {RpcForbidden, type SolanaReader} from '../../../../core/solana/rpc';
  * full tab only). The build without presale resolves it to `src/presale-off/background.ts`. Every payload is untrusted
  * and parsed strictly (C3); the background alone decides — the popup renders what these answer.
  */
-export const PRESALE_MESSAGE_TYPES: readonly string[] = ['presale.view', 'presale.banner', 'presale.quote'];
-
-/** B1d §2.3: the pending record kind of a purchase (registered as an intent kind with the purchase). */
-const PRESALE_BUY_KIND = 'presale-buy';
+export const PRESALE_MESSAGE_TYPES: readonly string[] = ['presale.view', 'presale.banner', 'presale.quote', 'presale.prepareBuy'];
 
 /** `presale.quote` answers from the last view's snapshot of the account at most this old (§1.4). */
 const QUOTE_MAX_AGE_MS = 30_000;
@@ -124,16 +124,6 @@ async function sessionRefusal(ext: Ext, account: string): Promise<Result | null>
 async function openPurchase(ext: Ext, account: string): Promise<PendingView | null> {
   const r = (await readPending(ext)).find(x => x.account === account && x.origin === null && isOpen(x) && x.extra?.kind === PRESALE_BUY_KIND);
   return r === undefined ? null : viewOf(r);
-}
-
-/** The gate never throws (deps.ts); if it ever did, that is no check — closed. */
-async function gateAnswer(deps: WalletDeps): Promise<GeoAnswer> {
-  try {
-    const g = await deps.geo();
-    return {open: g.open, reason: g.reason, countryCode: g.countryCode};
-  } catch {
-    return {open: false, reason: 'no_check', countryCode: null};
-  }
 }
 
 /** SOL, and each stablecoin's largest holding account and total, of `account` — two reads. Another owner's entry counts for nothing. */
@@ -287,6 +277,25 @@ async function banner(ext: Ext, deps: WalletDeps, msg: Readonly<Record<string, u
   return {ok: true, data};
 }
 
+/**
+ * presale.prepareBuy {account, intent: {currency, amount, stage}, challengeId?} (§1.4, §3.3): a PurchaseView, or the
+ * refusal's code (§5) with its detail. Nothing is signed.
+ */
+async function prepareBuy(ext: Ext, deps: WalletDeps, msg: Readonly<Record<string, unknown>>): Promise<Result> {
+  if (!onlyKeys(msg, ['type', 'account', 'intent', 'challengeId'])) return MALFORMED;
+  const {account, challengeId} = msg;
+  const intent = parsePurchaseIntent(msg.intent);
+  if (!isAddress(account) || intent === null || (challengeId !== undefined && (typeof challengeId !== 'string' || !CHALLENGE_ID.test(challengeId)))) return MALFORMED;
+  const refused = await sessionRefusal(ext, account);
+  if (refused !== null) return refused;
+  try {
+    return {ok: true, data: await preparePurchase(ext, deps, account, intent, challengeId === undefined ? {} : {challengeId})};
+  } catch (e) {
+    if (e instanceof PurchaseRefused || e instanceof SendRefused) return e.detail === '' ? {ok: false, error: e.code} : {ok: false, error: e.code, data: {detail: e.detail}};
+    throw e;
+  }
+}
+
 /** A handler's unexpected failure (a storage error) is `failed`, never a thrown error across the message boundary. */
 const guarded =
   (h: (ext: Ext, deps: WalletDeps, msg: Readonly<Record<string, unknown>>) => Promise<Result>) =>
@@ -302,4 +311,5 @@ export function registerPresale(host: PresaleHost): void {
   host.handle('presale.view', guarded(view));
   host.handle('presale.banner', guarded(banner));
   host.handle('presale.quote', guarded(quoteMessage));
+  host.handle('presale.prepareBuy', guarded(prepareBuy));
 }

@@ -38,13 +38,14 @@ export const ON_BUILD = [
   'src/background/presale/state.ts',
   'core/presale/limits.ts',
   'src/background/presale/quote.ts',
+  'src/background/presale/buy.ts',
 ];
 // The intent-kind registry (C19 — both builds sign and read through it); the jurisdiction gate and its fetcher (D15:
 // the off build did not lose the gate).
 export const BOTH_BUILDS = ['src/background/intents.ts', 'src/background/geo/gate.ts', 'core/geo/fetch.ts'];
 // Armed by B1d-1b (1a shipped none — Q42 is "both"): Task 1's three presale message types (§6.2: "every presale.*
-// message type"); later tasks add theirs.
-export const MARKERS = ['presale.view', 'presale.banner', 'presale.quote'];
+// message type"), Task 2's prepare and the purchase's intent kind; later tasks add theirs.
+export const MARKERS = ['presale.view', 'presale.banner', 'presale.quote', 'presale.prepareBuy', 'presale-buy'];
 // Q42a (B1d-1a: the generic pending row, both builds); 1b adds F12's Q49–Q51. Q42b ("Transaction") is too short to
 // be a string search. The decoder's instruction names are read from its source (DECODER).
 export const MUST_STAY = ['Presale purchase', 'PRESALE PURCHASE', 'Transaction · pending', 'Transaction · taking longer than usual'];

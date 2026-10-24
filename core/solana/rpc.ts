@@ -245,6 +245,11 @@ export interface SolanaReader {
   getMultipleLamports(addresses: readonly string[]): Promise<bigint[]>;
   /** B1c-2: each address's account with its data (null when it holds none), at most MAX_MULTIPLE_ACCOUNTS per call. */
   getAccountsData(addresses: readonly string[]): Promise<(AccountData | null)[]>;
+  /**
+   * B1d-1b (spec B1d §3.3 step 5, C39): the same read with the reply's `context.slot` — the slot the accounts were read
+   * at, which a simulation of a later slot can be compared with. At least one address, at most MAX_MULTIPLE_ACCOUNTS.
+   */
+  getAccountsDataAt(addresses: readonly string[]): Promise<{slot: number; accounts: (AccountData | null)[]}>;
   getLatestBlockhash(): Promise<{blockhash: string; lastValidBlockHeight: number}>;
   getBlockHeight(): Promise<number>;
   getSignatureStatuses(signatures: readonly string[], searchTransactionHistory?: boolean): Promise<(SignatureStatus | null)[]>;
@@ -326,6 +331,14 @@ function tokenAccount(x: unknown): TokenAccountEntry {
 }
 
 export function solanaReader(rpc: Rpc): SolanaReader {
+  /** One getMultipleAccounts with each account's data: the reply, and its accounts in request order. */
+  async function multipleAccounts(addresses: readonly string[], what: string): Promise<{result: Json; accounts: (AccountData | null)[]}> {
+    if (addresses.length > MAX_MULTIPLE_ACCOUNTS) throw new RangeError(`${what}: at most ${MAX_MULTIPLE_ACCOUNTS} addresses`);
+    const result = obj(await rpc.call('getMultipleAccounts', [addresses, {encoding: 'base64', ...COMMITMENT}]), 'getMultipleAccounts');
+    const v = list(valueOf(result, 'getMultipleAccounts'), 'getMultipleAccounts.value');
+    if (v.length !== addresses.length) throw new RpcMalformed('getMultipleAccounts: wrong length');
+    return {result, accounts: v.map(simulatedAccount)};
+  }
   return {
     async getBalance(owner) {
       return BigInt(count(valueOf(await rpc.call('getBalance', [owner, COMMITMENT]), 'getBalance'), 'getBalance.value'));
@@ -349,10 +362,12 @@ export function solanaReader(rpc: Rpc): SolanaReader {
     },
     async getAccountsData(addresses) {
       if (addresses.length === 0) return [];
-      if (addresses.length > MAX_MULTIPLE_ACCOUNTS) throw new RangeError(`getAccountsData: at most ${MAX_MULTIPLE_ACCOUNTS} addresses`);
-      const v = list(valueOf(await rpc.call('getMultipleAccounts', [addresses, {encoding: 'base64', ...COMMITMENT}]), 'getMultipleAccounts'), 'getMultipleAccounts.value');
-      if (v.length !== addresses.length) throw new RpcMalformed('getMultipleAccounts: wrong length');
-      return v.map(simulatedAccount);
+      return (await multipleAccounts(addresses, 'getAccountsData')).accounts;
+    },
+    async getAccountsDataAt(addresses) {
+      if (addresses.length === 0) throw new RangeError('getAccountsDataAt: at least one address');
+      const {result, accounts} = await multipleAccounts(addresses, 'getAccountsDataAt');
+      return {slot: count(obj(result.context, 'getMultipleAccounts.context').slot, 'getMultipleAccounts.context.slot'), accounts};
     },
     async getLatestBlockhash() {
       const v = obj(valueOf(await rpc.call('getLatestBlockhash', [COMMITMENT]), 'getLatestBlockhash'), 'getLatestBlockhash.value');

@@ -218,6 +218,29 @@ describe('solanaReader', () => {
     await expect(r.getAccountsData(['a'])).rejects.toThrow('encoding');
   });
 
+  // B1d-1b (spec B1d §3.3 step 5, C39): the presale snapshot's read carries the slot it was answered at.
+  it('getAccountsDataAt is the same one getMultipleAccounts with the reply’s context.slot; none and more than 100 refused', async () => {
+    const {r, calls} = reader(() => ok({context: {slot: 271408900}, value: [null, {lamports: 17, owner: 'AddressLookupTab1e1111111111111111111111111', data: ['AQID', 'base64']}]}));
+    expect(await r.getAccountsDataAt(['a', 'b'])).toEqual({slot: 271408900, accounts: [null, {lamports: 17n, owner: 'AddressLookupTab1e1111111111111111111111111', data: Uint8Array.of(1, 2, 3)}]});
+    expect(calls.map(c => [c.body.method, c.body.params])).toEqual([['getMultipleAccounts', [['a', 'b'], {encoding: 'base64', commitment: 'confirmed'}]]]);
+    await expect(r.getAccountsDataAt([])).rejects.toThrow(RangeError);
+    await expect(r.getAccountsDataAt(Array.from({length: 101}, (_, i) => `k${i}`))).rejects.toThrow(RangeError);
+    expect(calls).toHaveLength(1);
+  });
+
+  it('getAccountsDataAt refuses a reply without a slot, of the wrong length, or with data in another encoding; getAccountsData still reads no slot', async () => {
+    let reply: unknown = {context: {}, value: [null]};
+    const {r} = reader(() => ok(reply));
+    await expect(r.getAccountsDataAt(['a'])).rejects.toThrow(RpcMalformed);
+    expect(await r.getAccountsData(['a'])).toEqual([null]);
+    reply = {context: {slot: -1}, value: [null]};
+    await expect(r.getAccountsDataAt(['a'])).rejects.toThrow('context.slot');
+    reply = {context: {slot: 1}, value: [null]};
+    await expect(r.getAccountsDataAt(['a', 'b'])).rejects.toThrow('wrong length');
+    reply = {context: {slot: 1}, value: [{lamports: 1, owner: 'x', data: ['AQID', 'base58']}]};
+    await expect(r.getAccountsDataAt(['a'])).rejects.toThrow('encoding');
+  });
+
   it('getAccountExists distinguishes null from an account', async () => {
     let value: unknown = null;
     const {r} = reader(() => ok({context: {slot: 1}, value}));

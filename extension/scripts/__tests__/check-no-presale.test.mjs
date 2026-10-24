@@ -97,8 +97,8 @@ describe('the off-build module rule', () => {
 
 // §6.2 item 1's positive control, staged per plan (review 2 M2): the lists only grow, and each plan's modules are named.
 describe('the positive-control lists (staged: B1d-1a Task 2)', () => {
-  it('the on build must carry the three on-path entries — the plugin maps something real — the program state (Task 5) and the quote (B1d-1b Task 1)', () => {
-    expect(ON_BUILD).toEqual([...PRESALE_ENTRIES.map(e => e.entry), 'src/background/presale/layouts.ts', 'src/background/presale/state.ts', 'core/presale/limits.ts', 'src/background/presale/quote.ts']);
+  it('the on build must carry the three on-path entries — the plugin maps something real — the program state (Task 5), the quote (B1d-1b Task 1) and the purchase (Task 2)', () => {
+    expect(ON_BUILD).toEqual([...PRESALE_ENTRIES.map(e => e.entry), 'src/background/presale/layouts.ts', 'src/background/presale/state.ts', 'core/presale/limits.ts', 'src/background/presale/quote.ts', 'src/background/presale/buy.ts']);
   });
 
   it('both builds must carry the intent-kind registry (Task 3) and the jurisdiction gate with its fetcher (Task 6, D15)', () => {
@@ -147,8 +147,8 @@ describe('app.features.json', () => {
 describe('strings', () => {
   const file = (path, text) => ({path, bytes: Buffer.from(text, 'utf8')});
 
-  it('armed by B1d-1b: Task 1 adds its three presale message types (§6.2: "every presale.* message type")', () => {
-    expect(MARKERS).toEqual(['presale.view', 'presale.banner', 'presale.quote']);
+  it('armed by B1d-1b: Task 1 adds its three presale message types (§6.2: "every presale.* message type"), Task 2 its prepare and the intent kind', () => {
+    expect(MARKERS).toEqual(['presale.view', 'presale.banner', 'presale.quote', 'presale.prepareBuy', 'presale-buy']);
   });
 
   it('a marker in any off-build file is a violation; each marker must be found in the on build', () => {
