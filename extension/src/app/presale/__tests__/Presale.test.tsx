@@ -345,6 +345,10 @@ describe('23b pending (§4.1, C17, C30)', () => {
     const wallet = await show(w);
     await screen.findByText('Order pending');
     const reads = w.calls.accounts.length;
+    // Review fix round 1, Important 1: a gate-only re-read (refresh: 'gate') would also bump `accounts` by one
+    // (chain.ts's chainReader counts both a gate read and a full read the same way) without reading the balance —
+    // this is the property C35 names ("once when 23b's record closes") and `accounts` alone cannot fail it.
+    const fulls = w.calls.balance;
     await act(() => vi.advanceTimersByTimeAsync(6_000));
     expect(asked.filter(t => t === 'presale.pending').length).toBe(1);
     expect(w.calls.accounts.length).toBe(reads);
@@ -357,6 +361,8 @@ describe('23b pending (§4.1, C17, C30)', () => {
     expect(await screen.findByText('Your allocation')).toBeTruthy();
     expect(screen.queryByText('Order pending')).toBeNull();
     expect(w.calls.accounts.length).toBe(reads + 1);
+    // The one extra view is a FULL view (the balance re-read with it), not a gate-only one.
+    expect(w.calls.balance).toBe(fulls + 1);
   });
 });
 
@@ -439,9 +445,14 @@ describe('the request budget (C35, review 2 M3): five requests a view, two a re-
 
   it('mount: the snapshot, the gate, the SOL balance, the holdings and the price — five; each 25 s: the snapshot and the gate — two', async () => {
     vi.useFakeTimers({shouldAdvanceTime: true});
-    const w = world();
+    const asked: unknown[] = [];
+    const w = world({gate: m => void asked.push(m)});
     await quiet(w);
     expect(requests(w.calls)).toEqual({accounts: 1, geo: 1, balance: 1, tokens: 1, prices: 1});
+    // Review fix round 1, Minor 1: the POPUP's own first request carries no `refresh` — proves #23 itself asked a
+    // full view on mount (not that the background upgraded a gate-only read because no `seen` entry existed yet,
+    // which would pass the counts above too).
+    expect(asked.filter(m => (m as {type: string}).type === 'presale.view')).toEqual([{type: 'presale.view', account: ACCOUNT}]);
     await act(() => vi.advanceTimersByTimeAsync(25_000));
     expect(requests(w.calls)).toEqual({accounts: 2, geo: 2, balance: 1, tokens: 1, prices: 1});
     await act(() => vi.advanceTimersByTimeAsync(25_000));
