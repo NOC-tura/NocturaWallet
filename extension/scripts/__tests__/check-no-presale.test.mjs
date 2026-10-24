@@ -147,8 +147,8 @@ describe('app.features.json', () => {
 describe('strings', () => {
   const file = (path, text) => ({path, bytes: Buffer.from(text, 'utf8')});
 
-  it('armed by B1d-1b: Task 1 adds its three presale message types (§6.2: "every presale.* message type"), Task 2 its prepare and the intent kind', () => {
-    expect(MARKERS).toEqual(['presale.view', 'presale.banner', 'presale.quote', 'presale.prepareBuy', 'presale-buy']);
+  it('armed by B1d-1b: Task 1 adds its three presale message types (§6.2: "every presale.* message type"), Task 2 its prepare and the intent kind, Task 3 its four sign and resume types', () => {
+    expect(MARKERS).toEqual(['presale.view', 'presale.banner', 'presale.quote', 'presale.prepareBuy', 'presale.pending', 'presale.preparedFor', 'presale.buy', 'presale.discardPrepared', 'presale-buy']);
   });
 
   it('a marker in any off-build file is a violation; each marker must be found in the on build', () => {

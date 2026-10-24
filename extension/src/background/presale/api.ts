@@ -2,14 +2,15 @@ import type {Ext} from '../../ext';
 import type {WalletDeps} from '../deps';
 import type {GeoAnswer} from '../geo/gate';
 import type {PresaleHost} from '../presaleHost';
-import type {Result} from '../walletApi';
+import {failure, type Result} from '../walletApi';
 import {getSession} from '../session';
-import {isAddress} from '../prepare';
+import {discardPrepared, isAddress} from '../prepare';
+import {sendPrepared} from '../send';
 import {isOpen, readPending, viewOf, type PendingView} from '../pendingStore';
 import {usdMicros} from '../reauthPolicy';
 import {readPresaleConfig, readPresaleState, type PresaleSnapshot, type PresaleState, type StageFacts, type UnavailableCode} from './state';
 import {PRESALE_CURRENCIES, quote, type PresaleBalances, type PresaleCurrency, type QuoteLine} from './quote';
-import {PRESALE_BUY_KIND, PurchaseRefused, gateAnswer, parsePurchaseIntent, preparePurchase} from './buy';
+import {PRESALE_BUY_KIND, PurchaseRefused, gateAnswer, parsePurchaseIntent, preparePurchase, purchasePreparedFor} from './buy';
 import {CHALLENGE_ID} from '../reauthChallenges';
 import {SendRefused} from '../sendTypes';
 import {MAINNET_USDC_MINT, MAINNET_USDT_MINT} from '../../../../core/presale/addresses';
@@ -22,7 +23,16 @@ import {RpcForbidden, type SolanaReader} from '../../../../core/solana/rpc';
  * full tab only). The build without presale resolves it to `src/presale-off/background.ts`. Every payload is untrusted
  * and parsed strictly (C3); the background alone decides — the popup renders what these answer.
  */
-export const PRESALE_MESSAGE_TYPES: readonly string[] = ['presale.view', 'presale.banner', 'presale.quote', 'presale.prepareBuy'];
+export const PRESALE_MESSAGE_TYPES: readonly string[] = [
+  'presale.view',
+  'presale.banner',
+  'presale.quote',
+  'presale.prepareBuy',
+  'presale.pending',
+  'presale.preparedFor',
+  'presale.buy',
+  'presale.discardPrepared',
+];
 
 /** `presale.quote` answers from the last view's snapshot of the account at most this old (§1.4). */
 const QUOTE_MAX_AGE_MS = 30_000;
@@ -79,6 +89,8 @@ export interface BannerView {
 
 const MALFORMED: Result = {ok: false, error: 'malformed'};
 const AMOUNT = /^[1-9]\d{0,19}$/;
+/** A prepared entry's id: 16 random bytes as 32 hex characters (digest.ts randomId). */
+const PREPARED_ID = /^[0-9a-f]{32}$/;
 const MAX_U64 = 2n ** 64n - 1n;
 const LAMPORTS_PER_SOL = 1_000_000_000n;
 
@@ -296,6 +308,52 @@ async function prepareBuy(ext: Ext, deps: WalletDeps, msg: Readonly<Record<strin
   }
 }
 
+/** A message that names only the account: `{account}`, the account in the unlocked session — else its answer. */
+async function accountOnly(ext: Ext, msg: Readonly<Record<string, unknown>>): Promise<{account: string} | {answer: Result}> {
+  if (!onlyKeys(msg, ['type', 'account']) || !isAddress(msg.account)) return {answer: MALFORMED};
+  const refused = await sessionRefusal(ext, msg.account);
+  return refused === null ? {account: msg.account} : {answer: refused};
+}
+
+/** presale.pending {account} (§1.4, C30, 23b's poll): the account's open purchase record, or null — no network. */
+async function pendingMessage(ext: Ext, _deps: WalletDeps, msg: Readonly<Record<string, unknown>>): Promise<Result> {
+  const a = await accountOnly(ext, msg);
+  return 'answer' in a ? a.answer : {ok: true, data: await openPurchase(ext, a.account)};
+}
+
+/** presale.preparedFor {account} (§1.4, §4.2): the account's prepared purchase for a resume, or null. */
+async function preparedForMessage(ext: Ext, deps: WalletDeps, msg: Readonly<Record<string, unknown>>): Promise<Result> {
+  const a = await accountOnly(ext, msg);
+  return 'answer' in a ? a.answer : {ok: true, data: await purchasePreparedFor(ext, deps, a.account)};
+}
+
+/**
+ * presale.buy {id} (§1.4, §3.3, D17): the shared pipeline signs the entry only as a purchase — sendPrepared for
+ * `presale-buy` (a send's id is `unknown-prepared`), the kind's sign-time checks after the challenge and before the take
+ * (C29), the record in v1_pending before the one broadcast. Its refusals are a send's (`failure`) or the purchase's own.
+ */
+async function buyMessage(ext: Ext, deps: WalletDeps, msg: Readonly<Record<string, unknown>>): Promise<Result> {
+  if (!onlyKeys(msg, ['type', 'id']) || typeof msg.id !== 'string' || !PREPARED_ID.test(msg.id)) return MALFORMED;
+  try {
+    return {ok: true, data: await sendPrepared(ext, deps, msg.id, PRESALE_BUY_KIND)};
+  } catch (e) {
+    if (e instanceof PurchaseRefused) return e.detail === '' ? {ok: false, error: e.code} : {ok: false, error: e.code, data: {detail: e.detail}};
+    return failure(e);
+  }
+}
+
+/**
+ * presale.discardPrepared {account} (§1.4): B1b's discardPrepared — #20's Cancel. It drops every entry of the account,
+ * of any kind, with their challenges: an account has at most one prepared entry (every prepare replaces the account's
+ * entries, §1.3), so it is this purchase's, or a send's that already replaced it.
+ */
+async function discardMessage(ext: Ext, _deps: WalletDeps, msg: Readonly<Record<string, unknown>>): Promise<Result> {
+  const a = await accountOnly(ext, msg);
+  if ('answer' in a) return a.answer;
+  await discardPrepared(ext, a.account);
+  return {ok: true};
+}
+
 /** A handler's unexpected failure (a storage error) is `failed`, never a thrown error across the message boundary. */
 const guarded =
   (h: (ext: Ext, deps: WalletDeps, msg: Readonly<Record<string, unknown>>) => Promise<Result>) =>
@@ -312,4 +370,8 @@ export function registerPresale(host: PresaleHost): void {
   host.handle('presale.banner', guarded(banner));
   host.handle('presale.quote', guarded(quoteMessage));
   host.handle('presale.prepareBuy', guarded(prepareBuy));
+  host.handle('presale.pending', guarded(pendingMessage));
+  host.handle('presale.preparedFor', guarded(preparedForMessage));
+  host.handle('presale.buy', guarded(buyMessage));
+  host.handle('presale.discardPrepared', guarded(discardMessage));
 }

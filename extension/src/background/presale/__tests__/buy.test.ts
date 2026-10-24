@@ -1,5 +1,6 @@
-import {PublicKey, TransactionMessage, VersionedTransaction, type TransactionInstruction} from '@solana/web3.js';
+import {MessageV0, PublicKey, TransactionMessage, VersionedMessage, VersionedTransaction, type TransactionInstruction} from '@solana/web3.js';
 import {base64} from '@scure/base';
+import {ed25519} from '@noble/curves/ed25519.js';
 import {
   PRESALE_BUY_INTENT,
   PRESALE_BUY_KIND,
@@ -11,22 +12,24 @@ import {
   presaleReauthReasons,
   type PreparedPurchase,
   type PurchaseIntent,
+  type PurchaseView,
 } from '../buy';
 import {solCents} from '../quote';
 import {registerPresale} from '../api';
 import {handleMessage, registerPresaleHandler} from '../../messages';
 import {CONFIG_LAYOUT, PRESALE_ALLOCATION_LAYOUT} from '../layouts';
 import {intentDigest, intentKind, type KindAbout} from '../../intents';
-import {challengeInfo, issueChallenge, rebaseChallenge, rebaseKindChallenge, satisfyChallenge} from '../../reauthChallenges';
+import {challengeInfo, challengeSatisfied, issueChallenge, rebaseChallenge, rebaseKindChallenge, satisfyChallenge} from '../../reauthChallenges';
 import {PREPARED_KEY, REAUTH_KEY} from '../../session';
-import {PENDING_KEY} from '../../pendingStore';
-import {preparedFor} from '../../prepare';
-import {sendPrepared} from '../../send';
-import {SendRefused} from '../../sendTypes';
+import {PENDING_KEY, type PendingView} from '../../pendingStore';
+import {peekPrepared, preparedFor, preparedIntegrity, sendIntentDigest, storePrepared, type PreparedEntry} from '../../prepare';
+import {pollOnce} from '../../pending';
+import {lock} from '../../autolock';
+import {randomId} from '../../digest';
 import {scaledUsdPrice} from '../../reauthPolicy';
 import {fakeDeps, fakeReader} from '../../__tests__/fakeDeps';
 import {fakeExt} from '../../__tests__/fakeExt';
-import {BLOCKHASH, HOLDING_LARGE, HOLDING_SMALL, SIMULATED_SLOT, pendingRecord, unlocked} from '../../__tests__/fixtures';
+import {BLOCKHASH, HOLDING_LARGE, HOLDING_SMALL, SIMULATED_SLOT, pendingRecord, signedWire, unlocked} from '../../__tests__/fixtures';
 import type {GeoAnswer} from '../../geo/gate';
 import {PRESALE_INSTRUCTIONS} from '../../dapp/decode/presaleIdl';
 import {MAINNET_PROGRAM_ID, MAINNET_USDC_MINT, MAINNET_USDT_MINT, PYTH_SOL_USD_ACCOUNT} from '../../../../../core/presale/addresses';
@@ -34,6 +37,7 @@ import {derivePresalePdas, readU64LE} from '../../../../../core/presale/allocati
 import {buildBuyInstructions, buildStablecoinBuyInstructions} from '../../../../../core/presale/buyInstructions';
 import {PRESALE_ALLOCATION_RENT_LAMPORTS, PRESALE_USER_ACCOUNT_RENT_LAMPORTS, tokensFor, usdCentsForStable} from '../../../../../core/presale/limits';
 import {SPL_TOKEN_PROGRAM} from '../../../../../core/solana/encoding';
+import {firstSignature} from '../../../../../core/solana/broadcast';
 import {estimatePriorityFee} from '../../../../../core/solana/priorityFee';
 import {networkFeeLamports, priorityFeeLamports} from '../../../../../core/solana/transfer';
 import {RequestUnreachable, RpcForbidden, SYSTEM_PROGRAM_ID, type AccountData, type SimulatedAccount, type SimulationOutcome, type TokenAccountEntry} from '../../../../../core/solana/rpc';
@@ -42,6 +46,7 @@ import {
   ACCOUNT,
   CONFIG_PDA,
   NOW_MS,
+  OTHER,
   REFERRER,
   SNAPSHOT_SLOT,
   TREASURY_ADDRESS,
@@ -154,10 +159,11 @@ function honestSimulation(wire: string, addresses: readonly string[], chain: Map
 
 /**
  * The world: an unlocked wallet holding ACCOUNT; `chains` the program state each successive snapshot read sees and
- * `simChains` (by default the same) each successive simulation, the last one repeated; `edits` steer each simulation.
+ * `simChains` (by default the same) each successive simulation, the last one repeated; `edits` steer each simulation;
+ * `readErrors` fail the snapshot read of that index.
  */
 async function world(
-  o: {chain?: Partial<Chain>; chains?: Partial<Chain>[]; simChains?: Partial<Chain>[]; edits?: (Edit | null)[]; sol?: bigint; holdings?: TokenAccountEntry[]; prices?: () => Promise<Prices>; geo?: () => Promise<GeoAnswer>; pythUsd?: number; snapshotSlots?: number[]; read?: () => Promise<never>} = {},
+  o: {chain?: Partial<Chain>; chains?: Partial<Chain>[]; simChains?: Partial<Chain>[]; edits?: (Edit | null)[]; sol?: bigint; holdings?: TokenAccountEntry[]; prices?: () => Promise<Prices>; geo?: () => Promise<GeoAnswer>; pythUsd?: number; snapshotSlots?: number[]; read?: () => Promise<never>; readErrors?: (Error | null)[]} = {},
 ): Promise<World> {
   const chains = (o.chains ?? [o.chain ?? {}]).map(c => chainMap(c));
   const simChains = o.simChains === undefined ? chains : o.simChains.map(c => chainMap(c));
@@ -169,6 +175,8 @@ async function world(
     getAccountsDataAt: async addresses => {
       if (o.read !== undefined) return o.read();
       const k = w.reads++;
+      const fails = o.readErrors?.[k];
+      if (fails !== undefined && fails !== null) throw fails;
       const chain = nth(chains, k);
       return {slot: nth(o.snapshotSlots ?? [SNAPSHOT_SLOT], k), accounts: addresses.map(a => chain.get(a) ?? null)};
     },
@@ -192,7 +200,12 @@ async function world(
       return edit === null ? honest : edit(honest, a => addresses.indexOf(a));
     },
   });
-  w.deps = fakeDeps({reader, geo: o.geo ?? (async () => OPEN), prices: o.prices ?? (async () => ({solana: SOL_USD, usdc: 1, usdt: 1}))});
+  // The broadcast route: it answers the transaction's own signature, and keeps what it was handed.
+  const broadcast = async (wire: Uint8Array) => {
+    w.deps.broadcasts.push(wire);
+    return firstSignature(wire);
+  };
+  w.deps = fakeDeps({reader, broadcast, geo: o.geo ?? (async () => OPEN), prices: o.prices ?? (async () => ({solana: SOL_USD, usdc: 1, usdt: 1}))});
   w.deps.clock.t = NOW_MS;
   await unlocked(w.ext);
   return w;
@@ -766,23 +779,654 @@ describe('the purchase challenge (§1.3 describe, §3.3 step 6)', () => {
   });
 });
 
-describe('nothing signs a purchase in this task (D17; sign-time checks are Task 3’s)', () => {
-  it('wallet.send’s kind refuses the purchase entry as unknown; the purchase kind’s beforeSign refuses it — the entry and the proof stay', async () => {
-    const w = await world();
-    const view = await prepare(w, intent('SOL', SOL_2));
-    await satisfyChallenge(w.ext, w.deps.now(), view.reauth?.challengeId ?? '');
-    await expect(sendPrepared(w.ext, w.deps, view.id)).rejects.toMatchObject({code: 'unknown-prepared'});
-    await expect(sendPrepared(w.ext, w.deps, view.id, PRESALE_BUY_KIND)).rejects.toBeInstanceOf(SendRefused);
-    await expect(sendPrepared(w.ext, w.deps, view.id, PRESALE_BUY_KIND)).rejects.toMatchObject({code: 'prepared-invalid'});
-    expect((await stored(w)).map(e => e.id)).toEqual([view.id]);
-    expect(w.deps.broadcasts).toEqual([]);
-  });
-
-  it('a send prepared afterwards replaces the purchase entry (one entry per account, §1.3) — the kinds share one store', async () => {
+describe('one prepared entry per account, across purchases (§1.3)', () => {
+  it('a second purchase prepared replaces the first entry — the kinds share one store', async () => {
     const w = await world();
     await prepare(w, intent('SOL', SOL_2));
     const again = await prepare(w, intent('USDC', '20000000'));
     expect((await stored(w)).map(e => [e.id, e.kind])).toEqual([[again.id, 'presale-buy']]);
+  });
+});
+
+// B1d-1b Task 3 (§1.3, §2.3, §3.3, §4.2, §5, C10, C12, C22, C29, D17): the purchase signed, recorded and broadcast through
+// the shared pipeline, the sign-time checks, the resume, the in-flight rule — through the real message handler.
+const POPUP_SENDER = (ext: ReturnType<typeof fakeExt>) => ({id: ext.runtimeId, origin: ext.extensionOrigin, url: `${ext.extensionOrigin}/popup.html`});
+const ask = (w: World, m: Record<string, unknown>) => handleMessage(w.ext, m, POPUP_SENDER(w.ext), w.deps);
+const buy = (w: World, id: string) => ask(w, {type: 'presale.buy', id});
+const digestOf = (i: PurchaseIntent) => intentDigest(PRESALE_BUY_INTENT, ACCOUNT, i);
+const records = async (w: World): Promise<Record<string, unknown>[]> => ((await w.ext.local.get(PENDING_KEY)) as Record<string, unknown>[] | undefined) ?? [];
+const confirmAll = (w: World, deps = w.deps) => {
+  deps.reader = {...deps.reader, getSignatureStatuses: async sigs => sigs.map(() => ({err: null, confirmationStatus: 'confirmed' as const})), getBlockHeight: async () => 900};
+};
+const unseen = (w: World, deps = w.deps) => {
+  deps.reader = {...deps.reader, getSignatureStatuses: async sigs => sigs.map(() => null), getBlockHeight: async () => 900};
+};
+/** A purchase prepared and its challenge proven on the vault page (#10). */
+async function provenPurchase(w: World, i: PurchaseIntent): Promise<PurchaseView> {
+  const view = await prepare(w, i);
+  if (view.reauth !== null) expect(await satisfyChallenge(w.ext, w.deps.now(), view.reauth.challengeId)).toBe(true);
+  return view;
+}
+/** A send entry of ACCOUNT stored exactly as prepareSend stores one (it replaces the account's purchase entry). */
+async function storeSend(w: World): Promise<string> {
+  const send = {token: 'SOL' as const, recipient: REFERRER, amount: '3'};
+  const bound = {
+    id: randomId(w.deps.randomBytes),
+    account: ACCOUNT,
+    kind: 'send',
+    intent: send,
+    message: base64.encode(VersionedTransaction.deserialize(signedWire(3n)).message.serialize()),
+    lastValidBlockHeight: 1000,
+    createdAt: w.deps.now(),
+    intentDigest: sendIntentDigest(ACCOUNT, send),
+    challengeId: null,
+  };
+  await storePrepared(w.ext, w.deps, {...bound, integrity: preparedIntegrity(bound), shown: {fees: {networkLamports: '5000', markupLamports: '0'}, solRequiredLamports: '5003', reasons: [], simulation: {}}} as PreparedEntry);
+  return bound.id;
+}
+const SEND_RECORD = pendingRecord({id: 'send-open', account: ACCOUNT, signature: 'sig-send', state: 'pending'});
+const CLOSED_GEO = (reason: GeoAnswer['reason']): GeoAnswer => ({open: false, reason, countryCode: reason === 'sanctioned' ? 'KP' : null});
+
+describe('presale.buy: a purchase signed, recorded and broadcast once (§3.3, §2.3, C29, D17)', () => {
+  it('end to end on the steered chain: prepare → #10 proven → presale.buy → pending with §2.3’s record → confirmed', async () => {
+    let geoAsked = 0;
+    const w = await world({geo: async () => ((geoAsked += 1), OPEN)});
+    const prepared = (await ask(w, {type: 'presale.prepareBuy', account: ACCOUNT, intent: intent('SOL', SOL_2)})) as {ok: true; data: PurchaseView};
+    const challengeId = prepared.data.reauth?.challengeId ?? '';
+    expect(await buy(w, prepared.data.id)).toEqual({ok: false, error: 'reauth-required', data: {challengeId}});
+    const [entry] = await stored(w);
+    await satisfyChallenge(w.ext, w.deps.now(), challengeId);
+
+    const answer = (await buy(w, prepared.data.id)) as {ok: true; data: PendingView};
+    // Signed exactly as prepared, once, by the account, through the broadcast route.
+    expect(w.deps.broadcasts).toHaveLength(1);
+    const sent = VersionedTransaction.deserialize(w.deps.broadcasts[0] as Uint8Array);
+    expect(base64.encode(sent.message.serialize())).toBe(entry?.message);
+    expect(ed25519.verify(sent.signatures[0] as Uint8Array, sent.message.serialize(), new PublicKey(ACCOUNT).toBytes())).toBe(true);
+    const signature = firstSignature(w.deps.broadcasts[0] as Uint8Array);
+    // §2.3: intent null, origin null, firstBroadcast done, the network fee as prepared with markup 0, extra exactly the eight strings.
+    const data = {currency: 'SOL', amount: SOL_2, stage: '0', priceTicks: '1501', nocBase: prepared.data.nocBase, spentCents: prepared.data.spentCents, destination: TREASURY_ADDRESS, referrer: null};
+    expect(await records(w)).toEqual([
+      {
+        id: expect.stringMatching(/^[0-9a-f]{32}$/),
+        account: ACCOUNT,
+        signature,
+        wire: base64.encode(w.deps.broadcasts[0] as Uint8Array),
+        lastValidBlockHeight: 1000,
+        createdAt: NOW_MS,
+        lastSentAt: NOW_MS,
+        state: 'pending',
+        detail: null,
+        detailCode: null,
+        intent: null,
+        origin: null,
+        firstBroadcast: 'done',
+        expiryNullSeenAt: null,
+        failure: null,
+        fee: {networkLamports: NETWORK.toString(), markupLamports: '0'},
+        extra: {kind: 'presale-buy', data},
+      },
+    ]);
+    expect(answer).toMatchObject({ok: true, data: {signature, state: 'pending', intent: null, origin: null, extra: {kind: 'presale-buy', data}}});
+    // The entry and the proof are spent; the gate was asked at prepare and again before signing (C12); the state read twice (C22).
+    expect(await stored(w)).toEqual([]);
+    expect(await challengeSatisfied(w.ext, w.deps.now(), challengeId, digestOf(intent('SOL', SOL_2)))).toBe(false);
+    expect([geoAsked, w.reads]).toEqual([2, 2]);
+    expect(await ask(w, {type: 'presale.pending', account: ACCOUNT})).toEqual({ok: true, data: answer.data});
+
+    confirmAll(w);
+    w.deps.clock.t += 2_000;
+    await pollOnce(w.ext, w.deps);
+    expect((await records(w))[0]).toMatchObject({state: 'confirmed', extra: {kind: 'presale-buy', data}});
+    expect(await ask(w, {type: 'presale.pending', account: ACCOUNT})).toEqual({ok: true, data: null});
+    expect(w.deps.broadcasts).toHaveLength(1);
+  });
+
+  it('a stablecoin purchase with an on-chain referrer: the record names the vault ATA and the referrer', async () => {
+    const w = await world({chain: {user: program(userData()), allocation: program(allocationData({referrer: REFERRER}))}});
+    const view = await provenPurchase(w, intent('USDC', '200000000'));
+    expect(await buy(w, view.id)).toMatchObject({ok: true, data: {state: 'pending'}});
+    expect((await records(w))[0]?.extra).toEqual({
+      kind: 'presale-buy',
+      data: {currency: 'USDC', amount: '200000000', stage: '0', priceTicks: '1501', nocBase: view.nocBase, spentCents: '20000', destination: USDC_VAULT, referrer: REFERRER},
+    });
+  });
+
+  it('the fee-included reading mainnet’s simulation gives (the payer lower by the network fee too): a whole SOL and USDC purchase signs, records and broadcasts once', async () => {
+    for (const i of [intent('SOL', SOL_2), intent('USDC', '20000000')]) {
+      // Negative control: one lamport beyond the fee is still refused, so the edit reaches the outflow check.
+      expect(await refusal(prepare(await world({edits: [lamportsMinus(ACCOUNT, NETWORK + 1n)]}), i))).toBe('simulation-mismatch');
+      const w = await world({edits: [lamportsMinus(ACCOUNT, NETWORK)]});
+      const view = await provenPurchase(w, i);
+      expect(await buy(w, view.id)).toMatchObject({ok: true, data: {state: 'pending', extra: {kind: 'presale-buy', data: {currency: i.currency, amount: i.amount}}}});
+      expect([w.deps.broadcasts.length, (await records(w)).length, (await stored(w)).length]).toEqual([1, 1, 0]);
+      expect((await records(w))[0]).toMatchObject({signature: firstSignature(w.deps.broadcasts[0] as Uint8Array), fee: {networkLamports: NETWORK.toString(), markupLamports: '0'}});
+    }
+  });
+
+  it('wallet.send stays send-only (D17): the purchase is unknown to it, nothing burned — and presale.buy never signs a send', async () => {
+    const w = await world();
+    const view = await provenPurchase(w, intent('SOL', SOL_2));
+    expect(await ask(w, {type: 'wallet.send', id: view.id})).toEqual({ok: false, error: 'unknown-prepared'});
+    expect((await stored(w)).map(e => e.id)).toEqual([view.id]);
+    expect(await challengeSatisfied(w.ext, w.deps.now(), view.reauth?.challengeId ?? '', digestOf(intent('SOL', SOL_2)))).toBe(true);
+    const sendId = await storeSend(w);
+    expect(await buy(w, sendId)).toEqual({ok: false, error: 'unknown-prepared'});
+    expect((await peekPrepared(w.ext, sendId))?.kind).toBe('send');
+    expect([w.deps.broadcasts.length, (await records(w)).length]).toEqual([0, 0]);
+  });
+
+  it('a double click: two presale.buy for one entry at once — one signs and broadcasts, the other finds nothing; one record', async () => {
+    const w = await world();
+    const view = await provenPurchase(w, intent('SOL', SOL_2));
+    const answers = await Promise.all([buy(w, view.id), buy(w, view.id)]);
+    expect(answers.filter(a => a.ok)).toHaveLength(1);
+    expect(answers.filter(a => !a.ok)).toEqual([{ok: false, error: 'unknown-prepared'}]);
+    expect(await buy(w, view.id)).toEqual({ok: false, error: 'unknown-prepared'});
+    expect([w.deps.broadcasts.length, (await records(w)).length]).toEqual([1, 1]);
+  });
+
+  it('a 403 at the broadcast keeps the record pending, not acknowledged and not retried (B1b, the shared route)', async () => {
+    const w = await world();
+    const view = await provenPurchase(w, intent('SOL', SOL_2));
+    w.deps.broadcast = async wire => {
+      w.deps.broadcasts.push(wire);
+      throw new RpcForbidden('/tx/broadcast');
+    };
+    expect(await buy(w, view.id)).toMatchObject({ok: true, data: {state: 'pending', detailCode: 'forbidden'}});
+    expect(w.deps.broadcasts).toHaveLength(1);
+  });
+
+  it('recorded, then its state unreadable: check-pending with the id and signature, never "failed"', async () => {
+    const w = await world();
+    const view = await provenPurchase(w, intent('SOL', SOL_2));
+    const get = w.ext.local.get.bind(w.ext.local);
+    w.deps.broadcast = async wire => {
+      w.deps.broadcasts.push(wire);
+      w.ext.local.get = async () => Promise.reject(new Error('storage gone'));
+      return firstSignature(wire);
+    };
+    const answer = await buy(w, view.id);
+    w.ext.local.get = get;
+    const [record] = await records(w);
+    expect(answer).toEqual({ok: false, error: 'check-pending', data: {id: record?.id, signature: record?.signature}});
+  });
+});
+
+describe('presale.buy: the sign-time checks (C12, C22, C10) — a refusal burns neither the entry nor the proof (C29)', () => {
+  const SOL = intent('SOL', SOL_2);
+  const USDC = intent('USDC', '200000000');
+  type Row = {chain?: Partial<Chain>; sign?: Partial<Chain>; geo?: GeoAnswer | 'throws'; readError?: Error; seedSend?: boolean; i?: PurchaseIntent};
+  const rows: [string, string, Row][] = [
+    ['the gate: sanctioned', 'geo-closed', {geo: CLOSED_GEO('sanctioned')}],
+    ['the gate: a stale list', 'geo-closed', {geo: CLOSED_GEO('stale_list')}],
+    ['the gate: an unknown country', 'geo-closed', {geo: CLOSED_GEO('unknown_country')}],
+    ['the gate: no check', 'geo-closed', {geo: CLOSED_GEO('no_check')}],
+    ['the gate: refused', 'geo-closed', {geo: CLOSED_GEO('refused')}],
+    ['the gate throwing', 'geo-closed', {geo: 'throws'}],
+    ['the gate closed and the state unreadable — the gate decides first, as at prepare', 'geo-closed', {geo: CLOSED_GEO('no_check'), sign: {config: null}}],
+    ['the state unreadable', 'presale-unavailable', {sign: {config: null}}],
+    ['the state read answered 403', 'coordinator-refused', {readError: new RpcForbidden('/rpc')}],
+    ['the state read unreachable', 'presale-unavailable', {readError: new RequestUnreachable('/rpc', 'down')}],
+    ['the sale closed meanwhile', 'presale-closed', {sign: {config: program(configData({active: 0}))}}],
+    ['the account blocked meanwhile', 'blocked', {sign: {user: program(userData({blocked: 1}))}}],
+    ['the treasury pin moved', 'presale-unavailable', {sign: {config: program(configData({treasury: OTHER}))}}],
+    ['the USDC mint pin moved', 'presale-unavailable', {sign: {config: program(configData({usdc: OTHER}))}}],
+    ['the USDC vault no longer the treasury’s', 'presale-unavailable', {chain: EXISTING, i: USDC, sign: {...EXISTING, usdc: vault({mint: MAINNET_USDC_MINT, owner: OTHER, amount: 172_099_207n})}}],
+    ['the stage moved', 'price-changed', {sign: {config: program(configData({stage: 1}))}}],
+    ['the allocation created meanwhile', 'state-changed', {sign: {allocation: program(allocationData({count: 0, spent: 0n, totalTokens: 0n}))}}],
+    ['the user account created meanwhile', 'state-changed', {sign: {user: program(userData())}}],
+    ['purchase_count moved', 'state-changed', {chain: EXISTING, sign: {...EXISTING, allocation: program(allocationData({count: 3}))}}],
+    ['a referrer registered meanwhile', 'state-changed', {chain: EXISTING, sign: {...EXISTING, allocation: program(allocationData({referrer: REFERRER}))}}],
+    ['the prepared cents now above the per-user remainder', 'above-user-limit', {chain: EXISTING, sign: {...EXISTING, allocation: program(allocationData({spent: 20_000_000n - SOL_CENTS + 1n}))}}],
+    ['the per-transaction maximum lowered below it', 'above-max-tx', {sign: {config: program(configData({maxPerUser: SOL_CENTS - 1n}))}}],
+    ['the minimum raised above it', 'below-min', {sign: {config: program(configData({minPurchase: SOL_CENTS + 1n}))}}],
+    ['a send of the account recorded meanwhile (C10)', 'in-flight', {seedSend: true}],
+  ];
+
+  it.each(rows)('%s → %s; the entry stays, the proof stays proven, nothing signed or recorded', async (_, code, row) => {
+    let geo: GeoAnswer | 'throws' = OPEN;
+    const i = row.i ?? SOL;
+    const w = await world({chains: [row.chain ?? {}, row.sign ?? row.chain ?? {}], readErrors: [null, row.readError ?? null], geo: async () => (geo === 'throws' ? Promise.reject(new Error('gate down')) : geo)});
+    const view = await provenPurchase(w, i);
+    expect(view.reauth).not.toBeNull();
+    geo = row.geo ?? OPEN;
+    if (row.seedSend === true) await w.ext.local.set(PENDING_KEY, [SEND_RECORD]);
+    expect(await buy(w, view.id)).toMatchObject({ok: false, error: code});
+    expect((await stored(w)).map(e => e.id)).toEqual([view.id]);
+    expect(await challengeSatisfied(w.ext, w.deps.now(), view.reauth?.challengeId ?? '', digestOf(i))).toBe(true);
+    expect(w.deps.broadcasts).toEqual([]);
+    expect((await records(w)).map(r => r.id)).toEqual(row.seedSend === true ? ['send-open'] : []);
+  });
+
+  // Review 1 M1: the sign-time check rests on the bytes the integrity binds, not on the unbound `shown`.
+  it('a referrer registered since prepare with `shown.basis` forged to name it: the signed bytes still credit the default allocation → state-changed; the entry and the proof stay (review 1 M1)', async () => {
+    const w = await world({chains: [EXISTING, {...EXISTING, allocation: program(allocationData({referrer: REFERRER}))}]});
+    const view = await provenPurchase(w, SOL);
+    const [entry] = await stored(w);
+    if (entry === undefined) throw new Error('no entry');
+    await w.ext.session.set(PREPARED_KEY, [{...entry, shown: {...entry.shown, basis: {...entry.shown.basis, referrer: REFERRER}}}]);
+    expect(await buy(w, view.id)).toEqual({ok: false, error: 'state-changed', data: {detail: 'the referrer allocation the purchase credits changed'}});
+    expect((await stored(w)).map(e => e.id)).toEqual([view.id]);
+    expect(await challengeSatisfied(w.ext, w.deps.now(), view.reauth?.challengeId ?? '', digestOf(SOL))).toBe(true);
+    expect([w.deps.broadcasts, await records(w)]).toEqual([[], []]);
+  });
+
+  it('a stored message that pays a look-alike treasury, its integrity recomputed to match → prepared-invalid before the take; the entry stays, nothing signed (review 1 M1)', async () => {
+    const w = await world({chains: [EXISTING, EXISTING]});
+    const view = await provenPurchase(w, SOL);
+    const [entry] = await stored(w);
+    if (entry === undefined) throw new Error('no entry');
+    const m = VersionedMessage.deserialize(base64.decode(entry.message)) as MessageV0;
+    const keys = m.staticAccountKeys.map(k => (k.toBase58() === TREASURY_ADDRESS ? new PublicKey(LOOKALIKE_TREASURY) : k));
+    expect(keys.map(k => k.toBase58())).toContain(LOOKALIKE_TREASURY);
+    const forged = new MessageV0({header: m.header, staticAccountKeys: keys, recentBlockhash: m.recentBlockhash, compiledInstructions: m.compiledInstructions, addressTableLookups: m.addressTableLookups});
+    const message = base64.encode(forged.serialize());
+    await w.ext.session.set(PREPARED_KEY, [{...entry, message, integrity: preparedIntegrity({...entry, message})}]);
+    expect(await buy(w, view.id)).toMatchObject({ok: false, error: 'prepared-invalid'});
+    expect((await stored(w)).map(e => e.id)).toEqual([view.id]);
+    expect([w.deps.broadcasts, await records(w)]).toEqual([[], []]);
+  });
+
+  it('a stored message changed under an integrity that no longer matches it (another blockhash) → prepared-invalid before the take, the entry not burned (review 1 M1)', async () => {
+    const w = await world({chains: [EXISTING, EXISTING]});
+    const view = await provenPurchase(w, SOL);
+    const [entry] = await stored(w);
+    if (entry === undefined) throw new Error('no entry');
+    const m = VersionedMessage.deserialize(base64.decode(entry.message)) as MessageV0;
+    const other = new MessageV0({header: m.header, staticAccountKeys: m.staticAccountKeys, recentBlockhash: PublicKey.default.toBase58(), compiledInstructions: m.compiledInstructions, addressTableLookups: m.addressTableLookups});
+    await w.ext.session.set(PREPARED_KEY, [{...entry, message: base64.encode(other.serialize())}]);
+    expect(await buy(w, view.id)).toMatchObject({ok: false, error: 'prepared-invalid'});
+    expect((await stored(w)).map(e => e.id)).toEqual([view.id]);
+    expect(w.deps.broadcasts).toEqual([]);
+  });
+
+  it('a stored message re-pointed at the allocation of the referrer registered since prepare (the bytes the program would now want), its integrity recomputed, `shown.basis` honest → state-changed from the basis; nothing signed (review 2 R2-M1)', async () => {
+    const w = await world({chains: [EXISTING, {...EXISTING, allocation: program(allocationData({referrer: REFERRER}))}]});
+    const view = await provenPurchase(w, SOL);
+    const [entry] = await stored(w);
+    if (entry === undefined) throw new Error('no entry');
+    const m = VersionedMessage.deserialize(base64.decode(entry.message)) as MessageV0;
+    const idx = m.compiledInstructions[2]?.accountKeyIndexes[3];
+    if (idx === undefined) throw new Error('no purchase instruction');
+    const keys = m.staticAccountKeys.map((k, i) => (i === idx ? derivePresalePdas(new PublicKey(REFERRER)).userAllocation : k));
+    const forged = new MessageV0({header: m.header, staticAccountKeys: keys, recentBlockhash: m.recentBlockhash, compiledInstructions: m.compiledInstructions, addressTableLookups: m.addressTableLookups});
+    const message = base64.encode(forged.serialize());
+    await w.ext.session.set(PREPARED_KEY, [{...entry, message, integrity: preparedIntegrity({...entry, message})}]);
+    expect(await buy(w, view.id)).toMatchObject({ok: false, error: 'state-changed'});
+    expect((await stored(w)).map(e => e.id)).toEqual([view.id]);
+    expect([w.deps.broadcasts, await records(w)]).toEqual([[], []]);
+  });
+
+  it('a stored message whose purchase amount was doubled in its data bytes, its integrity recomputed → prepared-invalid before the take; the entry stays, nothing signed (review 2 R2-M2)', async () => {
+    const w = await world({chains: [EXISTING, EXISTING]});
+    const view = await provenPurchase(w, SOL);
+    const [entry] = await stored(w);
+    if (entry === undefined) throw new Error('no entry');
+    const m = VersionedMessage.deserialize(base64.decode(entry.message)) as MessageV0;
+    const ix = m.compiledInstructions[2];
+    if (ix === undefined) throw new Error('no purchase instruction');
+    const data = new Uint8Array(ix.data);
+    let v = BigInt(SOL.amount) * 2n;
+    for (let i = 8; i < 16; i++) {
+      data[i] = Number(v & 0xffn);
+      v >>= 8n;
+    }
+    const forged = new MessageV0({header: m.header, staticAccountKeys: m.staticAccountKeys, recentBlockhash: m.recentBlockhash, compiledInstructions: m.compiledInstructions.map((x, i) => (i === 2 ? {...x, data} : x)), addressTableLookups: m.addressTableLookups});
+    const message = base64.encode(forged.serialize());
+    await w.ext.session.set(PREPARED_KEY, [{...entry, message, integrity: preparedIntegrity({...entry, message})}]);
+    expect(await buy(w, view.id)).toMatchObject({ok: false, error: 'prepared-invalid'});
+    expect((await stored(w)).map(e => e.id)).toEqual([view.id]);
+    expect([w.deps.broadcasts, await records(w)]).toEqual([[], []]);
+  });
+
+  it('the details: the gate’s reason, and what moved', async () => {
+    let geo: GeoAnswer = OPEN;
+    const closed = await world({geo: async () => geo});
+    const view = await provenPurchase(closed, SOL);
+    geo = CLOSED_GEO('stale_list');
+    expect(await buy(closed, view.id)).toEqual({ok: false, error: 'geo-closed', data: {detail: 'stale_list'}});
+    const moved = await world({chains: [{}, {config: program(configData({stage: 1}))}]});
+    expect(await buy(moved, (await provenPurchase(moved, SOL)).id)).toEqual({ok: false, error: 'price-changed', data: {detail: "stage 1, the intent's 0"}});
+  });
+
+  it('every check passing at sign (positive control): the same chain and an open gate sign', async () => {
+    const w = await world({chains: [EXISTING, EXISTING]});
+    const view = await provenPurchase(w, SOL);
+    expect(await buy(w, view.id)).toMatchObject({ok: true, data: {state: 'pending'}});
+    expect(w.deps.broadcasts).toHaveLength(1);
+  });
+
+  it('the gate open again: the same entry signs with the same proof — no second re-authentication', async () => {
+    let geo: GeoAnswer = OPEN;
+    const w = await world({geo: async () => geo});
+    const view = await provenPurchase(w, SOL);
+    geo = CLOSED_GEO('no_check');
+    expect(await buy(w, view.id)).toMatchObject({ok: false, error: 'geo-closed'});
+    geo = OPEN;
+    expect(await buy(w, view.id)).toMatchObject({ok: true, data: {state: 'pending'}});
+    expect(w.deps.broadcasts).toHaveLength(1);
+  });
+
+  it('state-changed: the popup re-prepares carrying the challenge — renewed and still proven — and that entry signs', async () => {
+    const created = {allocation: program(allocationData({count: 0, spent: 0n, totalTokens: 0n}))};
+    const w = await world({chains: [{}, created, created, created], simChains: [{}, created]});
+    const first = await provenPurchase(w, SOL);
+    expect(await buy(w, first.id)).toMatchObject({ok: false, error: 'state-changed'});
+    const again = await prepare(w, SOL, {challengeId: first.reauth?.challengeId ?? ''});
+    expect(again.reauth).toMatchObject({challengeId: first.reauth?.challengeId, proven: true});
+    expect(await buy(w, again.id)).toMatchObject({ok: true, data: {state: 'pending'}});
+    expect(w.deps.broadcasts).toHaveLength(1);
+  });
+
+  it('an entry whose prepare-time facts do not read back is never signed (prepared-invalid), and stays', async () => {
+    const w = await world();
+    const view = await provenPurchase(w, SOL);
+    const [entry] = await stored(w);
+    await w.ext.session.set(PREPARED_KEY, [{...entry, shown: {...entry?.shown, basis: {allocationExists: 'no'}}}]);
+    expect(await buy(w, view.id)).toMatchObject({ok: false, error: 'prepared-invalid'});
+    expect((await stored(w)).map(e => e.id)).toEqual([view.id]);
+    expect([w.deps.broadcasts.length, w.reads]).toEqual([0, 1]);
+  });
+});
+
+describe('one in-flight transaction per account, both directions (C10)', () => {
+  it('a purchase in flight refuses a second purchase and a send — prepared or about to be signed', async () => {
+    const w = await world();
+    const view = await provenPurchase(w, intent('SOL', SOL_2));
+    expect(await buy(w, view.id)).toMatchObject({ok: true});
+    expect(await ask(w, {type: 'presale.prepareBuy', account: ACCOUNT, intent: intent('USDC', '20000000')})).toEqual({ok: false, error: 'in-flight'});
+    expect(await ask(w, {type: 'wallet.prepareSend', account: ACCOUNT, intent: {token: 'SOL', recipient: REFERRER, amount: '1000'}})).toEqual({ok: false, error: 'in-flight'});
+    const sendId = await storeSend(w);
+    expect(await ask(w, {type: 'wallet.send', id: sendId})).toEqual({ok: false, error: 'in-flight'});
+    expect(w.deps.broadcasts).toHaveLength(1);
+  });
+
+  it('a send in flight refuses a purchase’s prepare; one recorded after the prepare refuses its signing (the rows above)', async () => {
+    const w = await world();
+    await w.ext.local.set(PENDING_KEY, [SEND_RECORD]);
+    expect(await ask(w, {type: 'presale.prepareBuy', account: ACCOUNT, intent: intent('SOL', SOL_2)})).toEqual({ok: false, error: 'in-flight'});
+    expect([w.reads, w.wires.length]).toEqual([0, 0]);
+  });
+
+  it('a closed record of either kind, or another account’s open one, does not count (positive control)', async () => {
+    const w = await world();
+    await w.ext.local.set(PENDING_KEY, [{...SEND_RECORD, state: 'confirmed'}, {...SEND_RECORD, id: 'other', account: REFERRER}]);
+    const view = await provenPurchase(w, intent('SOL', SOL_2));
+    expect(await buy(w, view.id)).toMatchObject({ok: true});
+  });
+});
+
+describe('a restart, a lock (B1b: never signed twice, never broadcast twice)', () => {
+  it('the worker stops between the record and the broadcast: the record is there, nothing sent; the next worker polls and never sends; the id never signs again', async () => {
+    const w = await world();
+    const view = await provenPurchase(w, intent('SOL', SOL_2));
+    let recorded = (): void => undefined;
+    const atRecord = new Promise<void>(r => (recorded = r));
+    // The pending alarm is armed right after the record is written and before the broadcast: the worker stops there.
+    const create = w.ext.alarms.create;
+    w.ext.alarms.create = async () => {
+      recorded();
+      return new Promise<void>(() => undefined);
+    };
+    void buy(w, view.id);
+    await atRecord;
+    expect((await records(w)).map(r => [r.state, r.firstBroadcast])).toEqual([['pending', 'done']]);
+    expect(w.deps.broadcasts).toEqual([]);
+
+    // The restarted worker: new deps over the same storage (the alarm API answers again).
+    w.ext.alarms.create = create;
+    const next = fakeDeps({reader: w.deps.reader});
+    next.broadcast = async wire => {
+      next.broadcasts.push(wire);
+      return firstSignature(wire);
+    };
+    next.clock.t = w.deps.now() + 2_000;
+    unseen(w, next);
+    expect(await pollOnce(w.ext, next)).toBe(true);
+    expect(await handleMessage(w.ext, {type: 'presale.buy', id: view.id}, POPUP_SENDER(w.ext), next)).toEqual({ok: false, error: 'unknown-prepared'});
+    expect([w.deps.broadcasts.length, next.broadcasts.length]).toEqual([0, 0]);
+    // #54's resend is the user's: the very bytes recorded, once.
+    const [record] = await records(w);
+    expect(await handleMessage(w.ext, {type: 'wallet.resend', id: record?.id}, POPUP_SENDER(w.ext), next)).toMatchObject({ok: true});
+    expect(next.broadcasts.map(b => base64.encode(b))).toEqual([record?.wire]);
+  });
+
+  it('the worker stops during the broadcast: one broadcast; the next worker sees it confirmed and sends nothing', async () => {
+    const w = await world();
+    const view = await provenPurchase(w, intent('SOL', SOL_2));
+    let handed = (): void => undefined;
+    const atBroadcast = new Promise<void>(r => (handed = r));
+    w.deps.broadcast = async wire => {
+      w.deps.broadcasts.push(wire);
+      handed();
+      return new Promise<string>(() => undefined);
+    };
+    void buy(w, view.id);
+    await atBroadcast;
+    const next = fakeDeps({reader: w.deps.reader});
+    next.clock.t = w.deps.now() + 2_000;
+    confirmAll(w, next);
+    expect(await pollOnce(w.ext, next)).toBe(false);
+    expect((await records(w))[0]).toMatchObject({state: 'confirmed', extra: {kind: 'presale-buy'}});
+    expect([w.deps.broadcasts.length, next.broadcasts.length]).toEqual([1, 0]);
+  });
+
+  it('a lock while the sign-time checks run: nothing signed, nothing recorded, the entry and the challenge gone with the session', async () => {
+    let release = (_: GeoAnswer): void => undefined;
+    let asked = (): void => undefined;
+    const atGate = new Promise<void>(r => (asked = r));
+    let calls = 0;
+    const w = await world({
+      geo: async () => {
+        calls += 1;
+        if (calls === 1) return OPEN;
+        asked();
+        return new Promise<GeoAnswer>(r => (release = r));
+      },
+    });
+    const view = await provenPurchase(w, intent('SOL', SOL_2));
+    const answer = buy(w, view.id);
+    await atGate;
+    await lock(w.ext, w.deps.now);
+    release(OPEN);
+    expect(await answer).toEqual({ok: false, error: 'unknown-prepared'});
+    expect([w.deps.broadcasts.length, (await records(w)).length]).toEqual([0, 0]);
+    expect([await w.ext.session.get(PREPARED_KEY), await w.ext.session.get(REAUTH_KEY)]).toEqual([undefined, undefined]);
+  });
+
+  it('a lock while the purchase is prepared (the simulation in flight): nothing stored, no challenge left', async () => {
+    const w = await world();
+    let release = (): void => undefined;
+    let asked = (): void => undefined;
+    const atSimulation = new Promise<void>(r => (asked = r));
+    const simulate = w.deps.reader.simulateTransaction;
+    w.deps.reader = {
+      ...w.deps.reader,
+      simulateTransaction: async (wire, opts) => {
+        asked();
+        await new Promise<void>(r => (release = r));
+        return simulate(wire, opts);
+      },
+    };
+    const answer = ask(w, {type: 'presale.prepareBuy', account: ACCOUNT, intent: intent('SOL', SOL_2)});
+    await atSimulation;
+    await lock(w.ext, w.deps.now);
+    release();
+    expect(await answer).toEqual({ok: false, error: 'locked'});
+    expect([await w.ext.session.get(PREPARED_KEY), await w.ext.session.get(REAUTH_KEY)]).toEqual([undefined, undefined]);
+  });
+
+  it('a lock after the broadcast: the record outlives it, still in flight and polled to confirmed', async () => {
+    const w = await world();
+    const view = await provenPurchase(w, intent('SOL', SOL_2));
+    expect(await buy(w, view.id)).toMatchObject({ok: true});
+    await lock(w.ext, w.deps.now);
+    expect((await records(w)).map(r => r.state)).toEqual(['pending']);
+    confirmAll(w);
+    await pollOnce(w.ext, w.deps);
+    expect((await records(w)).map(r => r.state)).toEqual(['confirmed']);
+  });
+});
+
+describe('presale.preparedFor: the resume of §4.2 (review M5), at the background', () => {
+  const resume = (w: World) => ask(w, {type: 'presale.preparedFor', account: ACCOUNT});
+
+  it('null with nothing prepared; a prepared purchase → its view, not expired, not proven', async () => {
+    const w = await world();
+    expect(await resume(w)).toEqual({ok: true, data: null});
+    const view = await prepare(w, intent('SOL', SOL_2));
+    expect(await resume(w)).toEqual({ok: true, data: {...view, expired: false}});
+  });
+
+  it('#10 proven with the popup closed: the reopened popup sees proven, and presale.buy signs with no second proof', async () => {
+    const w = await world();
+    const view = await prepare(w, intent('SOL', SOL_2));
+    await satisfyChallenge(w.ext, w.deps.now(), view.reauth?.challengeId ?? '');
+    const r = (await resume(w)) as {ok: true; data: PurchaseView & {expired: boolean}};
+    expect(r.data).toEqual({...view, reauth: {...view.reauth, proven: true}, expired: false});
+    expect(await buy(w, r.data.id)).toMatchObject({ok: true, data: {state: 'pending'}});
+  });
+
+  it('past 30 s it is expired, still reported while its challenge lives; prepared again carrying the id → live and proven', async () => {
+    const w = await world();
+    const view = await provenPurchase(w, intent('SOL', SOL_2));
+    w.deps.clock.t += 30_000;
+    expect(await resume(w)).toMatchObject({ok: true, data: {id: view.id, expired: true, reauth: {proven: true}}});
+    expect(await buy(w, view.id)).toEqual({ok: false, error: 'prepared-expired'});
+    const again = await prepare(w, intent('SOL', SOL_2), {challengeId: view.reauth?.challengeId ?? ''});
+    expect(await resume(w)).toMatchObject({ok: true, data: {id: again.id, expired: false, reauth: {challengeId: view.reauth?.challengeId, proven: true}}});
+  });
+
+  it('its challenge gone → expired, still reported; two minutes after its prepare (a challenge’s life) → null', async () => {
+    const w = await world();
+    const view = await prepare(w, intent('SOL', SOL_2));
+    await w.ext.session.remove(REAUTH_KEY);
+    expect(await resume(w)).toMatchObject({ok: true, data: {id: view.id, expired: true}});
+    w.deps.clock.t += 119_999;
+    expect(await resume(w)).toMatchObject({ok: true, data: {id: view.id, expired: true}});
+    w.deps.clock.t += 1;
+    expect(await resume(w)).toEqual({ok: true, data: null});
+  });
+
+  it('kinds stay apart: a send entry is never a purchase to resume, a purchase never a send', async () => {
+    const w = await world();
+    await prepare(w, intent('SOL', SOL_2));
+    expect(await ask(w, {type: 'wallet.preparedFor', account: ACCOUNT})).toEqual({ok: true, data: null});
+    await storeSend(w);
+    expect(await resume(w)).toEqual({ok: true, data: null});
+  });
+
+  it('two entries of the account in storage (prepare never writes that; read anyway): each resume message takes its own kind', async () => {
+    const w = await world();
+    const view = await prepare(w, intent('SOL', SOL_2));
+    const [purchase] = await stored(w);
+    w.deps.clock.t += 1_000;
+    const sendId = await storeSend(w);
+    const [send] = await stored(w);
+    await w.ext.session.set(PREPARED_KEY, [purchase, send]);
+    expect(await resume(w)).toMatchObject({ok: true, data: {id: view.id, currency: 'SOL'}});
+    expect(await ask(w, {type: 'wallet.preparedFor', account: ACCOUNT})).toMatchObject({ok: true, data: {id: sendId}});
+  });
+
+  it('an entry whose prepare-time facts do not read back is not resumed', async () => {
+    const w = await world();
+    await prepare(w, intent('SOL', SOL_2));
+    const [entry] = await stored(w);
+    await w.ext.session.set(PREPARED_KEY, [{...entry, shown: {...entry?.shown, view: {...entry?.shown.view, destination: LOOKALIKE_TREASURY}}}]);
+    expect(await resume(w)).toEqual({ok: true, data: null});
+  });
+});
+
+describe('presale.discardPrepared and presale.pending (§1.4)', () => {
+  it('discard: the account’s entry and its challenge go; buy then finds nothing — and wallet.discardPrepared drops a purchase too (every kind)', async () => {
+    const w = await world();
+    const view = await provenPurchase(w, intent('SOL', SOL_2));
+    expect(await ask(w, {type: 'presale.discardPrepared', account: ACCOUNT})).toEqual({ok: true});
+    expect(await stored(w)).toEqual([]);
+    expect(await challengeInfo(w.ext, w.deps.now(), view.reauth?.challengeId ?? '')).toBeNull();
+    expect(await buy(w, view.id)).toEqual({ok: false, error: 'unknown-prepared'});
+    const again = await prepare(w, intent('SOL', SOL_2));
+    expect(await ask(w, {type: 'wallet.discardPrepared', account: ACCOUNT})).toEqual({ok: true});
+    expect(await challengeInfo(w.ext, w.deps.now(), again.reauth?.challengeId ?? '')).toBeNull();
+    expect(await stored(w)).toEqual([]);
+  });
+
+  it('discard drops a send entry of the account too: it has at most one entry, of either kind', async () => {
+    const w = await world();
+    const sendId = await storeSend(w);
+    expect(await ask(w, {type: 'presale.discardPrepared', account: ACCOUNT})).toEqual({ok: true});
+    expect(await peekPrepared(w.ext, sendId)).toBeNull();
+  });
+
+  it('pending: the account’s open purchase only — no send, no closed one, no other account’s — and no network', async () => {
+    let geoAsked = 0;
+    const w = await world({geo: async () => ((geoAsked += 1), OPEN)});
+    const purchase = pendingRecord({id: 'buy', account: ACCOUNT, signature: 'sig-buy', intent: null, extra: {kind: 'presale-buy', data: {}}});
+    const {wire: _wire, firstBroadcast: _first, ...purchaseView} = purchase;
+    await w.ext.local.set(PENDING_KEY, [SEND_RECORD, {...purchase, id: 'old', state: 'confirmed'}, {...purchase, id: 'theirs', account: REFERRER}]);
+    expect(await ask(w, {type: 'presale.pending', account: ACCOUNT})).toEqual({ok: true, data: null});
+    await w.ext.local.set(PENDING_KEY, [purchase]);
+    expect(await ask(w, {type: 'presale.pending', account: ACCOUNT})).toEqual({ok: true, data: purchaseView});
+    expect([geoAsked, w.reads, w.wires.length]).toEqual([0, 0, 0]);
+  });
+});
+
+describe('the new presale.* messages: strict payloads, the session, the partition (§1.4)', () => {
+  it.each([
+    ['presale.buy with an extra key', {type: 'presale.buy', id: '0'.repeat(32), extra: 1}],
+    ['presale.buy without an id', {type: 'presale.buy'}],
+    ['presale.buy with an id of another shape', {type: 'presale.buy', id: 'A'.repeat(32)}],
+    ['presale.buy with a number', {type: 'presale.buy', id: 7}],
+    ['presale.preparedFor with an extra key', {type: 'presale.preparedFor', account: ACCOUNT, extra: 1}],
+    ['presale.preparedFor with a non-address', {type: 'presale.preparedFor', account: 'nope'}],
+    ['presale.discardPrepared with a non-address', {type: 'presale.discardPrepared', account: 'nope'}],
+    ['presale.discardPrepared with an extra key', {type: 'presale.discardPrepared', account: ACCOUNT, id: '0'.repeat(32)}],
+    ['presale.pending with a non-address', {type: 'presale.pending', account: 7}],
+    ['presale.pending with an extra key', {type: 'presale.pending', account: ACCOUNT, refresh: 'gate'}],
+  ])('%s → malformed', async (_, m) => {
+    const w = await world();
+    expect(await ask(w, m)).toEqual({ok: false, error: 'malformed'});
+  });
+
+  it('locked, or an account outside the session; presale.buy while locked', async () => {
+    const w = await world();
+    const view = await provenPurchase(w, intent('SOL', SOL_2));
+    for (const type of ['presale.preparedFor', 'presale.discardPrepared', 'presale.pending']) {
+      expect([type, await ask(w, {type, account: REFERRER})]).toEqual([type, {ok: false, error: 'unknown-account'}]);
+    }
+    expect((await stored(w)).map(e => e.id)).toEqual([view.id]);
+    await w.ext.session.clear();
+    for (const type of ['presale.preparedFor', 'presale.discardPrepared', 'presale.pending']) {
+      expect([type, await ask(w, {type, account: ACCOUNT})]).toEqual([type, {ok: false, error: 'locked'}]);
+    }
+    expect(await buy(w, view.id)).toEqual({ok: false, error: 'locked'});
+    expect(w.deps.broadcasts).toEqual([]);
+  });
+
+  it('from the approval window or the vault page: forbidden, nothing signed', async () => {
+    const w = await world();
+    const view = await provenPurchase(w, intent('SOL', SOL_2));
+    for (const page of ['approve.html', 'unlock.html']) {
+      for (const m of [{type: 'presale.buy', id: view.id}, {type: 'presale.preparedFor', account: ACCOUNT}, {type: 'presale.discardPrepared', account: ACCOUNT}, {type: 'presale.pending', account: ACCOUNT}]) {
+        expect(await handleMessage(w.ext, m, {...POPUP_SENDER(w.ext), url: `${w.ext.extensionOrigin}/${page}`, tab: {}, frameId: 0}, w.deps)).toEqual({ok: false, error: 'forbidden'});
+      }
+    }
+    expect((await stored(w)).map(e => e.id)).toEqual([view.id]);
+    expect(w.deps.broadcasts).toEqual([]);
+  });
+});
+
+describe('the record’s display data (§2.3): pendingData', () => {
+  it('exactly the eight strings, from the entry the pipeline signs; null when its facts do not read back', async () => {
+    const w = await world();
+    const view = await prepare(w, intent('SOL', SOL_2));
+    const [entry] = await stored(w);
+    if (entry === undefined || PRESALE_BUY_INTENT.pendingData === undefined) throw new Error('no entry');
+    expect(PRESALE_BUY_INTENT.pendingData(entry, entry.intent)).toEqual({currency: 'SOL', amount: SOL_2, stage: '0', priceTicks: '1501', nocBase: view.nocBase, spentCents: view.spentCents, destination: TREASURY_ADDRESS, referrer: null});
+    const tampered = {...entry, shown: {...entry.shown, view: {...entry.shown.view, nocBase: 'many'}}};
+    expect(PRESALE_BUY_INTENT.pendingData(tampered, entry.intent)).toBeNull();
+    expect(PRESALE_BUY_INTENT.pendingData(entry, intent('SOL', '2000000001'))).toBeNull();
   });
 });
 

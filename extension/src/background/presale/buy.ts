@@ -1,4 +1,4 @@
-import {PublicKey, TransactionMessage, VersionedTransaction, type MessageV0} from '@solana/web3.js';
+import {MessageV0, PublicKey, TransactionMessage, VersionedMessage, VersionedTransaction} from '@solana/web3.js';
 import {base64} from '@scure/base';
 import type {Ext} from '../../ext';
 import type {WalletDeps} from '../deps';
@@ -7,17 +7,25 @@ import {getSession} from '../session';
 import {inFlightFor, readPending} from '../pendingStore';
 import {readSettings} from '../settings';
 import {REAUTH_PERCENT, usdMicros} from '../reauthPolicy';
-import {challengeSatisfied, issueChallenge, rebaseKindChallenge} from '../reauthChallenges';
+import {challengeInfo, challengeSatisfied, issueChallenge, rebaseKindChallenge} from '../reauthChallenges';
 import {randomId} from '../digest';
-import {intentDigest, registerIntentKind, type IntentKind, type KindAbout} from '../intents';
-import {PREPARED_TTL_MS, preparedIntegrity, rentRefusal, storePrepared, type PreparedEntry} from '../prepare';
+import {intentDigest, registerIntentKind, type IntentKind, type KindAbout, type KindHost} from '../intents';
+import {PREPARED_TTL_MS, newestPrepared, preparedIntegrity, rentRefusal, storePrepared, type PreparedEntry} from '../prepare';
 import {SendRefused} from '../sendTypes';
 import {COMPUTE_BUDGET_PROGRAM} from '../dapp/decode/decode';
 import {tokenAccountInfo} from '../dapp/tokenState';
 import {readPresaleStateAt, referrerAllocationOf, type PresaleSnapshot, type PresaleState} from './state';
 import {PRESALE_CURRENCIES, PRESALE_FEE_BOUND_LAMPORTS, quote, type BalanceCode, type PresaleBalances, type PresaleCurrency} from './quote';
 import {PRESALE_ALLOCATION_LAYOUT, USER_ACCOUNT_LAYOUT} from './layouts';
-import {MAINNET_PROGRAM_ID, MAINNET_SOL_TREASURY, MAINNET_USDC_MINT, MAINNET_USDT_MINT, PYTH_SOL_USD_ACCOUNT} from '../../../../core/presale/addresses';
+import {
+  MAINNET_PROGRAM_ID,
+  MAINNET_SOL_TREASURY,
+  MAINNET_USDC_MINT,
+  MAINNET_USDT_MINT,
+  MAINNET_VAULT_USDC_ATA,
+  MAINNET_VAULT_USDT_ATA,
+  PYTH_SOL_USD_ACCOUNT,
+} from '../../../../core/presale/addresses';
 import {derivePresalePdas, readU64LE} from '../../../../core/presale/allocation';
 import {COMPUTE_UNIT_LIMIT, buildBuyInstructions, buildStablecoinBuyInstructions, encodeU64LE} from '../../../../core/presale/buyInstructions';
 import {
@@ -194,18 +202,153 @@ function rebasePurchaseAbout(stored: KindAbout, fresh: KindAbout): KindAbout | n
   return about as unknown as KindAbout;
 }
 
+/** §2.3: a purchase record's `extra.data` — display only, every value a string (decimal strings for numbers). */
+export interface PurchasePendingData {
+  currency: PresaleCurrency;
+  amount: string;
+  /** The program's 0-indexed stage the purchase was simulated at. */
+  stage: string;
+  priceTicks: string;
+  /** The simulated NOC (Δtotal_tokens) and cents (Δtotal_spent_cents). */
+  nocBase: string;
+  spentCents: string;
+  destination: string;
+  /** The effective referrer, or null. */
+  referrer: string | null;
+}
+
+/** The destination the state pins for each currency (C5, C28): the treasury for SOL, its vault ATA for a stablecoin. */
+const PINNED_DESTINATION: Record<PresaleCurrency, string> = {SOL: MAINNET_SOL_TREASURY, USDC: MAINNET_VAULT_USDC_ATA, USDT: MAINNET_VAULT_USDT_ATA};
+const exactKeys = (o: Record<string, unknown>, keys: readonly string[]): boolean => Object.keys(o).length === keys.length && keys.every(k => Object.hasOwn(o, k));
+const record = (x: unknown): Record<string, unknown> | null => (typeof x === 'object' && x !== null && !Array.isArray(x) ? (x as Record<string, unknown>) : null);
+const digits = (x: unknown): x is string => typeof x === 'string' && DIGITS.test(x);
+const count = (x: unknown): x is number => typeof x === 'number' && Number.isSafeInteger(x) && x >= 0;
+const SHOWN_VIEW_KEYS = ['currency', 'amount', 'stage', 'priceTicks', 'nocBase', 'spentCents', 'destination', 'referrer', 'fees', 'reasons'];
+
+/**
+ * What prepare kept beside the bound fields, read back for this intent — `shown` is not in the integrity, so it is a
+ * claim like any stored value: exactly the shape preparePurchase writes, the intent's own currency, amount and stage,
+ * the stage's price and the destination the state pins for the currency. Rebuilt key by key (a fresh object), or null.
+ */
+function shownOf(entry: PreparedEntry, intent: PurchaseIntent): PreparedPurchase['shown'] | null {
+  const shown = record(entry.shown);
+  const fees = record(shown?.fees);
+  const sim = record(shown?.simulation);
+  const view = record(shown?.view);
+  const basis = record(shown?.basis);
+  if (shown === null || fees === null || sim === null || view === null || basis === null || !exactKeys(shown, ['fees', 'simulation', 'view', 'basis'])) return null;
+  if (!exactKeys(fees, ['networkLamports', 'markupLamports']) || !digits(fees.networkLamports) || fees.markupLamports !== '0') return null;
+  const programs = sim.programs;
+  if (!exactKeys(sim, ['slot', 'elapsedMs', 'programs', 'instructionCount']) || !count(sim.slot) || !count(sim.elapsedMs) || sim.instructionCount !== 3) return null;
+  if (!Array.isArray(programs) || programs.length !== 2 || programs[0] !== 'compute-budget' || programs[1] !== 'presale') return null;
+  if (!exactKeys(view, SHOWN_VIEW_KEYS) || view.currency !== intent.currency || view.amount !== intent.amount || view.stage !== intent.stage) return null;
+  if (view.priceTicks !== (STAGE_PRICE_TICKS[intent.stage] as bigint).toString() || !digits(view.nocBase) || !digits(view.spentCents) || view.destination !== PINNED_DESTINATION[intent.currency]) return null;
+  const referrer = view.referrer === null ? null : record(view.referrer);
+  if (view.referrer !== null && (referrer === null || !exactKeys(referrer, ['address', 'registers']) || typeof referrer.address !== 'string' || !ADDRESS.test(referrer.address) || referrer.registers !== false)) return null;
+  const vf = record(view.fees);
+  if (vf === null || !exactKeys(vf, ['networkLamports', 'priorityLamports', 'rentLamports']) || vf.networkLamports !== fees.networkLamports || !digits(vf.priorityLamports) || !digits(vf.rentLamports)) return null;
+  const reasons = view.reasons;
+  if (!Array.isArray(reasons) || new Set(reasons).size !== reasons.length || !(reasons as unknown[]).every(r => typeof r === 'string' && (REASONS as readonly string[]).includes(r))) return null;
+  if (!exactKeys(basis, ['allocationExists', 'purchaseCount', 'referrer', 'userAccountExists']) || typeof basis.allocationExists !== 'boolean' || !count(basis.purchaseCount) || typeof basis.userAccountExists !== 'boolean') return null;
+  if (basis.referrer !== null && (typeof basis.referrer !== 'string' || !ADDRESS.test(basis.referrer))) return null;
+  return {
+    fees: {networkLamports: fees.networkLamports, markupLamports: '0'},
+    simulation: {slot: sim.slot, elapsedMs: sim.elapsedMs, programs: ['compute-budget', 'presale'], instructionCount: 3},
+    view: {
+      currency: intent.currency,
+      amount: intent.amount,
+      stage: intent.stage,
+      priceTicks: view.priceTicks,
+      nocBase: view.nocBase,
+      spentCents: view.spentCents,
+      destination: view.destination,
+      referrer: referrer === null ? null : {address: referrer.address as string, registers: false},
+      fees: {networkLamports: vf.networkLamports, priorityLamports: vf.priorityLamports, rentLamports: vf.rentLamports},
+      reasons: [...(reasons as PresaleReauthReason[])],
+    },
+    basis: {allocationExists: basis.allocationExists, purchaseCount: basis.purchaseCount, referrer: basis.referrer, userAccountExists: basis.userAccountExists},
+  };
+}
+
+/**
+ * §3.3 (C12, C22, C10; C29 — sendPrepared runs this after the challenge check and before the single-use take, so a
+ * refusal burns neither the entry nor the proof): what must still hold when the user signs. Refused with §5's code: the
+ * entry's facts do not read back (`prepared-invalid`); a transaction of the account recorded since (`in-flight`); the gate
+ * not open (`geo-closed`) — decided first, as at prepare; the state (one read of the whole §2.1 snapshot) unavailable,
+ * refused, closed, blocked or at another stage; the signed bytes not this purchase to the pinned destination crediting
+ * the referrer allocation the program would credit now (signedPurchase); the account's presale accounts not as prepared
+ * (`state-changed`); the prepared cents outside the limits now (`below-min`, `above-max-tx`, `above-user-limit`).
+ */
+async function purchaseBeforeSign({ext, deps}: KindHost, entry: PreparedEntry, intent: PurchaseIntent): Promise<void> {
+  const shown = shownOf(entry, intent);
+  if (shown === null) throw new SendRefused('prepared-invalid', 'the prepared purchase does not read back');
+  // Refused here, before the take, rather than by submitSigned's own in-flight guard after it.
+  if (inFlightFor(await readPending(ext), entry.account) !== undefined) throw new PurchaseRefused('in-flight');
+  const [read, geo] = await Promise.all([readPresaleStateAt(deps.reader, entry.account, deps.now()), gateAnswer(deps)]);
+  if (!geo.open) throw new PurchaseRefused('geo-closed', geo.reason ?? '');
+  const snapshot = openSnapshot(read.state, intent);
+  await signedPurchase(entry, intent, snapshot);
+  const b = shown.basis;
+  if (snapshot.allocation.exists !== b.allocationExists || snapshot.allocation.purchaseCount !== b.purchaseCount || snapshot.allocation.referrer !== b.referrer || snapshot.userAccountExists !== b.userAccountExists) {
+    throw new PurchaseRefused('state-changed', 'the account’s presale accounts are not as prepared');
+  }
+  const limit = checkLimits({cents: BigInt(shown.view.spentCents), ...snapshot.limits});
+  if (limit !== null) throw new PurchaseRefused(limit);
+}
+
+/**
+ * Review 1 M1: the sign-time check rests on the bytes that will be signed, not on `shown`. The entry must read back under
+ * its integrity (so the message checked is the one sendPrepared signs after the take), and its message must be exactly
+ * the purchase of this intent to the destination the state pins, crediting the referrer allocation the fresh snapshot
+ * resolves — `state-changed` when only that allocation differs (a referrer registered since prepare), `prepared-invalid`
+ * for anything else.
+ */
+async function signedPurchase(entry: PreparedEntry, intent: PurchaseIntent, snapshot: PresaleSnapshot): Promise<void> {
+  const invalid = new SendRefused('prepared-invalid', 'the prepared purchase is not this purchase');
+  let message: MessageV0;
+  try {
+    if (preparedIntegrity(entry) !== entry.integrity) throw invalid;
+    const m = VersionedMessage.deserialize(base64.decode(entry.message));
+    if (!(m instanceof MessageV0)) throw invalid;
+    message = m;
+  } catch {
+    throw invalid;
+  }
+  const keys = message.staticAccountKeys.map(k => k.toBase58());
+  const named = (message.compiledInstructions[2]?.accountKeyIndexes ?? []).map(k => keys[k]);
+  const expected = {account: entry.account, currency: intent.currency, destination: PINNED_DESTINATION[intent.currency], source: intent.currency === 'SOL' ? null : (named[4] ?? null), amount: BigInt(intent.amount)};
+  const matches = (referrerAllocation: string): boolean => {
+    try {
+      assertPurchaseMessage(message, {...expected, referrerAllocation});
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  if (matches((await referrerAllocationOf(snapshot, entry.account)).referrerAllocation.toBase58())) return;
+  const built = named[3];
+  if (built !== undefined && matches(built)) throw new PurchaseRefused('state-changed', 'the referrer allocation the purchase credits changed');
+  throw invalid;
+}
+
+/** §2.3: the record's display data, from the entry the pipeline signs — null when its facts do not read back (shown generically, Q42). */
+function purchasePendingData(entry: PreparedEntry, intent: PurchaseIntent): PurchasePendingData | null {
+  const shown = shownOf(entry, intent);
+  if (shown === null) return null;
+  const v = shown.view;
+  return {currency: v.currency, amount: v.amount, stage: String(v.stage), priceTicks: v.priceTicks, nocBase: v.nocBase, spentCents: v.spentCents, destination: v.destination, referrer: v.referrer === null ? null : v.referrer.address};
+}
+
 /**
  * B1d §1.3 (C19, D17): the purchase kind, registered when this module loads — only the presale entry module imports it,
- * so the build without presale has no such kind. Its `beforeSign` refuses every entry until the sign-time checks of
- * §3.3 (C12's geo check, C22's state re-read) are part of it: no purchase can be signed from what this module prepares.
+ * so the build without presale has no such kind. It is signed only through presale.buy, which names it.
  */
 export const PRESALE_BUY_INTENT: IntentKind<PurchaseIntent> = {
   kind: PRESALE_BUY_KIND,
   parseIntent: parsePurchaseIntent,
   digestValue: purchaseDigestValue,
-  beforeSign: async () => {
-    throw new SendRefused('prepared-invalid', 'a purchase is signed only with its sign-time checks');
-  },
+  beforeSign: purchaseBeforeSign,
+  pendingData: purchasePendingData,
   isAbout: isPurchaseAbout,
   rebaseAbout: rebasePurchaseAbout,
 };
@@ -637,5 +780,34 @@ export async function preparePurchase(ext: Ext, deps: WalletDeps, account: strin
     reauth: challengeId === null ? null : {challengeId, reasons, proven},
     validUntil: prepared.createdAt + PREPARED_TTL_MS,
     simulation,
+  };
+}
+
+/** presale.preparedFor (§1.4, §4.2): the account's prepared purchase as prepare showed it, with `expired` as B1b's wallet.preparedFor. */
+export type ResumablePurchase = PurchaseView & {expired: boolean};
+
+/**
+ * The resume of §4.2 (review M5): a popup closed during #10 reopens on #20 for this entry. Reported while its challenge
+ * can live (CHALLENGE_TTL_MS from its prepare); `expired` — no longer signable, prepare again carrying the challenge id —
+ * past PREPARED_TTL_MS or once its challenge is gone (B1b's plan-3 review M1). `proven`: the vault page proved it and it
+ * is still live for this intent. An entry whose facts do not read back is not resumed.
+ */
+export async function purchasePreparedFor(ext: Ext, deps: Pick<WalletDeps, 'now'>, account: string): Promise<ResumablePurchase | null> {
+  const now = deps.now();
+  const entry = await newestPrepared(ext, now, account, PRESALE_BUY_KIND);
+  const intent = entry === null ? null : parsePurchaseIntent(entry.intent);
+  const shown = entry === null || intent === null ? null : shownOf(entry, intent);
+  if (entry === null || intent === null || shown === null) return null;
+  const {reasons, ...view} = shown.view;
+  const id = entry.challengeId;
+  const proven = id !== null && (await challengeSatisfied(ext, now, id, intentDigest(PRESALE_BUY_INTENT, entry.account, intent)));
+  const dead = id !== null && (await challengeInfo(ext, now, id)) === null;
+  return {
+    id: entry.id,
+    ...view,
+    reauth: id === null ? null : {challengeId: id, reasons, proven},
+    validUntil: entry.createdAt + PREPARED_TTL_MS,
+    simulation: shown.simulation,
+    expired: dead || now - entry.createdAt >= PREPARED_TTL_MS,
   };
 }

@@ -81,7 +81,7 @@ function historyFor(deps: WalletDeps): History {
  * that got no answer is 'unreachable'. Anything unexpected is 'failed', never a thrown error across
  * the message boundary.
  */
-function failure(e: unknown): Result {
+export function failure(e: unknown): Result {
   if (e instanceof SendRefused) {
     if (e.code === 'reauth-required' && e.detail !== '') return {ok: false, error: e.code, data: {challengeId: e.detail}};
     return e.detail === '' ? {ok: false, error: e.code} : {ok: false, error: e.code, data: {detail: e.detail}};
