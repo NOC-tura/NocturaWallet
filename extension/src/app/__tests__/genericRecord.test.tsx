@@ -60,17 +60,67 @@ function expectGeneric(el: Element = document.body) {
 }
 const meta = () => [...document.querySelectorAll('.meta-row')].map(r => [r.querySelector('.lbl')?.textContent, r.querySelector('.val')?.textContent]);
 const cardRows = (card: string) => [...document.querySelectorAll(`${card} .row`)].map(r => [r.querySelector('.k')?.textContent, r.querySelector('.v')?.textContent]);
-const nav = {onSend: vi.fn(), onReceive: vi.fn(), onPending: vi.fn(), onAccounts: vi.fn(), onTx: vi.fn()};
+const nav = {onSend: vi.fn(), onReceive: vi.fn(), onPending: vi.fn(), onAccounts: vi.fn(), onTx: vi.fn(), onRoute: vi.fn()};
 const status = {onDone: vi.fn(), onDetails: vi.fn(), onActivity: vi.fn(), onTryAgain: vi.fn(), onEdit: vi.fn(), onRoute: vi.fn()};
+// B1d-1b Task 6 (§4.5, §4.6, Q33): #11's and #26's pending rows of the wallet's own purchase — the record of kind
+// presale-buy — read Q33 where the build renders the kind and Q42a where it does not; either way no amount. A kind no
+// build renders stays Q42a in both (the rows below it).
+const BOUGHT = {kind: 'presale-buy', data: DATA};
+const Q33 = {pending: 'Buying NOC · pending', slow: 'Buying NOC · taking longer than usual'};
+const ROW = off ? Q42 : Q33;
+const home = () => <Home onSend={nav.onSend} onReceive={nav.onReceive} onPending={nav.onPending} onAccounts={nav.onAccounts} onRoute={nav.onRoute} />;
 
 afterEach(() => {
   vi.useRealTimers();
   vi.clearAllMocks();
 });
 
+describe(`#11 and #26: the pending row of the wallet's own purchase (${off ? 'off: Q42a' : 'on: Q33'})`, () => {
+  it(`#11: "${ROW.pending}", no amount; it opens that record`, async () => {
+    await renderInWallet(home(), seed([purchase({extra: BOUGHT})]));
+    const strip = await screen.findByText(ROW.pending);
+    expect(document.querySelector('.app-pending-strip .noc-body-sm')?.textContent).toBe(ROW.pending);
+    expectGeneric(document.querySelector('.app-pending-strip')!);
+    fireEvent.click(strip);
+    expect(nav.onPending).toHaveBeenCalledWith(expect.objectContaining({id: 'b1', intent: null, extra: BOUGHT}));
+  });
+
+  it(`#11: past 80 s, or stuck, "${ROW.slow}"`, async () => {
+    for (const over of [{createdAt: Date.now() - 81_000}, {state: 'stuck' as const}]) {
+      await renderInWallet(home(), seed([purchase({extra: BOUGHT, ...over})]));
+      expect(await screen.findByText(ROW.slow)).toBeTruthy();
+      expectGeneric(document.querySelector('.app-pending-strip')!);
+      cleanup();
+    }
+  });
+
+  it(`#26: "${ROW.pending}" and the time it has waited, no amount; past 80 s "${ROW.slow}"; it opens that record`, async () => {
+    await renderInWallet(<Activity onTx={nav.onTx} onReceive={nav.onReceive} onPending={nav.onPending} />, seed([purchase({extra: BOUGHT, createdAt: Date.now() - 5_000})]));
+    const row = await waitFor(() => {
+      const r = document.querySelector('.tx-row[data-pending="b1"]');
+      if (r === null) throw new Error('no pending row');
+      return r as HTMLElement;
+    });
+    expect(row.querySelector('.pri')?.textContent).toBe(ROW.pending);
+    expect(row.querySelector('.sec')?.textContent).toMatch(/^waiting · 0 m \d s$/);
+    expectGeneric(row);
+    fireEvent.click(row);
+    expect(nav.onPending).toHaveBeenCalledWith(expect.objectContaining({id: 'b1', intent: null}));
+    expect(unstyledClasses(row, SELECTORS)).toEqual([]);
+    cleanup();
+    await renderInWallet(<Activity onTx={nav.onTx} onReceive={nav.onReceive} onPending={nav.onPending} />, seed([purchase({extra: BOUGHT, createdAt: Date.now() - 81_000})]));
+    expect(await screen.findByText(ROW.slow)).toBeTruthy();
+  });
+
+  it('a purchase whose data does not read back is Q42a in both builds — never words from partial data', async () => {
+    await renderInWallet(home(), seed([purchase({extra: {kind: 'presale-buy', data: {...DATA, stage: '10'}}})]));
+    expect(await screen.findByText(Q42.pending)).toBeTruthy();
+  });
+});
+
 describe('#11 and #26: the pending row of a record without an intent (Q42a)', () => {
   it('#11: "Transaction · pending", no amount; it opens that record — and a send beside it keeps its own row (positive control)', async () => {
-    await renderInWallet(<Home onSend={nav.onSend} onReceive={nav.onReceive} onPending={nav.onPending} onAccounts={nav.onAccounts} />, seed([purchase()]));
+    await renderInWallet(home(), seed([purchase()]));
     const strip = await screen.findByText(Q42.pending);
     expect(document.querySelector('.app-pending-strip .noc-body-sm')?.textContent).toBe(Q42.pending);
     expectGeneric(document.querySelector('.app-pending-strip')!);
@@ -79,17 +129,14 @@ describe('#11 and #26: the pending row of a record without an intent (Q42a)', ()
   });
 
   it('#11: a send is still "Sending 2.48 SOL · pending" (the generic row is only for a record without an intent)', async () => {
-    await renderInWallet(
-      <Home onSend={nav.onSend} onReceive={nav.onReceive} onPending={nav.onPending} onAccounts={nav.onAccounts} />,
-      seed([pendingRecord({id: 's1', account: ACCOUNT.publicKey, signature: SIGNATURE, createdAt: Date.now(), intent: {token: 'SOL', recipient: RECIPIENT, amount: '2480000000'}})]),
-    );
+    await renderInWallet(home(), seed([pendingRecord({id: 's1', account: ACCOUNT.publicKey, signature: SIGNATURE, createdAt: Date.now(), intent: {token: 'SOL', recipient: RECIPIENT, amount: '2480000000'}})]));
     expect(await screen.findByText('Sending 2.48 SOL · pending')).toBeTruthy();
     expect(screen.queryByText(Q42.pending)).toBeNull();
   });
 
   it('#11: past 80 s, or stuck, "Transaction · taking longer than usual"', async () => {
     for (const over of [{createdAt: Date.now() - 81_000}, {state: 'stuck' as const}]) {
-      await renderInWallet(<Home onSend={nav.onSend} onReceive={nav.onReceive} onPending={nav.onPending} onAccounts={nav.onAccounts} />, seed([purchase(over)]));
+      await renderInWallet(home(), seed([purchase(over)]));
       expect(await screen.findByText(Q42.slow)).toBeTruthy();
       expectGeneric(document.querySelector('.app-pending-strip')!);
       cleanup();
@@ -97,7 +144,7 @@ describe('#11 and #26: the pending row of a record without an intent (Q42a)', ()
   });
 
   it('#11: a record whose extra the background could not read (extra null) is shown the same way — kept, never hidden', async () => {
-    await renderInWallet(<Home onSend={nav.onSend} onReceive={nav.onReceive} onPending={nav.onPending} onAccounts={nav.onAccounts} />, seed([purchase({extra: null})]));
+    await renderInWallet(home(), seed([purchase({extra: null})]));
     expect(await screen.findByText(Q42.pending)).toBeTruthy();
   });
 

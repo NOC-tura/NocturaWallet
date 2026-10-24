@@ -118,16 +118,63 @@ export const RECORD_TEXT = {
   sentOk: 'Purchase confirmed',
   /** Q55. */
   rejectedSub: 'The presale program returned an error. The network fee was charged; no NOC was bought.',
+  /** Q33 (#11's and #26's pending row, B1d-1b Task 6). */
+  pending: 'Buying NOC · pending',
+  slow: 'Buying NOC · taking longer than usual',
 } as const;
 
-/** The reason of a closed region answer, as #50b's sub says it (§4.3; for `sanctioned`, Q21's first sentence). */
-export const GEO_REASON_TEXT: Record<GeoReason, string> = {
-  sanctioned: "This wallet doesn't offer the presale in your region.",
+/** #11's presale banner (§4.5, index.html #11 ix:6371-6373): "NOC Presale · Stage N" / "$ 0.1501 · P% to next stage". */
+export const BANNER_TEXT = {
+  title: (stage: number): string => `NOC Presale · Stage ${stage}`,
+  line: (price: string, percent: number): string => `${price} · ${percent}% to next stage`,
+} as const;
+
+/**
+ * #50b region blocked, presale (§4.3, index.html #50 ix 19612-19906): the design's own lines where §4.3 keeps them, the
+ * approved lines and Q20–Q30 (controller copy, owner-delegated 2026-10-19) where it replaces them. Nothing here names a
+ * claim, a stake or a date: §9 omits the drawn "Stake existing NOC", the post-TGE claim line and "claim_ix".
+ */
+export const GEO_TEXT = {
+  title: 'Not available here',
+  close: 'Close',
+  /** Q20 (C18): the gate is open. */
+  open: 'NOC presale is open in your region',
+  sanctioned: "NOC presale isn't open in your region",
+  /** Q23: every fail-closed reason. */
+  closed: "The presale can't be opened right now",
+  region: (name: string): string => `Detected region: ${name}`,
+  disclosure: 'Approximated from your IP. No GPS, no device location.',
+  geofence: 'Presale geofence active',
+  /** Q22. */
+  geofenceSub: 'Checked by this wallet against the restricted-region list',
+  /** Q24, Q25, Q27. */
+  checkRequired: 'Region check required',
+  checkRequiredSub: 'The presale opens only after a successful check against a current list',
+  refusedSub: "Noctura's server did not answer requests from this network",
+  why: 'Why this matters',
+  /** Q28. */
+  whySub: 'Token sales are restricted by jurisdiction · this wallet checks before every purchase',
+  /** Q29. */
+  lifts: 'If the restricted-region list changes, this screen lifts on its own.',
+  rechecked: 'Re-checked at every presale screen mount.',
+  works: 'What still works',
+  sendReceive: 'Send / Receive NOC',
+  /** Q30. */
+  balances: 'View balances',
+  gotIt: 'Got it',
+} as const;
+
+/** #50b's sub for each closed reason (§4.3): Q21 for `sanctioned`, the approved lines, Q26 for an unknown country. */
+export const GEO_SUB_TEXT: Record<GeoReason, string> = {
+  sanctioned: "This wallet doesn't offer the presale in your region. You can still hold, send and receive any NOC you already have.",
   stale_list: 'The restricted-region list is out of date.',
   unknown_country: 'Your region could not be determined from your IP.',
   no_check: 'The region check is unavailable — try again later.',
   refused: 'The presale service refused this network.',
 };
+
+/** The reason of a closed region answer, as #50b's sub says it (§4.3; for `sanctioned`, Q21's first sentence). */
+export const GEO_REASON_TEXT: Record<GeoReason, string> = {...GEO_SUB_TEXT, sanctioned: "This wallet doesn't offer the presale in your region."};
 
 const group = (v: bigint): string => v.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 

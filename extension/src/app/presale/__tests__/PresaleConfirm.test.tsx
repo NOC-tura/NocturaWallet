@@ -372,7 +372,7 @@ describe('#20 purchase variant: its exits (§4.2, §3.3, §5)', () => {
 });
 
 describe('the routes (§4): `presale-confirm` and #23 again', () => {
-  const navSpy = () => ({pop: vi.fn(), home: vi.fn(), push: vi.fn(), reset: vi.fn()});
+  const navSpy = () => ({pop: vi.fn(), home: vi.fn(), push: vi.fn(), replace: vi.fn(), reset: vi.fn()});
 
   it('presale-confirm handles Esc itself; a flow entry reads the purchase #23 handed over; its exits are nav’s resets', async () => {
     expect(PRESALE_CONFIRM_ROUTE.ownEscape).toBe(true);

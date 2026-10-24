@@ -2175,3 +2175,98 @@ body:has(.app-window) {
     border-top-color: var(--accent);
   }
 }
+/* 23b's region line (B1d-1b Task 6): the warning banner as the link to #50b it is, with the strips' trailing chevron. */
+.s-pre .banner.app-pre-region {
+  align-items: center;
+}
+.s-pre .banner.app-pre-region > .noc-body-sm {
+  flex: 1;
+  min-width: 0;
+  margin-bottom: 0;
+}
+.s-pre .banner.warning.app-pre-region .app-strip-chev svg {
+  color: var(--fg-secondary);
+  margin-top: 0;
+}
+
+/* B1d-1b Task 6: #11's presale card (index.html #11, ix:6371-6373) as the button it is — the design's .presale. */
+.s-dash button.presale.app-presale-banner {
+  font: inherit;
+  color: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.s-dash button.presale.app-presale-banner:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.s-dash .presale.app-presale-banner .copy > span {
+  display: block;
+}
+/* The trailing chevron in --fg-secondary (ix:6374, inline there). */
+.s-dash .presale .app-presale-chev svg {
+  color: var(--fg-secondary);
+}
+
+/* B1d-1b Task 6: #50b (index.html #50, the 50b phone, ix:19712-19790) — what the mockup sets inline. */
+.app-geo-body {
+  flex: 1 0 auto;
+}
+/* The mockup's hero headline and sub carry no margin (UA margins pushed them apart — found in the visual check). */
+.s11-geo-hero h2,
+.s11-geo-hero p {
+  margin: 0;
+}
+/* The region card's text column is the design's block (web's design-system `.col` is a 28 px-gap layout column — the
+   two lines stood apart). */
+.s11-geo-region .col {
+  display: block;
+}
+.s11-geo-hero .glyph.app-geo-warn {
+  background: color-mix(in oklab, var(--warning) 14%, var(--bg-surface-1));
+  border-color: color-mix(in oklab, var(--warning) 32%, transparent);
+}
+.s11-geo-hero .glyph.app-geo-warn svg,
+.s11-reason-row .ico.app-geo-warn svg {
+  color: var(--warning);
+}
+.s11-geo-hero .app-geo-sub {
+  color: var(--fg-secondary);
+  max-width: 280px;
+}
+.s11-reason-row .ico.app-geo-warn {
+  background: color-mix(in oklab, var(--warning) 14%, transparent);
+}
+.app-geo-primary {
+  color: var(--fg-primary);
+}
+.app-geo-tertiary {
+  color: var(--fg-tertiary);
+}
+.app-geo-disclosure {
+  margin-top: 2px;
+}
+.card.app-geo-card {
+  margin: 0 var(--space-5) var(--space-4);
+  padding: 0;
+  overflow: hidden;
+}
+.banner.app-geo-banner {
+  margin: 0 var(--space-5) var(--space-4);
+  background: color-mix(in oklab, var(--info) 10%, var(--bg-surface-1));
+  border: 1px solid color-mix(in oklab, var(--info) 28%, transparent);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+}
+.banner.app-geo-banner svg {
+  width: 18px;
+  height: 18px;
+  color: var(--info);
+  flex-shrink: 0;
+}
+.s11-stillworks .app-geo-works {
+  color: var(--success);
+}

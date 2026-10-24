@@ -83,6 +83,13 @@ export interface PurchaseData {
   referrer: string | null;
 }
 
+/** §1.4 presale.banner: #11's banner — the program's 0-indexed stage, its price, and the stage sold in whole percent. */
+export interface BannerData {
+  stage: number;
+  priceTicks: bigint;
+  stagePercent: number;
+}
+
 /** The refusals of presale.prepareBuy (§5) the popup translates; anything else is `failed`. */
 export const PREPARE_REFUSALS = [
   'malformed',
@@ -145,6 +152,8 @@ export type BuyRefusal = (typeof BUY_REFUSALS)[number];
 export type ResumablePurchase = PurchaseView & {expired: boolean};
 
 export interface PresaleClient {
+  /** §1.4, §4.5: null — no banner (any failure or an inactive sale, the background's own answer). */
+  banner(): Promise<Reply<BannerData | null, SessionRefusal>>;
   view(account: string, refresh?: 'gate'): Promise<Reply<PresaleView, SessionRefusal>>;
   /** `stale`: the account's last view is older than the quote's 30 s (§1.4) — ask a view, then again. */
   quote(account: string, currency: PresaleCurrency, amount: bigint | 'max'): Promise<Reply<Quote | 'stale', SessionRefusal>>;
@@ -256,6 +265,15 @@ export function presaleViewOf(x: unknown): PresaleView | undefined {
   return undefined;
 }
 
+export function bannerOf(x: unknown): BannerData | null | undefined {
+  if (x === null) return null;
+  const o = obj(x);
+  if (o === undefined || !exactly(o, ['stage', 'priceTicks', 'stagePercent']) || !isStage(o.stage)) return undefined;
+  const priceTicks = units(o.priceTicks);
+  if (priceTicks === undefined || priceTicks === 0n || !isInt(o.stagePercent) || o.stagePercent > 100) return undefined;
+  return {stage: o.stage, priceTicks, stagePercent: o.stagePercent};
+}
+
 const LINES = ['below-min', 'above-max-tx', 'above-user-limit', 'insufficient-sol', 'insufficient-token', 'split-balance', 'sender-below-rent', 'no-sol-price'] as const;
 export function quoteOf(x: unknown): Quote | 'stale' | undefined {
   const o = obj(x);
@@ -343,6 +361,7 @@ const purchaseRecordOf = (x: unknown): Pending | undefined => {
 
 export function presaleClient(engine: Engine): PresaleClient {
   return {
+    banner: () => engine.request({type: 'presale.banner'}, SESSION, bannerOf),
     view: (account, refresh) => engine.request({type: 'presale.view', account, ...(refresh === undefined ? {} : {refresh})}, SESSION, presaleViewOf),
     quote: (account, currency, amount) => engine.request({type: 'presale.quote', account, currency, amount: amount === 'max' ? 'max' : amount.toString()}, SESSION, quoteOf),
     pending: (account: string) => engine.request({type: 'presale.pending', account}, SESSION, x => (x === null ? null : pendingIn(x))),

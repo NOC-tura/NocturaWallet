@@ -1,6 +1,7 @@
 import type {PresaleRoute, PresaleRouteValue} from '../router';
 import {Presale} from './Presale';
 import {PresaleConfirm} from './PresaleConfirm';
+import {Geo} from './Geo';
 import {PREPARE_REFUSALS, PRESALE_CURRENCIES, type PrepareRefusal, type PresaleCurrency} from './client';
 
 /**
@@ -38,9 +39,9 @@ export const againRoute = (again: PresaleAgain): PresaleRouteValue => ({screen: 
 
 /**
  * B1d §4: #23 — the route `presale`, carrying nothing (it reads `presale.view` itself), or `again` (above). Its exits:
- * back, [Done] → #11, Buy → #20's purchase variant (`presale-confirm`, `flow`, the prepared id) and "Not available in
- * your region?" → #50b (`geo`, carrying nothing — Task 6 registers it). The reducer decides every push by the target's
- * own validator: until a route is registered, the push leaves the stack as it is.
+ * back, [Done] → #11, Buy → #20's purchase variant (`presale-confirm`, `flow`, the prepared id), "Not available in
+ * your region?" and 23b's region line → #50b pushed over it (`geo`, carrying nothing), and the gate's closed answer with
+ * no open record → #23 replaced by #50b (§4.1). The reducer decides every push by the target's own validator.
  */
 export const PRESALE_ROUTE: PresaleRoute = {
   screen: 'presale',
@@ -52,8 +53,20 @@ export const PRESALE_ROUTE: PresaleRoute = {
       onDone={nav.home}
       onPrepared={(account, view) => nav.push({screen: 'presale-confirm', account, entry: 'flow', preparedId: view.id})}
       onRegion={() => nav.push({screen: 'geo'})}
+      onGeo={() => nav.replace({screen: 'geo'})}
     />
   ),
+};
+
+/**
+ * B1d §4.3: #50b — the route `geo`, carrying nothing: it reads `presale.view` itself on every mount. Back and [Got it]
+ * go back to the trigger — #23 when #50b was pushed over it (its link, 23b's line), #11 when #50b replaced #23 or came
+ * from #11's Buy (the route below is then #11) — and ✕ to #11.
+ */
+export const GEO_ROUTE: PresaleRoute = {
+  screen: 'geo',
+  isRoute: o => o.screen === 'geo' && Object.keys(o).length === 1,
+  render: (_route, nav) => <Geo onBack={nav.pop} onClose={nav.home} onDone={nav.pop} />,
 };
 
 /**

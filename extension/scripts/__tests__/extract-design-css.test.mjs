@@ -19,5 +19,8 @@ describe('the design CSS extraction', () => {
     expect(kept('.app-mine { color: red; }')).toBe(false);
     expect(kept('@media (max-width: 400px) { .screen { padding: 0; } }')).toBe(false);
     expect(kept('.s9-bal-card .label { color: red; }')).toBe(true);
+    // B1d-1b Task 6: of the Section XI block, #50's geo-blocked rules are kept, its air-gap rules are not.
+    expect(kept('.s11-reason-row .ico { color: red; }')).toBe(true);
+    expect(kept('.s11-airgap-headline { color: red; }')).toBe(false);
   });
 });

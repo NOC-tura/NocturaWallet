@@ -49,7 +49,15 @@ describe('design-ext.css (B1b-2b plan 1)', () => {
     }
   });
 
+  // B1d-1b Task 6 re-ran the extraction with #50's classes, read from the design's Section XI <style> block (ix:19322-19376).
+  it('carries #50’s geo-blocked classes from the Section XI block (B1d-1b Task 6), and none of that block’s aliases', () => {
+    for (const sel of ['.s11-geo-hero', '.s11-geo-hero .glyph', '.s11-geo-region', '.s11-geo-region .col', '.s11-reason-row', '.s11-reason-row + .s11-reason-row', '.s11-reason-row .ico', '.s11-stillworks', '.s11-stillworks .head', '.s11-stillworks li']) {
+      expect(CSS).toContain(`\n${sel} {`);
+    }
+    for (const alias of ['\n.topbar', '\n.sticky-bottom-bar', '\n.phone-row', '\n.s11-airgap', '\n.s11-stepdots', '\n.screen-section']) expect([alias, CSS.includes(alias)]).toEqual([alias, false]);
+  });
+
   it('is the extraction output, byte for byte (the hash the plan pins; scripts/extract-design-css.mjs --check against the design)', () => {
-    expect(createHash('sha256').update(CSS).digest('hex')).toBe('cfd89588d498b84b76f82c9955a5f975b4dae7b52c29440c180defe93ead35b3');
+    expect(createHash('sha256').update(CSS).digest('hex')).toBe('0723ca1a2af9c4d89f46ab8e33e71657d82faa0f9e5bd0f7b1e40300056fd87c');
   });
 });

@@ -68,4 +68,17 @@ describe('App’s way to a presale route (B1d-1b Task 4)', () => {
     expect(routeReducer(HOME, pushed)).toEqual([...HOME, {screen: 'x-presale', n: 1}]);
     expect(routeReducer(HOME, {type: 'push', route: {screen: 'x-presale', n: 2} as unknown as Route})).toBe(HOME);
   });
+
+  it('presaleNav.replace (B1d-1b Task 6): one replace action — the top route swapped for the given one, the reducer deciding', () => {
+    const actions: RouteAction[] = [];
+    const nav = presaleNav(a => void actions.push(a), HOME[0] as Route);
+    nav.replace({screen: 'x-presale', n: 1});
+    expect(actions).toEqual([{type: 'replace', route: {screen: 'x-presale', n: 1}}]);
+    const [replaced] = actions;
+    if (replaced === undefined) throw new Error('no replace');
+    const stack: Route[] = [...HOME, {screen: 'receive'}];
+    expect(routeReducer(stack, replaced)).toEqual([...HOME, {screen: 'x-presale', n: 1}]);
+    // Refused by its validator: the stack stays (negative control).
+    expect(routeReducer(stack, {type: 'replace', route: {screen: 'x-presale', n: 2} as unknown as Route})).toBe(stack);
+  });
 });

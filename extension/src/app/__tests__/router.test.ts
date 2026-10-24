@@ -158,8 +158,6 @@ describe(`#23's route in this build (${process.env.NOCTURA_PRESALE === '0' ? 'of
   it(off ? 'off: {screen: "presale"} is refused like any unknown screen' : 'on: exactly {screen: "presale"} is pushed; any other key refuses it', () => {
     expect(push({screen: 'presale'})).toEqual(off ? HOME : [...HOME, {screen: 'presale'}]);
     for (const extra of [{account: ADDR}, {preparedId: PREPARED}, {stage: 0}]) expect(push({screen: 'presale', ...extra})).toBe(HOME);
-    // #50b (`geo`) is Task 6's: until registered, refused.
-    expect(push({screen: 'geo'})).toBe(HOME);
     expect(SCREENS.has('presale')).toBe(false);
   });
 
@@ -201,5 +199,17 @@ describe(`#23's route in this build (${process.env.NOCTURA_PRESALE === '0' ? 'of
       expect(push(bad)).toBe(HOME);
     }
     expect(SCREENS.has('presale-confirm')).toBe(false);
+  });
+
+  // B1d-1b Task 6: #50b, carrying nothing — pushed over #23 or #11, or in #23's place (a replace).
+  it(off ? 'off: `geo` is refused like any unknown screen, pushed or as a replacement' : 'on: exactly {screen: "geo"}, pushed or as a replacement; any other key refuses it', () => {
+    expect(push({screen: 'geo'})).toEqual(off ? HOME : [...HOME, {screen: 'geo'}]);
+    const onPresale: Route[] = [...HOME, {screen: 'presale'} as unknown as Route];
+    expect(routeReducer(onPresale, {type: 'replace', route: {screen: 'geo'} as unknown as Route})).toEqual(off ? onPresale : [...HOME, {screen: 'geo'}]);
+    for (const extra of [{account: ADDR}, {reason: 'sanctioned'}, {countryCode: 'SI'}, {geo: {open: false, reason: 'sanctioned', countryCode: 'KP'}}]) {
+      expect(push({screen: 'geo', ...extra})).toBe(HOME);
+      expect(routeReducer(onPresale, {type: 'replace', route: {screen: 'geo', ...extra} as unknown as Route})).toBe(onPresale);
+    }
+    expect(SCREENS.has('geo')).toBe(false);
   });
 });

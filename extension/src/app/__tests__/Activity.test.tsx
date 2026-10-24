@@ -267,7 +267,7 @@ describe('#26 activity', () => {
     });
     await renderInWallet(
       <>
-        <Home onReceive={() => undefined} onSend={() => undefined} onPending={() => undefined} onAccounts={() => undefined} />
+        <Home onReceive={() => undefined} onSend={() => undefined} onPending={() => undefined} onAccounts={() => undefined} onRoute={() => undefined} />
         <Activity {...nav} />
       </>,
       {reader},
@@ -292,7 +292,7 @@ describe('#26 activity', () => {
     const w = await setupWallet({reader});
     const {rerender} = render(
       <WalletProvider engine={w.engine} platform={w.platform} surface="popup">
-        <Home onReceive={() => undefined} onSend={() => undefined} onPending={() => undefined} onAccounts={() => undefined} />
+        <Home onReceive={() => undefined} onSend={() => undefined} onPending={() => undefined} onAccounts={() => undefined} onRoute={() => undefined} />
       </WalletProvider>,
     );
     await screen.findByText(REFUSED_TEXT);
@@ -302,7 +302,7 @@ describe('#26 activity', () => {
     rerender(
       <WalletProvider engine={w.engine} platform={w.platform} surface="popup">
         <>
-          <Home onReceive={() => undefined} onSend={() => undefined} onPending={() => undefined} onAccounts={() => undefined} />
+          <Home onReceive={() => undefined} onSend={() => undefined} onPending={() => undefined} onAccounts={() => undefined} onRoute={() => undefined} />
           <Activity {...nav} />
         </>
       </WalletProvider>,
@@ -542,7 +542,7 @@ describe('#41 empty activity', () => {
     });
     await renderInWallet(
       <>
-        <Home onReceive={() => undefined} onSend={() => undefined} onPending={() => undefined} onAccounts={() => undefined} />
+        <Home onReceive={() => undefined} onSend={() => undefined} onPending={() => undefined} onAccounts={() => undefined} onRoute={() => undefined} />
         <Activity {...nav} />
       </>,
       {reader},

@@ -21,3 +21,13 @@ export function kindRecord(p: Pick<Pending, 'intent' | 'extra'>): KindRecord | n
   if (p.intent !== null || p.extra === null || presaleSlots === null) return null;
   return presaleSlots.record(p.extra);
 }
+
+/**
+ * #11's and #26's pending row for a record without an intent (§4.5): its kind's words (Q33) when the build renders the
+ * kind, else Q42a — open, or taking longer than usual.
+ */
+export function kindPendingLine(p: Pick<Pending, 'intent' | 'extra'>, slow: boolean): string {
+  const kind = kindRecord(p);
+  if (kind === null) return slow ? GENERIC_TEXT.slow : GENERIC_TEXT.pending;
+  return slow ? kind.slow : kind.pending;
+}

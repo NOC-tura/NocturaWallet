@@ -97,7 +97,7 @@ describe('the off-build module rule', () => {
 
 // §6.2 item 1's positive control, staged per plan (review 2 M2): the lists only grow, and each plan's modules are named.
 describe('the positive-control lists (staged: B1d-1a Task 2)', () => {
-  it('the on build must carry the three on-path entries — the plugin maps something real — the program state (Task 5), the quote (B1d-1b Task 1), the purchase (Task 2), #23 (Task 4) and #20’s purchase variant with the record slot (Task 5)', () => {
+  it('the on build must carry the three on-path entries — the plugin maps something real — the program state (Task 5), the quote (B1d-1b Task 1), the purchase (Task 2), #23 (Task 4), #20’s purchase variant with the record slot (Task 5) and #50b (Task 6)', () => {
     expect(ON_BUILD).toEqual([
       ...PRESALE_ENTRIES.map(e => e.entry),
       'src/background/presale/layouts.ts',
@@ -111,6 +111,7 @@ describe('the positive-control lists (staged: B1d-1a Task 2)', () => {
       'src/app/presale/text.ts',
       'src/app/presale/PresaleConfirm.tsx',
       'src/app/presale/records.ts',
+      'src/app/presale/Geo.tsx',
     ]);
   });
 
@@ -160,7 +161,7 @@ describe('app.features.json', () => {
 describe('strings', () => {
   const file = (path, text) => ({path, bytes: Buffer.from(text, 'utf8')});
 
-  it('armed by B1d-1b: Task 1 adds its three presale message types (§6.2: "every presale.* message type"), Task 2 its prepare and the intent kind, Task 3 its four sign and resume types, Task 4 #23’s copy, Task 5 #20’s, #10’s and the record words', () => {
+  it('armed by B1d-1b: Task 1 adds its three presale message types (§6.2: "every presale.* message type"), Task 2 its prepare and the intent kind, Task 3 its four sign and resume types, Task 4 #23’s copy, Task 5 #20’s, #10’s and the record words, Task 6 #11’s and #50b’s', () => {
     expect(MARKERS.slice(0, 9)).toEqual(['presale.view', 'presale.banner', 'presale.quote', 'presale.prepareBuy', 'presale.pending', 'presale.preparedFor', 'presale.buy', 'presale.discardPrepared', 'presale-buy']);
     // §6.2's named strings #23 shows, then Q01, Q02, Q04–Q06, Q11–Q16, Q19, Q40c, Q41c, Q41d, Q43, Q52 (each literal part ≥ 8 characters).
     expect(MARKERS.slice(9)).toEqual([
@@ -206,6 +207,33 @@ describe('strings', () => {
       'Buying NOC…',
       'Purchase confirmed',
       'The presale program returned an error. The network fee was charged; no NOC was bought.',
+      // Task 6: #11's banner (its literal parts), Q33 a and b, then #50b — the design's lines §4.3 keeps, the approved
+      // lines, Q20–Q30 (Q21 whole; Q26 and the approved subs are #50b's and #23's).
+      'NOC Presale · Stage ',
+      '% to next stage',
+      'Buying NOC · pending',
+      'Buying NOC · taking longer than usual',
+      'NOC presale is open in your region',
+      "NOC presale isn't open in your region",
+      "The presale can't be opened right now",
+      'Detected region: ',
+      'Approximated from your IP. No GPS, no device location.',
+      'Presale geofence active',
+      'Checked by this wallet against the restricted-region list',
+      'Region check required',
+      'The presale opens only after a successful check against a current list',
+      "Noctura's server did not answer requests from this network",
+      'Why this matters',
+      'Token sales are restricted by jurisdiction · this wallet checks before every purchase',
+      'If the restricted-region list changes, this screen lifts on its own.',
+      'Re-checked at every presale screen mount.',
+      'What still works',
+      'Send / Receive NOC',
+      'View balances',
+      "This wallet doesn't offer the presale in your region. You can still hold, send and receive any NOC you already have.",
+      'The restricted-region list is out of date.',
+      'Your region could not be determined from your IP.',
+      'The region check is unavailable — try again later.',
     ]);
   });
 

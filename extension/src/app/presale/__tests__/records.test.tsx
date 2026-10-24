@@ -69,6 +69,9 @@ describe('the record slot (§1.3, §4.2): words for a purchase whose data reads 
       sent: 'Purchased',
       sentOk: 'Purchase confirmed',
       rejectedSub: 'The presale program returned an error. The network fee was charged; no NOC was bought.',
+      // Q33 (Task 6): #11's and #26's pending row.
+      pending: 'Buying NOC · pending',
+      slow: 'Buying NOC · taking longer than usual',
       amount: '25.00 USDC',
       to: 'Noctura presale',
       done: {screen: 'presale'},

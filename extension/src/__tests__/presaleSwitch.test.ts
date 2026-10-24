@@ -28,9 +28,9 @@ describe(`the build-time switch in this run (${off ? 'off' : 'on'})`, () => {
     // B1d-1b: the background entry's message types (§1.4) — Task 1's three, Task 2's prepare, Task 3's four; the stub adds none.
     expect(bgEntry.PRESALE_MESSAGE_TYPES).toEqual(off ? [] : ['presale.view', 'presale.banner', 'presale.quote', 'presale.prepareBuy', 'presale.pending', 'presale.preparedFor', 'presale.buy', 'presale.discardPrepared']);
     expect(bgStub.PRESALE_MESSAGE_TYPES).toEqual([]);
-    // B1d-1b Tasks 4–5: the popup entry's routes — #23 (`presale`) and #20's purchase variant (`presale-confirm`) — and its
-    // slots (the record words, the resume); the stub adds none.
-    expect(appEntry.presaleRoutes.map(r => r.screen)).toEqual(off ? [] : ['presale', 'presale-confirm']);
+    // B1d-1b Tasks 4–6: the popup entry's routes — #23 (`presale`), #20's purchase variant (`presale-confirm`) and #50b
+    // (`geo`) — and its slots (the record words, the resume, #11's banner and Buy); the stub adds none.
+    expect(appEntry.presaleRoutes.map(r => r.screen)).toEqual(off ? [] : ['presale', 'presale-confirm', 'geo']);
     expect(appStub.presaleRoutes).toEqual([]);
     expect(appEntry.presaleSlots === null).toBe(off);
     expect(appStub.presaleSlots).toBeNull();

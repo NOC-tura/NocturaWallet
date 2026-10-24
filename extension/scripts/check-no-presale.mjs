@@ -45,6 +45,7 @@ export const ON_BUILD = [
   'src/app/presale/text.ts',
   'src/app/presale/PresaleConfirm.tsx',
   'src/app/presale/records.ts',
+  'src/app/presale/Geo.tsx',
 ];
 // The intent-kind registry (C19 — both builds sign and read through it); the jurisdiction gate and its fetcher (D15:
 // the off build did not lose the gate).
@@ -54,8 +55,9 @@ export const BOTH_BUILDS = ['src/background/intents.ts', 'src/background/geo/gat
 // copy (§6.2's named strings and the §10 rows #23 shows whose source is new / approved and whose build is on — each
 // literal part of 8 characters or more), Task 5's route and the copy of #20's purchase variant, #10's description and
 // the record words of #21, #44 and #54 (Q31 "Presale" is shorter than a marker; Q54a "Purchased" is one ordinary word,
-// so Q54 is armed by "Purchase confirmed"); later tasks add theirs. A marker is never one bare word (review 1 L1): a
-// shared string that merely contains it would fail the off build as a leak that is not one.
+// so Q54 is armed by "Purchase confirmed"), Task 6's #11 banner, pending row and #50b; later tasks add theirs. A marker
+// is never one bare word (review 1 L1): a shared string that merely contains it would fail the off build as a leak that
+// is not one.
 export const MARKERS = [
   'presale.view',
   'presale.banner',
@@ -106,6 +108,33 @@ export const MARKERS = [
   'Buying NOC…',
   'Purchase confirmed',
   'The presale program returned an error. The network fee was charged; no NOC was bought.',
+  // Task 6: #11's banner (its literal parts), Q33 a and b, then #50b — the design's lines §4.3 keeps, the approved
+  // lines, Q20–Q30 (Q21 whole; Q26 and the approved subs are #50b's and #23's).
+  'NOC Presale · Stage ',
+  '% to next stage',
+  'Buying NOC · pending',
+  'Buying NOC · taking longer than usual',
+  'NOC presale is open in your region',
+  "NOC presale isn't open in your region",
+  "The presale can't be opened right now",
+  'Detected region: ',
+  'Approximated from your IP. No GPS, no device location.',
+  'Presale geofence active',
+  'Checked by this wallet against the restricted-region list',
+  'Region check required',
+  'The presale opens only after a successful check against a current list',
+  "Noctura's server did not answer requests from this network",
+  'Why this matters',
+  'Token sales are restricted by jurisdiction · this wallet checks before every purchase',
+  'If the restricted-region list changes, this screen lifts on its own.',
+  'Re-checked at every presale screen mount.',
+  'What still works',
+  'Send / Receive NOC',
+  'View balances',
+  "This wallet doesn't offer the presale in your region. You can still hold, send and receive any NOC you already have.",
+  'The restricted-region list is out of date.',
+  'Your region could not be determined from your IP.',
+  'The region check is unavailable — try again later.',
 ];
 // Q42a (B1d-1a: the generic pending row, both builds); 1b adds F12's Q49–Q51. Q42b ("Transaction") is too short to
 // be a string search. The decoder's instruction names are read from its source (DECODER).

@@ -16,6 +16,7 @@ export const NOPRESALE_TESTS = [
   'src/background/__tests__/intents.test.ts',
   'src/background/__tests__/pendingKinds.test.ts',
   'src/app/__tests__/genericRecord.test.tsx',
+  'src/app/__tests__/homePresale.test.tsx',
   'src/app/__tests__/engine.test.ts',
   'src/background/geo/__tests__/gate.test.ts',
   '../core/geo/**/*.test.ts',

@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
-import {act, fireEvent, render, screen} from '@testing-library/react';
+import {useEffect, useState} from 'react';
+import {act, cleanup, fireEvent, render, screen} from '@testing-library/react';
 import {base64} from '@scure/base';
-import {renderInWallet, setupWallet, type WalletOptions} from '../../__tests__/harness';
+import {drainInFlight, renderInWallet, setupWallet, type WalletOptions} from '../../__tests__/harness';
 import {WalletProvider} from '../../WalletContext';
 import {Presale} from '../Presale';
 import {PRESALE_ROUTE} from '../routes';
@@ -83,7 +84,7 @@ function world(o: {chain?: Partial<Chain>; sol?: bigint; geo?: GeoAnswer; prices
   };
   return {chain, calls, wallet, geo, prices, options: {reader, deps, ...(o.before === undefined ? {} : {before: o.before}), ...(o.gate === undefined ? {} : {gate: o.gate})}};
 }
-const nav = {onBack: vi.fn(), onDone: vi.fn(), onPrepared: vi.fn(), onRegion: vi.fn()};
+const nav = {onBack: vi.fn(), onDone: vi.fn(), onPrepared: vi.fn(), onRegion: vi.fn(), onGeo: vi.fn()};
 const presale = () => <Presale {...nav} />;
 const show = (w: World) => renderInWallet(presale(), w.options);
 const requests = (c: Calls) => ({accounts: c.accounts.length, balance: c.balance, tokens: c.tokens, prices: c.prices, geo: c.geo});
@@ -311,11 +312,15 @@ describe('23b pending (§4.1, C17, C30)', () => {
     expect(await screen.findByText('Order pending')).toBeTruthy();
   });
 
-  it('the gate no_check with an open record: 23b rendered, nothing hidden, the closed line beneath (C30)', async () => {
+  it('the gate no_check with an open record: 23b rendered, nothing hidden, the closed line beneath (C30) — a link to #50b, never a replacement (Task 6)', async () => {
     await show(world({geo: {open: false, reason: 'no_check', countryCode: null}, before: seed([purchase()])}));
     expect(await screen.findByText('Order pending')).toBeTruthy();
-    expect(screen.getByText('Not available here — The region check is unavailable — try again later.')).toBeTruthy();
+    const line = screen.getByRole('button', {name: 'Not available here — The region check is unavailable — try again later.'});
+    expect(line.className).toBe('banner warning app-strip app-pre-region');
     expect(screen.getByText('Paid')).toBeTruthy();
+    expect(nav.onGeo).not.toHaveBeenCalled();
+    fireEvent.click(line);
+    expect(nav.onRegion).toHaveBeenCalledTimes(1);
     expect(unstyledClasses(document.body, SELECTORS)).toEqual([]);
   });
 
@@ -417,11 +422,36 @@ describe('the closed answers (§4.1; #50b is Task 6)', () => {
     ['unknown_country', null, 'Not available here — Your region could not be determined from your IP.'],
     ['no_check', null, 'Not available here — The region check is unavailable — try again later.'],
     ['refused', null, 'Not available here — The presale service refused this network.'],
-  ] as const)('the gate closed (%s): the region line in place of the cards, no Buy (#50b’s routing is Task 6)', async (reason, countryCode, line) => {
-    await show(world({geo: {open: false, reason, countryCode}}));
-    expect(await screen.findByText(line)).toBeTruthy();
-    expect(document.querySelector('.input-card')).toBeNull();
-    expect(buyButton()).toBeNull();
+  ] as const)('the gate closed (%s) with no open record: #23 is replaced by #50b (§4.1) — once, nothing of 23a drawn; with an open record the same reason is 23b’s link (positive control)', async (reason, countryCode, line) => {
+    // As App draws it: a new onGeo on every render (the route's inline arrow); a focus re-renders and reads again.
+    function Rerendering() {
+      const [, setN] = useState(0);
+      useEffect(() => {
+        const f = () => setN(n => n + 1);
+        window.addEventListener('focus', f);
+        return () => window.removeEventListener('focus', f);
+      }, []);
+      return <Presale {...nav} onGeo={() => nav.onGeo()} />;
+    }
+    await renderInWallet(<Rerendering />, world({geo: {open: false, reason, countryCode}}).options);
+    await vi.waitFor(() => expect(nav.onGeo).toHaveBeenCalledTimes(1));
+    // The skeleton stays while #23 is replaced: no amount field, no stage of the answer.
+    expect(screen.queryByLabelText('YOU PAY')).toBeNull();
+    expect(document.querySelector('.stage-card[aria-busy="true"]')).not.toBeNull();
+    expect(document.querySelector('.stage-card:not([aria-busy])')).toBeNull();
+    expect(screen.queryByText(line)).toBeNull();
+    expect(buyButton()?.disabled).toBe(true);
+    // A focus re-renders with a new onGeo and asks a view again: the same answer does not replace twice.
+    await act(async () => {
+      window.dispatchEvent(new Event('focus'));
+    });
+    await act(() => drainInFlight());
+    expect(nav.onGeo).toHaveBeenCalledTimes(1);
+    cleanup();
+    vi.clearAllMocks();
+    await show(world({geo: {open: false, reason, countryCode}, before: seed([purchase()])}));
+    expect(await screen.findByRole('button', {name: line})).toBeTruthy();
+    expect(nav.onGeo).not.toHaveBeenCalled();
   });
 });
 
@@ -569,7 +599,7 @@ describe('Buy (§3.3, rule 6): the background prepares; #23 hands its purchase o
     expect(buyButton()).not.toBeNull();
   });
 
-  it('the gate closed since the view → geo-closed: the view read again, its region line; nothing handed on', async () => {
+  it('the gate closed since the view → geo-closed: the view read again, and #23 replaced by #50b; nothing handed on', async () => {
     const w = world();
     await show(w);
     await screen.findByText('Stage 1 of 10 · live');
@@ -577,7 +607,7 @@ describe('Buy (§3.3, rule 6): the background prepares; #23 hands its purchase o
     await screen.findByText('Buy 2,643.83 NOC');
     w.geo.answer = {open: false, reason: 'sanctioned', countryCode: 'KP'};
     fireEvent.click(buyButton() as HTMLButtonElement);
-    expect(await screen.findByText("Not available here — This wallet doesn't offer the presale in your region.")).toBeTruthy();
+    await vi.waitFor(() => expect(nav.onGeo).toHaveBeenCalledTimes(1));
     expect(nav.onPrepared).not.toHaveBeenCalled();
   });
 
@@ -626,7 +656,7 @@ describe('Buy (§3.3, rule 6): the background prepares; #23 hands its purchase o
 });
 
 describe('the route (§4): `presale`, carrying nothing; its exits are nav’s', () => {
-  const navSpy = () => ({pop: vi.fn(), home: vi.fn(), push: vi.fn(), reset: vi.fn()});
+  const navSpy = () => ({pop: vi.fn(), home: vi.fn(), push: vi.fn(), replace: vi.fn(), reset: vi.fn()});
 
   it('exactly {screen: "presale"}', () => {
     expect(PRESALE_ROUTE.screen).toBe('presale');
@@ -651,6 +681,19 @@ describe('the route (§4): `presale`, carrying nothing; its exits are nav’s', 
     const route = nav.push.mock.calls[1]?.[0] as {screen: string; account: string; entry: string; preparedId: string};
     expect({screen: route.screen, account: route.account, entry: route.entry}).toEqual({screen: 'presale-confirm', account: ACCOUNT, entry: 'flow'});
     expect(route.preparedId).toMatch(/^[0-9a-f]{32}$/);
+  });
+
+  it('the gate’s closed answer with no open record → #23 replaced by #50b (`nav.replace`, never a push); 23b’s region line → #50b pushed over #23', async () => {
+    const nav = navSpy();
+    await renderInWallet(<>{PRESALE_ROUTE.render({screen: 'presale'}, nav)}</>, world({geo: {open: false, reason: 'stale_list', countryCode: 'SI'}}).options);
+    await vi.waitFor(() => expect(nav.replace).toHaveBeenCalledWith({screen: 'geo'}));
+    expect(nav.push).not.toHaveBeenCalled();
+    cleanup();
+    const n = navSpy();
+    await renderInWallet(<>{PRESALE_ROUTE.render({screen: 'presale'}, n)}</>, world({geo: {open: false, reason: 'stale_list', countryCode: 'SI'}, before: seed([purchase()])}).options);
+    fireEvent.click(await screen.findByRole('button', {name: 'Not available here — The restricted-region list is out of date.'}));
+    expect(n.push).toHaveBeenCalledWith({screen: 'geo'});
+    expect(n.replace).not.toHaveBeenCalled();
   });
 
   it('23b’s [Done] → home (#11)', async () => {

@@ -226,6 +226,8 @@ function Shell({first, onLeaveHandOver}: {first: Route[]; onLeaveHandOver: () =>
           onReceive={() => go({type: 'push', route: {screen: 'receive'}})}
           onPending={p => go({type: 'push', route: {screen: 'status', account: p.account, id: p.id, since: p.createdAt}})}
           onAccounts={() => setAccounts(true)}
+          // B1d §4.5: #11's Buy and banner → #23 or #50b, as the presale entry decided (none in the build without presale).
+          onRoute={next => presaleNavigation.push(next)}
         />
       );
     } else if (route.tab === 'activity') {

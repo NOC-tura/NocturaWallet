@@ -1,5 +1,5 @@
 import {createEngine, type Transport} from '../../engine';
-import {PREPARE_REFUSALS, presaleClient, presaleViewOf, purchaseDataOf, purchaseViewOf, quoteOf, resumableOf} from '../client';
+import {PREPARE_REFUSALS, bannerOf, presaleClient, presaleViewOf, purchaseDataOf, purchaseViewOf, quoteOf, resumableOf} from '../client';
 import {registerPresale} from '../../../background/presale/api';
 import {handleMessage, registerPresaleHandler} from '../../../background/messages';
 import {PENDING_KEY} from '../../../background/pendingStore';
@@ -278,5 +278,43 @@ describe('the client for #20’s purchase variant', () => {
       {type: 'presale.prepareBuy', account: ACCOUNT, intent: {currency: 'SOL', amount: '2000000000', stage: 0}, challengeId: 'cd'.repeat(16)},
       {type: 'presale.prepareBuy', account: ACCOUNT, intent: {currency: 'SOL', amount: '2000000000', stage: 0}},
     ]);
+  });
+});
+
+// B1d-1b Task 6 (§1.4, §4.5): #11's banner.
+describe('the client for #11’s banner', () => {
+  it('banner: {type} alone; the active sale as bigint price and whole percent (positive control); null for an inactive sale or an unreadable config', async () => {
+    const w = await wired();
+    expect(await w.client.banner()).toEqual({ok: true, data: {stage: 0, priceTicks: 1501n, stagePercent: 12}});
+    expect(w.sent).toEqual([{type: 'presale.banner'}]);
+    for (const chain of [{config: program(configData({active: 0}))}, {config: program(configData({length: 369}))}, {config: null}]) {
+      expect(await (await wired({chain})).client.banner()).toEqual({ok: true, data: null});
+    }
+  });
+
+  it('bannerOf: exactly three keys; a stage outside 0–9, a zero or non-decimal price, a percent not a whole number in 0–100 → failed (undefined)', () => {
+    const good = {stage: 3, priceTicks: '2199', stagePercent: 47};
+    expect(bannerOf(good)).toEqual({stage: 3, priceTicks: 2199n, stagePercent: 47});
+    expect(bannerOf({...good, stagePercent: 0})).toEqual({stage: 3, priceTicks: 2199n, stagePercent: 0});
+    expect(bannerOf({...good, stagePercent: 100})?.stagePercent).toBe(100);
+    expect(bannerOf(null)).toBeNull();
+    for (const bad of [
+      {...good, extra: 1},
+      {stage: 3, priceTicks: '2199'},
+      {...good, stage: 10},
+      {...good, stage: -1},
+      {...good, stage: '3'},
+      {...good, priceTicks: '0'},
+      {...good, priceTicks: 2199},
+      {...good, priceTicks: '21.99'},
+      {...good, stagePercent: 101},
+      {...good, stagePercent: -1},
+      {...good, stagePercent: 4.5},
+      {...good, stagePercent: '47'},
+      [],
+      'banner',
+    ]) {
+      expect([bad, bannerOf(bad)]).toEqual([bad, undefined]);
+    }
   });
 });

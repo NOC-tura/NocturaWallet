@@ -135,16 +135,19 @@ function StageCard({state, live}: {state: StageView; live: boolean}) {
   );
 }
 
-/** The closed line of an answer (§4.1): Q11 / Q12 / Q13 / Q14, or the region line; null when the answer is open. */
-function closedLine(v: PresaleView): string | null {
+/**
+ * The closed line of an answer (§4.1): Q11 / Q12 / Q13 / Q14, or the region line (`region`: a link to #50b); null when
+ * the answer is open.
+ */
+function closedLine(v: PresaleView): {text: string; region: boolean} | null {
   if (v.open) return null;
-  if (v.why === 'unavailable') return v.code === 'refused' ? PRESALE_TEXT.refused : PRESALE_TEXT.unavailable;
-  if (v.why === 'geo') return PRESALE_TEXT.regionLine(GEO_REASON_TEXT[v.geo.reason ?? 'no_check']);
-  return v.why === 'inactive' ? PRESALE_TEXT.inactive : PRESALE_TEXT.blocked;
+  if (v.why === 'unavailable') return {text: v.code === 'refused' ? PRESALE_TEXT.refused : PRESALE_TEXT.unavailable, region: false};
+  if (v.why === 'geo') return {text: PRESALE_TEXT.regionLine(GEO_REASON_TEXT[v.geo.reason ?? 'no_check']), region: true};
+  return {text: v.why === 'inactive' ? PRESALE_TEXT.inactive : PRESALE_TEXT.blocked, region: false};
 }
 
-/** 23b (§4.1, C17, C30): the open purchase, from its record — never hidden; the answer's closed line beneath. */
-function Pending23b({record, line}: {record: Pending; line: string | null}) {
+/** 23b (§4.1, C17, C30): the open purchase, from its record — never hidden; the answer's closed line beneath (a region line opens #50b). */
+function Pending23b({record, line, onRegion}: {record: Pending; line: {text: string; region: boolean} | null; onRegion: () => void}) {
   const data = record.extra === null ? undefined : purchaseDataOf(record.extra.data);
   return (
     <>
@@ -186,7 +189,18 @@ function Pending23b({record, line}: {record: Pending; line: string | null}) {
           <span className="noc-body-sm">{PRESALE_TEXT.closeNote}</span>
         </div>
       </div>
-      {line === null ? null : <Banner tone="warning" title={line} />}
+      {line === null ? null : line.region ? (
+        // §4.1 (B1d-1b Task 6): the region line is a link to #50b, in the warning banner's own words and style.
+        <button type="button" className="banner warning app-strip app-pre-region" onClick={onRegion}>
+          <ExtIcon name="alert-triangle" size={18} />
+          <span className="noc-body-sm banner-title">{line.text}</span>
+          <span className="app-strip-chev">
+            <ExtIcon name="chevron-right" size={18} />
+          </span>
+        </button>
+      ) : (
+        <Banner tone="warning" title={line.text} />
+      )}
       <ExplorerLink signature={record.signature} label={PRESALE_TEXT.explorer} icon={false} className="geo-link noc-body-sm" />
     </>
   );
@@ -209,6 +223,7 @@ export function Presale({
   onDone,
   onPrepared,
   onRegion,
+  onGeo,
 }: {
   /**
    * B1d-1b Task 5: #23 again with what the user was buying — #20's back and its sign-time refusals that keep the
@@ -221,8 +236,10 @@ export function Presale({
   onDone: () => void;
   /** §4.1: the purchase the background prepared — #20's purchase variant (`presale-confirm`, `flow`). */
   onPrepared: (account: string, view: PurchaseView) => void;
-  /** C18: "Not available in your region?" → #50b. */
+  /** C18: "Not available in your region?" (and 23b's region line) → #50b, over #23. */
   onRegion: () => void;
+  /** §4.1 (B1d-1b Task 6): the gate's closed answer with no open record — #23 is replaced by #50b. */
+  onGeo: () => void;
 }) {
   const m = useWallet();
   const account = m.account?.publicKey ?? null;
@@ -282,6 +299,16 @@ export function Presale({
   const failed = view !== null && view.account === account && !view.reply.ok;
   const record = current === null ? null : polled !== null && current.pending !== null && polled.id === current.pending.id ? polled.record : current.pending;
   const open = current !== null && current.open && record === null ? current : null;
+
+  // §4.1: the gate closed and no open record → #50b in #23's place ("re-checked at every presale screen mount": #50b asks
+  // its own view). Once: this screen is leaving.
+  const toGeo = current !== null && record === null && !current.open && current.why === 'geo';
+  const replaced = useRef(false);
+  useEffect(() => {
+    if (!toGeo || replaced.current) return;
+    replaced.current = true;
+    onGeo();
+  }, [toGeo, onGeo]);
 
   // Visibility (C35): hidden pauses the re-read; visible again resumes it with a full view. Focus asks a full view.
   useEffect(() => {
@@ -417,7 +444,8 @@ export function Presale({
     if (what.reread) void read();
   };
 
-  const loading = current === null && !failed;
+  // A closed region answer with no open record is #50b's to show: the skeleton stays while #23 is replaced.
+  const loading = (current === null && !failed) || toGeo;
   const balance = open === null ? null : currency === 'SOL' ? open.balances.SOL : open.balances[currency].largest;
   const sub =
     open === null
@@ -449,13 +477,13 @@ export function Presale({
   } else if (current === null) {
     body = <Banner tone="warning" title={PRESALE_TEXT.unavailable} />;
   } else if (record !== null) {
-    body = <Pending23b record={record} line={closedLine(current)} />;
+    body = <Pending23b record={record} line={closedLine(current)} onRegion={onRegion} />;
   } else if (!current.open) {
     const closed = closedLine(current);
     body = (
       <>
         {current.why === 'inactive' || current.why === 'blocked' ? <StageCard state={current.state} live={current.why === 'blocked'} /> : null}
-        {closed === null ? null : <Banner tone="warning" title={closed} />}
+        {closed === null ? null : <Banner tone="warning" title={closed.text} />}
       </>
     );
   } else {

@@ -68,6 +68,8 @@ export interface PresaleNav {
   pop(): void;
   home(): void;
   push(route: PresaleRouteValue): void;
+  /** B1d-1b Task 6: this screen replaced by `route` (#23 by #50b, §4.3) — the reducer decides it; refused, the stack stays. */
+  replace(route: PresaleRouteValue): void;
   /** B1d-1b: a new stack — #11, then these routes; the reducer decides every one, and refuses the whole stack for one it refuses. */
   reset(routes: readonly PresaleRouteValue[]): void;
 }
@@ -86,6 +88,9 @@ export interface KindRecord {
   sent: string;
   /** #21's confirmed line. */
   sentOk: string;
+  /** B1d-1b Task 6: #11's and #26's pending row while the record is open, and once it takes longer than usual (Q33). */
+  pending: string;
+  slow: string;
   /** #44's sub when the program refused it on chain (the network fee paid). */
   rejectedSub: string;
   /** #44's kept payload (an expired blockhash) and #54's rows: what was paid, and to whom. */
@@ -96,12 +101,24 @@ export interface KindRecord {
   /** #44's and #54's [Try again] (and #44's back arrow): a fresh start of that flow with what the record paid. */
   again: PresaleRouteValue;
 }
+/**
+ * B1d §4.5: #11's presale banner — the entry's words for the sale as `presale.banner` answered it (two lines, as drawn).
+ * Nothing in it decides anything: Home shows it and its Buy only while the entry answers one.
+ */
+export interface HomeBanner {
+  title: string;
+  line: string;
+}
 /** B1d §1.1, §1.3, §4.2: the presale entry's slots — `presaleSlots`, null in the build without presale. */
 export interface PresaleSlots {
   /** The words for a record of the entry's own kind whose data reads back; null for any other. */
   record(extra: PendingExtra): KindRecord | null;
   /** §4.2's resume paths: the route that shows this account's prepared entry of the entry's own kind, or null for none. */
   resume(engine: Engine, account: string): Promise<PresaleRouteValue | null>;
+  /** B1d-1b Task 6, §4.5: #11's banner, or null — no sale shown (inactive, unreadable, refused, locked). */
+  banner(engine: Engine): Promise<HomeBanner | null>;
+  /** §4.5: where #11's Buy (and its banner) goes for this account — #23, #50b, or null: no route, the action hides. */
+  buy(engine: Engine, account: string): Promise<PresaleRouteValue | null>;
 }
 export type RouteAction = {type: 'push'; route: Route} | {type: 'pop'} | {type: 'tab'; tab: Tab} | {type: 'replace'; route: Route} | {type: 'reset'; routes: Route[]};
 
@@ -152,6 +169,7 @@ export function presaleNav(go: (action: RouteAction) => void, home: Route): Pres
     pop: () => go({type: 'pop'}),
     home: () => go({type: 'reset', routes: [home]}),
     push: route => go({type: 'push', route: route as Route}),
+    replace: route => go({type: 'replace', route: route as Route}),
     reset: routes => go({type: 'reset', routes: [home, ...(routes as readonly Route[])]}),
   };
 }

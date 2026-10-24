@@ -61,7 +61,9 @@ export type ExtIconName =
   | 'unlink'
   // B1d-1b: #23's stage eyebrow (#i-rocket) and its Buy (#i-buy), from the sprite.
   | 'rocket'
-  | 'buy';
+  | 'buy'
+  // B1d-1b Task 6: #50b's "Why this matters" row (#i-file-text), from the sprite.
+  | 'file-text';
 
 const PATHS: Record<ExtIconName, ReactNode> = {
   // B1d-1b, from the design's sprite: #i-rocket and #i-buy.
@@ -78,6 +80,15 @@ const PATHS: Record<ExtIconName, ReactNode> = {
       <circle cx="12" cy="12" r="9" />
       <path d="M12 7v10" />
       <path d="M15 9.5C13.5 8 11 8 9.5 9.5S8 13 9.5 14.5L12 15c1.5.5 3 1 3 2.5S13.5 19 12 19s-3-.5-3-2" />
+    </>
+  ),
+  'file-text': (
+    <>
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <polyline points="14 2 14 8 20 8" />
+      <line x1="16" y1="13" x2="8" y2="13" />
+      <line x1="16" y1="17" x2="8" y2="17" />
+      <line x1="10" y1="9" x2="8" y2="9" />
     </>
   ),
   // B1c plan 1, from the design: #i-plug (the sprite), #49's sort lines (ix:18718) and its chain-broken glyph (ix:18801).
