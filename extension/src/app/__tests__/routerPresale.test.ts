@@ -1,15 +1,15 @@
-import {routeReducer, type PresaleRoute, type Route} from '../router';
+import {presaleNav, presaleRouteOf, routeReducer, type PresaleRoute, type Route, type RouteAction} from '../router';
 
 // B1d §1.1: the router takes the presale entry's routes (src/app/presale/index.ts, empty in B1d-1a and in the build
 // without presale). Here the entry is replaced by a test double holding two: one with a screen of its own, and one
 // that claims a screen the closed list already holds.
 vi.mock('../presale', (): {presaleRoutes: readonly PresaleRoute[]; presaleSlots: null} => ({
   presaleRoutes: [
-    {screen: 'x-presale', isRoute: o => Object.keys(o).length === 2 && o.n === 1},
-    {screen: 'security', isRoute: () => true},
-    {screen: 'resume', isRoute: () => true},
-    {screen: 'created', isRoute: () => true},
-    {screen: 'imported', isRoute: () => true},
+    {screen: 'x-presale', isRoute: o => Object.keys(o).length === 2 && o.n === 1, render: () => null},
+    {screen: 'security', isRoute: () => true, render: () => null},
+    {screen: 'resume', isRoute: () => true, render: () => null},
+    {screen: 'created', isRoute: () => true, render: () => null},
+    {screen: 'imported', isRoute: () => true, render: () => null},
   ],
   presaleSlots: null,
 }));
@@ -35,5 +35,26 @@ describe('the router with presale routes', () => {
     expect(push({screen: 'resume', account: 'x'})).toBe(HOME);
     expect(push({screen: 'created'})).toBe(HOME);
     expect(push({screen: 'imported'})).toBe(HOME);
+  });
+});
+
+describe('App’s way to a presale route (B1d-1b Task 4)', () => {
+  it('presaleRouteOf: the entry’s route for its own screen; never for a screen of the closed list, even one an entry claims', () => {
+    expect(presaleRouteOf({screen: 'x-presale', n: 1} as unknown as Route)?.screen).toBe('x-presale');
+    expect(presaleRouteOf({screen: 'security'})).toBeUndefined();
+    expect(presaleRouteOf({screen: 'x-other'} as unknown as Route)).toBeUndefined();
+  });
+
+  it('presaleNav: pop, home (a reset to the given route) and push — each one reducer action, the push decided by the reducer', () => {
+    const actions: RouteAction[] = [];
+    const nav = presaleNav(a => void actions.push(a), HOME[0] as Route);
+    nav.pop();
+    nav.home();
+    nav.push({screen: 'x-presale', n: 1});
+    expect(actions).toEqual([{type: 'pop'}, {type: 'reset', routes: HOME}, {type: 'push', route: {screen: 'x-presale', n: 1}}]);
+    const [, , pushed] = actions;
+    if (pushed === undefined) throw new Error('no push');
+    expect(routeReducer(HOME, pushed)).toEqual([...HOME, {screen: 'x-presale', n: 1}]);
+    expect(routeReducer(HOME, {type: 'push', route: {screen: 'x-presale', n: 2} as unknown as Route})).toBe(HOME);
   });
 });

@@ -42,7 +42,14 @@ describe('design-ext.css (B1b-2b plan 1)', () => {
     }
   });
 
+  // B1d-1b re-ran the extraction with #23's classes added (ix:2615-2796).
+  it('carries #23’s presale classes (B1d-1b)', () => {
+    for (const sel of ['.s-pre .stage-card', '.s-pre .stage-card .progress > i', '.s-pre .input-card .lbl-row', '.s-pre .input-card .est .ticker', '.s-pre .geo-link', '.s-pre .pending-card .ring', '.s-pre .pending-card .row .r.mono', '.s-pre .receipt .row']) {
+      expect(CSS).toContain(`\n${sel} {`);
+    }
+  });
+
   it('is the extraction output, byte for byte (the hash the plan pins; scripts/extract-design-css.mjs --check against the design)', () => {
-    expect(createHash('sha256').update(CSS).digest('hex')).toBe('ccbae441c059119e3bc32e5b88909e2974dd4d374bdc4f89bff13a475de72f8a');
+    expect(createHash('sha256').update(CSS).digest('hex')).toBe('cfd89588d498b84b76f82c9955a5f975b4dae7b52c29440c180defe93ead35b3');
   });
 });

@@ -97,8 +97,19 @@ describe('the off-build module rule', () => {
 
 // §6.2 item 1's positive control, staged per plan (review 2 M2): the lists only grow, and each plan's modules are named.
 describe('the positive-control lists (staged: B1d-1a Task 2)', () => {
-  it('the on build must carry the three on-path entries — the plugin maps something real — the program state (Task 5), the quote (B1d-1b Task 1) and the purchase (Task 2)', () => {
-    expect(ON_BUILD).toEqual([...PRESALE_ENTRIES.map(e => e.entry), 'src/background/presale/layouts.ts', 'src/background/presale/state.ts', 'core/presale/limits.ts', 'src/background/presale/quote.ts', 'src/background/presale/buy.ts']);
+  it('the on build must carry the three on-path entries — the plugin maps something real — the program state (Task 5), the quote (B1d-1b Task 1), the purchase (Task 2) and #23 (Task 4)', () => {
+    expect(ON_BUILD).toEqual([
+      ...PRESALE_ENTRIES.map(e => e.entry),
+      'src/background/presale/layouts.ts',
+      'src/background/presale/state.ts',
+      'core/presale/limits.ts',
+      'src/background/presale/quote.ts',
+      'src/background/presale/buy.ts',
+      'src/app/presale/routes.tsx',
+      'src/app/presale/Presale.tsx',
+      'src/app/presale/client.ts',
+      'src/app/presale/text.ts',
+    ]);
   });
 
   it('both builds must carry the intent-kind registry (Task 3) and the jurisdiction gate with its fetcher (Task 6, D15)', () => {
@@ -147,8 +158,34 @@ describe('app.features.json', () => {
 describe('strings', () => {
   const file = (path, text) => ({path, bytes: Buffer.from(text, 'utf8')});
 
-  it('armed by B1d-1b: Task 1 adds its three presale message types (§6.2: "every presale.* message type"), Task 2 its prepare and the intent kind, Task 3 its four sign and resume types', () => {
-    expect(MARKERS).toEqual(['presale.view', 'presale.banner', 'presale.quote', 'presale.prepareBuy', 'presale.pending', 'presale.preparedFor', 'presale.buy', 'presale.discardPrepared', 'presale-buy']);
+  it('armed by B1d-1b: Task 1 adds its three presale message types (§6.2: "every presale.* message type"), Task 2 its prepare and the intent kind, Task 3 its four sign and resume types, Task 4 #23’s copy', () => {
+    expect(MARKERS.slice(0, 9)).toEqual(['presale.view', 'presale.banner', 'presale.quote', 'presale.prepareBuy', 'presale.pending', 'presale.preparedFor', 'presale.buy', 'presale.discardPrepared', 'presale-buy']);
+    // §6.2's named strings #23 shows, then Q01, Q02, Q04–Q06, Q11–Q16, Q19, Q40c, Q41c, Q41d, Q43, Q52 (each literal part ≥ 8 characters).
+    expect(MARKERS.slice(9)).toEqual([
+      'NOC presale',
+      'YOU RECEIVE (EST.)',
+      'Claimable after TGE',
+      'Order pending',
+      'Not available here',
+      ' stage cap',
+      ' · 1 SOL ≈ ',
+      'Your allocation',
+      'Waiting for confirmation. Claimable after TGE.',
+      'You can close the popup — Noctura keeps watching this purchase. Funds are non-refundable per presale terms.',
+      'Presale unavailable — try again later.',
+      'The presale service refused this network.',
+      'The presale is not open.',
+      "This account can't buy in the presale.",
+      'Price changed — review again',
+      'The purchase could not be simulated.',
+      'SOL price unavailable — pay with USDC or USDT, or try again later.',
+      'Above your presale limit — you can buy up to ',
+      ' is split across accounts — at most ',
+      ' in one purchase',
+      'Keep at least 0.00089088 SOL, or buy with less',
+      'Your presale account changed — review again',
+      'The presale is busy right now — try again.',
+    ]);
   });
 
   it('a marker in any off-build file is a violation; each marker must be found in the on build', () => {

@@ -4,17 +4,34 @@ import {TOKEN_INFO, showAmount, showUsd} from '../format';
 import {valuation} from '../valuation';
 import type {Balances, Prices, Token} from '../engine';
 
+const ALL_TOKENS: readonly Token[] = ['SOL', 'NOC', 'USDC', 'USDT'];
+
 /**
  * #43 token selector (D18: the design's bottom sheet, as a list of the four tokens). Built in plan 1
  * with the sheet it shares with the account switcher; #12 opens it (plan 3). With no balances read yet
- * (`null`), each row's amount and value read "—" — never 0 (§7.3).
+ * (`null`), each row's amount and value read "—" — never 0 (§7.3). `tokens`: the rows offered, in this order (B1d C20:
+ * #23's currency choice offers SOL, USDC and USDT).
  */
-export function TokenSheet({balances, prices, selected, onSelect, onClose}: {balances: Balances | null; prices: Prices | null; selected: Token; onSelect: (t: Token) => void; onClose: () => void}) {
+export function TokenSheet({
+  balances,
+  prices,
+  selected,
+  onSelect,
+  onClose,
+  tokens = ALL_TOKENS,
+}: {
+  balances: Balances | null;
+  prices: Prices | null;
+  selected: Token;
+  onSelect: (t: Token) => void;
+  onClose: () => void;
+  tokens?: readonly Token[];
+}) {
   const v = balances === null ? null : valuation(balances, prices);
   return (
     <Sheet title="Choose a token" onClose={onClose}>
       <div className="list">
-        {(['SOL', 'NOC', 'USDC', 'USDT'] as const).map(t => (
+        {tokens.map(t => (
           <button
             type="button"
             key={t}

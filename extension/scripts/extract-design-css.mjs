@@ -37,6 +37,8 @@ export const PREFIXES = ['.screen', '.top-bar', '.sticky-bar', '.scroll-area', '
   '.s9-sim-banner', '.s9-bal-card', '.s9-bal-row', '.s9-origin-pill', '.origin-badge',
   // B1c plan 3: #48's typed-confirm (ix:3856-3860).
   '.s9-typed-confirm',
+  // B1d-1b: #23 presale (its rules at ix:2615-2796; the pending ring animates with stk-spin, already kept).
+  '.s-pre',
 ];
 export const KEYFRAMES = ['shimmer', 'spin', 'shake',
   // Plan 3: what the send-flow rules animate with (#19's progress strip and skeleton, #21's ring and status dot, #54's ring; #20's caret — its rule comes with .s-conf, the typed field does not, D22).

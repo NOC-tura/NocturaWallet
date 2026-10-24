@@ -45,6 +45,7 @@ function stubEngine(accounts: Account[], selected: number): Engine {
     dappReauth: async () => ({ok: false, error: 'failed'}),
     lock: async () => ({ok: true, data: null}),
     ping: async () => ({ok: true, data: null}),
+    request: async () => ({ok: false, error: 'failed'}),
   };
 }
 

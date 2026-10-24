@@ -28,8 +28,8 @@ export const CORE_PRESALE_ALLOWED = ['core/presale/addresses.ts', 'core/presale/
 export const WEB_ALLOWED = ['../web/src/ui/', '../web/src/styles/'];
 
 // B1d-1a: the three on-path entries (§1.1), the program state presale/{layouts,state}.ts and core/presale/limits.ts
-// (§2.1); 1b adds presale/quote.ts (Task 1) and presale/buy.ts; B1d-2 adds presale/{record,referral}.ts and
-// core/referral/index.ts.
+// (§2.1); 1b adds presale/quote.ts (Task 1), presale/buy.ts (Task 2) and #23's popup modules (Task 4); B1d-2 adds
+// presale/{record,referral}.ts and core/referral/index.ts.
 export const ON_BUILD = [
   'src/background/presale/api.ts',
   'src/app/presale/index.ts',
@@ -39,13 +39,18 @@ export const ON_BUILD = [
   'core/presale/limits.ts',
   'src/background/presale/quote.ts',
   'src/background/presale/buy.ts',
+  'src/app/presale/routes.tsx',
+  'src/app/presale/Presale.tsx',
+  'src/app/presale/client.ts',
+  'src/app/presale/text.ts',
 ];
 // The intent-kind registry (C19 — both builds sign and read through it); the jurisdiction gate and its fetcher (D15:
 // the off build did not lose the gate).
 export const BOTH_BUILDS = ['src/background/intents.ts', 'src/background/geo/gate.ts', 'core/geo/fetch.ts'];
 // Armed by B1d-1b (1a shipped none — Q42 is "both"): Task 1's three presale message types (§6.2: "every presale.*
-// message type"), Task 2's prepare and the purchase's intent kind, Task 3's four sign and resume types; later tasks
-// add theirs.
+// message type"), Task 2's prepare and the purchase's intent kind, Task 3's four sign and resume types, Task 4's #23
+// copy (§6.2's named strings and the §10 rows #23 shows whose source is new / approved and whose build is on — each
+// literal part of 8 characters or more); later tasks add theirs.
 export const MARKERS = [
   'presale.view',
   'presale.banner',
@@ -56,6 +61,29 @@ export const MARKERS = [
   'presale.buy',
   'presale.discardPrepared',
   'presale-buy',
+  'NOC presale',
+  'YOU RECEIVE (EST.)',
+  'Claimable after TGE',
+  'Order pending',
+  'Not available here',
+  ' stage cap',
+  ' · 1 SOL ≈ ',
+  'Your allocation',
+  'Waiting for confirmation. Claimable after TGE.',
+  'You can close the popup — Noctura keeps watching this purchase. Funds are non-refundable per presale terms.',
+  'Presale unavailable — try again later.',
+  'The presale service refused this network.',
+  'The presale is not open.',
+  "This account can't buy in the presale.",
+  'Price changed — review again',
+  'The purchase could not be simulated.',
+  'SOL price unavailable — pay with USDC or USDT, or try again later.',
+  'Above your presale limit — you can buy up to ',
+  ' is split across accounts — at most ',
+  ' in one purchase',
+  'Keep at least 0.00089088 SOL, or buy with less',
+  'Your presale account changed — review again',
+  'The presale is busy right now — try again.',
 ];
 // Q42a (B1d-1a: the generic pending row, both builds); 1b adds F12's Q49–Q51. Q42b ("Transaction") is too short to
 // be a string search. The decoder's instruction names are read from its source (DECODER).

@@ -148,3 +148,19 @@ describe('the router', () => {
     expect(firstRoute()).toEqual(HOME);
   });
 });
+
+// B1d §4 (B1d-1b Task 4): #23's route `presale`, carrying nothing, comes from the presale entry — in the build with
+// presale only. This file runs in both vitest runs (vitest.nopresale.config.ts marks the off one).
+describe(`#23's route in this build (${process.env.NOCTURA_PRESALE === '0' ? 'off' : 'on'})`, () => {
+  const off = process.env.NOCTURA_PRESALE === '0';
+  const push = (route: unknown) => routeReducer(HOME, {type: 'push', route: route as Route});
+
+  it(off ? 'off: {screen: "presale"} is refused like any unknown screen' : 'on: exactly {screen: "presale"} is pushed; any other key refuses it', () => {
+    expect(push({screen: 'presale'})).toEqual(off ? HOME : [...HOME, {screen: 'presale'}]);
+    for (const extra of [{account: ADDR}, {preparedId: PREPARED}, {stage: 0}]) expect(push({screen: 'presale', ...extra})).toBe(HOME);
+    // The routes #23 hands over to are later tasks' (#20's purchase variant, #50b): until registered, refused.
+    expect(push({screen: 'presale-confirm', account: ADDR, entry: 'flow', preparedId: PREPARED})).toBe(HOME);
+    expect(push({screen: 'geo'})).toBe(HOME);
+    expect(SCREENS.has('presale')).toBe(false);
+  });
+});

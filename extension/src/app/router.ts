@@ -1,3 +1,4 @@
+import type {ReactNode} from 'react';
 import type {Tab} from './ui/TabBar';
 import type {Surface} from './WalletContext';
 import type {Intent} from './engine';
@@ -52,6 +53,19 @@ export type Route =
 export interface PresaleRoute {
   screen: string;
   isRoute(o: Readonly<Record<string, unknown>>): boolean;
+  /** B1d-1b: the route's screen, drawn by App for a route this validator accepted; it moves only through `nav`. */
+  render(route: PresaleRouteValue, nav: PresaleNav): ReactNode;
+}
+/** A presale route as its entry builds it: a screen name and that route's own keys, which its validator decides. */
+export type PresaleRouteValue = {readonly screen: string} & Readonly<Record<string, unknown>>;
+/**
+ * The ways a presale screen leaves (B1d-1b): back one step, home to #11, or a push the reducer decides like any other
+ * — a route no entry accepts leaves the stack as it is.
+ */
+export interface PresaleNav {
+  pop(): void;
+  home(): void;
+  push(route: PresaleRouteValue): void;
 }
 export type RouteAction = {type: 'push'; route: Route} | {type: 'pop'} | {type: 'tab'; tab: Tab} | {type: 'replace'; route: Route} | {type: 'reset'; routes: Route[]};
 
@@ -89,6 +103,20 @@ function isRoute(r: unknown): r is Route {
   }
   if (o.screen === 'status') return only(o, ['screen', 'account', 'id', 'since']) && isAddress(o.account) && (o.id === null || (typeof o.id === 'string' && HEX_ID.test(o.id))) && typeof o.since === 'number' && Number.isFinite(o.since);
   return true;
+}
+
+/** The presale route a stack's top is, if any (B1d §1.1): never a screen of the closed list. */
+export function presaleRouteOf(route: Route): PresaleRoute | undefined {
+  return SCREENS.has(route.screen) ? undefined : presaleRoutes.find(p => p.screen === route.screen);
+}
+
+/** How a presale screen moves the stack: each a reducer action, a push decided by the target's own validator. */
+export function presaleNav(go: (action: RouteAction) => void, home: Route): PresaleNav {
+  return {
+    pop: () => go({type: 'pop'}),
+    home: () => go({type: 'reset', routes: [home]}),
+    push: route => go({type: 'push', route: route as Route}),
+  };
 }
 
 export function routeReducer(stack: Route[], action: RouteAction): Route[] {

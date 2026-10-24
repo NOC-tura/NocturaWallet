@@ -2077,3 +2077,80 @@ body:has(.app-window) {
   align-items: center;
   gap: var(--space-2);
 }
+
+/* B1d-1b: #23 presale (index.html #23, ix 10603-10902) — what the mockup says inline, and the popup's controls. */
+/* 23a's second meta row (`style="margin-top:-4px"`). */
+.s-pre .stage-card .meta.app-pre-meta2 {
+  margin-top: -4px;
+}
+/* The unit label is the currency choice (C20): the design's ticker, as a button. */
+.s-pre .input-card button.ticker {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+/* [MAX], as the mockup styles it inline. */
+.s-pre .input-card .max {
+  background: var(--bg-surface-3);
+  color: var(--fg-primary);
+  padding: 0 12px;
+  height: 32px;
+  border-radius: var(--radius-pill);
+  border: 0;
+  font: 600 12px/1 var(--font-body);
+  cursor: pointer;
+}
+/* The amount is an <input> where the mockup draws text: no UA padding, so it starts on the card's edge as drawn. */
+.s-pre .input-card input.input {
+  padding: 0;
+}
+.s-pre .input-card .input::placeholder {
+  color: var(--fg-disabled);
+}
+/* The limit or balance line under the amount, in #12's error style (.s-send .helper.error). */
+.s-pre .input-card .helper {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  font: 400 12px/16px var(--font-body);
+}
+.s-pre .input-card .helper svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+.s-pre .input-card .helper.error {
+  color: var(--danger);
+}
+/* The allocation row: its value, and D5's TGE line under it (no drawn state; the receipt-row style). */
+.s-pre .receipt .row .r.app-pre-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+.s-pre .receipt .row .r .app-pre-claimable {
+  color: var(--fg-tertiary);
+}
+/* 23b's head: the mockup's h3 and p carry no margin (UA margins pushed the two lines apart). */
+.s-pre .pending-card .head .copy h3,
+.s-pre .pending-card .head .copy p {
+  margin: 0;
+}
+/* 23b's [View on Solana explorer]: the design's geo-link, as the link it is. */
+.s-pre a.geo-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+/* index.html #23 (D): the pending ring collapses to a static accent ring under reduced motion. */
+@media (prefers-reduced-motion: reduce) {
+  .s-pre .pending-card .ring {
+    animation: none;
+    border-top-color: var(--accent);
+  }
+}

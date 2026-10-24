@@ -2,7 +2,7 @@ import {useEffect, useLayoutEffect, useReducer, useRef, useState} from 'react';
 import {WalletProvider, useWallet, type Surface} from './WalletContext';
 import {createEngine, type Engine, type HistoryItem, type Intent} from './engine';
 import {browserPlatform, type Platform} from './platform';
-import {FLOW, TAB_ONLY, firstRoute, pickStack, routeReducer, type Route} from './router';
+import {FLOW, TAB_ONLY, firstRoute, pickStack, presaleNav, presaleRouteOf, routeReducer, type Route} from './router';
 import {draftOf, type Draft} from './send/rules';
 import {TabBar} from './ui/TabBar';
 import {CancelledToast} from './ui/CancelledToast';
@@ -179,8 +179,13 @@ function Shell({first, onLeaveHandOver}: {first: Route[]; onLeaveHandOver: () =>
   if (m.phase === 'no-wallet') return <NoWallet />;
   if (m.phase === 'locked') return <Locked />;
 
+  // B1d §1.1, §4: a presale route (none in the build without presale) draws its own screen; it leaves through `nav`.
+  const presale = presaleRouteOf(route);
+
   let screen;
-  if (route.screen === 'tab') {
+  if (presale !== undefined) {
+    screen = presale.render(route, presaleNav(go, HOME));
+  } else if (route.screen === 'tab') {
     if (route.tab === 'home') {
       screen = (
         <Home

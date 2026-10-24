@@ -58,9 +58,28 @@ export type ExtIconName =
   // B1c plan 1: #31's Connected dApps row (#i-plug), #49's sort button and empty state (inline in the mockup, ix:18718, 18801).
   | 'plug'
   | 'sort'
-  | 'unlink';
+  | 'unlink'
+  // B1d-1b: #23's stage eyebrow (#i-rocket) and its Buy (#i-buy), from the sprite.
+  | 'rocket'
+  | 'buy';
 
 const PATHS: Record<ExtIconName, ReactNode> = {
+  // B1d-1b, from the design's sprite: #i-rocket and #i-buy.
+  rocket: (
+    <>
+      <path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09Z" />
+      <path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2Z" />
+      <path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0" />
+      <path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5" />
+    </>
+  ),
+  buy: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v10" />
+      <path d="M15 9.5C13.5 8 11 8 9.5 9.5S8 13 9.5 14.5L12 15c1.5.5 3 1 3 2.5S13.5 19 12 19s-3-.5-3-2" />
+    </>
+  ),
   // B1c plan 1, from the design: #i-plug (the sprite), #49's sort lines (ix:18718) and its chain-broken glyph (ix:18801).
   plug: (
     <>
