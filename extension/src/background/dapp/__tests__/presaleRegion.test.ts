@@ -10,6 +10,7 @@ import {DAPP_SESSION_KEY, readDappSession, type Entry} from '../store';
 import {carriesPurchase, dappAbout, dappDigest, txRefused} from '../signTx';
 import {simStateOf} from '../simulate';
 import {issueChallenge, satisfyChallenge} from '../../reauthChallenges';
+import {REAUTH_KEY} from '../../session';
 import {ACCOUNT, RECIPIENT} from '../../__tests__/fixtures';
 import {ME, assign, presaleIx, transfer, txScene, v0} from './txHarness';
 
@@ -195,6 +196,33 @@ describe(`F12 through the background (${off ? 'off' : 'on'} build)`, () => {
     const ok = await scene(wires, async () => OPEN);
     expect(await ok.approve()).toEqual({ok: true});
     expect((ok.signed()[0]?.result as {signed: string[]}).signed).toHaveLength(3);
+    // Review I1: the purchase in tx 1 of 3, the gate open at the simulation and closed at the approval — the decision
+    // asks again for the whole batch (asked at the simulation, at the decision, by the re-simulation), never only tx 0.
+    let answer: GeoAnswer = OPEN;
+    const late = await scene(wires, async () => answer);
+    expect(flagsIn(late.view)?.map(l => l?.filter(f => f.kind === 'presale-region').length)).toEqual([0, 0, 0]);
+    answer = closed({reason: 'refused', countryCode: null});
+    expect(await late.approve()).toEqual(REFUSED('presale-region'));
+    expect(late.asked).toHaveBeenCalledTimes(3);
+    expect([(await late.stored()).state, late.signed()]).toEqual(['queued', []]);
+  });
+
+  it('a closed answer at the approval issues no challenge: the gate is asked before the re-authentication gate (review Minor 1)', async () => {
+    // F3's block beside a purchase: this request needs re-authentication. Open at the simulation, closed at the
+    // approval, the block's word given → `presale-region`, and no challenge was issued or requested.
+    let answer: GeoAnswer = OPEN;
+    const c = await scene([v0([assign(), presaleIx('presale_purchase_with_sol')])], async () => answer);
+    expect(flagsIn(c.view)?.[0]?.map(f => f.kind)).toEqual(['assign', 'non-transfer']);
+    answer = closed({reason: 'sanctioned', countryCode: 'KP'});
+    expect(await c.approve([{tx: 0, word: 'ASSIGN'}])).toEqual(REFUSED('presale-region'));
+    expect(c.asked).toHaveBeenCalledTimes(3);
+    expect([(await c.stored()).state, (await c.stored()).challengeId, c.signed()]).toEqual(['queued', null, []]);
+    expect(Object.keys(((await c.ext.session.get(REAUTH_KEY)) ?? {}) as Record<string, unknown>)).toEqual([]);
+    // Positive control: the same request with the gate open reaches the re-authentication gate and issues a challenge.
+    const ok = await scene([v0([assign(), presaleIx('presale_purchase_with_sol')])], async () => OPEN);
+    expect(await ok.approve([{tx: 0, word: 'ASSIGN'}])).toEqual(REFUSED('reauth-required'));
+    const id = (await ok.stored()).challengeId;
+    expect(Object.keys(((await ok.ext.session.get(REAUTH_KEY)) ?? {}) as Record<string, unknown>)).toEqual([id]);
   });
 
   it('a non-purchase presale instruction (register_referrer): the gate is never asked, no F12, approvable', async () => {
