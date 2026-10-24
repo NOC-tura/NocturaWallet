@@ -78,8 +78,11 @@ export interface DappFlag {
   step: number | null;
   scope?: F5Scope;
 }
-/** Each red flag's row of the table (spec §3.3; F11, the origin mismatch, never reaches a challenge). */
-export const FLAG_ROW: Record<RedFlagKind, FlagRow> = {
+/**
+ * Each red flag's row of the table (spec §3.3; F11, the origin mismatch, never reaches a challenge — nor does B1d's
+ * F12, `presale-region`: a request carrying one is refused before any challenge is issued, signTx.ts txRefused).
+ */
+export const FLAG_ROW: Record<Exclude<RedFlagKind, 'presale-region'>, FlagRow> = {
   'unknown-program': 'F1',
   'non-transfer': 'F2',
   assign: 'F3',

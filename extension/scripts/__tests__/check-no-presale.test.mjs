@@ -26,7 +26,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const FIXTURE = JSON.parse(readFileSync(join(ROOT, 'scripts/__tests__/fixtures/app.modules.0b79442.json'), 'utf8'));
 const map = ids => ({chunks: {'background.js': ids}});
 const without = (m, id) => ({...m, chunks: Object.fromEntries(Object.entries(m.chunks).map(([f, ids]) => [f, ids.filter(i => i !== id)]))});
-const SHARED = ['src/background/index.ts', 'src/background/intents.ts', 'src/background/geo/gate.ts', '../core/geo/fetch.ts', '../core/presale/addresses.ts', '../core/presale/allocation.ts', '../core/presale/stagePrices.ts', '../core/solana/encoding.ts'];
+const SHARED = ['src/background/index.ts', 'src/background/intents.ts', 'src/background/geo/gate.ts', '../core/geo/fetch.ts', 'src/app/ui/regionName.ts', '../core/presale/addresses.ts', '../core/presale/allocation.ts', '../core/presale/stagePrices.ts', '../core/solana/encoding.ts'];
 
 // B1d §6.2 item 1 (C38, D15): the off build's module rule — an allowlist for core/presale/**, core/geo/** whole.
 describe('the off-build module rule', () => {
@@ -115,8 +115,8 @@ describe('the positive-control lists (staged: B1d-1a Task 2)', () => {
     ]);
   });
 
-  it('both builds must carry the intent-kind registry (Task 3) and the jurisdiction gate with its fetcher (Task 6, D15)', () => {
-    expect(BOTH_BUILDS).toEqual(['src/background/intents.ts', 'src/background/geo/gate.ts', 'core/geo/fetch.ts']);
+  it('both builds must carry the intent-kind registry (Task 3), the jurisdiction gate with its fetcher (Task 6, D15) and the country name of #48’s F12 (B1d-1b Task 7)', () => {
+    expect(BOTH_BUILDS).toEqual(['src/background/intents.ts', 'src/background/geo/gate.ts', 'core/geo/fetch.ts', 'src/app/ui/regionName.ts']);
   });
 
   it('missingModules names each required module a map does not carry', () => {
@@ -256,16 +256,24 @@ describe('strings', () => {
     for (const m of MARKERS) expect([m, /^[A-Za-z]+$/.test(m)]).toEqual([m, false]);
   });
 
-  it('must stay: B1b/B1c presale copy, Q42 and the decoder instruction names are found in the off build', () => {
+  it('must stay: B1b/B1c presale copy, Q42, F12’s Q49–Q51 and the decoder instruction names are found in the off build', () => {
     // Q42a (B1d §10, both builds): the generic pending row of a record the build cannot show (B1d-1a Task 4). Q42b
     // ("Transaction") is too short to mean anything as a string search; its screens are tested in both vitest runs.
-    expect(MUST_STAY).toEqual(['Presale purchase', 'PRESALE PURCHASE', 'Transaction · pending', 'Transaction · taking longer than usual']);
-    const all = [file('app/a.js', '"Presale purchase"'), file('app/b.js', 'PRESALE PURCHASE'), file('app/c.js', '`Transaction · pending`,`Transaction · taking longer than usual`')];
+    // B1d-1b Task 7: #48's F12 (D15 — the off build blocks a site's purchase exactly as the on build does).
+    const q50a = "This transaction buys NOC in the presale, which this wallet doesn't allow from your region (";
+    const q50b = "This transaction buys NOC in the presale. The wallet's region check did not succeed, so it can't be approved — try again later.";
+    expect(MUST_STAY).toEqual(['Presale purchase', 'PRESALE PURCHASE', 'Transaction · pending', 'Transaction · taking longer than usual', 'Presale purchase blocked', q50a, q50b, 'Only Reject is available · no override']);
+    const f12 = file('chrome/approve.js', `"Presale purchase blocked",regionSanctioned:e=>\`${q50a}\${e}).\`,regionClosed:${JSON.stringify(q50b)},regionMeta:"Only Reject is available · no override"`);
+    const all = [file('app/a.js', '"Presale purchase"'), file('app/b.js', 'PRESALE PURCHASE'), file('app/c.js', '`Transaction · pending`,`Transaction · taking longer than usual`'), f12];
     expect(missingStrings('off', all, MUST_STAY)).toEqual([]);
     expect(missingStrings('off', [file('app/a.js', '"Presale purchase"')], MUST_STAY)).toEqual([
       'off build: no file contains "PRESALE PURCHASE" — the switch stripped what both builds need',
       'off build: no file contains "Transaction · pending" — the switch stripped what both builds need',
       'off build: no file contains "Transaction · taking longer than usual" — the switch stripped what both builds need',
+      'off build: no file contains "Presale purchase blocked" — the switch stripped what both builds need',
+      `off build: no file contains ${JSON.stringify(q50a)} — the switch stripped what both builds need`,
+      `off build: no file contains ${JSON.stringify(q50b)} — the switch stripped what both builds need`,
+      'off build: no file contains "Only Reject is available · no override" — the switch stripped what both builds need',
     ]);
   });
 
@@ -290,6 +298,7 @@ describe('checkNoPresale(offDir, onDir)', () => {
   afterEach(() => rmSync(tmp, {recursive: true, force: true}));
 
   const ON_TEXT = MARKERS.map(m => JSON.stringify(m)).join(';');
+  const STAY_TEXT = MUST_STAY.map(m => JSON.stringify(m)).join(';');
   const IDL = "{name: 'presale_purchase_with_sol', discriminator: [1]}, {name: 'register_referrer', discriminator: [2]}";
   const write = (dir, {presale, modules, text}) => {
     mkdirSync(join(tmp, dir), {recursive: true});
@@ -298,7 +307,7 @@ describe('checkNoPresale(offDir, onDir)', () => {
     writeFileSync(join(tmp, dir, 'app.relay.modules.json'), JSON.stringify({chunks: {'relay.js': ['src/relay/index.ts']}}));
     for (const p of ['app', 'chrome', 'firefox']) {
       mkdirSync(join(tmp, dir, p, 'assets'), {recursive: true});
-      writeFileSync(join(tmp, dir, p, 'background.js'), `"Presale purchase";"PRESALE PURCHASE";"Transaction · pending";"Transaction · taking longer than usual";"presale_purchase_with_sol";"register_referrer";${text}`);
+      writeFileSync(join(tmp, dir, p, 'background.js'), `${STAY_TEXT};"presale_purchase_with_sol";"register_referrer";${text}`);
     }
   };
   const good = () => {
@@ -334,7 +343,7 @@ describe('checkNoPresale(offDir, onDir)', () => {
 
   it('fails when a must-stay string or a decoder name is missing from the off build', () => {
     good();
-    writeFileSync(join(tmp, 'off', 'app', 'background.js'), '"Presale purchase";"PRESALE PURCHASE";"Transaction · pending";"Transaction · taking longer than usual";"presale_purchase_with_sol"');
+    writeFileSync(join(tmp, 'off', 'app', 'background.js'), `${STAY_TEXT};"presale_purchase_with_sol"`);
     for (const p of ['chrome', 'firefox']) rmSync(join(tmp, 'off', p, 'background.js'));
     expect(run()).toEqual(['off build: no file contains "register_referrer" — the switch stripped what both builds need']);
   });

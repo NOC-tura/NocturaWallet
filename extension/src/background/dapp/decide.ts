@@ -14,7 +14,7 @@ import {answer, headOf, isOpenEntry, queueAccess, rejectQueued, userRejected, ty
 import {dropGrant, grantIn, putGrant, readDappSession, type Decision, type Entry, type Tx} from './store';
 import {base64} from '@scure/base';
 import {checkMessage, checkSiws, finishSign, homoglyphRanges, keywordIn} from './signMessage';
-import {dappDigest, finishSend, finishSignTx, isTxType, needsSimulation, reauthGate, runSimulation, txDetail, txRefused, type TxDetail, type TxRefusal} from './signTx';
+import {carriesPurchase, dappDigest, finishSend, finishSignTx, isTxType, needsSimulation, reauthGate, regionNow, runSimulation, txDetail, txRefused, type TxDetail, type TxRefusal} from './signTx';
 import {consumeChallenge} from '../reauthChallenges';
 import {OVERRIDE_WORDS} from './redFlags';
 import {MAX_BATCH} from './txRequest';
@@ -320,6 +320,10 @@ export async function decide(ext: Ext, deps: WalletDeps, d: DecideRequest): Prom
   // unsectioned read can miss the entry (a race, a malformed stored value) and leave `proof` null while the entry
   // still needs one — the deciding section's own check below is what actually enforces it. A connect or a
   // signMessage decision takes the one section it always took.
+  // B1d §3.6 (C12 "before every signature"): a request carrying a presale purchase asks the jurisdiction gate again
+  // here, before `deciding` and before any challenge (a refusal burns nothing); not open → `presale-region`, re-simulated
+  // so #48 shows the F12 it now has. The deciding section refuses a purchase this call did not find open.
+  let regionOpen = false;
   const peek = (await readDappSession(ext)).queue.find(x => x.requestId === d.requestId);
   // A proven challenge to consume after `deciding` is written (review 1 L1): its id and what it is bound to.
   let proof: {id: string; digest: string} | null = null;
@@ -333,6 +337,13 @@ export async function decide(ext: Ext, deps: WalletDeps, d: DecideRequest): Prom
     });
     if (typeof pre === 'string' && pre !== 'other') return {ok: false, error: pre};
     if (typeof pre === 'object') {
+      if (carriesPurchase(pre)) {
+        if (!(await regionNow(deps)).open) {
+          await runSimulation(ext, deps, d.requestId);
+          return {ok: false, error: 'presale-region'};
+        }
+        regionOpen = true;
+      }
       const gate = await reauthGate(ext, deps, pre, siteOf(pre.origin, pre.host));
       if (gate === 'proven' && pre.challengeId !== null) proof = {id: pre.challengeId, digest: dappDigest(pre)};
       else if (gate !== 'ready') return {ok: false, error: gate === 'proven' ? 'reauth-required' : gate};
@@ -359,6 +370,7 @@ export async function decide(ext: Ext, deps: WalletDeps, d: DecideRequest): Prom
     // B1c-3: the words again, against the entry as this section reads it (a block stored since the pre-section counts).
     const refused = approvalRefused(tx, e, d) ?? (isTxType(e.type) ? txRefused(e, d.simulation, d.overrides, tx.now) : null);
     if (refused !== null) return refused;
+    if (isTxType(e.type) && carriesPurchase(e) && !regionOpen) return 'presale-region';
     // Fix round 1 item 1: fail closed even when the peek above missed this entry (the pre-section and the gate never
     // ran, so `proof` is still null here) — a simulation that names reasons may proceed only with a proof bound to
     // EXACTLY this entry's current challenge; a proof for a challenge the entry no longer points at does not count.

@@ -48,8 +48,8 @@ export const ON_BUILD = [
   'src/app/presale/Geo.tsx',
 ];
 // The intent-kind registry (C19 — both builds sign and read through it); the jurisdiction gate and its fetcher (D15:
-// the off build did not lose the gate).
-export const BOTH_BUILDS = ['src/background/intents.ts', 'src/background/geo/gate.ts', 'core/geo/fetch.ts'];
+// the off build did not lose the gate); the country's name #48's F12 banner shows (B1d-1b Task 7, §3.6).
+export const BOTH_BUILDS = ['src/background/intents.ts', 'src/background/geo/gate.ts', 'core/geo/fetch.ts', 'src/app/ui/regionName.ts'];
 // Armed by B1d-1b (1a shipped none — Q42 is "both"): Task 1's three presale message types (§6.2: "every presale.*
 // message type"), Task 2's prepare and the purchase's intent kind, Task 3's four sign and resume types, Task 4's #23
 // copy (§6.2's named strings and the §10 rows #23 shows whose source is new / approved and whose build is on — each
@@ -138,7 +138,17 @@ export const MARKERS = [
 ];
 // Q42a (B1d-1a: the generic pending row, both builds); 1b adds F12's Q49–Q51. Q42b ("Transaction") is too short to
 // be a string search. The decoder's instruction names are read from its source (DECODER).
-export const MUST_STAY = ['Presale purchase', 'PRESALE PURCHASE', 'Transaction · pending', 'Transaction · taking longer than usual'];
+// B1d-1b Task 7: #48's F12 copy, Q49–Q51 (§6.2 item 3 — "both"; Q50a's literal part before its country).
+export const MUST_STAY = [
+  'Presale purchase',
+  'PRESALE PURCHASE',
+  'Transaction · pending',
+  'Transaction · taking longer than usual',
+  'Presale purchase blocked',
+  "This transaction buys NOC in the presale, which this wallet doesn't allow from your region (",
+  "This transaction buys NOC in the presale. The wallet's region check did not succeed, so it can't be approved — try again later.",
+  'Only Reject is available · no override',
+];
 
 const MIN_MARKER = 8;
 const BARE_WORD = /^[A-Za-z]+$/;

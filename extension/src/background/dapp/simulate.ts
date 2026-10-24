@@ -1,12 +1,13 @@
 import {base64, base64urlnopad} from '@scure/base';
 import type {WalletDeps} from '../deps';
+import type {GeoAnswer} from '../geo/gate';
 import {dappReauthReasons, usdMicros, type DappReauthReason} from '../reauthPolicy';
 import {MAINNET_NOC_MINT, MAINNET_USDC_MINT, MAINNET_USDT_MINT} from '../../../../core/presale/addresses';
 import {MAX_MULTIPLE_ACCOUNTS, type AccountData} from '../../../../core/solana/rpc';
 import {COMPUTE_BUDGET_PROGRAM, TOKEN_2022_PROGRAM, TOKEN_PROGRAM, addressField, decodeInstructions, type DecodedInstruction} from './decode/decode';
 import {ADDRESS_LOOKUP_TABLE_PROGRAM, resolveKeys, tableAddresses, tablesOf} from './decode/keys';
 import {isWritableIndex, type ParsedTx} from './decode/wire';
-import {expectedOverrides, flagMints, redFlagsOf, storedFlagsOf, type FlagOutcome, type RedFlag, type TxFlagInput} from './redFlags';
+import {expectedOverrides, flagMints, isGeoReason, presalePurchasesOf, redFlagsOf, storedFlagsOf, type FlagOutcome, type RedFlag, type TxFlagInput} from './redFlags';
 import {mintInfo, tokenAccountInfo} from './tokenState';
 
 /**
@@ -31,7 +32,8 @@ import {mintInfo, tokenAccountInfo} from './tokenState';
  * SetAuthority AccountOwner with no top-level instruction that names it) — so `dapp.decide` needs no read of its own.
  * B1c-3 (spec §3.3 rev 3.6): the red flags (redFlags.ts) are computed here too, from the same reads plus one read of
  * every mint they need, and stored with the simulation; a block adds the reason `override`. A failed transaction of a
- * batch whose error names an account an earlier transaction creates is `dependent` (F10).
+ * batch whose error names an account an earlier transaction creates is `dependent` (F10). B1d §3.6: a request carrying a
+ * presale purchase stores the jurisdiction gate's answer with the simulation (`presaleRegion`) — F12 when it is not open.
  */
 export const DEFAULT_UNITS_PER_INSTRUCTION = 200_000;
 export const MAX_COMPUTE_UNITS = 1_400_000;
@@ -81,7 +83,12 @@ export interface TxSimulation {
   amountDecimals: AmountDecimals[][];
   /** An upper bound of the dApp blockhash's last valid height (the latest blockhash's, read now): a pending send's expiry check waits at least this long. */
   lastValidBlockHeight: number;
+  /** B1d §3.6: the jurisdiction gate's answer when a transaction of the request carries a presale purchase, else null. */
+  presaleRegion: GeoAnswer | null;
 }
+
+/** The gate's answer when it could not be asked, or threw (fail closed). */
+export const noCheck = (): GeoAnswer => ({open: false, reason: 'no_check', countryCode: null});
 
 export interface AmountDecimals {
   at: number;
@@ -233,6 +240,8 @@ export interface SimulateInput {
   /** B1b's first-send facts (knownRecipients.ts recipientFacts): an own account or an address sent to before. */
   known: (address: string) => boolean;
   thresholdCents: number;
+  /** B1d §3.6: the jurisdiction gate's answer, asked by the caller for a request carrying a purchase; absent — `no_check`. */
+  region?: GeoAnswer | null;
 }
 
 /** Runs the request's transactions through the proxy. Throws when a read fails (the caller records "unreachable"). */
@@ -397,7 +406,8 @@ export async function simulateTransactions(deps: Pick<WalletDeps, 'reader' | 'pr
     approval: approvalFromChain,
     thresholdCents: input.thresholdCents,
   });
-  const flags = redFlagsOf({account, txs: flagInputs, mints, reasons: base});
+  const presaleRegion = input.txs.some(p => presalePurchasesOf(p).length > 0) ? (input.region ?? noCheck()) : null;
+  const flags = redFlagsOf({account, txs: flagInputs, mints, reasons: base, region: presaleRegion});
   const amountDecimals = amountMints.map(list =>
     list.flatMap(({at, mint}) => {
       const d = decimals.get(mint);
@@ -417,6 +427,7 @@ export async function simulateTransactions(deps: Pick<WalletDeps, 'reader' | 'pr
     flags,
     amountDecimals,
     lastValidBlockHeight: latest.lastValidBlockHeight,
+    presaleRegion,
   };
 }
 
@@ -458,6 +469,15 @@ const SIGNED = /^-?\d{1,40}$/;
 const DIGITS = /^\d{1,40}$/;
 const SIM_ID = /^[A-Za-z0-9_-]{22}$/;
 const obj = (x: unknown): Record<string, unknown> | null => (typeof x === 'object' && x !== null && !Array.isArray(x) ? (x as Record<string, unknown>) : null);
+const COUNTRY = /^[A-Z]{2}$/;
+
+/** A stored gate answer, rebuilt: exactly {open, reason, countryCode} — open with no reason, or closed with one of the gate's. */
+function regionOf(x: unknown): GeoAnswer | null {
+  const o = obj(x);
+  if (o === null || Object.keys(o).length !== 3 || typeof o.open !== 'boolean' || !(o.countryCode === null || (typeof o.countryCode === 'string' && COUNTRY.test(o.countryCode)))) return null;
+  if (o.open ? o.reason !== null : !isGeoReason(o.reason)) return null;
+  return {open: o.open, reason: o.open ? null : (o.reason as GeoAnswer['reason']), countryCode: o.countryCode};
+}
 
 function changeOf(x: unknown): BalanceChange | null {
   const o = obj(x);
@@ -517,6 +537,12 @@ export function simStateOf(x: unknown): SimState | null {
   if (!stepsAgree) return null;
   const amountDecimals = Array.isArray(s.amountDecimals) ? (s.amountDecimals as unknown[]).map(amountDecimalsOf) : null;
   if (amountDecimals === null || amountDecimals.length !== outcomes.length || amountDecimals.some(a => a === null)) return null;
+  // B1d §3.6: F12 stands exactly beside a closed stored answer, each with that answer's reason.
+  const presaleRegion = s.presaleRegion === null ? null : regionOf(s.presaleRegion);
+  if (s.presaleRegion !== null && presaleRegion === null) return null;
+  const refusals = lists.flat().filter(f => f.kind === 'presale-region');
+  const closed = presaleRegion !== null && !presaleRegion.open;
+  if ((refusals.length > 0) !== closed || refusals.some(f => f.reason !== presaleRegion?.reason)) return null;
   return {
     status: 'ok',
     sim: {
@@ -530,6 +556,7 @@ export function simStateOf(x: unknown): SimState | null {
       flags: lists,
       amountDecimals: amountDecimals as AmountDecimals[][],
       lastValidBlockHeight: s.lastValidBlockHeight,
+      presaleRegion,
     },
   };
 }

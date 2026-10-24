@@ -128,7 +128,13 @@ export type Flag =
   | {kind: 'token-2022'; severity: 'warn'; word: null; at: number | null; mint: string; settings: Token2022Settings | null}
   | {kind: 'durable-nonce'; severity: 'warn'; word: null; at: 0}
   | {kind: 'whole-balance'; severity: 'warn'; word: null; at: null}
-  | {kind: 'dependent'; severity: 'block'; word: 'UNCHECKED'; at: null; step: number};
+  | {kind: 'dependent'; severity: 'block'; word: 'UNCHECKED'; at: null; step: number}
+  /** B1d §3.6, F12: a presale purchase while the region check is not open — Reject only; `countryCode` the detected one (Q50a). */
+  | {kind: 'presale-region'; severity: 'refuse'; word: null; at: number; reason: RegionReason; countryCode: string | null};
+/** The jurisdiction gate's closed reasons (geo/gate.ts `GeoReason`). */
+export type RegionReason = 'refused' | 'no_check' | 'stale_list' | 'unknown_country' | 'sanctioned';
+const REGION_REASONS: readonly string[] = ['refused', 'no_check', 'stale_list', 'unknown_country', 'sanctioned'];
+const COUNTRY = /^[A-Z]{2}$/;
 export interface TxItem {
   version: 'legacy' | 0;
   feePayer: string;
@@ -394,6 +400,12 @@ function flagOf(x: unknown): Flag | undefined {
     case 'dependent': {
       const o = exactly(x, ['kind', 'severity', 'word', 'at', 'step']);
       return o !== undefined && o.severity === 'block' && o.word === 'UNCHECKED' && o.at === null && isInt(o.step) && o.step >= 1 ? {kind, severity: 'block', word: 'UNCHECKED', at: null, step: o.step} : undefined;
+    }
+    case 'presale-region': {
+      const o = exactly(x, ['kind', 'severity', 'word', 'at', 'reason', 'countryCode']);
+      if (o === undefined || o.severity !== 'refuse' || o.word !== null || !isInt(o.at) || !isStr(o.reason) || !REGION_REASONS.includes(o.reason)) return undefined;
+      if (!(o.countryCode === null || (isStr(o.countryCode) && COUNTRY.test(o.countryCode)))) return undefined;
+      return {kind, severity: 'refuse', word: null, at: o.at, reason: o.reason as RegionReason, countryCode: o.countryCode};
     }
     default:
       return undefined;

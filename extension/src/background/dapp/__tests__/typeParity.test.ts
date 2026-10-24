@@ -1,5 +1,6 @@
 import {describe, expectTypeOf, it} from 'vitest';
 import type {Approval as BackgroundApproval, AuthorityInstruction as BackgroundAuthorityInstruction, RedFlag} from '../redFlags';
+import type {FlagView} from '../signTx';
 import type {Approval as WindowApproval, AuthorityInstruction as WindowAuthorityInstruction, Flag} from '../../../approve/client';
 
 /**
@@ -25,5 +26,9 @@ describe('background ↔ window type parity (fix round 1, Task 4 ⚠️)', () =>
 
   it('Approval.symbol: the background and the window agree', () => {
     expectTypeOf<BackgroundApproval['symbol']>().toEqualTypeOf<WindowApproval['symbol']>();
+  });
+
+  it('B1d F12: the background\'s view of a presale-region flag (with the stored country) and the window\'s Flag agree', () => {
+    expectTypeOf<Extract<FlagView, {kind: 'presale-region'}>>().toEqualTypeOf<Extract<Flag, {kind: 'presale-region'}>>();
   });
 });
