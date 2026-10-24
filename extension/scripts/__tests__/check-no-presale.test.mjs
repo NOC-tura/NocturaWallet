@@ -97,8 +97,8 @@ describe('the off-build module rule', () => {
 
 // §6.2 item 1's positive control, staged per plan (review 2 M2): the lists only grow, and each plan's modules are named.
 describe('the positive-control lists (staged: B1d-1a Task 2)', () => {
-  it('the on build must carry the three on-path entries — the plugin maps something real — and the program state (Task 5)', () => {
-    expect(ON_BUILD).toEqual([...PRESALE_ENTRIES.map(e => e.entry), 'src/background/presale/layouts.ts', 'src/background/presale/state.ts', 'core/presale/limits.ts']);
+  it('the on build must carry the three on-path entries — the plugin maps something real — the program state (Task 5) and the quote (B1d-1b Task 1)', () => {
+    expect(ON_BUILD).toEqual([...PRESALE_ENTRIES.map(e => e.entry), 'src/background/presale/layouts.ts', 'src/background/presale/state.ts', 'core/presale/limits.ts', 'src/background/presale/quote.ts']);
   });
 
   it('both builds must carry the intent-kind registry (Task 3) and the jurisdiction gate with its fetcher (Task 6, D15)', () => {
@@ -147,8 +147,8 @@ describe('app.features.json', () => {
 describe('strings', () => {
   const file = (path, text) => ({path, bytes: Buffer.from(text, 'utf8')});
 
-  it('1a ships no marker: the list is empty and armed by B1d-1b (Q42 is "both")', () => {
-    expect(MARKERS).toEqual([]);
+  it('armed by B1d-1b: Task 1 adds its three presale message types (§6.2: "every presale.* message type")', () => {
+    expect(MARKERS).toEqual(['presale.view', 'presale.banner', 'presale.quote']);
   });
 
   it('a marker in any off-build file is a violation; each marker must be found in the on build', () => {
@@ -197,6 +197,7 @@ describe('checkNoPresale(offDir, onDir)', () => {
   });
   afterEach(() => rmSync(tmp, {recursive: true, force: true}));
 
+  const ON_TEXT = MARKERS.map(m => JSON.stringify(m)).join(';');
   const IDL = "{name: 'presale_purchase_with_sol', discriminator: [1]}, {name: 'register_referrer', discriminator: [2]}";
   const write = (dir, {presale, modules, text}) => {
     mkdirSync(join(tmp, dir), {recursive: true});
@@ -210,7 +211,7 @@ describe('checkNoPresale(offDir, onDir)', () => {
   };
   const good = () => {
     write('off', {presale: false, modules: [...SHARED, 'src/presale-off/background.ts'], text: ''});
-    write('on', {presale: true, modules: [...SHARED, ...ON_BUILD], text: ''});
+    write('on', {presale: true, modules: [...SHARED, ...ON_BUILD], text: ON_TEXT});
   };
   const run = (o = {}) => checkNoPresale(join(tmp, 'off'), join(tmp, 'on'), {decoderSource: IDL, ...o});
 
@@ -227,7 +228,7 @@ describe('checkNoPresale(offDir, onDir)', () => {
 
   it('fails when the on build lacks a positive-control module', () => {
     good();
-    write('on', {presale: true, modules: [...SHARED, ...ON_BUILD.slice(1)], text: ''});
+    write('on', {presale: true, modules: [...SHARED, ...ON_BUILD.slice(1)], text: ON_TEXT});
     expect(run()).toEqual(['on build does not carry src/background/presale/api.ts — renamed or moved? the positive control must name it']);
   });
 
@@ -280,7 +281,7 @@ describe('the CLI, spawned as a real node process', () => {
     mkdirSync(dir, {recursive: true});
     writeFileSync(join(dir, 'app.features.json'), `${JSON.stringify({presale})}\n`);
     writeFileSync(join(dir, 'app.modules.json'), JSON.stringify(map(modules)));
-    const text = [...MUST_STAY, ...DECODER_NAMES].map(s => JSON.stringify(s)).join(';');
+    const text = [...MUST_STAY, ...DECODER_NAMES, ...(presale ? MARKERS : [])].map(s => JSON.stringify(s)).join(';');
     for (const p of ['app', 'chrome', 'firefox']) {
       mkdirSync(join(dir, p), {recursive: true});
       writeFileSync(join(dir, p, 'background.js'), text);

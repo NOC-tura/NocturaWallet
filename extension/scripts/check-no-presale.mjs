@@ -28,7 +28,8 @@ export const CORE_PRESALE_ALLOWED = ['core/presale/addresses.ts', 'core/presale/
 export const WEB_ALLOWED = ['../web/src/ui/', '../web/src/styles/'];
 
 // B1d-1a: the three on-path entries (§1.1), the program state presale/{layouts,state}.ts and core/presale/limits.ts
-// (§2.1); 1b adds presale/{quote,buy}.ts; B1d-2 adds presale/{record,referral}.ts and core/referral/index.ts.
+// (§2.1); 1b adds presale/quote.ts (Task 1) and presale/buy.ts; B1d-2 adds presale/{record,referral}.ts and
+// core/referral/index.ts.
 export const ON_BUILD = [
   'src/background/presale/api.ts',
   'src/app/presale/index.ts',
@@ -36,12 +37,14 @@ export const ON_BUILD = [
   'src/background/presale/layouts.ts',
   'src/background/presale/state.ts',
   'core/presale/limits.ts',
+  'src/background/presale/quote.ts',
 ];
 // The intent-kind registry (C19 — both builds sign and read through it); the jurisdiction gate and its fetcher (D15:
 // the off build did not lose the gate).
 export const BOTH_BUILDS = ['src/background/intents.ts', 'src/background/geo/gate.ts', 'core/geo/fetch.ts'];
-// Armed by B1d-1b: 1a ships no presale string (Q42 is "both").
-export const MARKERS = [];
+// Armed by B1d-1b (1a shipped none — Q42 is "both"): Task 1's three presale message types (§6.2: "every presale.*
+// message type"); later tasks add theirs.
+export const MARKERS = ['presale.view', 'presale.banner', 'presale.quote'];
 // Q42a (B1d-1a: the generic pending row, both builds); 1b adds F12's Q49–Q51. Q42b ("Transaction") is too short to
 // be a string search. The decoder's instruction names are read from its source (DECODER).
 export const MUST_STAY = ['Presale purchase', 'PRESALE PURCHASE', 'Transaction · pending', 'Transaction · taking longer than usual'];

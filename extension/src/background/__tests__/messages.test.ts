@@ -192,6 +192,10 @@ describe('message partitions', () => {
   });
 });
 
+// This file runs in both vitest runs (vitest.nopresale.config.ts marks the off one).
+const off = process.env.NOCTURA_PRESALE === '0';
+const PRESALE = off ? [] : ['presale.view', 'presale.banner', 'presale.quote'];
+
 describe('message partitions (B1b-1 types)', () => {
   // Listed literally, not read from PRIVILEGED: dropping a type from the list must make it
   // 'unknown type' here, which fails, rather than silently shrinking the test.
@@ -202,6 +206,8 @@ describe('message partitions (B1b-1 types)', () => {
     'contacts.list', 'contacts.set', 'contacts.remove',
     // B1c §1.4: the approval window's and #49's; B1c-2: the popup's offer of #10 for a site's transaction (D11).
     'dapp.pending', 'dapp.decide', 'dapp.grants.list', 'dapp.grants.revoke', 'dapp.grants.undo', 'dapp.grants.revokeAll', 'dapp.blocked.list', 'dapp.blocked.remove', 'dapp.reauth',
+    // B1d §1.4 (B1d-1b Task 1): the presale entry's — none in the build without presale.
+    ...PRESALE,
   ];
 
   it('every privileged type is refused from a web page and from another extension', async () => {
@@ -281,5 +287,18 @@ describe('message partitions (B1b-1 types)', () => {
   it('wallet types answer "unavailable" when the background has no deps, and route when it does', async () => {
     expect(await handleMessage(fakeExt(), {type: 'settings.get'}, popup)).toEqual({ok: false, error: 'unavailable'});
     expect(await handleMessage(fakeExt(), {type: 'settings.get'}, popup, fakeDeps())).toMatchObject({ok: true, data: {autoLockMinutes: 5}});
+  });
+});
+
+describe(`presale.* in the build ${off ? 'without' : 'with'} presale (B1d §1.1, §1.4)`, () => {
+  const TYPES = ['presale.view', 'presale.banner', 'presale.quote'];
+
+  it(off ? 'every presale type is refused as an unknown type, from the popup too' : 'every presale type is privileged: past the partition from the popup (positive control — no handler is registered in this file, so unavailable)', async () => {
+    const ext = vaultExt();
+    for (const type of TYPES) {
+      const r = await handleMessage(ext, {type}, popup, fakeDeps());
+      expect([type, r]).toEqual([type, off ? {ok: false, error: 'unknown type'} : {ok: false, error: 'unavailable'}]);
+    }
+    expect(PRIVILEGED.filter(t => t.startsWith('presale.'))).toEqual(off ? [] : TYPES);
   });
 });

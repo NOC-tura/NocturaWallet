@@ -23,8 +23,10 @@ describe(`the build-time switch in this run (${off ? 'off' : 'on'})`, () => {
     expect(shapes).toHaveLength(6);
   });
 
-  it('the skeletons and the stubs export the same empty values (B1d-1a: nothing registered, no route, no slot, no description)', () => {
-    for (const m of [bgEntry, bgStub]) expect(m.PRESALE_MESSAGE_TYPES).toEqual([]);
+  it(off ? 'the stubs export empty values: no message type, no route, no slot, no description' : 'the entries export what B1d-1b has built so far, the stubs empty values', () => {
+    // B1d-1b Task 1: the background entry's three message types (§1.4); the stub adds none.
+    expect(bgEntry.PRESALE_MESSAGE_TYPES).toEqual(off ? [] : ['presale.view', 'presale.banner', 'presale.quote']);
+    expect(bgStub.PRESALE_MESSAGE_TYPES).toEqual([]);
     for (const m of [appEntry, appStub]) {
       expect(m.presaleRoutes).toEqual([]);
       expect(m.presaleSlots).toBeNull();

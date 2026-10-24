@@ -104,6 +104,40 @@ function vaultAmount(a: AccountData | null, mint: string, treasury: string): big
 }
 
 const unavailable = (code: UnavailableCode): PresaleState => ({kind: 'unavailable', code});
+const failedRead = (e: unknown): UnavailableCode => (e instanceof RpcForbidden ? 'refused' : 'read-failed');
+
+/** Rules 1–4 on the config account: its data, whether the sale is active and its stage — or null (malformed). */
+function configFacts(config: AccountData | null | undefined, nowMs: number): {data: Uint8Array; active: boolean; stage: StageFacts} | null {
+  // 1. Config: the program's, 370 bytes, Config's discriminator; the positional controls admin@8 and sale_token@40.
+  const C = CONFIG_LAYOUT.fields;
+  if (config === null || config === undefined || !isProgramAccount(config, CONFIG_LAYOUT)) return null;
+  const c = config.data;
+  if (pubkeyAt(c, C.admin) !== MAINNET_ADMIN_ADDRESS || pubkeyAt(c, C.sale_token) !== MAINNET_NOC_MINT) return null;
+  // 2. C5's pins: a moved treasury or mint closes the presale.
+  if (pubkeyAt(c, C.sol_treasury) !== MAINNET_SOL_TREASURY) return null;
+  if (pubkeyAt(c, C.usdc_address) !== MAINNET_USDC_MINT || pubkeyAt(c, C.usdt_address) !== MAINNET_USDT_MINT) return null;
+  // 3. A Borsh bool and a known stage.
+  const activeFlag = boolAt(c, C.presale_active);
+  const stage = c[C.current_stage.offset] as number;
+  const priceTicks = STAGE_PRICE_TICKS[stage];
+  if (activeFlag === null || priceTicks === undefined) return null;
+  // 4. Active as the program decides it — the inactive test first; while active, the stage total below a stage's size.
+  const stageSold = u64At(c, C.stage_tokens_sold);
+  const active = activeFlag && i64At(c, C.presale_start_time) <= BigInt(Math.floor(nowMs / 1000)) && u64At(c, C.tokens_sold) < PRESALE_HARD_CAP_BASE;
+  if (active && stageSold >= TOKENS_PER_STAGE_BASE) return null;
+  return {
+    data: c,
+    active,
+    stage: {
+      stage,
+      priceTicks,
+      nextPriceTicks: STAGE_PRICE_TICKS[stage + 1] ?? null,
+      stageSoldBase: stageSold,
+      stageCapBase: TOKENS_PER_STAGE_BASE,
+      raisedCents: u64At(c, C.total_usd_raised_cents),
+    },
+  };
+}
 
 /**
  * Read the presale's state for `account` (a base58 key) at `nowMs` (UTC milliseconds). One `getAccountsData` for six
@@ -131,28 +165,16 @@ export async function readPresaleState(reader: SolanaReader, account: string, no
   try {
     accounts = await reader.getAccountsData(addresses);
   } catch (e) {
-    return unavailable(e instanceof RpcForbidden ? 'refused' : 'read-failed');
+    return unavailable(failedRead(e));
   }
   if (accounts.length !== addresses.length) return unavailable('malformed');
   const [config, user, allocation, treasury, usdcVault, usdtVault] = accounts;
 
-  // 1. Config: the program's, 370 bytes, Config's discriminator; the positional controls admin@8 and sale_token@40.
+  // Rules 1–4.
+  const configRead = configFacts(config, nowMs);
+  if (configRead === null) return unavailable('malformed');
+  const {data: c, active, stage: stageFacts} = configRead;
   const C = CONFIG_LAYOUT.fields;
-  if (config === null || config === undefined || !isProgramAccount(config, CONFIG_LAYOUT)) return unavailable('malformed');
-  const c = config.data;
-  if (pubkeyAt(c, C.admin) !== MAINNET_ADMIN_ADDRESS || pubkeyAt(c, C.sale_token) !== MAINNET_NOC_MINT) return unavailable('malformed');
-  // 2. C5's pins: a moved treasury or mint closes the presale.
-  if (pubkeyAt(c, C.sol_treasury) !== MAINNET_SOL_TREASURY) return unavailable('malformed');
-  if (pubkeyAt(c, C.usdc_address) !== MAINNET_USDC_MINT || pubkeyAt(c, C.usdt_address) !== MAINNET_USDT_MINT) return unavailable('malformed');
-  // 3. A Borsh bool and a known stage.
-  const activeFlag = boolAt(c, C.presale_active);
-  const stage = c[C.current_stage.offset] as number;
-  const priceTicks = STAGE_PRICE_TICKS[stage];
-  if (activeFlag === null || priceTicks === undefined) return unavailable('malformed');
-  // 4. Active as the program decides it — the inactive test first; while active, the stage total below a stage's size.
-  const stageSold = u64At(c, C.stage_tokens_sold);
-  const active = activeFlag && i64At(c, C.presale_start_time) <= BigInt(Math.floor(nowMs / 1000)) && u64At(c, C.tokens_sold) < PRESALE_HARD_CAP_BASE;
-  if (active && stageSold >= TOKENS_PER_STAGE_BASE) return unavailable('malformed');
 
   // 5. The user account: absent, or the program's UserAccount with a Borsh bool for is_blocked.
   let blocked = false;
@@ -190,14 +212,6 @@ export async function readPresaleState(reader: SolanaReader, account: string, no
   const usdt = vaultAmount(usdtVault ?? null, MAINNET_USDT_MINT, solTreasury);
   if (usdc === null || usdt === null) return unavailable('malformed');
 
-  const stageFacts: StageFacts = {
-    stage,
-    priceTicks,
-    nextPriceTicks: STAGE_PRICE_TICKS[stage + 1] ?? null,
-    stageSoldBase: stageSold,
-    stageCapBase: TOKENS_PER_STAGE_BASE,
-    raisedCents: u64At(c, C.total_usd_raised_cents),
-  };
   if (!active) return {kind: 'inactive', stage: stageFacts};
   if (blocked) return {kind: 'blocked', stage: stageFacts};
 
@@ -231,4 +245,22 @@ export function allocationRefOf(snapshot: PresaleSnapshot): AllocationRef {
  */
 export function referrerAllocationOf(snapshot: PresaleSnapshot, account: string): Promise<ResolvedReferrer> {
   return resolveReferrerWith(async () => allocationRefOf(snapshot), new PublicKey(account), null);
+}
+
+/** The config alone (presale.banner, §1.4): rules 1–4 decide, as in readPresaleState. */
+export type PresaleConfigState = {kind: 'unavailable'; code: UnavailableCode} | {kind: 'inactive' | 'active'; stage: StageFacts};
+
+/** Read the config account alone at `nowMs` (UTC milliseconds): one `getAccountsData` of the config PDA. */
+export async function readPresaleConfig(reader: SolanaReader, nowMs: number): Promise<PresaleConfigState> {
+  // The config PDA is ["config", admin]: the same for every user.
+  const address = derivePresalePdas(PublicKey.default).config.toBase58();
+  let accounts: (AccountData | null)[];
+  try {
+    accounts = await reader.getAccountsData([address]);
+  } catch (e) {
+    return {kind: 'unavailable', code: failedRead(e)};
+  }
+  const read = accounts.length === 1 ? configFacts(accounts[0], nowMs) : null;
+  if (read === null) return {kind: 'unavailable', code: 'malformed'};
+  return {kind: read.active ? 'active' : 'inactive', stage: read.stage};
 }

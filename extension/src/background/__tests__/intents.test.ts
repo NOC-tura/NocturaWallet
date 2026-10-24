@@ -102,10 +102,10 @@ beforeEach(() => {
 });
 
 describe('the intent-kind registry (B1d §1.3, C19)', () => {
-  it('send is registered by prepare.ts itself, and in this build registerPresale adds no kind (B1d-1a: no presale-buy in either build)', () => {
+  it('send is registered by prepare.ts itself, and in this build registerPresale adds no kind (B1d-1b Task 1: no presale-buy in either build yet)', () => {
     expect(intentKind(SEND_KIND)).toBe(SEND_INTENT);
     const before = registeredKinds();
-    registerPresale({ext: fakeExt(), deps: fakeDeps()});
+    registerPresale({ext: fakeExt(), deps: fakeDeps(), handle: () => undefined});
     expect(registeredKinds()).toEqual(before);
     // This file's own kinds are named test-…; besides them, only send.
     expect(before.filter(k => !k.startsWith('test-'))).toEqual(['send']);

@@ -1,5 +1,5 @@
 import {browserExt} from '../ext';
-import {handleMessage, type Sender} from './messages';
+import {handleMessage, registerPresaleHandler, type Sender} from './messages';
 import {AUTOLOCK_ALARM, lock, onWindowRemoved} from './autolock';
 import {browserDeps} from './deps';
 import {isOpen, readPending} from './pendingStore';
@@ -34,7 +34,7 @@ const deps = browserDeps(ext);
 // stop the listeners below from registering.
 void ext.pinSessionAccess().catch(e => console.warn('storage.session access level not pinned', e));
 // B1d §1.1: presale joins here, before any listener can deliver a message (the stub in the build without it).
-registerPresale({ext, deps});
+registerPresale({ext, deps, handle: registerPresaleHandler});
 
 api.runtime.onMessage.addListener((msg, sender, reply) => {
   handleMessage(ext, msg, sender, deps).then(reply, () => reply({ok: false, error: 'internal'}));

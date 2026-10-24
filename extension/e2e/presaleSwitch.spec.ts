@@ -22,8 +22,9 @@ for (const [name, ext, presale] of [
       await expect(popup.getByText('10.0000 SOL', {exact: true})).toBeVisible({timeout: 30_000});
       const status = await popup.evaluate(() => chrome.runtime.sendMessage({type: 'vault.status'}));
       expect(status).toEqual({ok: true, data: {unlocked: true, accounts: [{index: MAIN.index, publicKey: MAIN.publicKey}, expect.objectContaining({index: 1})]}});
-      // B1d-1a registers no presale message in either build: an unknown type, refused before any handler.
-      expect(await popup.evaluate(() => chrome.runtime.sendMessage({type: 'presale.view'}))).toEqual({ok: false, error: 'unknown type'});
+      // B1d-1b: the on build registers presale.view (its handler refuses a payload without an account); the off build has
+      // no such type — an unknown type, refused before any handler.
+      expect(await popup.evaluate(() => chrome.runtime.sendMessage({type: 'presale.view'}))).toEqual({ok: false, error: presale ? 'malformed' : 'unknown type'});
       contained(h);
     } finally {
       await h.close();

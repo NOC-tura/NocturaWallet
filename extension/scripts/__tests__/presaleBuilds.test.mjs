@@ -55,11 +55,10 @@ describe('the two builds', () => {
     expect(presale).toEqual([]);
   });
 
-  it('both: the moved helpers come from core/solana/encoding.ts, and core/presale/buyInstructions.ts is in neither (M2)', () => {
-    for (const b of Object.values(builds)) {
-      expect(b.modules.has('../core/solana/encoding.ts')).toBe(true);
-      expect(b.modules.has('../core/presale/buyInstructions.ts')).toBe(false);
-    }
+  it('both: the moved helpers come from core/solana/encoding.ts; core/presale/buyInstructions.ts is never in the off build (M2) — the on build builds purchases with it (B1d-1b)', () => {
+    for (const b of Object.values(builds)) expect(b.modules.has('../core/solana/encoding.ts')).toBe(true);
+    expect(builds.off.modules.has('../core/presale/buyInstructions.ts')).toBe(false);
+    expect(builds.on.modules.has('../core/presale/buyInstructions.ts')).toBe(true);
   });
 
   it('the off-build gate (scripts/check-no-presale.mjs) passes on the two builds, and fails with them swapped', () => {
