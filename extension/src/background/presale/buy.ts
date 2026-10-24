@@ -287,7 +287,7 @@ async function purchaseBeforeSign({ext, deps}: KindHost, entry: PreparedEntry, i
   const [read, geo] = await Promise.all([readPresaleStateAt(deps.reader, entry.account, deps.now()), gateAnswer(deps)]);
   if (!geo.open) throw new PurchaseRefused('geo-closed', geo.reason ?? '');
   const snapshot = openSnapshot(read.state, intent);
-  await signedPurchase(entry, intent, snapshot);
+  await signedPurchase(entry, intent, snapshot, shown.fees.networkLamports);
   const b = shown.basis;
   if (snapshot.allocation.exists !== b.allocationExists || snapshot.allocation.purchaseCount !== b.purchaseCount || snapshot.allocation.referrer !== b.referrer || snapshot.userAccountExists !== b.userAccountExists) {
     throw new PurchaseRefused('state-changed', 'the account’s presale accounts are not as prepared');
@@ -301,9 +301,10 @@ async function purchaseBeforeSign({ext, deps}: KindHost, entry: PreparedEntry, i
  * its integrity (so the message checked is the one sendPrepared signs after the take), and its message must be exactly
  * the purchase of this intent to the destination the state pins, crediting the referrer allocation the fresh snapshot
  * resolves — `state-changed` when only that allocation differs (a referrer registered since prepare), `prepared-invalid`
- * for anything else.
+ * for anything else. Its compute budget too (review I1): exactly COMPUTE_UNIT_LIMIT units at a price whose network fee is
+ * within PRESALE_FEE_BOUND_LAMPORTS and is the prepared fee (`shownFee`, which the record shows).
  */
-async function signedPurchase(entry: PreparedEntry, intent: PurchaseIntent, snapshot: PresaleSnapshot): Promise<void> {
+async function signedPurchase(entry: PreparedEntry, intent: PurchaseIntent, snapshot: PresaleSnapshot, shownFee: string): Promise<void> {
   const invalid = new SendRefused('prepared-invalid', 'the prepared purchase is not this purchase');
   let message: MessageV0;
   try {
@@ -314,8 +315,12 @@ async function signedPurchase(entry: PreparedEntry, intent: PurchaseIntent, snap
   } catch {
     throw invalid;
   }
+  const fee = signedNetworkFee(message);
+  if (fee === null || fee > PRESALE_FEE_BOUND_LAMPORTS || fee !== BigInt(shownFee)) throw invalid;
   const keys = message.staticAccountKeys.map(k => k.toBase58());
   const named = (message.compiledInstructions[2]?.accountKeyIndexes ?? []).map(k => keys[k]);
+  // A stablecoin's paying account is taken from the message's own bytes, by design: nothing bound names it (the intent
+  // has none; prepare chose it from the holdings and the simulation proved its loss), and the program refuses a wrong one.
   const expected = {account: entry.account, currency: intent.currency, destination: PINNED_DESTINATION[intent.currency], source: intent.currency === 'SOL' ? null : (named[4] ?? null), amount: BigInt(intent.amount)};
   const matches = (referrerAllocation: string): boolean => {
     try {
@@ -329,6 +334,21 @@ async function signedPurchase(entry: PreparedEntry, intent: PurchaseIntent, snap
   const built = named[3];
   if (built !== undefined && matches(built)) throw new PurchaseRefused('state-changed', 'the referrer allocation the purchase credits changed');
   throw invalid;
+}
+
+/**
+ * Review I1: the network fee the message's compute budget pays — ix 0 exactly `[2, u32 LE units]` with units ===
+ * COMPUTE_UNIT_LIMIT, ix 1 exactly `[3, u64 LE µlamports per CU]`, neither naming an account (their program ids are
+ * assertPurchaseMessage's, as its one signer) — or null for any other data, length or limit.
+ */
+function signedNetworkFee(message: MessageV0): bigint | null {
+  const [limit, price] = message.compiledInstructions;
+  if (limit === undefined || price === undefined || limit.accountKeyIndexes.length !== 0 || price.accountKeyIndexes.length !== 0) return null;
+  if (limit.data.length !== 5 || limit.data[0] !== 2 || price.data.length !== 9 || price.data[0] !== 3) return null;
+  const units = new DataView(limit.data.buffer, limit.data.byteOffset, limit.data.byteLength).getUint32(1, true);
+  const microLamports = readU64LE(price.data, 1);
+  if (units !== COMPUTE_UNIT_LIMIT || microLamports > BigInt(Number.MAX_SAFE_INTEGER)) return null;
+  return networkFeeLamports(1, Number(microLamports), COMPUTE_UNIT_LIMIT);
 }
 
 /** §2.3: the record's display data, from the entry the pipeline signs — null when its facts do not read back (shown generically, Q42). */

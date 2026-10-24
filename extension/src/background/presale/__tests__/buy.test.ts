@@ -1080,6 +1080,63 @@ describe('presale.buy: the sign-time checks (C12, C22, C10) — a refusal burns 
     expect([w.deps.broadcasts, await records(w)]).toEqual([[], []]);
   });
 
+  // Task 3 review I1: the compute-budget half of the integrity-bound message is checked at sign as well — ix 0
+  // `[2, u32 LE units]`, ix 1 `[3, u64 LE µlamports]`. Each row forges one field, recomputes the integrity and expects
+  // `prepared-invalid` before the take: the entry and the proof stay, nothing signed, broadcast or recorded.
+  const forgeBudget = async (w: World, index: 0 | 1, value: bigint, shownFee?: string): Promise<void> => {
+    const [entry] = await stored(w);
+    if (entry === undefined) throw new Error('no entry');
+    const m = VersionedMessage.deserialize(base64.decode(entry.message)) as MessageV0;
+    const width = index === 0 ? 4 : 8;
+    const data = new Uint8Array(1 + width);
+    data[0] = index === 0 ? 2 : 3;
+    let v = value;
+    for (let i = 1; i <= width; i++) {
+      data[i] = Number(v & 0xffn);
+      v >>= 8n;
+    }
+    const forged = new MessageV0({header: m.header, staticAccountKeys: m.staticAccountKeys, recentBlockhash: m.recentBlockhash, compiledInstructions: m.compiledInstructions.map((x, i) => (i === index ? {...x, data} : x)), addressTableLookups: m.addressTableLookups});
+    const message = base64.encode(forged.serialize());
+    const shown = entry.shown as {fees: {networkLamports: string}; view: {fees: {networkLamports: string}}};
+    const next = shownFee === undefined ? shown : {...shown, fees: {...shown.fees, networkLamports: shownFee}, view: {...shown.view, fees: {...shown.view.fees, networkLamports: shownFee}}};
+    await w.ext.session.set(PREPARED_KEY, [{...entry, message, integrity: preparedIntegrity({...entry, message}), shown: next}]);
+  };
+  const refusedBeforeTake = async (w: World, view: PurchaseView): Promise<void> => {
+    expect(await buy(w, view.id)).toMatchObject({ok: false, error: 'prepared-invalid'});
+    expect((await stored(w)).map(e => e.id)).toEqual([view.id]);
+    expect(await challengeSatisfied(w.ext, w.deps.now(), view.reauth?.challengeId ?? '', digestOf(SOL))).toBe(true);
+    expect([w.deps.broadcasts, await records(w)]).toEqual([[], []]);
+  };
+
+  it('a stored message whose compute-unit price was raised to 10 000 000 000 µlamports (1.2 SOL of priority fee), its integrity recomputed → prepared-invalid before the take (review I1)', async () => {
+    const w = await world({chains: [EXISTING, EXISTING]});
+    const view = await provenPurchase(w, SOL);
+    await forgeBudget(w, 1, 10_000_000_000n);
+    await refusedBeforeTake(w, view);
+  });
+
+  it('the same raised price with `shown`’s fee forged to match it → still prepared-invalid: the fee is above PRESALE_FEE_BOUND_LAMPORTS (review I1)', async () => {
+    const w = await world({chains: [EXISTING, EXISTING]});
+    const view = await provenPurchase(w, SOL);
+    await forgeBudget(w, 1, 10_000_000_000n, networkFeeLamports(1, 10_000_000_000, 120_000).toString());
+    await refusedBeforeTake(w, view);
+  });
+
+  it('a price within the bound that is not the prepared fee (the record would show another fee) → prepared-invalid (review I1)', async () => {
+    const w = await world({chains: [EXISTING, EXISTING]});
+    const view = await provenPurchase(w, SOL);
+    expect(networkFeeLamports(1, PRICE + 100_000, 120_000)).not.toBe(NETWORK);
+    await forgeBudget(w, 1, BigInt(PRICE + 100_000));
+    await refusedBeforeTake(w, view);
+  });
+
+  it('a stored message whose compute-unit limit was changed to 1 400 000, its integrity recomputed → prepared-invalid before the take (review I1)', async () => {
+    const w = await world({chains: [EXISTING, EXISTING]});
+    const view = await provenPurchase(w, SOL);
+    await forgeBudget(w, 0, 1_400_000n);
+    await refusedBeforeTake(w, view);
+  });
+
   it('the details: the gate’s reason, and what moved', async () => {
     let geo: GeoAnswer = OPEN;
     const closed = await world({geo: async () => geo});
