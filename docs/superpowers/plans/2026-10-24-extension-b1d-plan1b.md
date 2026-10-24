@@ -6,6 +6,8 @@
 
 **Revision 2 (2026-10-24):** Fable review 1 (`.superpowers/sdd/b1d1b-plan-review-1.md`: approve after fixes — M1–M3, L1–L5) and the owner's decisions D20–D26 applied, dry-run again in full on a new branch `dry/b1d1b-r2` from f46dd14 (Task 1 changes, so every task was rebuilt): 2b4369c, a11ef60, fb9bc1d, 138ed8a, de53d97, 05f29fd, 0299987, ed86a39, 6b0ba78 — each task green on its own tree (`tsc` own exit code, both vitest runs, both builds, every gate), each changed task's new rows red on its predecessor (and, where they test new behaviour, on rev 1's code). **M1** (Task 3): `beforeSign` re-checks the integrity-bound message itself against the fresh snapshot — the pinned destination, the intent's amount and the referrer allocation the program would credit now (`state-changed` when only that differs, `prepared-invalid` otherwise), integrity checked before the take; a row forging `shown.basis.referrer` and one re-pointing the stored message at a look-alike treasury (which rev 1's code signed) are red on rev 1. **M2 / D23** (Task 9, Step 3b): spec rev 3.2 — every departure of this plan in one change list, the passages edited. **M3** (Task 2): the retry's limit re-check has its row (the review's M06 mutant, R10, red). **D22** (Tasks 1, 4, 6, 8, 9): the open `PresaleView` carries the gate's `countryCode`; #50b's open variant shows "Detected region: …". **L1** (Tasks 5, 8): no marker is one bare word (`'Purchased'`, `'Programs'` dropped; the gate refuses one). **L2 / L3 / D25**: the two outflow readings, the rent slack and the ≈ 0.0063 SOL stablecoin floor in spec §8.1 (rev 3.2). **L4 / L5**: Global Constraints corrected (the root suite at Task 2; the Playwright budget). Found while revising: `presaleSwitch.spec.ts`'s on-build answer moves from Task 8 to Task 1, where it changes (rev 1 left the Playwright suite red from Task 1 to Task 7). D20, D21, D24, D26 need no code (the rulings at the end). Mutations of every task re-run on its rev 2 commit; Playwright at Tasks 7, 8 and 9, normally and under `unshare -rn`; the consistency replay redone. Details: `.superpowers/sdd/b1d1b-plan-parts/rev2-changes.md`.
 
+**Revision 2.1 (2026-10-24):** Fable's scoped check of rev 2 (`.superpowers/sdd/b1d1b-plan-review-2.md`: approve after fixes) applied on `dry/b1d1b-r21`, rebuilt from Task 3: 2b4369c, a11ef60 (unchanged), 54c0b52, 16b1145, 986dcca, da95ebd, 245f613, 9f6d910, 0bb87d6. **R2-M1** (Task 3): a row — the stored message re-pointed at the NEW referrer's allocation, integrity recomputed, `shown.basis` honest → `state-changed`, nothing signed — so S7 (the basis's referrer clause) is red again and stays. **R2-M2** (Task 3): a row — the amount doubled in the message's data, integrity recomputed → `prepared-invalid` before the take — and mutation S33 (the amount taken from the message), red. **L**: spec §2.3 says the §2.4 recording sends stage + 1 (and the rev 3.2 list). No product code changed; Task 3's 36 mutations re-run, all red (339 in all); every task green again; the replay identical at every prefix.
+
 **Goal:** Build B1d spec plan 1b (the header table's second row): the presale purchase in the extension — `quote.ts` / `api.ts` with the `presale.*` messages; `buy.ts`'s prepare with every simulation check of §3.3 (the exact outflow with the new PDAs' rent from the simulation, the pinned treasury / vault inflow, the allocation increase, the one-retry rule); sign through the shared pipeline as kind `presale-buy` with `beforeSign` re-checking the gate and the state, the `v1_pending` record, exactly-once broadcast, the lock hook and both resume paths; #23 (active, pending, allocation), #20's purchase variant, #10's purchase description, #21 / #44 / #54 purchase renderers with the "Presale" badge; #11's banner, Buy and pending row; #50b for every gate reason; F12 in #48 (a site's presale purchase is a no-override block while the gate is closed or unreachable, both builds — D9, D15); E2E 1–6 and 8–9; the visual pass. B1d-1b is a merge-to-`main` milestone, not a release (C26): it buys without recording (recording is B1d-2, blocked by nothing now that ICO's P2a is live).
 
 **Architecture:** Spec §1's layers, on B1d-1a's foundations. The background alone decides (C13): the popup asks `presale.view` / `presale.quote` / `presale.prepareBuy` / `presale.buy` and renders the answers. A purchase is the registered intent kind `presale-buy` in the shared send pipeline (1a), so it inherits the prepared-entry integrity, the challenge digest bound to the kind, the in-flight exclusivity with sends, the exactly-once broadcast and the lock hook; `beforeSign` re-reads the jurisdiction gate and the program state after the proof is satisfied and before the entry or the proof is taken. Destinations are only the pinned treasury and vault ATAs from the state 1a reads; the buyer's stablecoin is spent from the account that actually holds it. F12 joins B1c's red-flag engine in both builds.
@@ -5084,7 +5086,7 @@ git commit -m "feat(extension): B1d-1b prepare and simulate — the presale-buy 
 
 ```diff
 diff --git a/extension/src/background/presale/__tests__/buy.test.ts b/extension/src/background/presale/__tests__/buy.test.ts
-index e754b52..1312680 100644
+index e754b52..8d05014 100644
 --- a/extension/src/background/presale/__tests__/buy.test.ts
 +++ b/extension/src/background/presale/__tests__/buy.test.ts
 @@ -1,5 +1,6 @@
@@ -5179,7 +5181,7 @@ index e754b52..1312680 100644
    w.deps.clock.t = NOW_MS;
    await unlocked(w.ext);
    return w;
-@@ -766,23 +779,603 @@ describe('the purchase challenge (§1.3 describe, §3.3 step 6)', () => {
+@@ -766,23 +779,642 @@ describe('the purchase challenge (§1.3 describe, §3.3 step 6)', () => {
    });
  });
  
@@ -5433,6 +5435,45 @@ index e754b52..1312680 100644
 +    expect(await buy(w, view.id)).toMatchObject({ok: false, error: 'prepared-invalid'});
 +    expect((await stored(w)).map(e => e.id)).toEqual([view.id]);
 +    expect(w.deps.broadcasts).toEqual([]);
++  });
++
++  it('a stored message re-pointed at the allocation of the referrer registered since prepare (the bytes the program would now want), its integrity recomputed, `shown.basis` honest → state-changed from the basis; nothing signed (review 2 R2-M1)', async () => {
++    const w = await world({chains: [EXISTING, {...EXISTING, allocation: program(allocationData({referrer: REFERRER}))}]});
++    const view = await provenPurchase(w, SOL);
++    const [entry] = await stored(w);
++    if (entry === undefined) throw new Error('no entry');
++    const m = VersionedMessage.deserialize(base64.decode(entry.message)) as MessageV0;
++    const idx = m.compiledInstructions[2]?.accountKeyIndexes[3];
++    if (idx === undefined) throw new Error('no purchase instruction');
++    const keys = m.staticAccountKeys.map((k, i) => (i === idx ? derivePresalePdas(new PublicKey(REFERRER)).userAllocation : k));
++    const forged = new MessageV0({header: m.header, staticAccountKeys: keys, recentBlockhash: m.recentBlockhash, compiledInstructions: m.compiledInstructions, addressTableLookups: m.addressTableLookups});
++    const message = base64.encode(forged.serialize());
++    await w.ext.session.set(PREPARED_KEY, [{...entry, message, integrity: preparedIntegrity({...entry, message})}]);
++    expect(await buy(w, view.id)).toMatchObject({ok: false, error: 'state-changed'});
++    expect((await stored(w)).map(e => e.id)).toEqual([view.id]);
++    expect([w.deps.broadcasts, await records(w)]).toEqual([[], []]);
++  });
++
++  it('a stored message whose purchase amount was doubled in its data bytes, its integrity recomputed → prepared-invalid before the take; the entry stays, nothing signed (review 2 R2-M2)', async () => {
++    const w = await world({chains: [EXISTING, EXISTING]});
++    const view = await provenPurchase(w, SOL);
++    const [entry] = await stored(w);
++    if (entry === undefined) throw new Error('no entry');
++    const m = VersionedMessage.deserialize(base64.decode(entry.message)) as MessageV0;
++    const ix = m.compiledInstructions[2];
++    if (ix === undefined) throw new Error('no purchase instruction');
++    const data = new Uint8Array(ix.data);
++    let v = BigInt(SOL.amount) * 2n;
++    for (let i = 8; i < 16; i++) {
++      data[i] = Number(v & 0xffn);
++      v >>= 8n;
++    }
++    const forged = new MessageV0({header: m.header, staticAccountKeys: m.staticAccountKeys, recentBlockhash: m.recentBlockhash, compiledInstructions: m.compiledInstructions.map((x, i) => (i === 2 ? {...x, data} : x)), addressTableLookups: m.addressTableLookups});
++    const message = base64.encode(forged.serialize());
++    await w.ext.session.set(PREPARED_KEY, [{...entry, message, integrity: preparedIntegrity({...entry, message})}]);
++    expect(await buy(w, view.id)).toMatchObject({ok: false, error: 'prepared-invalid'});
++    expect((await stored(w)).map(e => e.id)).toEqual([view.id]);
++    expect([w.deps.broadcasts, await records(w)]).toEqual([[], []]);
 +  });
 +
 +  it('the details: the gate’s reason, and what moved', async () => {
@@ -5879,7 +5920,7 @@ index c24b451..83d5e35 100644
 
 Run (in `extension/`): `npx tsc --noEmit; echo $?` — **0** (every new path is reached through the message handler; the types the tests name — `PurchaseView`, `PendingView`, `PreparedEntry`, `sendIntentDigest` — exist already).
 
-Run: `npx vitest run src/background/presale/__tests__/buy.test.ts src/background/presale/__tests__/api.test.ts src/background/__tests__/messages.test.ts src/__tests__/presaleSwitch.test.ts scripts/__tests__/check-no-presale.test.mjs` — `Test Files  5 failed (5)` · `Tests  72 failed | 207 passed (279)`: `buy.test.ts` `67 failed | 64 passed (131)` (rev 2: + the three M1 rows, red with the rest; Task 2's M3 row passes) — every new type answers `{ok: false, error: 'unknown type'}` (the partition does not list it), and the three rows that wait for the record, the broadcast or the gate time out at 5 s (nothing ever gets there); of the 66 new rows two pass on the old tree, by design — "a send in flight refuses a purchase’s prepare" and "a lock while the purchase is prepared" (Task 2's prepare already honours C10 and the lock: they are this task's controls from the other side); `api.test.ts` 1, `messages.test.ts` 2, `presaleSwitch.test.ts` 1, `check-no-presale.test.mjs` 1 (the four types).
+Run: `npx vitest run src/background/presale/__tests__/buy.test.ts src/background/presale/__tests__/api.test.ts src/background/__tests__/messages.test.ts src/__tests__/presaleSwitch.test.ts scripts/__tests__/check-no-presale.test.mjs` — `Test Files  5 failed (5)` · `Tests  74 failed | 207 passed (281)`: `buy.test.ts` `69 failed | 64 passed (133)` (rev 2: + the three M1 rows, rev 2.1: + review 2's two rows, red with the rest; Task 2's M3 row passes) — every new type answers `{ok: false, error: 'unknown type'}` (the partition does not list it), and the three rows that wait for the record, the broadcast or the gate time out at 5 s (nothing ever gets there); of the 66 new rows two pass on the old tree, by design — "a send in flight refuses a purchase’s prepare" and "a lock while the purchase is prepared" (Task 2's prepare already honours C10 and the lock: they are this task's controls from the other side); `api.test.ts` 1, `messages.test.ts` 2, `presaleSwitch.test.ts` 1, `check-no-presale.test.mjs` 1 (the four types).
 
 - [ ] **Step 3: Implement.**
 
@@ -6322,7 +6363,7 @@ index abe98ea..af1e4e5 100644
 
 - [ ] **Step 4: Green, both builds, the gates.**
 
-Run (in `extension/`): `npx tsc --noEmit; echo $?` — **0**. `npx vitest run src/background/presale/__tests__/buy.test.ts` — `Tests  131 passed (131)`. `npx vitest run` — `Test Files  202 passed (202)` · `Tests  4229 passed (4229)` (+68: 69 new rows, Task 2's first "nothing signs" row removed); `npx vitest run --config vitest.nopresale.config.ts` — `Test Files  13 passed (13)` · `Tests  385 passed (385)` (unchanged: `messages.test.ts` lists no presale type in the off run; `intents.test.ts`'s captured 0b79442 sends — the byte-for-byte proof that a send is unchanged — are green in both runs).
+Run (in `extension/`): `npx tsc --noEmit; echo $?` — **0**. `npx vitest run src/background/presale/__tests__/buy.test.ts` — `Tests  133 passed (133)`. `npx vitest run` — `Test Files  202 passed (202)` · `Tests  4231 passed (4231)` (+70: 71 new rows, Task 2's first "nothing signs" row removed); `npx vitest run --config vitest.nopresale.config.ts` — `Test Files  13 passed (13)` · `Tests  385 passed (385)` (unchanged: `messages.test.ts` lists no presale type in the off run; `intents.test.ts`'s captured 0b79442 sends — the byte-for-byte proof that a send is unchanged — are green in both runs).
 
 Run: `rm -rf dist dist-nopresale && node scripts/build.mjs && node scripts/build.mjs --no-presale`, then `npm run gates` — exit 0, every gate ok once per build, the last line `no presale ok (dist-nopresale off, dist on): the off build's module maps carry no presale module and of core/presale/ only 3 allowed; the on build carries 11 required modules; 9 markers (none in the off build, each in the on build); 4 strings and the decoder's instruction names stay in the off build` (no new module: `ON_BUILD` is unchanged; the four types are markers, and the shared `send.ts` / `prepare.ts` name `presale.buy` / `presale.preparedFor` in comments only, which the build strips). `npm run csp` — `CSP ok` for both; `npm run secrets` — exit 0; `npm run reproducible` — exit 0 (`presale chrome 26 files sha256:19cac5db…`, `no-presale chrome 26 files sha256:9ea2f154…` — both differ from Task 2's: the off build carries the shared `prepare.ts` and `walletApi.ts` this task changes). No `core/` or root `src/` file changes: the root `tsc` / `jest` and web's `verify` are not needed.
 
@@ -6333,46 +6374,48 @@ git add -A extension
 git commit -m "feat(extension): B1d-1b sign, record, broadcast — presale.buy through sendPrepared for presale-buy only (wallet.send stays send-only), the kind's sign-time checks before the take (C10 again, the gate, one re-read of the whole snapshot: pins, stage, the account's presale accounts, the limits), §2.3's record data; presale.pending, presale.preparedFor (the resume at the background), presale.discardPrepared" -m "Co-Authored-By: <the executing model> <noreply@anthropic.com>"
 ```
 
-- [ ] **Step 6: The named mutations — each alone, in a fresh `git archive HEAD` copy (node_modules linked), `timeout 300`; `tsc`'s own exit code first (0 for every one), then the named test file.** `BT` = `buy.test.ts` (131), `NP` = `check-no-presale.test.mjs` (50).
+- [ ] **Step 6: The named mutations — each alone, in a fresh `git archive HEAD` copy (node_modules linked), `timeout 300`; `tsc`'s own exit code first (0 for every one), then the named test file.** `BT` = `buy.test.ts` (133), `NP` = `check-no-presale.test.mjs` (50).
 
 | id | the check | the change | named test → observed |
 |---|---|---|---|
-| S1 | **C12: the gate before every signature** | `if (!geo.open) throw …` at sign → `void geo;` | BT the seven gate rows, “the details …”, “the gate open again …” — tsc 0 · RED `Tests  9 failed \| 122 passed (131)` |
-| S2 | the gate decides first, as at prepare | the gate's line moved below `openSnapshot` | BT “the gate closed and the state unreadable — the gate decides first …” — tsc 0 · RED `Tests  1 failed \| 130 passed (131)` |
-| S3 | **C22: the state re-read decides** | `if (read.state.kind !== 'open') return; const snapshot = read.state.snapshot;` (no state refusal, no stage) | BT the unreadable / 403 / unreachable / closed / blocked / both pins / the vault / the stage rows, “the details …” — tsc 0 · RED `Tests  10 failed \| 121 passed (131)` |
-| S4 | C22 / C27: the stage at sign | `openSnapshot(read.state, {...intent, stage: <the read's stage>})` | BT “the stage moved → price-changed …”, “the details …” — tsc 0 · RED `Tests  2 failed \| 129 passed (131)` |
-| S5 | the allocation's existence | its clause dropped from the basis comparison | BT “the allocation created meanwhile …”, “state-changed: the popup re-prepares …” — tsc 0 · RED `Tests  2 failed \| 129 passed (131)` |
-| S6 | `purchase_count` | its clause dropped | BT “purchase_count moved …” — tsc 0 · RED `Tests  1 failed \| 130 passed (131)` |
-| S8 | the user account's existence | its clause dropped | BT “the user account created meanwhile …” — tsc 0 · RED `Tests  1 failed \| 130 passed (131)` |
-| S9 | the limits at sign | `if (limit !== null) throw …` → `void limit;` | BT the remainder, maximum and minimum rows — tsc 0 · RED `Tests  3 failed \| 128 passed (131)` |
-| S10 | **C22: Δc above the per-user remainder** | `userRemainingCents: 2n ** 64n` spread over the fresh limits | BT “the prepared cents now above the per-user remainder …” — tsc 0 · RED `Tests  1 failed \| 130 passed (131)` |
-| S11 | **C10 before the take** (nothing burned) | the sign-time in-flight check removed (submitSigned still refuses, after the take) | BT “a send of the account recorded meanwhile (C10) → in-flight …” (the entry gone, the proof spent) — tsc 0 · RED `Tests  1 failed \| 130 passed (131)` |
-| S12 | an entry that does not read back is never signed | `if (shown === null) return void new SendRefused(…)` (let through) | BT “an entry whose prepare-time facts do not read back is never signed …” — tsc 0 · RED `Tests  1 failed \| 130 passed (131)` |
-| S13 | the destination pinned for the currency | the `PINNED_DESTINATION` comparison neutralised | BT “an entry whose prepare-time facts do not read back is not resumed” (a look-alike treasury resumed) — tsc 0 · RED `Tests  1 failed \| 130 passed (131)` |
-| S14 | §2.3: the stage as the program's | `stage: String(v.stage + 1)` | BT the end-to-end row, the stablecoin record row, the pendingData row — tsc 0 · RED `Tests  3 failed \| 128 passed (131)` |
-| S15 | §2.3: the effective referrer | `referrer: … ? null : null` | BT “a stablecoin purchase with an on-chain referrer …” — tsc 0 · RED `Tests  1 failed \| 130 passed (131)` |
-| S16 | `shown` read for its own intent | the `view.amount !== intent.amount` clause dropped | BT the pendingData row (another amount's data) — tsc 0 · RED `Tests  1 failed \| 130 passed (131)` |
-| S17 | **D17: presale.buy signs the purchase kind** | `sendPrepared(ext, deps, msg.id)` (the send kind) | BT 43 rows (every purchase answers `unknown-prepared`) — tsc 0 · RED `Tests  46 failed \| 85 passed (131)` |
-| S18 | **D17: wallet.send stays send-only** (send.ts, shared) | `peek.kind !== kindName && kindName !== SEND_KIND` | BT “wallet.send stays send-only (D17) …” — tsc 0 · RED `Tests  1 failed \| 130 passed (131)` |
-| S19 | resume: a dead challenge is expired | `(dead && false) \|\| …` | BT “its challenge gone → expired …” — tsc 0 · RED `Tests  1 failed \| 130 passed (131)` |
-| S20 | resume: `proven` | `id === '' && …` | BT “#10 proven with the popup closed …”, “past 30 s it is expired …” — tsc 0 · RED `Tests  2 failed \| 129 passed (131)` |
-| S21 | each resume takes its own kind (prepare.ts, shared) | `newestPrepared` without the kind filter | BT “two entries of the account in storage … each resume message takes its own kind” — tsc 0 · RED `Tests  1 failed \| 130 passed (131)` |
-| S22 | presale.pending: purchases only | the `extra.kind` clause dropped from `openPurchase` | BT “pending: the account’s open purchase only …” — tsc 0 · RED `Tests  1 failed \| 130 passed (131)` |
-| S23 | the strict `id` | upper-case hex accepted | BT “presale.buy with an id of another shape → malformed” — tsc 0 · RED `Tests  1 failed \| 130 passed (131)` |
+| S1 | **C12: the gate before every signature** | `if (!geo.open) throw …` at sign → `void geo;` | BT the seven gate rows, “the details …”, “the gate open again …” — tsc 0 · RED `Tests  9 failed \| 124 passed (133)` |
+| S2 | the gate decides first, as at prepare | the gate's line moved below `openSnapshot` | BT “the gate closed and the state unreadable — the gate decides first …” — tsc 0 · RED `Tests  1 failed \| 132 passed (133)` |
+| S3 | **C22: the state re-read decides** | `if (read.state.kind !== 'open') return; const snapshot = read.state.snapshot;` (no state refusal, no stage) | BT the unreadable / 403 / unreachable / closed / blocked / both pins / the vault / the stage rows, “the details …” — tsc 0 · RED `Tests  10 failed \| 123 passed (133)` |
+| S4 | C22 / C27: the stage at sign | `openSnapshot(read.state, {...intent, stage: <the read's stage>})` | BT “the stage moved → price-changed …”, “the details …” — tsc 0 · RED `Tests  2 failed \| 131 passed (133)` |
+| S5 | the allocation's existence | its clause dropped from the basis comparison | BT “the allocation created meanwhile …”, “state-changed: the popup re-prepares …” — tsc 0 · RED `Tests  2 failed \| 131 passed (133)` |
+| S6 | `purchase_count` | its clause dropped | BT “purchase_count moved …” — tsc 0 · RED `Tests  1 failed \| 132 passed (133)` |
+| S7 | the referrer (the basis claim) | its clause dropped | BT “a stored message re-pointed at the allocation of the referrer registered since prepare … `shown.basis` honest → state-changed from the basis …” (rev 2.1, review 2 R2-M1: the bytes are what the program wants now, so only this clause refuses them) — tsc 0 · RED `Tests  1 failed \| 132 passed (133)` |
+| S8 | the user account's existence | its clause dropped | BT “the user account created meanwhile …” — tsc 0 · RED `Tests  1 failed \| 132 passed (133)` |
+| S9 | the limits at sign | `if (limit !== null) throw …` → `void limit;` | BT the remainder, maximum and minimum rows — tsc 0 · RED `Tests  3 failed \| 130 passed (133)` |
+| S10 | **C22: Δc above the per-user remainder** | `userRemainingCents: 2n ** 64n` spread over the fresh limits | BT “the prepared cents now above the per-user remainder …” — tsc 0 · RED `Tests  1 failed \| 132 passed (133)` |
+| S11 | **C10 before the take** (nothing burned) | the sign-time in-flight check removed (submitSigned still refuses, after the take) | BT “a send of the account recorded meanwhile (C10) → in-flight …” (the entry gone, the proof spent) — tsc 0 · RED `Tests  1 failed \| 132 passed (133)` |
+| S12 | an entry that does not read back is never signed | `if (shown === null) return void new SendRefused(…)` (let through) | BT “an entry whose prepare-time facts do not read back is never signed …” — tsc 0 · RED `Tests  1 failed \| 132 passed (133)` |
+| S13 | the destination pinned for the currency | the `PINNED_DESTINATION` comparison neutralised | BT “an entry whose prepare-time facts do not read back is not resumed” (a look-alike treasury resumed) — tsc 0 · RED `Tests  1 failed \| 132 passed (133)` |
+| S14 | §2.3: the stage as the program's | `stage: String(v.stage + 1)` | BT the end-to-end row, the stablecoin record row, the pendingData row — tsc 0 · RED `Tests  3 failed \| 130 passed (133)` |
+| S15 | §2.3: the effective referrer | `referrer: … ? null : null` | BT “a stablecoin purchase with an on-chain referrer …” — tsc 0 · RED `Tests  1 failed \| 132 passed (133)` |
+| S16 | `shown` read for its own intent | the `view.amount !== intent.amount` clause dropped | BT the pendingData row (another amount's data) — tsc 0 · RED `Tests  1 failed \| 132 passed (133)` |
+| S17 | **D17: presale.buy signs the purchase kind** | `sendPrepared(ext, deps, msg.id)` (the send kind) | BT 43 rows (every purchase answers `unknown-prepared`) — tsc 0 · RED `Tests  48 failed \| 85 passed (133)` |
+| S18 | **D17: wallet.send stays send-only** (send.ts, shared) | `peek.kind !== kindName && kindName !== SEND_KIND` | BT “wallet.send stays send-only (D17) …” — tsc 0 · RED `Tests  1 failed \| 132 passed (133)` |
+| S19 | resume: a dead challenge is expired | `(dead && false) \|\| …` | BT “its challenge gone → expired …” — tsc 0 · RED `Tests  1 failed \| 132 passed (133)` |
+| S20 | resume: `proven` | `id === '' && …` | BT “#10 proven with the popup closed …”, “past 30 s it is expired …” — tsc 0 · RED `Tests  2 failed \| 131 passed (133)` |
+| S21 | each resume takes its own kind (prepare.ts, shared) | `newestPrepared` without the kind filter | BT “two entries of the account in storage … each resume message takes its own kind” — tsc 0 · RED `Tests  1 failed \| 132 passed (133)` |
+| S22 | presale.pending: purchases only | the `extra.kind` clause dropped from `openPurchase` | BT “pending: the account’s open purchase only …” — tsc 0 · RED `Tests  1 failed \| 132 passed (133)` |
+| S23 | the strict `id` | upper-case hex accepted | BT “presale.buy with an id of another shape → malformed” — tsc 0 · RED `Tests  1 failed \| 132 passed (133)` |
 | S24 | `MARKERS` | without `presale.buy` | NP “armed by B1d-1b: … Task 3 its four sign and resume types” — tsc 0 · RED `Tests  1 failed \| 49 passed (50)` |
-| S25 | the record's data is the kind's | `pendingData` answers null | BT the end-to-end row, the stablecoin record row, the pendingData row — tsc 0 · RED `Tests  3 failed \| 128 passed (131)` |
-| S26 | B1b's refusals reach the popup | a `reauth-required` mapped as `failed` | BT the end-to-end row (no challenge id for #10) — tsc 0 · RED `Tests  1 failed \| 130 passed (131)` |
-| S27 | discard | `discardPrepared` not called | BT both discard rows — tsc 0 · RED `Tests  2 failed \| 129 passed (131)` |
-| X1 | **the record before the broadcast** (pending.ts, shared) | `await deps.broadcast(input.wire)` before the record's write | BT both restart rows, the double click, the end-to-end, the 403, the unreadable record and four more — tsc 0 · RED `Tests  10 failed \| 121 passed (131)` |
-| L1 | the lock during a prepare (prepare.ts, shared) | `storePrepared`'s session check never true | BT “a lock while the purchase is prepared …” — tsc 0 · RED `Tests  1 failed \| 130 passed (131)` |
-| D1 | **single use** (prepare.ts, shared) | `takePrepared` writes the entry back | BT “a double click …”, the restart row, the end-to-end — tsc 0 · RED `Tests  3 failed \| 128 passed (131)` |
-| **S28 (rev 2, M1)** | **the signed bytes checked at sign** | `if (entry.account === '') await signedPurchase(…)` (never) | BT the three M1 rows (the forged basis signs; the look-alike message signs; the changed message is burned by the take) — tsc 0 · RED tsc 0 · RED `Tests  3 failed \| 128 passed (131)` |
-| **S29 (rev 2, M1)** | a referrer registered since prepare, from the bytes | the `state-changed` branch answers `prepared-invalid` (`… matches(built)) throw invalid;`; the first draft, the line deleted, left `built` unused — tsc 2, invalid) | BT “a referrer registered since prepare with `shown.basis` forged to name it …” — tsc 0 · RED tsc 0 · RED `Tests  2 failed \| 129 passed (131)` |
-| **S30 (rev 2, M1)** | the integrity before the bytes are read | the `preparedIntegrity(entry) !== entry.integrity` check removed | BT “a stored message changed under an integrity that no longer matches it …” (refused only after the take: the entry burned) — tsc 0 · RED tsc 0 · RED `Tests  1 failed \| 130 passed (131)` |
-| **S31 (rev 2, M1)** | the referrer allocation is the fresh snapshot's | `matches(named[3] ?? '')` (the message's own allocation) | BT “a referrer registered since prepare with `shown.basis` forged …” (signed) — tsc 0 · RED tsc 0 · RED `Tests  1 failed \| 130 passed (131)` |
-| **S32 (rev 2, M1)** | the destination is the pinned one | `destination: named[6 / 5]` (the message's own) | BT “a stored message that pays a look-alike treasury …” (signed) — tsc 0 · RED tsc 0 · RED `Tests  1 failed \| 130 passed (131)` |
+| S25 | the record's data is the kind's | `pendingData` answers null | BT the end-to-end row, the stablecoin record row, the pendingData row — tsc 0 · RED `Tests  3 failed \| 130 passed (133)` |
+| S26 | B1b's refusals reach the popup | a `reauth-required` mapped as `failed` | BT the end-to-end row (no challenge id for #10) — tsc 0 · RED `Tests  1 failed \| 132 passed (133)` |
+| S27 | discard | `discardPrepared` not called | BT both discard rows — tsc 0 · RED `Tests  2 failed \| 131 passed (133)` |
+| X1 | **the record before the broadcast** (pending.ts, shared) | `await deps.broadcast(input.wire)` before the record's write | BT both restart rows, the double click, the end-to-end, the 403, the unreadable record and four more — tsc 0 · RED `Tests  10 failed \| 123 passed (133)` |
+| L1 | the lock during a prepare (prepare.ts, shared) | `storePrepared`'s session check never true | BT “a lock while the purchase is prepared …” — tsc 0 · RED `Tests  1 failed \| 132 passed (133)` |
+| D1 | **single use** (prepare.ts, shared) | `takePrepared` writes the entry back | BT “a double click …”, the restart row, the end-to-end — tsc 0 · RED `Tests  3 failed \| 130 passed (133)` |
+| **S28 (rev 2, M1)** | **the signed bytes checked at sign** | `if (entry.account === '') await signedPurchase(…)` (never) | BT the three M1 rows (the forged basis signs; the look-alike message signs; the changed message is burned by the take) — tsc 0 · RED `Tests  4 failed \| 129 passed (133)` |
+| **S29 (rev 2, M1)** | a referrer registered since prepare, from the bytes | the `state-changed` branch answers `prepared-invalid` (`… matches(built)) throw invalid;`; the first draft, the line deleted, left `built` unused — tsc 2, invalid) | BT “a referrer registered since prepare with `shown.basis` forged to name it …” — tsc 0 · RED `Tests  2 failed \| 131 passed (133)` |
+| **S30 (rev 2, M1)** | the integrity before the bytes are read | the `preparedIntegrity(entry) !== entry.integrity` check removed | BT “a stored message changed under an integrity that no longer matches it …” (refused only after the take: the entry burned) — tsc 0 · RED `Tests  1 failed \| 132 passed (133)` |
+| **S31 (rev 2, M1)** | the referrer allocation is the fresh snapshot's | `matches(named[3] ?? '')` (the message's own allocation) | BT “a referrer registered since prepare with `shown.basis` forged …” (signed) — tsc 0 · RED `Tests  1 failed \| 132 passed (133)` |
+| **S32 (rev 2, M1)** | the destination is the pinned one | `destination: named[6 / 5]` (the message's own) | BT “a stored message that pays a look-alike treasury …” (signed) — tsc 0 · RED `Tests  1 failed \| 132 passed (133)` |
+| **S33 (rev 2.1, review 2 R2-M2)** | the amount is the intent's, not the message's | `amount:` the message's own u64 (`compiledInstructions[2].data[8..16]`, little-endian) instead of `BigInt(intent.amount)` | BT “a stored message whose purchase amount was doubled in its data bytes … → prepared-invalid before the take …” (signed: twice the confirmed amount) — tsc 0 · RED `Tests  1 failed \| 132 passed (133)` |
 
-34 mutations (rev 2: + S28–S32; − S7, now equivalent — below), all red, every one compiling. **(rev 2) S7 is no longer listed:** rev 1's S7 dropped the referrer clause of the basis comparison and turned “a referrer registered meanwhile …” red; since M1 the signed bytes are checked against the fresh snapshot's referrer allocation, which answers that row with the same `state-changed`, so S7 survives (observed: tsc 0 · `Tests  131 passed (131)`). The clause stays as the cheap claim check before the bytes; the referrer rule itself is proven from the bytes by S29 and S31 (and by the forged-basis row, red on rev 1's code). **The first sweep had one non-compiling form:** S12 as `if (shown === null) return;` left `SendRefused` unused in `buy.ts` (`TS6133`, tsc 2 — invalid, not red); the form above compiles and turns its row red. Each mutant ran alone in a fresh `git archive HEAD` copy of the task's commit (`runmut.py`, four at a time). X1, L1, D1, S18 and S21 mutate shared code: they prove that this task's rows exercise the shared pipeline's own guarantees for a purchase (exactly-once, single use, the lock, D17, the kind filter), not only the presale code.
+36 mutations (rev 2: + S28–S32; rev 2.1: + S33, and S7 kept — rev 2 had retired it as equivalent, review 2 R2-M1 showed it is not), all red, every one compiling. **(rev 2.1) S7 is live:** the basis's referrer clause and M1's byte check refuse different forgeries — a message re-pointed at the NEW referrer's allocation (integrity recomputed, `shown.basis` honest) passes the byte check (it is what the program wants now) and only the clause refuses it; that row was missing, so S7 survived rev 2's 131 rows. With the row S7 is red. **S33** pins the amount half of the byte check (no rev 2 row covered it). First drafts that did not compile: S28 (`signedPurchase` unused), S29 (`built` unused) — rewritten.
 
 #### Dry-run notes (Task 3)
 
@@ -6392,7 +6435,8 @@ git commit -m "feat(extension): B1d-1b sign, record, broadcast — presale.buy t
 - **Existing sends unchanged:** `preparedFor` now reads through `newestPrepared` (same filter, same newest rule — `send.test.ts`'s `preparedFor` rows and `intents.test.ts`'s captured 0b79442 replays green in both runs); `failure` is only exported.
 - **For Task 4/5:** the popup engine (`src/app/engine.ts`) has no client for any `presale.*` type yet — Task 4 adds what #23 asks, Task 5 what #20 asks. Task 5's #20 must treat `presale.buy`'s `prepared-invalid` as B1b does (re-prepare), and per §3.3 discard on `geo-closed` / `presale-closed` / `blocked`, keep for `price-changed` / `state-changed`.
 - **(rev 2) Review 1 M1: the sign-time check rests on the integrity-bound bytes.** `signedPurchase` runs after `openSnapshot`: integrity first (a message that no longer matches its digest is `prepared-invalid` BEFORE the take, the entry not burned), then `assertPurchaseMessage` with the pinned destination, the intent's amount, the message's own paying account for a stablecoin (prepare chose it from the holdings; the simulation proved its loss) and the referrer allocation the fresh snapshot resolves. Only the allocation differing → `state-changed` (Q43, the popup re-prepares carrying the challenge); anything else → `prepared-invalid`. On rev 1's code a stored message re-pointed at a look-alike treasury with its integrity recomputed SIGNED (the rev 2 row is red there): storage.session is background-owned, so this was defence in depth, not a reachable hole — now closed from the bytes. The basis comparison stays (purchase_count, the existences) — cost if wrong: none (≈ 30 lines; no network).
-- **Dry run:** clone `dry/b1d1b-r2`, commit `fb9bc1d` (rev 2; rev 1 `1b081f8`), on Task 2's `a11ef60`. Replaying this part (rev 2) onto `git archive a11ef60` (10 diffs, each with `git apply --recount`) reproduces the commit byte for byte (all 10 files compared). This task's logs and scripts live under `scratchpad/b1d1b-t3/` only.
+- **(rev 2.1) Review 2 R2-M1 / R2-M2:** two rows beside M1's three — a stored message re-pointed at the new referrer's allocation (`["allocation", referrer]`), integrity recomputed, `shown.basis` honest → `state-changed` from the basis clause, nothing signed; the purchase amount doubled in the message's data, integrity recomputed → `prepared-invalid` before the take, entry kept, nothing signed. S7 back in the table, S33 added; both red. No product code changed.
+- **Dry run:** clone `dry/b1d1b-r21`, commit `54c0b52` (rev 2.1; rev 2 `fb9bc1d`, rev 1 `1b081f8`), on Task 2's `a11ef60`. Replaying this part (rev 2) onto `git archive a11ef60` (10 diffs, each with `git apply --recount`) reproduces the commit byte for byte (all 10 files compared). This task's logs and scripts live under `scratchpad/b1d1b-t3/` only.
 
 ---
 
@@ -6540,7 +6584,7 @@ export function honestSimulation(wire: string, addresses: readonly string[], cha
 
 ```diff
 diff --git a/extension/src/background/presale/__tests__/buy.test.ts b/extension/src/background/presale/__tests__/buy.test.ts
-index 1312680..ad07aa5 100644
+index 8d05014..cb69e8a 100644
 --- a/extension/src/background/presale/__tests__/buy.test.ts
 +++ b/extension/src/background/presale/__tests__/buy.test.ts
 @@ -17,7 +17,7 @@ import {
@@ -9312,7 +9356,7 @@ index ef3c418..893362c 100644
 
 - [ ] **Step 4: Green, both builds, the gates.**
 
-Run (in `extension/`): `npx tsc --noEmit; echo $?` — **0**. `npx vitest run src/app/presale` — `Test Files  2 passed (2)` · `Tests  51 passed (51)` (three runs, the same). `npx vitest run` — `Test Files  204 passed (204)` · `Tests  4286 passed (4286)` (+2 files, +57 rows); `npx vitest run --config vitest.nopresale.config.ts` — `Test Files  13 passed (13)` · `Tests  388 passed (388)` (+3: the router's off row, engine's two `request` rows).
+Run (in `extension/`): `npx tsc --noEmit; echo $?` — **0**. `npx vitest run src/app/presale` — `Test Files  2 passed (2)` · `Tests  51 passed (51)` (three runs, the same). `npx vitest run` — `Test Files  204 passed (204)` · `Tests  4288 passed (4288)` (+2 files, +57 rows); `npx vitest run --config vitest.nopresale.config.ts` — `Test Files  13 passed (13)` · `Tests  388 passed (388)` (+3: the router's off row, engine's two `request` rows).
 
 Run: `rm -rf dist dist-nopresale && node scripts/build.mjs && node scripts/build.mjs --no-presale`, then `npm run gates` — exit 0; `classes ok: every class in 58 src/app and src/approve files …`; the last line `no presale ok (dist-nopresale off, dist on): the off build's module maps carry no presale module and of core/presale/ only 3 allowed; the on build carries 15 required modules; 32 markers (none in the off build, each in the on build); 4 strings and the decoder's instruction names stay in the off build`. `npm run csp` — `CSP ok` for both; `npm run secrets` — exit 0; `npm run reproducible` — exit 0 (`presale chrome 26 files sha256:4057a864…`, `no-presale chrome 26 files sha256:6fcde253…` — the off build changes too: it carries the shared App, router, engine, TokenSheet, ExtIcon and both stylesheets, `.s-pre` rules included; no marker is in them). No `core/` or root `src/` file changes: the root `tsc` / `jest` and web's `verify` are not needed.
 
@@ -9350,8 +9394,8 @@ git commit -m "feat(extension): B1d-1b #23 presale in the popup — 23a (stage c
 | C3 | no estimate exactly with no-sol-price | the `(cents === null …) !== (line === 'no-sol-price')` line dropped | CT “quote: an estimate is missing exactly with no-sol-price …” — tsc 0 · RED `Tests  1 failed \| 8 passed (9)` |
 | C4 | a view’s record is a purchase | `\|\| p.extra?.kind !== PURCHASE_KIND` dropped | CT “view: an extra key anywhere …” (the `other-kind` record) — tsc 0 · RED `Tests  1 failed \| 8 passed (9)` |
 | C5 | a prepared purchase’s programs exactly compute-budget, presale | the order clauses dropped | CT “a prepared purchase: …” — tsc 0 · RED `Tests  1 failed \| 8 passed (9)` |
-| **C6 (rev 2, D22)** | the open view's country as the gate gives it | `countryOf`: any string accepted (the two-capitals check dropped) | CT “view: an extra key anywhere, …” (`'si'`, `'SVN'` accepted) — tsc 0 · RED tsc 0 · RED `Tests  1 failed \| 8 passed (9)` |
-| **C7 (rev 2, D22)** | the open view's keys | `countryCode` dropped from the open variant's exact key list | CT both open-view rows (the real background's open view refused) — tsc 0 · RED tsc 0 · RED `Tests  2 failed \| 7 passed (9)` |
+| **C6 (rev 2, D22)** | the open view's country as the gate gives it | `countryOf`: any string accepted (the two-capitals check dropped) | CT “view: an extra key anywhere, …” (`'si'`, `'SVN'` accepted) — tsc 0 · RED `Tests  1 failed \| 8 passed (9)` |
+| **C7 (rev 2, D22)** | the open view's keys | `countryCode` dropped from the open variant's exact key list | CT both open-view rows (the real background's open view refused) — tsc 0 · RED `Tests  2 failed \| 7 passed (9)` |
 | E1 | `request` keeps the caller’s codes | `call(message, codes, parse)` → `call(message, codes.slice(0, 0), parse)` | ET both `request` rows — tsc 0 · RED `Tests  2 failed \| 30 passed (32)` |
 | R1 | the route carries nothing | `Object.keys(o).length === 1 && o.screen === 'presale'` → `o.screen === 'presale'` | RT “on: exactly {screen: "presale"} is pushed …” — tsc 0 · RED `Tests  1 failed \| 33 passed (34)` |
 | R2 | a presale route never claims a SCREENS name (App) | `SCREENS.has(route.screen) ? undefined :` dropped from `presaleRouteOf` | RP “presaleRouteOf: …” — tsc 0 · RED `Tests  1 failed \| 4 passed (5)` |
@@ -9384,7 +9428,7 @@ git commit -m "feat(extension): B1d-1b #23 presale in the popup — 23a (stage c
 - **Moved, not changed: the honest simulation** (`effectsOf`, `honestSimulation`, the two rents) from `buy.test.ts` to `presale/__tests__/simulation.ts`, so #23's Buy rows prepare against the same program effects; `buy.test.ts`'s 127 rows green before and after (the red run proves it on Task 3's tree).
 - **Not built here (stated):** 23c / 23d (D1, §9); the referral field (B1d-2); #20, #10, #21 for a purchase (Task 5); #50b and #11's entry (Task 6). The request budget is proven with a quiet provider (the wallet's own open sequence reads its balances and prices besides #23's; a quiet provider isolates #23's five).
 - **(rev 2) D22: the client parses the open view's `countryCode`** (`countryOf`, shared with the geo answer's parse: two capital letters or null; the key required). Without it the popup refuses every open view of rev 2's background as `failed` — the rev 1 client is red against it (`client.test.ts` 2 failed of 9 on Task 3's rev 2 tree with rev 1's client). #23 itself does not show the country. — cost if wrong: none.
-- **Dry run:** clone `dry/b1d1b-r2`, commit `138ed8a` (rev 2; rev 1 `8dcb273`), on Task 3's `fb9bc1d`. Replaying this part (rev 2) onto `git archive fb9bc1d` (7 new files, 18 diffs, `git apply --recount`) reproduces the commit byte for byte (all 25 files compared). Visual shots and the shots page live under `scratchpad/b1d1b-t4/` only (never in the repository); the mutation runner is `b1d1b-t4/runmut.py`.
+- **Dry run:** clone `dry/b1d1b-r21`, commit `16b1145` (rev 2.1; rev 2 `138ed8a`; rev 1 `8dcb273`), on Task 3's `54c0b52`. Replaying this part (rev 2) onto `git archive 54c0b52` (7 new files, 18 diffs, `git apply --recount`) reproduces the commit byte for byte (all 25 files compared). Visual shots and the shots page live under `scratchpad/b1d1b-t4/` only (never in the repository); the mutation runner is `b1d1b-t4/runmut.py`.
 
 
 ---
@@ -13017,7 +13061,7 @@ index cb9088a..f7589c9 100644
 ```
 
 
-- [ ] **Step 4: Green, both builds, the gates.** `npx tsc --noEmit; echo $?` — **0**. `npx vitest run` — `Test Files  208 passed (208)` · `Tests  4355 passed (4355)` (Task 4: 204 / 4286). `npx vitest run -c vitest.nopresale.config.ts` — `Test Files  13 passed (13)` · `Tests  393 passed | 2 skipped (395)` (the two `skipIf(off)` rows of `challenge.test.ts` — the purchase description's field-by-field refusals, meaningless where nothing is described; the off run's own row asserts `null`). `node scripts/build.mjs && node scripts/build.mjs --no-presale` — both build. `npm run gates` — exit 0, per build: permissions, page bundles, vault isolation (the vault page's `src/unlock/presale.ts` imports only `./strings`, `../shared/amount` and a type), rpc methods, no TGE date (631 files), fonts, classes (`app-badge`, `app-pre-grid`, `app-fail-line` defined in `app.css`), and "no presale ok … the on build carries 17 required modules; 49 markers (none in the off build, each in the on build)". `core/`, the root `src/` and `web/` are untouched (their gates not re-run).
+- [ ] **Step 4: Green, both builds, the gates.** `npx tsc --noEmit; echo $?` — **0**. `npx vitest run` — `Test Files  208 passed (208)` · `Tests  4357 passed (4357)` (Task 4: 204 / 4288). `npx vitest run -c vitest.nopresale.config.ts` — `Test Files  13 passed (13)` · `Tests  393 passed | 2 skipped (395)` (the two `skipIf(off)` rows of `challenge.test.ts` — the purchase description's field-by-field refusals, meaningless where nothing is described; the off run's own row asserts `null`). `node scripts/build.mjs && node scripts/build.mjs --no-presale` — both build. `npm run gates` — exit 0, per build: permissions, page bundles, vault isolation (the vault page's `src/unlock/presale.ts` imports only `./strings`, `../shared/amount` and a type), rpc methods, no TGE date (631 files), fonts, classes (`app-badge`, `app-pre-grid`, `app-fail-line` defined in `app.css`), and "no presale ok … the on build carries 17 required modules; 49 markers (none in the off build, each in the on build)". `core/`, the root `src/` and `web/` are untouched (their gates not re-run).
 
 - [ ] **Step 5: Visual check against the design (dry run; Task 9 makes it a committed spec).** No UI reaches #20's purchase variant before Task 6 pushes `presale` from #11, so the dry run shot the screens from a scratch page outside the repository (`scratchpad/b1d1b-t5/shots5-src/`: a Vite entry built with `appConfig` rendering `PresaleConfirm`, `Status`, `Failed`, `Stuck` inside the real `WalletProvider`, its engine on the real background — `registerPresale`, `handleMessage`, `chain.ts`'s chain, `honestSimulation`, the same wiring as `world.ts` — and a copy of `unlock.html` mounting `mountReauth` on a purchase `PurchaseAbout`), served locally and shot by Playwright at 412 × 720 (top and scrolled to the end), beside the design's own #20, #21, #44, #54 and #10 sections. States shot: #20 first SOL purchase (Q09 row, #10 line), USDC from an account that bought before (no Q09, the vault ATA), no re-authentication, proven (Q58); #21 broadcasting, slow, confirmed (Q53/Q54, the badge, Q32); #44 rejected (Q32, Q55), expired (payload rows), not sent; #54 stuck (pill, Q32, Q10), expired ([Try again]); #10 for a purchase. Each was opened and compared. **Found and fixed (in this commit):** "You receive (est.)" broke over three lines in B1b's 80 px label column → `.s-conf .detail-grid.app-pre-grid` 112 px; #44's Q32 line and the sub below it stacked two paragraph margins (a visible gap) → `.s9-fail-hero .sub.app-fail-line {margin: 0}`; the badge as #27's success pill (a green check reads as "confirmed" while broadcasting) → `StatusPill badge`: the pill's shape in the accent, no glyph (`.s-stat .top-bar .status-pill.app-badge`). **Departures kept:** none of these purchase variants is drawn (§9 "#20 recipient", "#21 / #26 Presale badge"); Q32 sits in #21's amount card at the amount's own size (the 1a generic line's markup, Q42b's place), two lines; #20 has no step counter (the purchase's flow is #23 → #20, C33), no high-value styling (B1b's "High-value transfer" names a transfer; the re-authentication itself still applies, D3).
 
@@ -13099,7 +13143,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - **Deviation (stated): #11's and #26's pending rows (Q33) stay generic (Q42a)** — brief item 6 puts #11's pending row in Task 6, and #26's row shares Q33; `genericRecord.test.tsx` therefore seeds an unregistered kind in the on build (the purchase itself in the off build). **Task 6 MUST** add Q33 to both rows (a `KindRecord` field, or a new slot) and move `genericRecord.test.tsx`'s on-build #11/#26 rows back to `presale-buy`.
 - **For Task 6 / 8 / 9:** `PresaleNav.reset` and `againRoute` are the way into #23 with a purchase's amount; #20's purchase variant is reached in the UI only once Task 6 pushes `presale` from #11 (#23's Buy then lands on it — the first end-to-end proof in the App is Task 8's E2E 1). E2E 8 (resume) can drive `resume.test.tsx`'s two paths against the built extension. Task 9 commits these shots (Step 5's list).
 - **(rev 2) Review 1 L1: no marker is one bare word.** Rev 1 armed Q54a as `'Purchased'` — an ordinary word any later shared string ("Purchased on …") would contain, failing the off-build gate as a leak that is not one. Q54 is armed by Q54b `'Purchase confirmed'` instead, and `markerViolations` throws for a marker that is letters only (beside the 8-character minimum), so the next author cannot re-add one; Task 8 drops Q44's `'Programs'` the same way. The gate file's comment says why. — cost if wrong: Q54a's single word is no longer searched for on its own (Q54b, in the same module, is).
-- **Dry run:** clone `dry/b1d1b-r2`, commit `de53d97` (rev 2; rev 1 `95e7011`), on Task 4's `138ed8a`. Replaying this part (rev 2) onto `git archive 138ed8a` (7 new files, 32 diffs, each with `git apply --recount`) reproduces the commit (all 39 files compared). The shots page, the PNGs, the mutation runner (`runmut.py`, `muts.json`) and the logs live under `scratchpad/b1d1b-t5/` only.
+- **Dry run:** clone `dry/b1d1b-r21`, commit `986dcca` (rev 2.1; rev 2 `de53d97`; rev 1 `95e7011`), on Task 4's `16b1145`. Replaying this part (rev 2) onto `git archive 16b1145` (7 new files, 32 diffs, each with `git apply --recount`) reproduces the commit (all 39 files compared). The shots page, the PNGs, the mutation runner (`runmut.py`, `muts.json`) and the logs live under `scratchpad/b1d1b-t5/` only.
 
 ---
 
@@ -15464,7 +15508,7 @@ index 893362c..bfc6b71 100644
 +.s11-stillworks li::before { content: "✓"; color: var(--success); font-weight: 700; }
 ```
 
-- [ ] **Step 4: Green, both builds, the gates.** In `extension/`: `npx tsc --noEmit; echo $?` — **0**. `npx vitest run` — `Test Files  211 passed (211)` · `Tests  4397 passed (4397)` (Task 5: 208 / 4355). `npx vitest run -c vitest.nopresale.config.ts` — `Test Files  14 passed (14)` · `Tests  399 passed | 15 skipped (414)` (Task 5: 13 / 393 + 2; `homePresale.test.tsx` joins the off run — its off row and 13 `skipIf(off)` rows). `node scripts/build.mjs && node scripts/build.mjs --no-presale` — both build. `npm run gates` — exit 0, per build: permissions, page bundles, vault isolation, rpc methods, no TGE date (636 files), fonts, classes (the `.s11-*` and `app-geo-*` / `app-presale-*` / `app-pre-region` classes defined), and "no presale ok … the on build carries 18 required modules; 75 markers (none in the off build, each in the on build)". `node scripts/extract-design-css.mjs --check` — "design-ext.css is the extraction output". From the repository root after the commit: `node scripts/check-no-tge-date.mjs` — "no TGE date in 1300 tracked text files". `core/`, the root `src/` and `web/` are untouched (their gates not re-run).
+- [ ] **Step 4: Green, both builds, the gates.** In `extension/`: `npx tsc --noEmit; echo $?` — **0**. `npx vitest run` — `Test Files  211 passed (211)` · `Tests  4399 passed (4399)` (Task 5: 208 / 4357). `npx vitest run -c vitest.nopresale.config.ts` — `Test Files  14 passed (14)` · `Tests  399 passed | 15 skipped (414)` (Task 5: 13 / 393 + 2; `homePresale.test.tsx` joins the off run — its off row and 13 `skipIf(off)` rows). `node scripts/build.mjs && node scripts/build.mjs --no-presale` — both build. `npm run gates` — exit 0, per build: permissions, page bundles, vault isolation, rpc methods, no TGE date (636 files), fonts, classes (the `.s11-*` and `app-geo-*` / `app-presale-*` / `app-pre-region` classes defined), and "no presale ok … the on build carries 18 required modules; 75 markers (none in the off build, each in the on build)". `node scripts/extract-design-css.mjs --check` — "design-ext.css is the extraction output". From the repository root after the commit: `node scripts/check-no-tge-date.mjs` — "no TGE date in 1300 tracked text files". `core/`, the root `src/` and `web/` are untouched (their gates not re-run).
 
 - [ ] **Step 5: Visual check against the design (dry run; Task 9 makes it a committed spec).** A scratch page outside the repository (`scratchpad/b1d1b-t6/shots6-src/`: Task 5's Vite entry with `appConfig`, rendering the whole `App` for #11 and `Geo` / `Presale` inside the real `WalletProvider`, its engine on the real background — `registerPresale`, `handleMessage`, `world.ts`'s `purchaseWorld`), served locally and shot by Playwright at 412 × 720 (top and scrolled to the end), beside the design's own #11 and #50 sections. States shot: #11 with the banner and Buy; #11 with a purchase pending (Q33 strip); #50b sanctioned (KP), stale list (SI · EU), unknown country, no check, refused, open; 23b with the region line. Each was opened and compared. **Found and fixed (in this commit):** the hero's headline and sub stood apart by their UA margins (the mockup sets none) → `.s11-geo-hero h2, .s11-geo-hero p {margin: 0}`; the region card's two lines stood 28 px apart — web's `design-system.css` defines a layout `.col` (flex column, 28 px gap) that collides with the design's own `.col` → `.s11-geo-region .col {display: block}`. **Departures kept (each in §9 or a Writer note):** the flag tile, "claim_ix", "Stake existing NOC", the post-TGE claim line and "View portfolio" (§9); the open variant's region line (rev 1 named no country; rev 2 adds the detected region, D22 — shot by Task 9's visual spec); Section XI's `.topbar` / `.t-title` / `.sticky-bottom-bar` are the design's aliases of the canonical shell — drawn with `TopBar` (`noc-h1-compact` = `.t-title`'s 600 17/22 −0.01em) and `.sticky-bar`; #11's quick row keeps the design's four-column grid with three actions (Swap stays removed, §4.5); the banner's price is #23's "$ 0.1501" (the program's four decimals, §9) where the mockup draws "$0.025".
 
@@ -15557,7 +15601,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - **Ruling: the mockup's inline styles are `app-geo-*` rules in `app.css`** (the warning glyph and icon tile, the card and info-banner boxes, the text colours); Section XI's `.t-title` is `TopBar`'s `noc-h1-compact` (identical metrics). The visual check fixed two collisions (Step 5). Cost if wrong: CSS only.
 - **Not built here (stated):** #48's F12 and the approve window's use of `regionName` (Task 7); the E2E runs and the committed visual spec (Tasks 8, 9). The shielded-tint banner and TipKit (§9: B2 / mobile-only); no fiat sheet (§9). #11's banner shows no allocation and no TGE line (D5 is #23's).
 - **For Task 7:** `regionName` / `regionText` / `EU_MEMBERS` are in `src/app/ui/regionName.ts` (not a presale directory — the approve bundle may import it, review 2 L6); Q50a takes the name (with or without " · EU" — Task 7's call; §3.6 says "the country name"). **For Task 8:** E2E 1 taps `.s-dash .quick` "Buy"; E2E 4 asserts #50b's headlines Q20 / "NOC presale isn't open in your region" / Q23 and subs per reason (the literals in `Geo.test.tsx`), and with a purchase pending clicks 23b's line (a button). **For Task 9:** the shots of Step 5.
-- **Dry run:** clone `dry/b1d1b-r2`, commit `05f29fd` (rev 2; rev 1 `d56eb7b`), on Task 5's `de53d97`. Replaying this part (rev 2) onto `git archive de53d97` (5 new files, 31 diffs in two blocks, `git apply --recount`) reproduces the commit byte for byte (all 36 files compared). The shots page, PNGs, mutation runner (`runmut.py`, `muts.json`, `genmuts.py`) and logs live under `scratchpad/b1d1b-t6/` only; the temporary `extension/shots6/` used to build the page was removed before the commit.
+- **Dry run:** clone `dry/b1d1b-r21`, commit `da95ebd` (rev 2.1; rev 2 `05f29fd`; rev 1 `d56eb7b`), on Task 5's `986dcca`. Replaying this part (rev 2) onto `git archive 986dcca` (5 new files, 31 diffs in two blocks, `git apply --recount`) reproduces the commit byte for byte (all 36 files compared). The shots page, PNGs, mutation runner (`runmut.py`, `muts.json`, `genmuts.py`) and logs live under `scratchpad/b1d1b-t6/` only; the temporary `extension/shots6/` used to build the page was removed before the commit.
 
 ---
 
@@ -16815,7 +16859,7 @@ index ab7dd6f..785df6b 100644
    assign: 'F3',
 ```
 
-- [ ] **Step 4: Green, both builds, the gates.** In `extension/`: `npx tsc --noEmit; echo $?` — **0**. `npx vitest run` — `Test Files  213 passed (213)` · `Tests  4419 passed (4419)` (Task 6: 211 / 4397; every B1c test unchanged and green — no existing test simulates a presale purchase, and `fakeDeps`' gate is asked only for one). `npx vitest run -c vitest.nopresale.config.ts` — `Test Files  16 passed (16)` · `Tests  420 passed | 15 skipped (435)` (Task 6: 14 / 399 + 15; the two new files, 21 rows, run unskipped in the off build). `node scripts/build.mjs && node scripts/build.mjs --no-presale` — both build. `npm run gates` — exit 0, per build: permissions, page bundles, vault isolation, rpc methods (no new method), no TGE date (638 files), fonts, classes (no new class), and "no presale ok … the on build carries 19 required modules; 75 markers (none in the off build, each in the on build); 8 strings and the decoder's instruction names stay in the off build". `node scripts/extract-design-css.mjs --check` — "design-ext.css is the extraction output" (unchanged). From the repository root after the commit: `node scripts/check-no-tge-date.mjs` — "no TGE date in 1302 tracked text files". `core/`, the root `src/` and `web/` are untouched.
+- [ ] **Step 4: Green, both builds, the gates.** In `extension/`: `npx tsc --noEmit; echo $?` — **0**. `npx vitest run` — `Test Files  213 passed (213)` · `Tests  4421 passed (4421)` (Task 6: 211 / 4399; every B1c test unchanged and green — no existing test simulates a presale purchase, and `fakeDeps`' gate is asked only for one). `npx vitest run -c vitest.nopresale.config.ts` — `Test Files  16 passed (16)` · `Tests  420 passed | 15 skipped (435)` (Task 6: 14 / 399 + 15; the two new files, 21 rows, run unskipped in the off build). `node scripts/build.mjs && node scripts/build.mjs --no-presale` — both build. `npm run gates` — exit 0, per build: permissions, page bundles, vault isolation, rpc methods (no new method), no TGE date (638 files), fonts, classes (no new class), and "no presale ok … the on build carries 19 required modules; 75 markers (none in the off build, each in the on build); 8 strings and the decoder's instruction names stay in the off build". `node scripts/extract-design-css.mjs --check` — "design-ext.css is the extraction output" (unchanged). From the repository root after the commit: `node scripts/check-no-tge-date.mjs` — "no TGE date in 1302 tracked text files". `core/`, the root `src/` and `web/` are untouched.
 
 - [ ] **Step 5: Visual check (dry run; Task 9 makes it a committed spec).** A scratch page outside the repository (`scratchpad/b1d1b-t7/shots7-src/`: the approve window's stylesheets and `<Approve>` over a stub client answering one `pendingOf`-read view — the window computes nothing, so the view is exactly what it renders), served locally and shot by Playwright at 412 × 720, top and scrolled to the end, beside the design's own #48 section. States: F12 sanctioned (KP → "North Korea"), F12 `no_check`, F12 with a lookalike origin (stale list), and the gate open (F2 and Approve — the control). Each was opened and compared: the banner is B1c's danger banner (head red, body, mono meta), first in the section above F2's warning; the eyebrow "CRITICAL · BLOCKED TRANSACTION" in danger; the sticky bar a single full-width Reject (B1c's failed-simulation bar), "Reject and report" above it for a lookalike; the balance card and the decoded instructions stay visible. No style bug was found; nothing changed.
 
@@ -16888,7 +16932,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - **Not built here (stated):** E2E 9 (Task 8) and the committed #48 F12 shots (Task 9). A purchase reached by a CPI from another program is not F12 (§3.6, §8.1 — it is F1's unknown program).
 - **For Task 8:** E2E 9's literals are in `presaleRegion.test.tsx` (`Q49`, `Q50A('North Korea')`, `Q50B`, `Q51`); `dapp.decide` answers `{ok: false, error: 'presale-region'}`; the fake coordinator's `/geo/check` must answer per test and the restricted list must be fresh for the open control. `txHarness.presaleIx` builds any IDL row (E2E copies what it needs — no core imports in e2e).
 - **(rev 2) No change of substance:** the task is replayed onto Task 6's rev 2 tree; the only textual difference is `check-no-presale.test.mjs`'s context (Task 5's bare-word row sits above the must-stay row this task retitles). The whole Playwright suite ran on this task's rev 2 tree (Global Constraints: presaleSwitch's answer now changes in Task 1, so the suite is green before Task 8 adds the presale specs).
-- **Dry run:** clone `dry/b1d1b-r2`, commit `0299987` (rev 2; rev 1 `ff1cfa1`), on Task 6's `05f29fd`. Replaying this part (rev 2) onto `git archive 05f29fd` (2 new files, 13 diffs in two blocks, `git apply --recount`) reproduces the commit (all 15 files compared). The shots page, PNGs, mutation runner (`runmut.py`, `muts.json`, `genmuts.py`) and logs live under `scratchpad/b1d1b-t7/` only; the temporary `extension/shots7/` used to build the page was removed before the commit.
+- **Dry run:** clone `dry/b1d1b-r21`, commit `245f613` (rev 2.1; rev 2 `0299987`; rev 1 `ff1cfa1`), on Task 6's `da95ebd`. Replaying this part (rev 2) onto `git archive da95ebd` (2 new files, 13 diffs in two blocks, `git apply --recount`) reproduces the commit (all 15 files compared). The shots page, PNGs, mutation runner (`runmut.py`, `muts.json`, `genmuts.py`) and logs live under `scratchpad/b1d1b-t7/` only; the temporary `extension/shots7/` used to build the page was removed before the commit.
 
 ---
 
@@ -18269,7 +18313,7 @@ index 8bc2bff..b27a42e 100644
    } finally {
 ```
 
-- [ ] **Step 2: Red run** (Task 7's tree, 0299987 — rev 2; rev 1 ff1cfa1 —, with these test files; both builds built from it). In `extension/`: `npx tsc --noEmit; echo $?` — **0** (the E2E and the gate tests compile against Task 7's tree: they import no product code). `npx vitest run scripts/__tests__/check-no-presale.test.mjs` — `Tests  1 failed | 51 passed (52)`: the `ON_BUILD` exact-list row; the new "every presale.* type is a marker" row passes (all eight are armed — it is a guard). (rev 2: rev 1's second red row, `MARKERS` + `'Programs'`, is gone — see Step 3. Rev 1 also found `presaleSwitch.spec.ts` red on the on build here, since Task 1; rev 2 changes it in Task 1, and the whole suite on Task 7's rev 2 tree is green — Step 5.) The new E2E specs pass on Task 7's tree: they test behaviour Tasks 1–7 built; that each one checks something is proven by Step 7's mutations, every one of which turns its spec red.
+- [ ] **Step 2: Red run** (Task 7's tree, 245f613 — rev 2.1; rev 2 0299987, rev 1 ff1cfa1 —, with these test files; both builds built from it). In `extension/`: `npx tsc --noEmit; echo $?` — **0** (the E2E and the gate tests compile against Task 7's tree: they import no product code). `npx vitest run scripts/__tests__/check-no-presale.test.mjs` — `Tests  1 failed | 51 passed (52)`: the `ON_BUILD` exact-list row; the new "every presale.* type is a marker" row passes (all eight are armed — it is a guard). (rev 2: rev 1's second red row, `MARKERS` + `'Programs'`, is gone — see Step 3. Rev 1 also found `presaleSwitch.spec.ts` red on the on build here, since Task 1; rev 2 changes it in Task 1, and the whole suite on Task 7's rev 2 tree is green — Step 5.) The new E2E specs pass on Task 7's tree: they test behaviour Tasks 1–7 built; that each one checks something is proven by Step 7's mutations, every one of which turns its spec red.
 
 - [ ] **Step 3: Implement — the gate's lists** (`git apply --recount` against Task 7's tree). The audit behind it: every module the on build's module maps carry and the off build's do not (`dist/*.modules.json` minus `dist-nopresale/*.modules.json`) is 18 modules; 16 were required by name, the two missing were `core/presale/buyInstructions.ts` (in the on build since Task 1's quote, the purchase's builder since Task 2) and `core/presale/referrer.ts` (the referrer allocation the purchase names). `core/presale/allocation.ts` is on-only too but is on `CORE_PRESALE_ALLOWED` (the off build may carry it), so it cannot be a positive control (`every ON_BUILD module is one the off build refuses`). The strings: every string literal of `src/background/presale/**`, `src/app/presale/**` and `src/unlock/presale.ts` of 8 characters or more that is in the on build's packages, absent from the off build's and covered by no marker was listed (≈ 120: identifiers, refusal codes, engine-bug messages, class names, design copy §6.2 does not name) and checked against §10: one §10 row of source new / approved / app and build "on" had a part not armed — Q44's label "Programs" (exactly 8 characters). Rev 1 armed it; rev 2 does not (review 1 L1): it is one ordinary word that any later shared string could contain, and Task 5's gate now refuses a bare-word marker — Q44 stays armed by its other parts, "Simulated at slot " and "Compute Budget · Noctura presale" (Task 5's). Q34–Q39 and Q45–Q48 are B1d-2's (not in the on build), Q03, Q31 and Q40c's "more" are shorter than a marker, Q40a/b and Q41a/b are core's. §6.2's named strings: the route `referral`, `v1_presale_records` and "Refer a friend" are B1d-2's (not in the on build yet).
 
@@ -18314,7 +18358,7 @@ index 28faa2f..6f737e6 100644
    'presale.view',
 ```
 
-- [ ] **Step 4: Green, both builds, the gates.** In `extension/`: `npx tsc --noEmit; echo $?` — **0**. `npx vitest run` — `Test Files  213 passed (213)` · `Tests  4420 passed (4420)` (Task 7: 4419; + the marker-coverage row). `npx vitest run -c vitest.nopresale.config.ts` — `Test Files  16 passed (16)` · `Tests  420 passed | 15 skipped (435)` (unchanged). `rm -rf dist dist-nopresale && node scripts/build.mjs && node scripts/build.mjs --no-presale` — both build. `npm run gates` — exit 0, per build: permissions, page bundles, vault isolation, rpc methods (no new method), no TGE date (638 files), fonts, classes, and "no presale ok (dist-nopresale off, dist on): … of core/presale/ only 3 allowed; the on build carries 21 required modules; 74 markers (none in the off build, each in the on build); 8 strings and the decoder's instruction names stay in the off build". `node scripts/extract-design-css.mjs --check` — unchanged. From the repository root after the commit: `node scripts/check-no-tge-date.mjs` — "no TGE date in 1306 tracked text files". `core/`, the root `src/` and `web/` are untouched. `grep -n "from '.*core/" extension/e2e/presale*.ts extension/e2e/fakeCoordinator.ts` — nothing (the E2E rule; `presaleChain.ts` copies the layouts' offsets, the PDA seeds, the discriminators and the arithmetic).
+- [ ] **Step 4: Green, both builds, the gates.** In `extension/`: `npx tsc --noEmit; echo $?` — **0**. `npx vitest run` — `Test Files  213 passed (213)` · `Tests  4422 passed (4422)` (Task 7: 4421; + the marker-coverage row). `npx vitest run -c vitest.nopresale.config.ts` — `Test Files  16 passed (16)` · `Tests  420 passed | 15 skipped (435)` (unchanged). `rm -rf dist dist-nopresale && node scripts/build.mjs && node scripts/build.mjs --no-presale` — both build. `npm run gates` — exit 0, per build: permissions, page bundles, vault isolation, rpc methods (no new method), no TGE date (638 files), fonts, classes, and "no presale ok (dist-nopresale off, dist on): … of core/presale/ only 3 allowed; the on build carries 21 required modules; 74 markers (none in the off build, each in the on build); 8 strings and the decoder's instruction names stay in the off build". `node scripts/extract-design-css.mjs --check` — unchanged. From the repository root after the commit: `node scripts/check-no-tge-date.mjs` — "no TGE date in 1306 tracked text files". `core/`, the root `src/` and `web/` are untouched. `grep -n "from '.*core/" extension/e2e/presale*.ts extension/e2e/fakeCoordinator.ts` — nothing (the E2E rule; `presaleChain.ts` copies the layouts' offsets, the PDA seeds, the discriminators and the arithmetic).
 
   The new E2E alone: `npx playwright test e2e/presale.spec.ts` — `8 passed (1.8 m)`; `npx playwright test e2e/presaleDapp.spec.ts` — `2 passed (35 s)`; `npx playwright test e2e/presaleSwitch.spec.ts e2e/presaleOff.spec.ts` — `4 passed`.
 
@@ -18329,7 +18373,7 @@ rm -rf test-results && unshare -rn npx playwright test $NONVIS --reporter=line  
 rm -rf test-results && unshare -rn npx playwright test $VIS --reporter=line        # 22 passed (8.1 m)
 ```
 
-  **87 passed** each way (B1d-1a's 77 + presale.spec.ts 8 + presaleDapp.spec.ts 2), no retry, no flake (rev 2's run on ed86a39; and on Task 7's rev 2 tree, 0299987, the suite before these specs: **77 passed** each way — 55 + 22 normally, 55 + 22 under `unshare -rn` — green since Task 1 moved presaleSwitch's answer). Every spec of this task ends with `contained(h)` (the fake saw requests, `unexpected` empty, Solscan and every other noc-tura.io name 0 hits; E2E 9 also the dApp server's `unexpected`) and an empty CSP log over every page of the context (popup, vault page, UI tab, approval window, dApp page) — E2E 1 first proves the watch reports a remote image refused by the popup's policy.
+  **87 passed** each way (B1d-1a's 77 + presale.spec.ts 8 + presaleDapp.spec.ts 2), no retry, no flake (rev 2's run on ed86a39 — rev 2.1's 9f6d910 differs from it only in `buy.test.ts`'s two rows, so the run stands; and on Task 7's rev 2 tree, 0299987, the suite before these specs: **77 passed** each way — 55 + 22 normally, 55 + 22 under `unshare -rn` — green since Task 1 moved presaleSwitch's answer). Every spec of this task ends with `contained(h)` (the fake saw requests, `unexpected` empty, Solscan and every other noc-tura.io name 0 hits; E2E 9 also the dApp server's `unexpected`) and an empty CSP log over every page of the context (popup, vault page, UI tab, approval window, dApp page) — E2E 1 first proves the watch reports a remote image refused by the popup's policy.
 
 - [ ] **Step 6: Commit.**
 
@@ -18369,7 +18413,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - **Found: E2E 7's #31 check was vacuous** (`.screen` is #11's too, so `main`'s text could be read before Settings rendered) — it now waits for #31's ten rows (visual.spec.ts's list); E6 proves the check reads Settings.
 - **Not built here (stated):** E2E 10–12 (B1d-2); the committed visual spec (Task 9 — it can reuse `presaleHelpers.ts` and the fake's switches; `fake.hold()` keeps a loading state); no new marker for design copy outside §10 ("Not available in your region?", "Estimated NOC", …) — §6.2 limits markers to its named strings and §10's new / approved / app rows.
 - **For Task 9:** the scenes above shoot every §6.4 1b state; 23b needs a seeded record (`pendingPurchase` in `presale.spec.ts`), #50b × 6 the `geo.check` switch (and its own browser for `stale_list`), #48 F12 `presaleDapp.spec.ts`'s scene.
-- **Dry run:** clone `dry/b1d1b-r2`, commit `ed86a39` (rev 2; rev 1 `57550f7`), on Task 7's `0299987`. Logs, the suite runner (`suite.sh`), the mutation runner (`runmut.py`, `muts.json`) and the literal scan (`scan.mjs`) live under `scratchpad/b1d1b-t8/` only; the mutation copies were removed by exact path.
+- **Dry run:** clone `dry/b1d1b-r21`, commit `9f6d910` (rev 2.1; rev 2 `ed86a39`; rev 1 `57550f7`), on Task 7's `245f613`. Logs, the suite runner (`suite.sh`), the mutation runner (`runmut.py`, `muts.json`) and the literal scan (`scan.mjs`) live under `scratchpad/b1d1b-t8/` only; the mutation copies were removed by exact path.
 
 ---
 
@@ -19135,7 +19179,7 @@ index b48b6ae..569aa2b 100644
        'The presale program returned an error. The network fee was charged; no NOC was bought.',
 ```
 
-- [ ] **Step 2: Red run** (Task 8's tree, ed86a39 — rev 2; rev 1 57550f7 —, with Step 1's files). In `extension/`: `npx tsc --noEmit; echo $?` — **0** (the spec and the rows compile against Task 8's tree: `card` is read through `PRESALE_SLOTS.record(...)`'s `toEqual`, not a type). `npx vitest run src/app/presale/__tests__/records.test.tsx src/app/presale/__tests__/Presale.test.tsx scripts/__tests__/check-no-presale.test.mjs` — `Test Files  3 failed (3)` · `Tests  5 failed | 103 passed (108)`:
+- [ ] **Step 2: Red run** (Task 8's tree, 9f6d910 — rev 2.1; rev 2 ed86a39, rev 1 57550f7 —, with Step 1's files). In `extension/`: `npx tsc --noEmit; echo $?` — **0** (the spec and the rows compile against Task 8's tree: `card` is read through `PRESALE_SLOTS.record(...)`'s `toEqual`, not a type). `npx vitest run src/app/presale/__tests__/records.test.tsx src/app/presale/__tests__/Presale.test.tsx scripts/__tests__/check-no-presale.test.mjs` — `Test Files  3 failed (3)` · `Tests  5 failed | 103 passed (108)`:
   - `records.test.tsx` › "a purchase: Q32 with the exact amount, Q31, …" — no `card` in the slot's answer;
   - `records.test.tsx` › "broadcasting: … Q32’s words in the drawn amount card …" and "polled to confirmed: …" — `.amount-card .eyebrow` null (the card is one `.amount` sentence), no To row;
   - `Presale.test.tsx` › "an open purchase record: …" — `['Stage', 'Stage 1 of 10 · @ $ 0.1501']`;
@@ -19350,7 +19394,7 @@ index 6f737e6..ff4b133 100644
 
 ```diff
 diff --git a/docs/superpowers/specs/2026-10-19-extension-b1d-presale-design.md b/docs/superpowers/specs/2026-10-19-extension-b1d-presale-design.md
-index 58238a5..8e96f78 100644
+index 58238a5..4ee963f 100644
 --- a/docs/superpowers/specs/2026-10-19-extension-b1d-presale-design.md
 +++ b/docs/superpowers/specs/2026-10-19-extension-b1d-presale-design.md
 @@ -1,7 +1,8 @@
@@ -19363,7 +19407,7 @@ index 58238a5..8e96f78 100644
  the design in conversation section by section (`.superpowers/sdd/b1d-approved-design.md`, approach A) and took
  decisions D1–D6, then D7–D14 on Fable's review 1 and D15 on review 2 (`.superpowers/sdd/b1d-owner-decisions.md`,
  `.superpowers/sdd/b1d-spec-review-1.md`, `.superpowers/sdd/b1d-spec-review-2.md`).
-@@ -35,6 +36,53 @@ other passage is rev 3 as approved:
+@@ -35,6 +36,54 @@ other passage is rev 3 as approved:
  - §6.2 (Task 2): the encoding bullet — three symbols, and the three core modules that import them.
  - §8.2 (Task 2): the `core/` rows name the three moved symbols and `core/solana/{transfer,history,balances}.ts`.
  
@@ -19373,7 +19417,8 @@ index 58238a5..8e96f78 100644
 +3.1:
 +- §1.4 (Task 1): `presale.banner` answers `locked` while the wallet is locked (no network for a locked wallet), `null`
 +  otherwise on any failure; `presale.preparedFor` and `presale.discardPrepared` check the session too (Task 3).
-+- §2.3 (Task 3): `stage` is the program's 0-indexed `current_stage` as a decimal string (the renderer adds 1).
++- §2.3 (Task 3): `stage` is the program's 0-indexed `current_stage` as a decimal string (the renderer adds 1; the §2.4
++  recording sends stage + 1).
 +- §2.5 (Tasks 1, 4, D22): the open variant carries `countryCode` — the country the gate detected, or null; the inactive
 +  and blocked variants carry none (#50b shows the disclosure line alone for them).
 +- §3.2 (Task 1, D25): the quote prices the network fee at its upper bound `PRESALE_FEE_BOUND_LAMPORTS` (2 405 000 =
@@ -19417,7 +19462,7 @@ index 58238a5..8e96f78 100644
  **Ledger (review L12).** The order, so nobody has to guess it: the facts were re-read from the code on 2026-10-18 (§8.2)
  and rev 1 was written from them; the owner's decisions D1–D6 and D7–D14 carry the date the decisions file records,
  2026-10-19, which is also the date in this file's name; rev 2 was written after both sets of decisions, and every
-@@ -284,7 +332,7 @@ existing `vault.challengeInfo`).
+@@ -284,7 +333,7 @@ existing `vault.challengeInfo`).
  |---|---|---|
  | `presale.view` | `{account, refresh?: 'gate'}` | `PresaleView` (§2.5) — the account's open record first (no network), then a fresh state read **and** a fresh geo check (C12), then balances and the SOL price; with `refresh: 'gate'` the balances and price are the last full view's (C35) — never older than that view, and a view without one answers in full |
  | `presale.pending` | `{account}` | `PendingView \| null` — the account's open `presale-buy` record from `v1_pending`; **no network call** (C30, 23b's poll) |
@@ -19426,7 +19471,17 @@ index 58238a5..8e96f78 100644
  | `presale.quote` | `{account, currency, amount: string \| 'max'}` | `Quote` (§3.2) from the last `presale.view` snapshot of that account ≤ 30 s old; older → `{stale: true}` |
  | `presale.prepareBuy` | `{account, intent: {currency, amount, stage}, challengeId?}` (B1d-2: `intent.referrer: string \| null`) | `PurchaseView` (§3.3) or a refusal code (§5) |
  | `presale.preparedFor` | `{account}` | the account's `presale-buy` prepared entry's view, `expired` as B1b's `wallet.preparedFor` |
-@@ -491,13 +539,14 @@ PresaleView =
+@@ -458,7 +507,8 @@ A `presale-buy` record is a B1b `PendingRecord` with `intent: null`, `origin: nu
+ as prepared (network part; markup `'0'`, C25) and `extra = {kind: 'presale-buy', data: {currency, amount, stage,
+ priceTicks, nocBase, spentCents, destination, referrer}}`: what was paid (base units), the stage and price it was
+ simulated at, the simulated NOC (`Δtotal_tokens`) and cents (`Δtotal_spent_cents`), the treasury or vault ATA it pays,
+-and the effective referrer (or null). All strings (decimal strings for numbers). Readable in both builds (§1.3).
++and the effective referrer (or null). All strings (decimal strings for numbers); `stage` is the program's 0-indexed
++`current_stage` (rev 3.2 — the renderer adds 1, and the §2.4 recording sends stage + 1). Readable in both builds (§1.3).
+ Shown by #23b, #11, #21, #26, #27, #44 and #54; never used to decide anything.
+ 
+ ### 2.4 The coordinator record (`record.ts`, B1d-2, C24)
+@@ -491,13 +541,14 @@ PresaleView =
    | {open: false, why: 'unavailable', code: 'read-failed' | 'refused' | 'malformed', pending}
    | {open: false, why: 'inactive' | 'blocked', state: StageView, pending}
    | {open: false, why: 'geo', geo: GeoAnswer, state: StageView | null, pending}
@@ -19442,7 +19497,7 @@ index 58238a5..8e96f78 100644
  ```
  
  All numbers are decimal strings of bigints. The popup renders from this and from `Quote`; it parses no account data
-@@ -529,9 +578,11 @@ Integer arithmetic only (cardinal rule 2); every division floors, as the program
+@@ -529,9 +580,11 @@ Integer arithmetic only (cardinal rule 2); every division floors, as the program
  - `checkLimits({cents, minCents, maxTxCents, userRemainingCents})` → `null` | `below-min` | `above-max-tx` |
    `above-user-limit`: `cents < minCents`; `cents > maxTxCents`; `cents > userRemainingCents` — checked in that order,
    the same for SOL, USDC and USDT (D7).
@@ -19456,7 +19511,7 @@ index 58238a5..8e96f78 100644
  - `Quote` = `{amount, cents, nocBase, line: LimitCode | BalanceCode | 'no-sol-price' | null}`; `amount: 'max'` answers
    C9's MAX (capped by `maxTxCents` and `userRemainingCents` converted back — for SOL at our price, floored, then
    re-checked), or `line` when even MAX is below the minimum.
-@@ -758,7 +809,7 @@ B1d-2). #21 is the existing `status` route. Every CTA follows rule 6 (`LockedBut
+@@ -758,7 +811,7 @@ B1d-2). #21 is the existing `status` route. Every CTA follows rule 6 (`LockedBut
      re-read pauses while `document.visibilityState !== 'visible'` and resumes with a full view.
  - **23b pending** (`pending` set, C17, C30): title "NOC presale"; the ring spinner (static under
    `prefers-reduced-motion`); **"Order pending"**; sub Q05 (replaces "Tokens will be claimable when stage 3 closes",
@@ -19465,7 +19520,7 @@ index 58238a5..8e96f78 100644
    **Tx hash** (`.noc-mono` 12 px, the signature's first 4 … last 6 as drawn; the full value on hover and in the
    explorer link); banner Q06; **[View on Solana explorer]** (`explorerUrl(signature)`, the one external link, as #27)
    and **[Done]** → #11. "Order ID" omitted (§9). 23b re-reads **`presale.pending`** (no network) on focus and every 6 s
-@@ -794,10 +845,9 @@ B1d-2). #21 is the existing `status` route. Every CTA follows rule 6 (`LockedBut
+@@ -794,10 +847,9 @@ B1d-2). #21 is the existing `status` route. Every CTA follows rule 6 (`LockedBut
  
  ### 4.3 #50b region blocked (presale) — ix 19612-19906
  
@@ -19479,7 +19534,7 @@ index 58238a5..8e96f78 100644
  top bar **"Not available here"** (`.t-title`) with back and ✕ (→ #11); hero glyph (72 px circle, `--warning` + i-lock);
  headline; sub; region card; reason row; info banner; "What still works"; sticky **[Got it]** → back to the trigger:
  #23 when #50b was opened from #23's link (#23 is on the stack), **#11** when #50b replaced #23 or came from #11's
-@@ -810,12 +860,13 @@ Buy — never a dead end.
+@@ -810,12 +862,13 @@ Buy — never a dead end.
  | `unknown_country` | Q23 | Q26 (approved: "unknown country") | the disclosure line only | Q24 · Q25 |
  | `no_check` | Q23 | **"The region check is unavailable — try again later."** (approved) | the disclosure line only | Q24 · Q25 |
  | `refused` | Q23 | **"The presale service refused this network."** (approved) | the disclosure line only | Q24 · Q27 |
@@ -19496,7 +19551,7 @@ index 58238a5..8e96f78 100644
  - "What still works": **"Send / Receive NOC"** kept; Q30 replaces "View portfolio"; "Stake existing NOC" and the
    post-TGE claim line omitted (§9).
  
-@@ -1059,7 +1110,8 @@ review 2 L10). B1d-1b: the rest of 1–9.
+@@ -1059,7 +1112,8 @@ review 2 L10). B1d-1b: the rest of 1–9.
  3. **Below minimum refused:** the line, Buy disabled; a forced prepare is refused by the background (C3).
  4. **Geo blocked:** #50b for each reason (`sanctioned`, `stale_list`, `unknown_country`, `no_check`, `refused`); Got it
     → back; nothing was prepared. And with a purchase pending: 23b stays, the closed line beneath (C30).
@@ -19506,7 +19561,7 @@ index 58238a5..8e96f78 100644
  6. **Stage moved:** the fake advances the stage between view and Buy → Q15; the next Buy simulates at the new price.
  7. **Off build:** `dist-nopresale` loaded; no banner, no Buy, no #31 row; `presale.view` from the popup's context is
     refused; a `v1_pending` record of exactly §2.3's shape (`intent: null`, `origin: null`, `extra` of kind
-@@ -1083,7 +1135,7 @@ B1d-2:
+@@ -1083,7 +1137,7 @@ B1d-2:
  
  ### 6.4 Visual
  
@@ -19515,7 +19570,7 @@ index 58238a5..8e96f78 100644
  beneath), the allocation row, each #23 closed answer, #20 purchase (with and without account setup), #21 with the badge,
  #44 and #54 for a purchase, #50b × 6, #11 with the banner and Buy, #48 with F12 (B1d-1b); #24 (populated, empty, a null
  stat, copied), the referral field with a line, #20 with "Referred by", #26 badge, #27 line (B1d-2); the opus-tier review
-@@ -1179,6 +1231,13 @@ Also asked, not blocking: whether `/referral-stats` counts referrals made throug
+@@ -1179,6 +1233,13 @@ Also asked, not blocking: whether `/referral-stats` counts referrals made throug
      is closed or unreachable, allowed (as B1c's F2 warning) when it is open; the cost is one `/geo/check` (and the
      cached list) when a site sends a purchase — so a `--no-presale` store build still contains the jurisdiction gate
      and `core/geo/**`, as compliance code, never presale UI;
@@ -19529,7 +19584,7 @@ index 58238a5..8e96f78 100644
    - the coordinator stores what the record says until P2b; every input goes through one host (`api.noc-tura.io`) — an
      outage closes the presale (B1 §4, accepted by the owner).
  
-@@ -1261,7 +1320,9 @@ and `RegisterReferrer`, `calculate_tokens_for_usd`, `SPACE`s, stablecoin constra
+@@ -1261,7 +1322,9 @@ and `RegisterReferrer`, `calculate_tokens_for_usd`, `SPACE`s, stablecoin constra
  | #50b "What still works": "Stake existing NOC", the post-TGE claim line, "View portfolio" | stake and the claim line **omitted** (not in B1; the TGE date); "View portfolio" → Q30 (no #25 in B1) |
  | #50b CSS flag tile | **omitted:** one gradient per country is not worth it; the region text carries the information |
  | #50 "v1_geo_seen_at · suppresses re-rendering within 24 h" (annotation, v0.3) | **omitted:** the screen re-checks on every mount (approved) |
@@ -19540,7 +19595,7 @@ index 58238a5..8e96f78 100644
  | #11 "Buy → presale (#23) if active else fiat-onramp sheet" | #23 when open or a purchase is pending, #50b when geo-closed, otherwise no Buy (approved); no fiat |
  | #11 shielded-tint banner variant; TipKit "Tap to see presale stage" / Android "New" badge | B2 / mobile-only — omitted |
  | #20 "recipient" for a purchase | "Noctura presale" + the full treasury / vault ATA address (B1's address rule) |
-@@ -1335,6 +1396,13 @@ carry it (§6.2's markers are the "on" rows of source new / approved / app). Non
+@@ -1335,6 +1398,13 @@ carry it (§6.2's markers are the "on" rows of source new / approved / app). Non
  | Q50 | #48 F12 banner body | a (sanctioned) "This transaction buys NOC in the presale, which this wallet doesn't allow from your region (<Country>)." · b (any fail-closed reason) "This transaction buys NOC in the presale. The wallet's region check did not succeed, so it can't be approved — try again later." (c removed in rev 3, D15) | new | both | controller copy, owner-delegated 2026-10-19 |
  | Q51 | #48 F12 banner meta | "Only Reject is available · no override" | new | both | controller copy, owner-delegated 2026-10-19 |
  | Q52 | #23, the destination moved twice during prepare (C39) | "The presale is busy right now — try again." | new | on | controller copy, owner-delegated 2026-10-19 |
@@ -19556,7 +19611,7 @@ index 58238a5..8e96f78 100644
  
 ```
 
-- [ ] **Step 4: Green, both builds, the gates.** In `extension/`: `npx tsc --noEmit; echo $?` — **0**. `npx vitest run` — `Test Files  213 passed (213)` · `Tests  4420 passed (4420)` (Task 8: 4420 — the rows changed, none added). `npx vitest run -c vitest.nopresale.config.ts` — `Test Files  16 passed (16)` · `Tests  420 passed | 15 skipped (435)` (unchanged). `rm -rf dist dist-nopresale && node scripts/build.mjs && node scripts/build.mjs --no-presale` — both build. `npm run gates` — exit 0: per build permissions, page bundles, vault isolation, rpc methods, no TGE date (643 files), fonts, classes (the new `app-prose` defined by `app.css`), and "no presale ok (dist-nopresale off, dist on): … the on build carries 21 required modules; 74 markers (none in the off build, each in the on build); …". Before the marker's correction the gate failed exactly as it should: `on build: no file contains the presale marker "Buying NOC with " — the marker does not describe the on build` (`presaleBuilds.test.mjs` red, 1 of 4413 in rev 1's run). `node scripts/extract-design-css.mjs --check` — "design-ext.css is the extraction output" (unchanged). `npx playwright test e2e/visual-presale.spec.ts` — `8 passed (2.1 m)`.
+- [ ] **Step 4: Green, both builds, the gates.** In `extension/`: `npx tsc --noEmit; echo $?` — **0**. `npx vitest run` — `Test Files  213 passed (213)` · `Tests  4422 passed (4422)` (Task 8: 4422 — the rows changed, none added). `npx vitest run -c vitest.nopresale.config.ts` — `Test Files  16 passed (16)` · `Tests  420 passed | 15 skipped (435)` (unchanged). `rm -rf dist dist-nopresale && node scripts/build.mjs && node scripts/build.mjs --no-presale` — both build. `npm run gates` — exit 0: per build permissions, page bundles, vault isolation, rpc methods, no TGE date (643 files), fonts, classes (the new `app-prose` defined by `app.css`), and "no presale ok (dist-nopresale off, dist on): … the on build carries 21 required modules; 74 markers (none in the off build, each in the on build); …". Before the marker's correction the gate failed exactly as it should: `on build: no file contains the presale marker "Buying NOC with " — the marker does not describe the on build` (`presaleBuilds.test.mjs` red, 1 of 4413 in rev 1's run). `node scripts/extract-design-css.mjs --check` — "design-ext.css is the extraction output" (unchanged). `npx playwright test e2e/visual-presale.spec.ts` — `8 passed (2.1 m)`.
 
 - [ ] **Step 5: The review — open every shot beside the design's phone of the same screen.** The design's phones were rendered from `index.html` (`#screen-23 .phone-wrap .phone` 0–1, `#s50 article.phone` 1, `#s11` 1, `#s20` 0–1, `#s21` 0–1, `#s44` 1–2, `#s54` 0, `#s48` 1, `#s10` 0) and set side by side with each shot (`montage`, scratchpad only). Every shot was opened and compared: layout, type scale, colour, spacing, every string against §10 / the design / a flagged Q, the sticky bar, and every departure against §9.
 
@@ -19596,9 +19651,9 @@ rm -rf test-results && unshare -rn npx playwright test $NONVIS --reporter=line  
 rm -rf test-results && unshare -rn npx playwright test $VIS --reporter=line        # 30 passed (10.2 m)
 ```
 
-  **95 passed** each way (Task 8's 87 + this task's 8), no retry, no flake (rev 2's run on 6b0ba78; the `50b-open` shot now carries "Detected region: Slovenia · EU"). After the suite the two `word-break` assertions became `toHaveCSS('word-break', 'normal')` (V7 showed the `evaluate` form red only through the 120 s test timeout when the element is missing); the two tests that carry them re-ran green: `npx playwright test e2e/visual-send.spec.ts e2e/visual-presale.spec.ts -g "#20’s states|#20 without account setup"` — `2 passed (38.8 s)`.
+  **95 passed** each way (Task 8's 87 + this task's 8), no retry, no flake (rev 2's run on 6b0ba78 — rev 2.1's 0bb87d6 differs from it only in `buy.test.ts`'s two rows and the spec text, so the run stands; the `50b-open` shot now carries "Detected region: Slovenia · EU"). After the suite the two `word-break` assertions became `toHaveCSS('word-break', 'normal')` (V7 showed the `evaluate` form red only through the 120 s test timeout when the element is missing); the two tests that carry them re-ran green: `npx playwright test e2e/visual-send.spec.ts e2e/visual-presale.spec.ts -g "#20’s states|#20 without account setup"` — `2 passed (38.8 s)`.
 
-- [ ] **Step 7: The whole verification.** `cd extension && npm run verify` — exit 0: both builds; `Test Files  213 passed (213)` · `Tests  4420 passed (4420)` and `Test Files  16 passed (16)` · `Tests  420 passed | 15 skipped (435)`; csp; secrets; gates ("… 74 markers …"); reproducible (presale chrome / firefox and no-presale chrome / firefox, 26 files each, identical hashes on rebuild). `cd web && npm run verify` — exit 0 (`Test Files  47 passed (47)` · `Tests  622 passed (622)`, then `1 passed` · `3 passed`). From the repository root: `npx tsc --noEmit; echo $?` — **0**; `npx jest` — `Test Suites: 1 skipped, 180 passed, 180 of 181 total` · `Tests:       1 skipped, 1234 passed, 1235 total`. `node scripts/check-no-tge-date.mjs` — "no TGE date in 1307 tracked text files". (`core/`, the root `src/` and `web/` are untouched by this task.) (rev 2: all of this re-run on 6b0ba78 — the same totals but the extension's 4420; reproducible `presale chrome 26 files sha256:edc8297a…`, `no-presale chrome 26 files sha256:452acbfe…`; web `reproducible: 6 files, both builds sha256:871816c0…`.)
+- [ ] **Step 7: The whole verification.** `cd extension && npm run verify` — exit 0: both builds; `Test Files  213 passed (213)` · `Tests  4422 passed (4422)` and `Test Files  16 passed (16)` · `Tests  420 passed | 15 skipped (435)`; csp; secrets; gates ("… 74 markers …"); reproducible (presale chrome / firefox and no-presale chrome / firefox, 26 files each, identical hashes on rebuild). `cd web && npm run verify` — exit 0 (`Test Files  47 passed (47)` · `Tests  622 passed (622)`, then `1 passed` · `3 passed`). From the repository root: `npx tsc --noEmit; echo $?` — **0**; `npx jest` — `Test Suites: 1 skipped, 180 passed, 180 of 181 total` · `Tests:       1 skipped, 1234 passed, 1235 total`. `node scripts/check-no-tge-date.mjs` — "no TGE date in 1307 tracked text files". (`core/`, the root `src/` and `web/` are untouched by this task.) (rev 2: all of this re-run on 6b0ba78; rev 2.1: the extension's `npm run verify` re-run on 0bb87d6 — `Tests  4422 passed (4422)`, the reproducible hashes unchanged; reproducible `presale chrome 26 files sha256:edc8297a…`, `no-presale chrome 26 files sha256:452acbfe…`; web `reproducible: 6 files, both builds sha256:871816c0…`.)
 
 - [ ] **Step 8: Commit.**
 
@@ -19629,17 +19684,17 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 Task 1 (2b4369c): 14 diffs applied, 4 files created, 0 failed, 0 not applied; tree vs git archive 2b4369c: IDENTICAL
 Task 2 (a11ef60): 21 diffs applied, 2 files created, 0 failed, 0 not applied; tree vs git archive a11ef60: IDENTICAL
-Task 3 (fb9bc1d): 10 diffs applied, 0 files created, 0 failed, 0 not applied; tree vs git archive fb9bc1d: IDENTICAL
-Task 4 (138ed8a): 4 diffs applied, 7 files created, 0 failed, 0 not applied; tree vs git archive 138ed8a: IDENTICAL
-Task 5 (de53d97): 32 diffs applied, 7 files created, 0 failed, 0 not applied; tree vs git archive de53d97: IDENTICAL
-Task 6 (05f29fd): 2 diffs applied, 5 files created, 0 failed, 0 not applied; tree vs git archive 05f29fd: IDENTICAL
-Task 7 (0299987): 2 diffs applied, 2 files created, 0 failed, 0 not applied; tree vs git archive 0299987: IDENTICAL
-Task 8 (ed86a39): 4 diffs applied, 4 files created, 0 failed, 0 not applied; tree vs git archive ed86a39: IDENTICAL
-Task 9 (6b0ba78): 15 diffs applied, 1 files created, 0 failed, 0 not applied; tree vs git archive 6b0ba78: IDENTICAL
+Task 3 (54c0b52): 10 diffs applied, 0 files created, 0 failed, 0 not applied; tree vs git archive 54c0b52: IDENTICAL
+Task 4 (16b1145): 4 diffs applied, 7 files created, 0 failed, 0 not applied; tree vs git archive 16b1145: IDENTICAL
+Task 5 (986dcca): 32 diffs applied, 7 files created, 0 failed, 0 not applied; tree vs git archive 986dcca: IDENTICAL
+Task 6 (da95ebd): 2 diffs applied, 5 files created, 0 failed, 0 not applied; tree vs git archive da95ebd: IDENTICAL
+Task 7 (245f613): 2 diffs applied, 2 files created, 0 failed, 0 not applied; tree vs git archive 245f613: IDENTICAL
+Task 8 (9f6d910): 4 diffs applied, 4 files created, 0 failed, 0 not applied; tree vs git archive 9f6d910: IDENTICAL
+Task 9 (0bb87d6): 15 diffs applied, 1 files created, 0 failed, 0 not applied; tree vs git archive 0bb87d6: IDENTICAL
 ALL TASKS REPRODUCE THEIR COMMITS
 ```
 
-  (rev 2: the parts as revised, onto `git archive f46dd14`, against the rev 2 commits.) Negative control: the same replay compared against the wrong commit for its last task (task 9 against Task 8's `ed86a39` instead of `6b0ba78`): `Task 9 (ed86a39): 15 diffs applied, 1 files created, 0 failed, 0 not applied; tree vs git archive ed86a39: DIFFERENT` — the files this task changes listed (the runner prints the first 2 000 characters of `diff -rq`) (`Only in …/extension/e2e: visual-presale.spec.ts`, `… visual-send.spec.ts … differ`, …), then `SEE ABOVE`: the comparison sees a difference when there is one.
+  (rev 2.1: the parts as revised, onto `git archive f46dd14`, against the rev 2.1 commits.) Negative control: the same replay compared against the wrong commit for its last task (task 9 against Task 8's `9f6d910` instead of `0bb87d6`): `Task 9 (9f6d910): 15 diffs applied, 1 files created, 0 failed, 0 not applied; tree vs git archive 9f6d910: DIFFERENT` — the files this task changes listed (the runner prints the first 2 000 characters of `diff -rq`) (`Only in …/extension/e2e: visual-presale.spec.ts`, `… visual-send.spec.ts … differ`, …), then `SEE ABOVE`: the comparison sees a difference when there is one.
 
 #### Dry-run notes (Task 9)
 
@@ -19650,30 +19705,30 @@ ALL TASKS REPRODUCE THEIR COMMITS
 - **(rev 2) Owner D21: #20's purchase variant has no headline**, as the design draws it (rev 1 flagged it for new copy); the spec says so (§4.2, rev 3.2).
 - **(rev 2) Review 1 M2 / owner D23: the spec is rev 3.2** (Step 3b) — rev 1's flags (§4.1's 23b Stage value, §4.3's "Why this matters") and every other departure of this plan are written into it, one line each; §4.3's open variant now shows the detected region (D22, Tasks 1, 4, 6; the `50b-open` shot asserts it, V10).
 - **For the plan's execution:** run the whole Playwright suite after every task that changes a screen (Task 8's lesson) — this task's F2/F4 changed E2E 1's and B1b's visual assertions, both re-run green in Step 6.
-- **Dry run:** clone `dry/b1d1b-r2`, commit `6b0ba78` (rev 2; rev 1 `b4c5c9f`), on Task 8's `ed86a39`. Shots, the design's phones, the comparison sheets, the suite and mutation runners and their logs, and the replay runner live under `scratchpad/b1d1b-t9/` only; the red copy and every mutation copy were removed by exact path.
+- **Dry run:** clone `dry/b1d1b-r21`, commit `0bb87d6` (rev 2.1; rev 2 `6b0ba78`; rev 1 `b4c5c9f`), on Task 8's `9f6d910`. Shots, the design's phones, the comparison sheets, the suite and mutation runners and their logs, and the replay runner live under `scratchpad/b1d1b-t9/` only; the red copy and every mutation copy were removed by exact path.
 
 ---
 
 
 ## Dry-run record
 
-Rev 2 (branch `dry/b1d1b-r2`, from f46dd14; rev 1's commits in brackets):
+Rev 2.1 (branch `dry/b1d1b-r21`, rebuilt from Task 3 on rev 2's a11ef60; rev 2's and rev 1's commits in brackets):
 
 | task | dry-run commit | green (vitest on / off) | mutations |
 |---|---|---|---|
-| 1 quote + view | 2b4369c [1f1704c] | 201 / 4089 · 13 / 383; `presaleSwitch.spec.ts` 2 + 2 | 45, all red |
-| 2 prepare + simulate | a11ef60 [67bfaab] | 202 / 4161 · 13 / 385; root jest 1234; web 617 (rev 1's, unchanged code) | 53, all red |
-| 3 sign / record / broadcast / resume | fb9bc1d [1b081f8] | 202 / 4229 · 13 / 385 | 34, all red (S7 equivalent since M1) |
-| 4 #23 | 138ed8a [8dcb273] | 204 / 4286 · 13 / 388 | 33, all red |
-| 5 #20 / #10 / #21 / #44 / #54, resume | de53d97 [95e7011] | 208 / 4355 · 13 / 393 (+2 skipped) | 51, all red |
-| 6 #11, #50b | 05f29fd [d56eb7b] | 211 / 4397 · 14 / 399 (+15 skipped) | 60, all red |
-| 7 F12 in #48 | 0299987 [ff1cfa1] | 213 / 4419 · 16 / 420 (+15); Playwright 77 normal + 77 `unshare -rn` | 43, all red |
-| 8 gates + E2E | ed86a39 [57550f7] | 213 / 4420; Playwright 87 normal + 87 `unshare -rn` | 8, all red |
-| 9 visual pass, spec rev 3.2 | 6b0ba78 [b4c5c9f] | 213 / 4420; Playwright 95 normal + 95 `unshare -rn`; ext verify, web verify, root jest green | 10, all red |
+| 1 quote + view | 2b4369c [= rev 2; 1f1704c] | 201 / 4089 · 13 / 383; `presaleSwitch.spec.ts` 2 + 2 | 45, all red |
+| 2 prepare + simulate | a11ef60 [= rev 2; 67bfaab] | 202 / 4161 · 13 / 385; root jest 1234; web 617 (rev 1's, unchanged code) | 53, all red |
+| 3 sign / record / broadcast / resume | 54c0b52 [fb9bc1d, 1b081f8] | 202 / 4231 · 13 / 385 | 36, all red |
+| 4 #23 | 16b1145 [138ed8a, 8dcb273] | 204 / 4288 · 13 / 388 | 33, all red |
+| 5 #20 / #10 / #21 / #44 / #54, resume | 986dcca [de53d97, 95e7011] | 208 / 4357 · 13 / 393 (+2 skipped) | 51, all red |
+| 6 #11, #50b | da95ebd [05f29fd, d56eb7b] | 211 / 4399 · 14 / 399 (+15 skipped) | 60, all red |
+| 7 F12 in #48 | 245f613 [0299987, ff1cfa1] | 213 / 4421 · 16 / 420 (+15); Playwright 77 normal + 77 `unshare -rn` (rev 2's run, code-identical) | 43, all red |
+| 8 gates + E2E | 9f6d910 [ed86a39, 57550f7] | 213 / 4422; Playwright 87 normal + 87 `unshare -rn` (rev 2's run, code-identical) | 8, all red |
+| 9 visual pass, spec rev 3.2 | 0bb87d6 [6b0ba78, b4c5c9f] | 213 / 4422; Playwright 95 normal + 95 `unshare -rn` (rev 2's run, code-identical); ext verify, web verify, root jest green | 10, all red |
 
-- 337 named mutations (rev 1: 323; rev 2 adds A18, R10, S28–S32, C6, C7, N3, N4, G25, G26, E8, V10 and retires S7, equivalent since M1's byte check), every one re-run on its task's rev 2 commit: every one compiled before it counted and every one is red (the controls stay as rev 1 observed them: Task 7's O1/O2 green in the on run; the unlisted equivalents Task 6 S1, Task 7 S1b and, since M1, Task 3 S7 survive).
+- 339 named mutations (rev 1: 323; rev 2 adds A18, R10, S28–S32, C6, C7, N3, N4, G25, G26, E8, V10; rev 2.1 adds S33 and keeps S7, which review 2 showed live), every one re-run on its task's rev 2 commit: every one compiled before it counted and every one is red (rev 2.1 re-ran Task 3's 36 on 54c0b52; the other tasks' code is unchanged from rev 2, whose runs stand; controls as rev 1 observed them: Task 7's O1/O2 green in the on run; the unlisted Task 6 S1 and Task 7 S1b survive as rev 1 recorded).
 - Every mutant compiled before it counted; non-compiling first drafts were rewritten (rev 2: S28's first form left `signedPurchase` unused), survivors closed by strengthening the TEST (rev 1: Task 4 P11, Task 5 X2, Task 6 B1, Task 9 V8; rev 2: the review's M06 → Task 2's M3 row).
-- Consistency: task-1 … task-9's blocks (rev 2) replayed onto `git archive f46dd14` reproduce every rev 2 commit at every prefix (negative control reports DIFFERENT).
+- Consistency: task-1 … task-9's blocks (rev 2.1) replayed onto `git archive f46dd14` reproduce every rev 2.1 commit at every prefix (negative control reports DIFFERENT).
 - Visual findings fixed in the dry run: Task 4 (4 style bugs), Task 5 (3), Task 6 (2), Task 9 (F1–F4: 23b Stage wording, #21's purchase amount card, #21 "To · Noctura presale", #20 Network row word-wrap in purchase and B1b send). Rev 2: #50b's open variant with the detected region, shot by Task 9's spec.
 
 ## Before the PR (the standing rules)
@@ -19702,7 +19757,7 @@ Owner decisions on this plan (2026-10-24, `.superpowers/sdd/b1d-owner-decisions.
 Rulings (each loud; detail in the tasks' Dry-run notes and `.superpowers/sdd/b1d1b-plan-ledger.md`):
 - The dollar re-auth rule uses the larger of the display price's value and the simulation's own cents (spec C36, D24); "missing price counts as above" applies when both are missing.
 - The quote's fee bound is the normal tier's ceiling × the CU limit (2 405 000 lamports); every purchase is priced at the normal tier; at least 890 880 lamports must remain, on the stablecoin path too (stricter than §3.2; D25).
-- The sign-time check rests on the integrity-bound message, not on `shown` (rev 2, review 1 M1).
+- The sign-time check rests on the integrity-bound message, not on `shown` (rev 2, review 1 M1); the basis comparison stays beside it — each refuses a forgery the other passes (rev 2.1, review 2 R2-M1).
 - The popup half of the resume paths lives in Task 5 (it needs the `presale-confirm` route).
 - #23 is the purchase's review screen: Back, a sign refusal that keeps the type, and [Try again] on #44 / #54 return to #23 with the amount and the challenge.
 - The off build carries the design's generated CSS rules for #23 (`.s-pre`) and #50 (`.s11-*`) — CSS only, no strings, no code (the gate proves it; D26).
