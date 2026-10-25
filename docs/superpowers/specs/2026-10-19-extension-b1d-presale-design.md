@@ -44,12 +44,16 @@ rev 2) and is stated loudly there; the passages marked "rev 3.2" below are edite
   otherwise on any failure; `presale.preparedFor` and `presale.discardPrepared` check the session too (Task 3).
 - §2.3 (Task 3): `stage` is the program's 0-indexed `current_stage` as a decimal string (the renderer adds 1; the §2.4
   recording sends stage + 1).
+- §2.5 (Task 1): a failed balance read, or a 403 on the price, makes the whole view `unavailable` (`read-failed` /
+  `refused`) — never a zero balance shown as a fact; any other price failure is `solUsdMicros: null` (C8).
 - §2.5 (Tasks 1, 4, D22): the open variant carries `countryCode` — the country the gate detected, or null; the inactive
   and blocked variants carry none (#50b shows the disclosure line alone for them).
 - §3.2 (Task 1, D25): the quote prices the network fee at its upper bound `PRESALE_FEE_BOUND_LAMPORTS` (2 405 000 =
   5 000 + the normal tier's priority ceiling × 120 000 CU; prepare prices at the normal tier and refuses above it) and
   requires ≥ 890 880 lamports left on every path — never exactly 0, and for a stablecoin too: a first stablecoin
   purchase needs ≈ 0.0063 SOL (fee bound + rent bound + 890 880), stricter than "SOL ≥ networkFee + newPdaRent".
+- §3.2 (Task 1): `Quote.cents` and `nocBase` are null exactly when `line` is `no-sol-price` (no invented estimate); MAX
+  without a SOL price answers the balance-based MAX with that line.
 - §3.3 step 5 / C39 (Task 2): "destination-only" = a well-formed destination with a different gain (a wrong shape is
   refused at once); the retry re-reads the §2.1 snapshot and re-checks the stage, the created accounts, the referrer and
   the three limits before the second simulation (`below-min` / `above-user-limit` …, no second simulation), but the
@@ -60,7 +64,8 @@ rev 2) and is stated loudly there; the passages marked "rev 3.2" below are edite
   on the prepared cents (C22 names the remainder), and checks the signed bytes themselves: the entry must read back
   under its integrity and its message must be exactly this intent's purchase to the pinned destination, crediting the
   referrer allocation the fresh snapshot resolves — `state-changed` when only that allocation differs, `prepared-invalid`
-  otherwise. `shown` is read as a claim, never as the evidence.
+  otherwise. `shown` is read as a claim, never as the evidence. C22's comparison of what the bytes were built from also
+  covers the user account's existence (`state-changed`).
 - §3.6 (Task 7): F12 is detected from the raw instruction bytes (the static program key and one of the six purchase
   discriminators); it does not suppress F2; the country reaches #48 through the view, not the stored flag; a stored
   simulation without `presaleRegion` is simulated again; `decide` asks the gate before the re-authentication gate.
@@ -68,17 +73,33 @@ rev 2) and is stated loudly there; the passages marked "rev 3.2" below are edite
 - §4.1 closed answers (Task 4, D20): one warning banner on 23a; the region answer's line is "Not available here — " and
   #50b's sub for the reason (Q59), a link to #50b.
 - §4.2 (D21): #20's purchase variant has no headline, as the design draws it.
+- §4.2 #20 (Task 5): "You pay" is #20's amount card (Q08 as its eyebrow, the payment and "≈ $" from the simulation's
+  cents), not a grid row too; no "4 of 4" step counter (the purchase's flow is #23 → #20, C33) and no high-value styling
+  (B1b's "High-value transfer" names a transfer; the re-authentication itself still applies, D3).
+- §4.2 #21 (Task 9 F2, F3): the purchase's amount card is drawn as #s21 draws a send's — Q32's words before the amount
+  as the eyebrow, the amount and its currency as the figure, "≈ $X USD" from the record's `spentCents` (display only);
+  Q32 still reads in order. The meta rows start with **To** · "Noctura presale" (Q10, no copy icon), as the design's TO
+  row.
+- §4.2 #44 (Task 5): a landed-but-failed purchase says in its sub that the network fee was paid (Q55) and shows no NOC;
+  the fee's amount is on #27 ([View details]), as #44 shows no fee row for a send either.
 - §4.3 (Task 6): #50b renders a skeleton until its own `presale.view` answers — the `geo` route carries no data (§4),
   so one view per mount; the design's structure is built: "Why this matters" + Q28 is the second reason row, the info
   banner carries Q29 and "Re-checked at every presale screen mount."; the open variant shows "Detected region: …"
   when the gate named a country (D22).
-- §4.5 (Task 6): a Buy tap asks two full views (~10 requests), inside the 900/min budget.
+- §4.5 (Task 6): a Buy tap asks two full views (~10 requests), inside the 900/min budget; a Buy that finds no route
+  hides Buy and the banner together until the next banner read (mount or focus) — a banner that leads nowhere would be
+  a dead control.
 - §6.2 (Tasks 4, 6, 8; D26; review 1 L1): one generated `design-ext.css` for both builds — the off build carries the
   design's #23 / #50 selectors (`.s-pre`, `.s11-*`; no text, no marker); no marker is one bare word (Q44's "Programs"
   and Q54a's "Purchased" are armed by their longer parts).
 - §6.3 E2E 5 (Task 8): built as "the presale's program reads unreachable" (#23 closed with Q11; Send and Receive still
   work) — with the whole coordinator down the gate answers `no_check` first (#50b, E2E 4).
-- §6.4 (Task 9): the popup is shot in its 412 × 600 frame, #48 at 412 × 720, #10 at 412 × 916.
+- §6.4 (Task 9): the popup is shot in its 412 × 600 frame, #48 at 412 × 720, #10 at 412 × 916. "Each #23 closed
+  answer": Q11, Q13 and Q14 as the view answers them; Q12 as §5's prepare refusal ("coordinator-refused · Q12 on #23":
+  a ban that starts at the simulation, after the gate and the state read answered — the fake's `presale.read:
+  'refused'`). The view's own closed `refused` answer is not reachable in the real extension: a ban already in place
+  refuses the gate asked beside the state read (one shared latch), which is #50b `refused`; Task 4's component rows
+  cover that render.
 - §8.1 (review 1 L2, D25): the accepted limits gain the two outflow readings, the rent slack and the stablecoin SOL floor.
 - §10 (D20): Q53–Q59, controller copy delegated by the owner, shown in the visual pass after execution.
 - D24: C36 confirmed as approved (the larger of the display value and the simulation's cents; "missing = above" only
@@ -823,8 +844,9 @@ B1d-2). #21 is the existing `status` route. Every CTA follows rule 6 (`LockedBut
 ### 4.2 #20 purchase variant, #10, #21 and the resume paths
 
 - **#20 (`presale-confirm`)**: B1b's #20 chrome, quote countdown ("Quote valid N s", 30 s re-prepare carrying the
-  challenge), Cancel (`presale.discardPrepared`) and resume entry. Title Q07, lede Q08. Rows: **You pay**
-  "<amount> <CUR>" (+ "≈ $ X" from `spentCents`); **You receive (est.)** "<nocBase> NOC" (the simulation's
+  challenge), Cancel (`presale.discardPrepared`) and resume entry — no step counter, no high-value styling (rev 3.2).
+  Title Q07, lede Q08. **You pay** is the amount card (rev 3.2): Q08 as its eyebrow, "<amount> <CUR>" and "≈ $ X" from
+  `spentCents`. Rows: **You receive (est.)** "<nocBase> NOC" (the simulation's
   `Δtotal_tokens`, not the popup's estimate); **Stage** "N of 10"; **Price** "$ 0.1501 / NOC"; **Fee** — B1b's fees
   card with network + priority and an **account setup** row for `rentLamports` when > 0 (Q09), no Noctura-fee row
   (C25); **To** "Noctura presale" (Q10) over the full treasury (SOL) or vault ATA (stablecoin) address in groups of
@@ -835,10 +857,13 @@ B1d-2). #21 is the existing `status` route. Every CTA follows rule 6 (`LockedBut
 - **#10**: the vault page renders the challenge's description from the background: header Q18 and the rows above;
   reason lines Q17 + B1b's. `src/unlock/presale.ts` holds that description renderer (resolved to the stub in the off
   build, in the vault-isolation gate's fixtures).
-- **#21**: unchanged flow; for a record with `extra.kind = 'presale-buy'` the title/amount line reads Q32 and a
-  **"Presale"** badge (`StatusPill`, Q31) sits beside the status; Done → #23 (C17). #44 and #54 render the purchase
-  with Q32 as their amount line; #44 for a landed-but-failed purchase shows the network fee paid and no NOC; #54 offers
-  B1b's same-bytes resend.
+- **#21**: unchanged flow; for a record with `extra.kind = 'presale-buy'` the title is Q53 / Q54a, the amount card is
+  drawn as #s21 draws a send's — Q32's words before the amount as the eyebrow, the amount and its currency as the
+  figure, "≈ $X USD" from the record's `spentCents` (display only; Q32 reads in order) — the meta rows start with
+  **To** · "Noctura presale" (Q10, no copy icon) (rev 3.2), and a **"Presale"** badge (`StatusPill`, Q31) sits beside
+  the status; Done → #23 (C17). #44 and #54 render the purchase with Q32 as their amount line; #44 for a
+  landed-but-failed purchase says in its sub that the network fee was paid (Q55; the amount is on #27, rev 3.2) and
+  shows no NOC; #54 offers B1b's same-bytes resend.
 - **Resume paths (review M5).** B1b's popup resume hook (`App.tsx:116-123`) asks `wallet.preparedFor`; on the on build it
   also asks `presale.preparedFor` through `presaleSlots` (there is at most one entry per account, §1.3, so whichever
   answers non-null) and pushes `presale-confirm` `resume` for a purchase. The full tab's `resume` route (the vault
@@ -894,7 +919,7 @@ drawn and as the app; "program terms" unlinked until the terms page exists, B1e)
   sale. Tap → the Buy routing below.
 - **Buy quick action** (third, after Send and Receive; Swap stays removed): shown while `presale.banner` is non-null.
   Tap → `presale.view`: `pending` set or `open` → #23; `why: 'geo'` → #50b; any other answer → no route, the action
-  hides (approved: "else #50b or nothing"). Disabled offline and in the 403 cool-down, as Send (B1b D36).
+  hides (approved: "else #50b or nothing") — with the banner, until the next banner read (rev 3.2). Disabled offline and in the 403 cool-down, as Send (B1b D36).
 - **Pending row**: an open `presale-buy` record shows on #11's pending row as Q33 (B1b's row, its tap → #21); in the off
   build as Q42 (B1d-1a).
 
@@ -1138,7 +1163,7 @@ B1d-2:
 ### 6.4 Visual
 
 `e2e/visual-presale.spec.ts` shoots at 412 px (the popup in its 412 × 600 frame, #48 at 412 × 720 — rev 3.2): #23a (SOL, USDC, below min, after MAX), #23b (and with a closed line
-beneath), the allocation row, each #23 closed answer, #20 purchase (with and without account setup), #21 with the badge,
+beneath), the allocation row, each #23 closed answer (Q12 as §5's prepare refusal — rev 3.2), #20 purchase (with and without account setup), #21 with the badge,
 #44 and #54 for a purchase, #50b × 6, #11 with the banner and Buy, #48 with F12 (B1d-1b); #24 (populated, empty, a null
 stat, copied), the referral field with a line, #20 with "Referred by", #26 badge, #27 line (B1d-2); the opus-tier review
 against `index.html` as in B1b and B1c, every departure checked against §9.

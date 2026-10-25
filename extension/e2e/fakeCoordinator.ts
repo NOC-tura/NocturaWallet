@@ -131,8 +131,12 @@ export interface FakePresale {
   accounts: Map<string, {lamports: number; data: Uint8Array}>;
   /** The program's own SOL price (its Pyth read), dollars. */
   solUsd: number;
-  /** 'unreachable': a getMultipleAccounts that names the config gets no answer at all (aborted). */
-  read: 'ok' | 'unreachable';
+  /**
+   * 'unreachable': a getMultipleAccounts that names the config gets no answer at all (aborted). 'refused' (B1d-1b Task
+   * 9): every simulateTransaction is answered as a CrowdSec ban, 403 with an HTML body — a ban that starts after the
+   * view and the gate answered (only a prepare simulates), so #23 reaches §5's Q12 rather than #50b `refused`.
+   */
+  read: 'ok' | 'unreachable' | 'refused';
   /** The simulation reports the destination the purchase names unchanged: the payment went somewhere else (C28). */
   wrongDestination: boolean;
   /** Each purchase the program ran in a simulation, in order. */
@@ -718,6 +722,7 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
       fake.hits.push({url, rpcMethod: method});
       // B1d §6.3: the presale's chain reads get no answer (the request leaves, nothing comes back).
       if (fake.presale.read === 'unreachable' && method === 'getMultipleAccounts' && Array.isArray(body.params?.[0]) && (body.params[0] as unknown[]).includes(CONFIG_PDA)) return route.abort('internetdisconnected');
+      if (fake.presale.read === 'refused' && method === 'simulateTransaction') return route.fulfill({status: 403, contentType: 'text/html', body: '<html><head><title>403 Forbidden</title></head><body>Forbidden</body></html>'});
       if (body.jsonrpc !== '2.0' || !Array.isArray(body.params)) fake.unexpected.push(`rpc ${method}: not a JSON-RPC 2.0 request`);
       const result = rpcResult(method, body.params ?? []);
       // A method the fake does not implement answers as the coordinator's proxy answers a method outside its

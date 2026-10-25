@@ -31,18 +31,20 @@ const RETURNING = {totalBase: 1_998_667_554_963n, spentCents: 30_000n, count: 2}
  * A popup or tab shot from the screen's top: `copy` visible, wholly in the frame and clear of the pinned bars (scrolled
  * to the middle of the frame only when it is not), the sticky bar and each of its buttons wholly in the frame, `ready` awaited enabled, the pointer off the column.
  * `end`: the screen is taller than the frame (asserted, so the check is not vacuous) and is shot again at its end.
+ * `bars`: how many sticky bars the screen draws (default 1; 0 for a screen with none, as #11 and #23's closed answers).
  */
-async function frame(p: Page, name: string, copy: Locator, o: {ready?: Locator; end?: boolean} = {}): Promise<void> {
+async function frame(p: Page, name: string, copy: Locator, o: {ready?: Locator; end?: boolean; bars?: 0 | 1} = {}): Promise<void> {
+  const bars = o.bars ?? 1;
   await expect(copy).toBeVisible({timeout: 30_000});
   await top(p);
-  const bars = p.locator('main.app-content > .screen > .top-bar, main.app-content > .screen > .sticky-bar, nav.app-tab-bar');
+  const pinned = p.locator('main.app-content > .screen > .top-bar, main.app-content > .screen > .sticky-bar, nav.app-tab-bar');
   const vh = p.viewportSize()?.height ?? 0;
   const under = async (): Promise<string | null> => {
     const box = await copy.boundingBox();
     if (box === null) return 'no box';
     if (box.y < 0 || box.y + box.height > vh) return 'outside the frame';
     const el = await copy.elementHandle();
-    for (const bar of await bars.all()) {
+    for (const bar of await pinned.all()) {
       const b = await bar.boundingBox();
       if (b === null || (await bar.evaluate((e, x) => e.contains(x), el))) continue;
       if (box.y < b.y + b.height && b.y < box.y + box.height) return await bar.evaluate(e => e.className);
@@ -52,7 +54,7 @@ async function frame(p: Page, name: string, copy: Locator, o: {ready?: Locator; 
   if ((await under()) !== null) await copy.evaluate(e => e.scrollIntoView({block: 'center'}));
   await expect(copy).toBeInViewport();
   expect(await under(), `${name}: the copy clear of the pinned bars`).toBeNull();
-  await wholeBar(p, name);
+  await wholeBar(p, name, bars);
   if (o.ready !== undefined) await expect(o.ready).toBeEnabled();
   await p.mouse.move(0, 0);
   mkdirSync(DIR, {recursive: true});
@@ -69,7 +71,7 @@ async function frame(p: Page, name: string, copy: Locator, o: {ready?: Locator; 
     return any;
   });
   expect(scrolled, `${name}: a screen taller than its frame`).toBe(true);
-  await wholeBar(p, `${name} (end)`);
+  await wholeBar(p, `${name} (end)`, bars);
   await p.screenshot({path: `${DIR}/${name}-end.png`});
   await top(p);
 }
@@ -78,9 +80,10 @@ const top = (p: Page) =>
   p.evaluate(() => {
     for (const e of document.querySelectorAll<HTMLElement>('main.app-content, main.app-content *')) if (e.scrollTop > 0) e.scrollTo(0, 0);
   });
-/** The screen's sticky bar and every button in it wholly inside the viewport (none: nothing to check, asserted by the caller's copy). */
-async function wholeBar(p: Page, name: string): Promise<void> {
+/** Exactly `count` visible sticky bars (a bar that lost its class fails here, not silently), each and every button in it wholly inside the viewport. */
+async function wholeBar(p: Page, name: string, count: number): Promise<void> {
   const bar = p.locator('.sticky-bar').filter({visible: true});
+  await expect(bar, `${name}: ${count} sticky bar(s)`).toHaveCount(count);
   for (const b of await bar.all()) {
     await expect(b, `${name}: the sticky bar wholly in the frame`).toBeInViewport({ratio: 1});
     for (const button of await b.locator('button, a').all()) await expect(button, `${name}: a bar control wholly in the frame`).toBeInViewport({ratio: 1});
@@ -141,7 +144,7 @@ test('visual · #11 with the presale banner and Buy; #23a — SOL, the allocatio
     await expect(p.locator('.app-presale-banner')).toContainText('NOC Presale · Stage 1');
     await expect(p.locator('.app-presale-banner .sm')).toHaveText('$ 0.1501 · 12% to next stage');
     expect(await quickLabels(p)).toEqual(['Send', 'Receive', 'Buy']);
-    await frame(p, '11-presale-banner', p.locator('.app-presale-banner'), {ready: p.locator('.app-presale-banner')});
+    await frame(p, '11-presale-banner', p.locator('.app-presale-banner'), {ready: p.locator('.app-presale-banner'), bars: 0});
 
     await toPresale(p);
     await expect(p.locator('.stage-card .price')).toHaveText('$ 0.1501/ NOC');
@@ -156,10 +159,12 @@ test('visual · #11 with the presale banner and Buy; #23a — SOL, the allocatio
     await expect(p.locator('.app-pre-claimable')).toHaveText('Claimable after TGE');
     await frame(p, '23a-allocation', p.locator('.receipt'), {ready: buyButton(p)});
 
-    // 0.05 SOL at $150 is $7.50: under the config's $10 — the line, Buy disabled (no estimate in its label).
+    // 0.05 SOL at $150 is $7.50: under the config's $10 — the line, Buy disabled with the estimate in its label
+    // (§4.1: "[Buy <estimate> NOC]" while there is an estimate).
     await p.getByLabel('YOU PAY').fill('0.05');
     await expect(p.locator('.input-card .helper.error')).toHaveText('Minimum $10', {timeout: 30_000});
     await expect(buyButton(p)).toBeDisabled();
+    await expect(buyButton(p)).toHaveText(`Buy ${nocText(tokensFor(solCents(SOL / 20n, 150), 0))} NOC`);
     await frame(p, '23a-below-min', p.locator('.input-card .helper.error'));
 
     // MAX: the background's amount (10 SOL less the fee bound and the rent-exempt minimum), quoted.
@@ -272,7 +277,7 @@ test('visual · a first purchase: #20 with account setup, #10 describing the pur
     const q = await h.openPopup();
     await expect(q.locator('.app-pending-strip .noc-body-sm')).toHaveText('Buying NOC · pending', {timeout: 30_000});
     await expect(q.locator('.app-presale-banner')).toBeVisible({timeout: 30_000});
-    await frame(q, '11-pending-row', q.locator('.app-pending-strip'));
+    await frame(q, '11-pending-row', q.locator('.app-pending-strip'), {bars: 0});
     await buyAction(q).click();
     await expect(q.locator('.pending-card h3')).toHaveText('Order pending', {timeout: 30_000});
     await expect(q.locator('.pending-card .copy p')).toHaveText('Waiting for confirmation. Claimable after TGE.');
@@ -390,7 +395,7 @@ test('visual · #23 with no SOL price (Q19), and its closed answers: inactive (Q
       await expect(s.locator('.sticky-bar')).toHaveCount(0);
       if (eyebrow === null) await expect(s.locator('.stage-card')).toHaveCount(0);
       else await expect(s.locator('.stage-card .eyebrow')).toHaveText(eyebrow);
-      await frame(s, name, s.locator('.banner .banner-title'));
+      await frame(s, name, s.locator('.banner .banner-title'), {bars: 0});
       await s.close();
     };
     // Blocked and unavailable first: an inactive sale empties #11's banner (and its Buy) for the banner's minute.
@@ -407,13 +412,51 @@ test('visual · #23 with no SOL price (Q19), and its closed answers: inactive (Q
   }
 });
 
+test('visual · #23 when the coordinator refuses this network at the Buy tap (Q12)', async () => {
+  test.setTimeout(240_000);
+  // Its own browser: the 403 latches every coordinator request of this browser for 10 minutes (the shared cool-down).
+  const h = await launchPopup('noctura-e2e-visual-presale-refused-');
+  const csp = await watchCsp(h.ctx);
+  try {
+    await presaleWallet(h, {allocation: RETURNING});
+    h.fake.tokenAccounts.get(ACCOUNT)?.push({pubkey: USDC_HOLDING, mint: USDC_MINT, amount: '1000000000', decimals: 6});
+    const p = await home(h);
+    await toPresale(p);
+    await currency(p, 'USD Coin', 'USDC');
+    await amount(p, '25', nocText(tokensFor(stableCents(25_000_000n), 0)));
+    // §5: "coordinator-refused (403 / cool-down) · anywhere · Q12 on #23". A ban that starts mid-prepare — after the
+    // gate and the state read answered, at the simulation: #23a stays as read, Q12 above the stage card, Buy disabled for
+    // the cool-down; nothing prepared. A ban already in place refuses the gate first, which is #50b `refused` (shot as
+    // 50b-refused); the view's own closed `refused` answer is not reachable for the same reason (its gate is asked in
+    // the same breath as its state read and shares the latch).
+    h.fake.presale.read = 'refused';
+    await buyButton(p).click();
+    await expect(p.locator('.banner .banner-title')).toHaveText('The presale service refused this network.', {timeout: 30_000});
+    await expect(p.locator('.stage-card .eyebrow')).toHaveText(/^ ?Stage 1 of 10 · live$/);
+    await expect(buyButton(p)).toBeDisabled();
+    await frame(p, '23-closed-refused', p.locator('.banner .banner-title'));
+    expect(h.fake.presale.simulated).toEqual([]);
+    expect(h.fake.hits.filter(x => x.rpcMethod === 'simulateTransaction')).toHaveLength(1);
+    expect(h.fake.broadcasts).toEqual([]);
+    expect(csp).toEqual([]);
+    contained(h);
+  } finally {
+    await h.close();
+  }
+});
+
 /** #50b's own copy: the headline. */
 const headline = (p: Page) => p.locator('.s11-geo-hero h2');
 /** #11 → Buy → #50b, shot, [Got it] → #11. */
-async function geoShot(p: Page, name: string, title: string, sub: string, o: {refused?: boolean} = {}): Promise<void> {
+async function geoShot(p: Page, name: string, title: string, sub: string, region: string | null, o: {refused?: boolean} = {}): Promise<void> {
   await buyAction(p).click();
   await expect(headline(p)).toHaveText(title, {timeout: 30_000});
   await expect(p.locator('.s11-geo-hero p')).toHaveText(sub);
+  // §4.3's table: the region card names the country for `sanctioned` (and `stale_list`); the disclosure line alone otherwise.
+  const named = p.locator('.s11-geo-region .app-geo-primary');
+  if (region === null) await expect(named).toHaveCount(0);
+  else await expect(named).toHaveText(region);
+  await expect(p.locator('.s11-geo-region .app-geo-disclosure')).toHaveText('Approximated from your IP. No GPS, no device location.');
   await frame(p, name, headline(p), {ready: p.getByRole('button', {name: 'Got it'}), end: true});
   await p.getByRole('button', {name: 'Got it'}).click();
   if (o.refused === true) await expect(p.locator('.app-presale-banner')).toHaveCount(0, {timeout: 30_000});
@@ -439,12 +482,11 @@ test('visual · #50b: open (from #23’s link), no check, unknown country, sanct
     await p.getByRole('button', {name: 'Back'}).click();
 
     h.fake.geo.check = 'unreachable';
-    await geoShot(p, '50b-no-check', "The presale can't be opened right now", 'The region check is unavailable — try again later.');
+    await geoShot(p, '50b-no-check', "The presale can't be opened right now", 'The region check is unavailable — try again later.', null);
     h.fake.geo.check = {countryCode: 'XX', isVpn: false};
-    await geoShot(p, '50b-unknown-country', "The presale can't be opened right now", 'Your region could not be determined from your IP.');
+    await geoShot(p, '50b-unknown-country', "The presale can't be opened right now", 'Your region could not be determined from your IP.', null);
     h.fake.geo.check = {countryCode: 'KP', isVpn: true};
-    await geoShot(p, '50b-sanctioned', "NOC presale isn't open in your region", "This wallet doesn't offer the presale in your region. You can still hold, send and receive any NOC you already have.");
-    await expect(p.locator('.s11-geo-region')).toHaveCount(0);
+    await geoShot(p, '50b-sanctioned', "NOC presale isn't open in your region", "This wallet doesn't offer the presale in your region. You can still hold, send and receive any NOC you already have.", 'Detected region: North Korea');
 
     // C30: a purchase pending — 23b with the region line beneath (a link to #50b).
     h.fake.mode = 'expire';
@@ -462,7 +504,7 @@ test('visual · #50b: open (from #23’s link), no check, unknown country, sanct
     h.fake.geo.check = {countryCode: 'SI', isVpn: false};
     const r = await home(h);
     h.fake.network = 'forbidden';
-    await geoShot(r, '50b-refused', "The presale can't be opened right now", 'The presale service refused this network.', {refused: true});
+    await geoShot(r, '50b-refused', "The presale can't be opened right now", 'The presale service refused this network.', null, {refused: true});
     expect(h.fake.presale.simulated).toEqual([]);
     expect(csp).toEqual([]);
     contained(h);
@@ -502,7 +544,7 @@ async function f12(h: Harness, page: Page, name: string, body: string): Promise<
   await expect(banner).toContainText('Only Reject is available · no override');
   expect(await win.locator('.sticky-bar button').allTextContents()).toEqual(['Reject']);
   await expect(banner).toBeInViewport();
-  await wholeBar(win, name);
+  await wholeBar(win, name, 1);
   await expect(win.getByRole('button', {name: 'Reject'})).toBeEnabled();
   await win.mouse.move(0, 0);
   mkdirSync(DIR, {recursive: true});
