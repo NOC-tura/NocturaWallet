@@ -441,6 +441,18 @@ describe('prepare: the build (§3.3 step 4, C2, C5)', () => {
     expect(() => assertPurchaseMessage(compile(buildStablecoinBuyInstructions(user, 'USDC', 7n, 0, resolved, new PublicKey(TREASURY_ADDRESS), new PublicKey(HOLDING_SMALL))), usdc)).toThrow('expected');
     expect(expectedPurchaseAccounts(usdc)[5]).toBe(USDC_VAULT);
   });
+
+  it('assertPurchaseMessage: a second required signer or an address-lookup table is an engine bug, thrown (the positive control passes)', () => {
+    const user = new PublicKey(ACCOUNT);
+    const resolved = {referrerAllocation: new PublicKey(DEFAULT_REFERRER_ALLOCATION), registerReferrer: null};
+    const sol = {account: ACCOUNT, currency: 'SOL' as const, referrerAllocation: DEFAULT_REFERRER_ALLOCATION, destination: TREASURY_ADDRESS, source: null, amount: 7n};
+    const good = new TransactionMessage({payerKey: user, recentBlockhash: BLOCKHASH, instructions: buildBuyInstructions(user, 7n, 0, resolved, new PublicKey(TREASURY_ADDRESS))}).compileToV0Message();
+    const variant = (o: Partial<Pick<MessageV0, 'header' | 'addressTableLookups'>>) =>
+      new MessageV0({header: o.header ?? good.header, staticAccountKeys: good.staticAccountKeys, recentBlockhash: good.recentBlockhash, compiledInstructions: good.compiledInstructions, addressTableLookups: o.addressTableLookups ?? good.addressTableLookups});
+    expect(assertPurchaseMessage(variant({}), sol)).toBe(2);
+    expect(() => assertPurchaseMessage(variant({header: {...good.header, numRequiredSignatures: 2}}), sol)).toThrow('not signed by the account alone');
+    expect(() => assertPurchaseMessage(variant({addressTableLookups: [{accountKey: new PublicKey(PYTH_SOL_USD_ACCOUNT), writableIndexes: [0], readonlyIndexes: []}]}), sol)).toThrow('not signed by the account alone');
+  });
 });
 
 describe('prepare: the simulation is checked exactly (§3.3 step 5, C11, C23, C28)', () => {

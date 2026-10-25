@@ -86,6 +86,9 @@ rev 2) and is stated loudly there; the passages marked "rev 3.2" below are edite
   so one view per mount; the design's structure is built: "Why this matters" + Q28 is the second reason row, the info
   banner carries Q29 and "Re-checked at every presale screen mount."; the open variant shows "Detected region: …"
   when the gate named a country (D22).
+- §4.3 (Task 6; final review I1a): #50b's open variant also shows "Why this matters" (Q28) and the info banner Q29 + "Re-checked at every presale screen mount." (no first reason row, no "What still works") — as built; owner copy call open.
+- §4.2 #44 (Task 5; final review I1b): a program-rejected purchase shows, under Q55, B1b's engine detail "Landed but failed (…): the network fee was paid, nothing was sent." — as built; owner copy call open.
+- §3.6 #48 (Task 7; final review I1c): the Reject-only #48 (F12) keeps B1c's caption "The site sends this transaction itself after you approve." — as built; owner copy call open.
 - §4.5 (Task 6): a Buy tap asks two full views (~10 requests), inside the 900/min budget; a Buy that finds no route
   hides Buy and the banner together until the next banner read (mount or focus) — a banner that leads nowhere would be
   a dead control.
@@ -887,7 +890,7 @@ Buy — never a dead end.
 | `unknown_country` | Q23 | Q26 (approved: "unknown country") | the disclosure line only | Q24 · Q25 |
 | `no_check` | Q23 | **"The region check is unavailable — try again later."** (approved) | the disclosure line only | Q24 · Q25 |
 | `refused` | Q23 | **"The presale service refused this network."** (approved) | the disclosure line only | Q24 · Q27 |
-| open (C18) | Q20 | — | as `sanctioned` when the gate named a country (D22: the open view's `countryCode`), else the disclosure line only | — |
+| open (C18) | Q20 | — | as `sanctioned` when the gate named a country (D22: the open view's `countryCode`), else the disclosure line only | — (no first row; "Why this matters" · Q28 and the info banner Q29 still shown, no "What still works" — rev 3.2, as built; owner copy call open) |
 
 - Country name and " · EU": the shared `src/app/ui/regionName.ts` (§3.6) — `Intl.DisplayNames(['en'], {type:
   'region'}).of(code)`, the code itself if that throws or answers undefined; the EU-27 table is a static list there. The design's CSS flag tile is omitted (§9).

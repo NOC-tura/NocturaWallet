@@ -11,7 +11,7 @@ import {firstSignature} from '../../../../../core/solana/broadcast';
 import {ACCOUNT, RECIPIENT, pendingRecord, signedWire} from '../../../background/__tests__/fixtures';
 import {MAINNET_SOL_TREASURY} from '../../../../../core/presale/addresses';
 import {PRESALE_SLOTS} from '../records';
-import type {Pending} from '../../engine';
+import {createEngine, type Pending} from '../../engine';
 
 // B1d §4.2 (C17, Q31, Q32, Q53–Q55): the wallet's own purchase on #21, #44 and #54 in the build with presale — its
 // kind's words from the presale entry's slot, its record's own facts beside them (signature, explorer link, fee paid,
@@ -264,5 +264,18 @@ describe('#54 for a purchase (§4.2)', () => {
     await renderStuck(view({state: 'expired'}), false);
     expect(await screen.findByText(STUCK_TEXT.expiredHead)).toBeTruthy();
     expect(screen.queryByRole('button', {name: STUCK_TEXT.tryAgain})).toBeNull();
+  });
+});
+
+// B1d §4.5 (final review M6, R-B2): the banner slot shows only an `ok` answer — a refusal is no banner, even one whose
+// reply carries a payload shaped like a banner (the engine passes a refusal's `data` through).
+describe('#11’s banner slot', () => {
+  const engineAnswering = (answer: unknown) => createEngine(async () => answer, async () => undefined);
+  const BANNER = {stage: 0, priceTicks: '1501', stagePercent: 12};
+
+  it('an ok answer is the banner (positive control); a refusal is null, whatever data it carries', async () => {
+    expect(await PRESALE_SLOTS.banner(engineAnswering({ok: true, data: BANNER}))).toEqual({title: 'NOC Presale · Stage 1', line: '$ 0.1501 · 12% to next stage'});
+    expect(await PRESALE_SLOTS.banner(engineAnswering({ok: false, error: 'locked', data: {...BANNER, priceTicks: 1501n}}))).toBeNull();
+    expect(await PRESALE_SLOTS.banner(engineAnswering({ok: false, error: 'locked'}))).toBeNull();
   });
 });

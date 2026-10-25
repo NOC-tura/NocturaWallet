@@ -498,6 +498,15 @@ describe('presale.banner (§1.4): the last config snapshot ≤ 60 s old, else a 
     expect(w.calls.accounts.at(-1)).toEqual([CONFIG_PDA]);
   });
 
+  it('the banner’s own config read finding the presale unavailable drops the stale snapshot: null, not the old stage (R-B4)', async () => {
+    const ext = await unlockedExt();
+    const w = world();
+    await send(ext, w, viewMsg);
+    w.deps.clock.t = NOW_MS + 60_001;
+    w.deps.reader.getAccountsData = async () => Promise.reject(new RequestUnreachable('/rpc', 'down'));
+    expect(await send(ext, w, {type: 'presale.banner'})).toEqual({ok: true, data: null});
+  });
+
   it('stagePercent is floor(100 × sold / cap)', async () => {
     const ext = await unlockedExt();
     const w = world({chain: {config: program(configData({stageSold: 10_137_599_999_999_999n}))}});
