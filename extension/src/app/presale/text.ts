@@ -120,7 +120,7 @@ export const RECORD_TEXT = {
   sent: 'Purchased',
   sentOk: 'Purchase confirmed',
   /** Q55. */
-  rejectedSub: 'The presale program returned an error. The network fee was charged; no NOC was bought.',
+  rejectedSub: 'The presale program rejected the purchase. Only the network fee was charged; your payment did not move and no NOC was bought.',
   /** Q33 (#11's and #26's pending row, B1d-1b Task 6). */
   pending: 'Buying NOC · pending',
   slow: 'Buying NOC · taking longer than usual',

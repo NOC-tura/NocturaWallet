@@ -10,6 +10,11 @@ import type {Intent, Pending} from '../engine';
 import {kindRecord} from '../generic';
 import type {PresaleRouteValue} from '../router';
 
+/** The engine's landed-but-failed detail ends with a send's clause (background/pending.ts `failedDetail`). A record of
+ *  another kind says what moved in its own sub, so its reason meta keeps only the program's error (owner-delegated copy
+ *  call, 2026-10-25). A detail without the clause is shown as it is. */
+export const withoutSendClause = (detail: string): string => detail.replace(/: the network fee was paid, nothing was sent\.$/, '');
+
 /** The fixed strings #44 shows (spec §4.7); adapted ones are marked there. */
 export const FAILED_TEXT = {
   eyebrow: 'Transaction',
@@ -137,7 +142,7 @@ export function Failed({
             <span className="label">Reason · {kind}</span>
             {kind === 'blockhash-expired' ? <p className="body">{FAILED_TEXT.expiredWhy}</p> : null}
             {kind === 'network-error' && record.detail !== null ? <p className="body">{record.detail}</p> : null}
-            {kind === 'rejected-by-program' && record.detail !== null ? <span className="meta">{record.detail.slice(0, 240)}</span> : null}
+            {kind === 'rejected-by-program' && record.detail !== null ? <span className="meta">{(words === null ? record.detail : withoutSendClause(record.detail)).slice(0, 240)}</span> : null}
             {/* 44c: the explorer link is the reason banner's own (.explorer, with its link-out glyph), after the meta line. */}
             {kind === 'rejected-by-program' ? <ExplorerLink signature={record.signature} label={FAILED_TEXT.explorer} className="explorer" /> : null}
           </div>

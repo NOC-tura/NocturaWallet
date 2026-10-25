@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import {act, fireEvent, screen} from '@testing-library/react';
+import {act, cleanup, fireEvent, screen} from '@testing-library/react';
 import {base64} from '@scure/base';
 import {renderInWallet, type Wallet} from '../../__tests__/harness';
 import {Status, STATUS_TEXT} from '../../screens/Status';
@@ -76,7 +76,7 @@ describe('the record slot (§1.3, §4.2): words for a purchase whose data reads 
       sending: 'Buying NOC…',
       sent: 'Purchased',
       sentOk: 'Purchase confirmed',
-      rejectedSub: 'The presale program returned an error. The network fee was charged; no NOC was bought.',
+      rejectedSub: 'The presale program rejected the purchase. Only the network fee was charged; your payment did not move and no NOC was bought.',
       // Q33 (Task 6): #11's and #26's pending row.
       pending: 'Buying NOC · pending',
       slow: 'Buying NOC · taking longer than usual',
@@ -177,10 +177,21 @@ describe('#21 for a purchase (§4.2, C17)', () => {
 describe('#44 for a purchase (§4.2)', () => {
   const renderFailed = (p: Pending, canRetry = true) => renderInWallet(<Failed record={p} canRetry={canRetry} onTryAgain={nav.onTryAgain} onEdit={nav.onEdit} onDetails={nav.onDetails} onClose={nav.onDone} onRoute={nav.onRoute} />);
 
+  it('rejected by the program: the reason meta keeps the program error without B1b’s send clause (Q55 says what moved); a detail without the clause as it is', async () => {
+    const err = 'Landed but failed ({"InstructionError":[2,{"Custom":6023}]})';
+    await renderFailed(view({state: 'failed', failure: 'landed', detail: `${err}: the network fee was paid, nothing was sent.`}));
+    expect(await screen.findByText(FAILED_TEXT.rejectedHead)).toBeTruthy();
+    expect(document.querySelector('.s9-reason-banner .meta')?.textContent).toBe(err);
+    cleanup();
+    await renderFailed(view({state: 'failed', failure: 'landed', detail: 'custom program error: 0x1770'}));
+    expect(await screen.findByText(FAILED_TEXT.rejectedHead)).toBeTruthy();
+    expect(document.querySelector('.s9-reason-banner .meta')?.textContent).toBe('custom program error: 0x1770');
+  });
+
   it('rejected by the program (landed): Q32 under the head, Q55 (the fee paid, nothing bought); [Try again] → #23 with the amount, [View details]; the explorer link once', async () => {
     await renderFailed(view({state: 'failed', failure: 'landed', detail: 'custom program error: 0x1770'}));
     expect(await screen.findByText(FAILED_TEXT.rejectedHead)).toBeTruthy();
-    expect([...document.querySelectorAll('.s9-fail-hero .sub')].map(e => e.textContent)).toEqual(['Buying NOC with 25.00 USDC', 'The presale program returned an error. The network fee was charged; no NOC was bought.']);
+    expect([...document.querySelectorAll('.s9-fail-hero .sub')].map(e => e.textContent)).toEqual(['Buying NOC with 25.00 USDC', 'The presale program rejected the purchase. Only the network fee was charged; your payment did not move and no NOC was bought.']);
     expect(explorerLinks()).toBe(1);
     expect(document.querySelector('.s9-reason-banner a[href*="solscan.io"]')).not.toBeNull();
     expect([...document.querySelectorAll('.sticky-bar > *')].map(e => e.textContent)).toEqual([FAILED_TEXT.tryAgain, FAILED_TEXT.details]);

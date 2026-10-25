@@ -332,9 +332,9 @@ test('visual · #44 for a purchase: rejected by the program (Q55) and the blockh
     const a = await home(h);
     await toConfirm(a);
     await expect(a.getByText('Program rejected the transaction')).toBeVisible({timeout: 45_000});
-    await expect(a.getByText('The presale program returned an error. The network fee was charged; no NOC was bought.')).toBeVisible();
+    await expect(a.getByText('The presale program rejected the purchase. Only the network fee was charged; your payment did not move and no NOC was bought.')).toBeVisible();
     await expect(a.getByText('Buying NOC with 0.1000 SOL')).toBeVisible();
-    await frame(a, '44-purchase-rejected', a.getByText('The presale program returned an error. The network fee was charged; no NOC was bought.'), {ready: a.getByRole('button', {name: 'Try again'}), end: true});
+    await frame(a, '44-purchase-rejected', a.getByText('The presale program rejected the purchase. Only the network fee was charged; your payment did not move and no NOC was bought.'), {ready: a.getByRole('button', {name: 'Try again'}), end: true});
     await a.close();
     // Never seen, past its blockhash before #54 showed.
     h.fake.mode = 'expire';

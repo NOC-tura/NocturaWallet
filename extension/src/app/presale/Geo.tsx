@@ -107,13 +107,17 @@ export function Geo({onBack, onClose, onDone}: {onBack: () => void; onClose: () 
             </div>
           </div>
         </div>
-        <div className="banner app-geo-banner">
-          <ExtIcon name="info" size={18} />
-          <div>
-            <div className="noc-body-sm app-geo-primary">{GEO_TEXT.lifts}</div>
-            <div className="noc-caption app-geo-tertiary app-geo-disclosure">{GEO_TEXT.rechecked}</div>
+        {/* The info banner says when a closed answer lifts; the open variant has nothing to lift (owner-delegated copy
+            call, 2026-10-25), and Q28 above already says the region is checked before every purchase. */}
+        {reason === null ? null : (
+          <div className="banner app-geo-banner">
+            <ExtIcon name="info" size={18} />
+            <div>
+              <div className="noc-body-sm app-geo-primary">{GEO_TEXT.lifts}</div>
+              <div className="noc-caption app-geo-tertiary app-geo-disclosure">{GEO_TEXT.rechecked}</div>
+            </div>
           </div>
-        </div>
+        )}
         {reason === null ? null : (
           <div className="s11-stillworks">
             <div className="head">

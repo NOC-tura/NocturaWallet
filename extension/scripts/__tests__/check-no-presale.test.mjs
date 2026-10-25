@@ -208,7 +208,7 @@ describe('strings', () => {
       'Buying NOC with',
       'Buying NOC…',
       'Purchase confirmed',
-      'The presale program returned an error. The network fee was charged; no NOC was bought.',
+      'The presale program rejected the purchase. Only the network fee was charged; your payment did not move and no NOC was bought.',
       // Task 6: #11's banner (its literal parts), Q33 a and b, then #50b — the design's lines §4.3 keeps, the approved
       // lines, Q20–Q30 (Q21 whole; Q26 and the approved subs are #50b's and #23's).
       'NOC Presale · Stage ',

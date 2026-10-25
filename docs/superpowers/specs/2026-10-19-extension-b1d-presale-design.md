@@ -2,7 +2,7 @@
 
 **Status:** **approved rev 3**, 2026-10-19 (owner: "ok je") — Fable reviews 1–2 applied with owner decisions D7–D15; **rev 3.1**
 (D16): rev 3 plus plan B1d-1a's spec edits, listed below; **rev 3.2** (D23): rev 3.1 plus every departure plan B1d-1b
-makes, listed below. The owner approved
+makes, listed below; **rev 3.3** (D27): the copy calls rev 3.2 left open, decided. The owner approved
 the design in conversation section by section (`.superpowers/sdd/b1d-approved-design.md`, approach A) and took
 decisions D1–D6, then D7–D14 on Fable's review 1 and D15 on review 2 (`.superpowers/sdd/b1d-owner-decisions.md`,
 `.superpowers/sdd/b1d-spec-review-1.md`, `.superpowers/sdd/b1d-spec-review-2.md`).
@@ -86,9 +86,9 @@ rev 2) and is stated loudly there; the passages marked "rev 3.2" below are edite
   so one view per mount; the design's structure is built: "Why this matters" + Q28 is the second reason row, the info
   banner carries Q29 and "Re-checked at every presale screen mount."; the open variant shows "Detected region: …"
   when the gate named a country (D22).
-- §4.3 (Task 6; final review I1a): #50b's open variant also shows "Why this matters" (Q28) and the info banner Q29 + "Re-checked at every presale screen mount." (no first reason row, no "What still works") — as built; owner copy call open.
-- §4.2 #44 (Task 5; final review I1b): a program-rejected purchase shows, under Q55, B1b's engine detail "Landed but failed (…): the network fee was paid, nothing was sent." — as built; owner copy call open.
-- §3.6 #48 (Task 7; final review I1c): the Reject-only #48 (F12) keeps B1c's caption "The site sends this transaction itself after you approve." — as built; owner copy call open.
+- §4.3 (Task 6; final review I1a): #50b's open variant also shows "Why this matters" (Q28) and the info banner Q29 + "Re-checked at every presale screen mount." (no first reason row, no "What still works") — superseded by rev 3.3 (D27).
+- §4.2 #44 (Task 5; final review I1b): a program-rejected purchase shows, under Q55, B1b's engine detail "Landed but failed (…): the network fee was paid, nothing was sent." — superseded by rev 3.3 (D27).
+- §3.6 #48 (Task 7; final review I1c): the Reject-only #48 (F12) keeps B1c's caption "The site sends this transaction itself after you approve." — superseded by rev 3.3 (D27).
 - §4.5 (Task 6): a Buy tap asks two full views (~10 requests), inside the 900/min budget; a Buy that finds no route
   hides Buy and the banner together until the next banner read (mount or focus) — a banner that leads nowhere would be
   a dead control.
@@ -107,6 +107,25 @@ rev 2) and is stated loudly there; the passages marked "rev 3.2" below are edite
 - §10 (D20): Q53–Q59, controller copy delegated by the owner, shown in the visual pass after execution.
 - D24: C36 confirmed as approved (the larger of the display value and the simulation's cents; "missing = above" only
   when both are missing) — no change.
+
+
+**Rev 3.3 (2026-10-25, owner decision D27: "odloči se za text sam, smiselno in pravilno"): the copy calls rev 3.2 left
+open, decided by the controller under the owner's delegation.**
+- §4.3 #50b, open variant: the hero, the detected region with the disclosure, "Why this matters" · Q28 — and **no info
+  banner** (Q29 says when a closed answer lifts; an open one has nothing to lift, and Q28 already says the region is
+  checked before every purchase). The closed variants keep Q29 + "Re-checked at every presale screen mount." as drawn.
+- §4.2 #44, a purchase the program rejected: Q55 becomes "The presale program rejected the purchase. Only the network fee
+  was charged; your payment did not move and no NOC was bought." (parallel to B1b's "…the amount did not move."); the
+  reason meta shows the program's error alone ("Landed but failed (<error>)"), without B1b's send clause. A send's #44
+  is unchanged.
+- §3.6 #48 F12: the Reject-only screen draws no "who broadcasts" caption ("The site sends this transaction itself after
+  you approve." / the wallet's): nothing can be approved there. Every other #48 keeps it.
+- #48's banners name an instruction in the design's `program::Instruction` form with an Anchor IDL's snake_case name as
+  PascalCase: `noctura_presale::PresalePurchaseWithSol` (was `Presale_purchase_with_sol`). camelCase names are unchanged
+  after the first letter (`TransferChecked`); the decoded field list keeps the raw name.
+- §4.3 #50b's skeleton first (rev 3.2): **kept, as the rule** — #50b shows only an answer its own `presale.view` just
+  gave; drawing the routed (older) answer first could show "open" for a frame and then flip to closed. No departure.
+- §10 Q53, Q54a/b, Q56, Q57, Q58: confirmed as built (they mirror B1b's send strings). Q55 as above.
 
 **Ledger (review L12).** The order, so nobody has to guess it: the facts were re-read from the code on 2026-10-18 (§8.2)
 and rev 1 was written from them; the owner's decisions D1–D6 and D7–D14 carry the date the decisions file records,
@@ -890,7 +909,7 @@ Buy — never a dead end.
 | `unknown_country` | Q23 | Q26 (approved: "unknown country") | the disclosure line only | Q24 · Q25 |
 | `no_check` | Q23 | **"The region check is unavailable — try again later."** (approved) | the disclosure line only | Q24 · Q25 |
 | `refused` | Q23 | **"The presale service refused this network."** (approved) | the disclosure line only | Q24 · Q27 |
-| open (C18) | Q20 | — | as `sanctioned` when the gate named a country (D22: the open view's `countryCode`), else the disclosure line only | — (no first row; "Why this matters" · Q28 and the info banner Q29 still shown, no "What still works" — rev 3.2, as built; owner copy call open) |
+| open (C18) | Q20 | — | as `sanctioned` when the gate named a country (D22: the open view's `countryCode`), else the disclosure line only | — (no first row; "Why this matters" · Q28 and the info banner Q29 no info banner, no "What still works" — rev 3.3, D27) |
 
 - Country name and " · EU": the shared `src/app/ui/regionName.ts` (§3.6) — `Intl.DisplayNames(['en'], {type:
   'region'}).of(code)`, the code itself if that throws or answers undefined; the EU-27 table is a static list there. The design's CSS flag tile is omitted (§9).
@@ -1428,7 +1447,7 @@ carry it (§6.2's markers are the "on" rows of source new / approved / app). Non
 | Q52 | #23, the destination moved twice during prepare (C39) | "The presale is busy right now — try again." | new | on | controller copy, owner-delegated 2026-10-19 |
 | Q53 | #21 title, a purchase broadcasting | "Buying NOC…" | new | on | controller copy, delegated (D20, rev 3.2) |
 | Q54 | #21, a purchase confirmed: title · stage line | a "Purchased" · b "Purchase confirmed" | new | on | controller copy, delegated (D20, rev 3.2) |
-| Q55 | #44 sub, a purchase the program rejected | "The presale program returned an error. The network fee was charged; no NOC was bought." | new | on | controller copy, delegated (D20, rev 3.2) |
+| Q55 | #44 sub, a purchase the program rejected | "The presale program rejected the purchase. Only the network fee was charged; your payment did not move and no NOC was bought." | new | on | controller copy, delegated (D20, rev 3.2; reworded rev 3.3, D27) |
 | Q56 | #10, a purchase re-authentication cancelled | "Purchase cancelled. Nothing was sent." | new | on | controller copy, delegated (D20, rev 3.2) |
 | Q57 | #20, the resume of a prepared purchase | "You have a purchase waiting." | new | on | controller copy, delegated (D20, rev 3.2) |
 | Q58 | #20, a purchase proven on #10 | "Confirmed. Review the fresh quote and buy." | new | on | controller copy, delegated (D20, rev 3.2) |
