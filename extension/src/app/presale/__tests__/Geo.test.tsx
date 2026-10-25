@@ -161,14 +161,14 @@ describe('#50b × 6 (§4.3), each reason as the table words it', () => {
     expectNothingOmitted();
   });
 
-  it('open (C18): Q20, no sub, "Detected region: Slovenia · EU" with the disclosure (D22), no reason row, no "What still works"; the default glyph', async () => {
+  it('open (C18): Q20, no sub, "Detected region: Slovenia · EU" with the disclosure (D22), no reason row, no info banner (nothing to lift), no "What still works"; the default glyph', async () => {
     await show({open: true, reason: null, countryCode: 'SI'});
     expect(text('.s11-geo-hero h2')).toBe(Q.q20);
     expect(document.querySelector('.s11-geo-hero p')).toBeNull();
     expect(document.querySelector('.s11-geo-hero .glyph')?.className).toBe('glyph');
     expect(regionLines()).toEqual(['Detected region: Slovenia · EU', Q.disclosure]);
     expect(reasonRows()).toEqual([[Q.why, Q.q28]]);
-    expect(texts('.app-geo-banner > div > *')).toEqual([Q.q29, Q.rechecked]);
+    expect(document.querySelector('.app-geo-banner')).toBeNull();
     expect(document.querySelector('.s11-stillworks')).toBeNull();
     expectNothingOmitted();
     expect(unstyledClasses(document.body, SELECTORS)).toEqual([]);

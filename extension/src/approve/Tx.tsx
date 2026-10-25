@@ -233,11 +233,14 @@ function Payload({item, labels}: {item: TxItem; labels: readonly AddressLabel[]}
   );
 }
 
+/** An instruction's own name as a banner shows it: `transferChecked` → `TransferChecked`, an Anchor IDL's snake_case
+ *  `presale_purchase_with_sol` → `PresalePurchaseWithSol` (owner-delegated copy call, 2026-10-25). */
+export const bannerInstruction = (name: string): string => name.split('_').map(w => `${w.charAt(0).toUpperCase()}${w.slice(1)}`).join('');
 /** An instruction as the banners name it, the design's way (ix:18352 `spl_token::Approve`): program, then the instruction's own name. */
 function instructionName(item: TxItem, at: number | null): string | null {
   const ix = at === null ? undefined : item.instructions?.[at];
   if (ix === undefined || ix.program === null) return null;
-  const name = ix.name === null ? TX_TEXT.unknownInstruction : `${ix.name.charAt(0).toUpperCase()}${ix.name.slice(1)}`;
+  const name = ix.name === null ? TX_TEXT.unknownInstruction : bannerInstruction(ix.name);
   return `${PROGRAM_NAMES[ix.program]}::${name}`;
 }
 /** A meta line's instruction (Q55): "#<n> <program>::<Instruction>", n 1-based as "Program <n>" counts. */
@@ -626,8 +629,9 @@ export function Tx({request, waiting, notice, busy, onDecide}: {request: Request
           <OriginCard site={request.site} origin={request.origin} host={request.host} />
         </div>
         {lookalike ? <LookalikeBanner site={request.site} host={request.host} /> : null}
-        {/* Review 1 L7: who broadcasts — the design draws one screen for both requests. */}
-        <p className="noc-caption app-muted app-tx-sends">{detail.kind === 'signAndSendTransaction' ? TX_TEXT.sendsNoctura : TX_TEXT.sendsSite}</p>
+        {/* Review 1 L7: who broadcasts — the design draws one screen for both requests. Not on F12's Reject-only screen:
+            nothing can be approved there (owner-delegated copy call, 2026-10-25). */}
+        {regionBlocked ? null : <p className="noc-caption app-muted app-tx-sends">{detail.kind === 'signAndSendTransaction' ? TX_TEXT.sendsNoctura : TX_TEXT.sendsSite}</p>}
         {(stale || outOfDate) && ready ? (
           <div className="s9-flag-banner warn app-tx-block" role="status">
             <ExtIcon name="alert-triangle" size={18} />

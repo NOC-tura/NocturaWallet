@@ -6,7 +6,7 @@ import {readDappSession} from '../../background/dapp/store';
 import {ACCOUNT, RECIPIENT} from '../../background/__tests__/fixtures';
 import {presaleIx, transfer, v0} from '../../background/dapp/__tests__/txHarness';
 import {pendingOf, type Flag, type RequestView} from '../client';
-import {Tx} from '../Tx';
+import {bannerInstruction, Tx} from '../Tx';
 import {FLAG_HOLD_MS} from '../useArmed';
 import {acted, elapse, onHarnessClock, openWindow, settled} from './windowHarness';
 
@@ -31,7 +31,7 @@ const banners = () =>
   }));
 /** The sticky bar's CTAs (the top bar's ✕ is not one). */
 const buttons = () => [...document.querySelectorAll('.sticky-bar button')].map(b => b.textContent);
-const F2 = (name: string) => ({tone: 'warn', head: 'Instructions that are not transfers', body: ['Each can do more than move a balance. Check what it does before approving.'], meta: [`#1 noctura_presale::${name.charAt(0).toUpperCase()}${name.slice(1)}`]});
+const F2 = (name: string) => ({tone: 'warn', head: 'Instructions that are not transfers', body: ['Each can do more than move a balance. Check what it does before approving.'], meta: [`#1 noctura_presale::${name}`]});
 onHarnessClock();
 
 async function shown(geo: () => Promise<GeoAnswer>, shows: string, instructions = [presaleIx('presale_purchase_with_sol')]) {
@@ -49,10 +49,12 @@ async function shown(geo: () => Promise<GeoAnswer>, shows: string, instructions 
 describe(`#48 F12 (${off ? 'off' : 'on'} build)`, () => {
   it('sanctioned: Q49, Q50a with the country’s name, Q51 — first in the section, before F2; the eyebrow; no typed field, no Approve; Reject rejects', async () => {
     const w = await shown(async () => ({open: false, reason: 'sanctioned', countryCode: 'KP'}), Q49);
-    expect(banners()).toEqual([{tone: 'danger', head: Q49, body: [Q50A('North Korea')], meta: [Q51]}, F2('presale_purchase_with_sol')]);
+    expect(banners()).toEqual([{tone: 'danger', head: Q49, body: [Q50A('North Korea')], meta: [Q51]}, F2('PresalePurchaseWithSol')]);
     expect([document.querySelector('.top-bar .title')?.textContent, document.querySelector('.top-bar .title')?.className]).toEqual(['Critical · Blocked transaction', 'title noc-overline noc-danger']);
     expect(document.querySelector('.s9-typed-confirm')).toBeNull();
     expect(document.querySelector('.s9-origin-pill')).toBeNull();
+    // Nothing can be approved here, so no "after you approve" caption (owner-delegated copy call, 2026-10-25).
+    expect(document.querySelector('.app-tx-sends')).toBeNull();
     // Past every hold: still nothing but Reject.
     await elapse(FLAG_HOLD_MS);
     expect(buttons()).toEqual(['Reject']);
@@ -99,7 +101,8 @@ describe(`#48 F12 (${off ? 'off' : 'on'} build)`, () => {
 
   it('the gate open: no F12 — F2 as before, Approve drawn and signing (positive control)', async () => {
     const w = await shown(async () => OPEN, 'Instructions that are not transfers');
-    expect(banners()).toEqual([F2('presale_purchase_with_sol')]);
+    expect(banners()).toEqual([F2('PresalePurchaseWithSol')]);
+    expect(document.querySelector('.app-tx-sends')?.textContent).toBe('The site sends this transaction itself after you approve.');
     await elapse(FLAG_HOLD_MS);
     expect(buttons()).toEqual(['Reject', 'Approve']);
     screen.getByRole('button', {name: 'Approve'}).click();
@@ -200,5 +203,14 @@ describe(`#48 F12 as the window reads it (${off ? 'off' : 'on'} build)`, () => {
     expect(buttons()).toEqual(['Reject and report', 'Reject']);
     expect(screen.queryByRole('button', {name: /Approve/})).toBeNull();
     expect(banners()[0]?.head).toBe(Q49);
+  });
+});
+
+describe('bannerInstruction (owner-delegated copy call, 2026-10-25)', () => {
+  it('an Anchor IDL snake_case name as PascalCase; a camelCase name keeps its case after the first letter', () => {
+    expect(bannerInstruction('presale_purchase_with_sol')).toBe('PresalePurchaseWithSol');
+    expect(bannerInstruction('claim_presale_allocation')).toBe('ClaimPresaleAllocation');
+    expect(bannerInstruction('transferChecked')).toBe('TransferChecked');
+    expect(bannerInstruction('approve')).toBe('Approve');
   });
 });
