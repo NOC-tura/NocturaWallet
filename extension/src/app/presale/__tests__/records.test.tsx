@@ -48,6 +48,14 @@ const nav = {onDone: vi.fn(), onDetails: vi.fn(), onActivity: vi.fn(), onTryAgai
 const text = (sel: string) => document.querySelector(sel)?.textContent ?? null;
 const meta = () => [...document.querySelectorAll('.meta-row')].map(r => [r.querySelector('.lbl')?.textContent, r.querySelector('.val')?.textContent]);
 const cardRows = (card: string) => [...document.querySelectorAll(`${card} .row`)].map(r => [r.querySelector('.k')?.textContent, r.querySelector('.v')?.textContent]);
+/** #21's amount card for the purchase as index.html #s21 draws a send's: eyebrow, figure + ticker, the dollar line — reading Q32. */
+function expectCard() {
+  expect(text('.amount-card .eyebrow')).toBe('Buying NOC with');
+  expect(text('.amount-card .amount-line .amount')).toBe('25.00');
+  expect(text('.amount-card .amount-line .ticker')).toBe('USDC');
+  expect(text('.amount-card .noc-caption')).toBe('≈ $25.00 USD');
+  expect(text('.amount-card')).toBe('Buying NOC with 25.00 USDC ≈ $25.00 USD');
+}
 const explorerLinks = () => document.querySelectorAll('a[href*="solscan.io"]').length;
 /** None of B1b's send words, and no recipient as a send shows it. */
 function expectNoSendWords() {
@@ -74,6 +82,8 @@ describe('the record slot (§1.3, §4.2): words for a purchase whose data reads 
       slow: 'Buying NOC · taking longer than usual',
       amount: '25.00 USDC',
       to: 'Noctura presale',
+      // Task 9: #21's card as drawn — Q32's lead as the eyebrow, the amount as the figure, the program's dollars.
+      card: {lead: 'Buying NOC with', figure: '25.00', ticker: 'USDC', usd: '$25.00'},
       done: {screen: 'presale'},
       again: AGAIN,
     });
@@ -103,14 +113,16 @@ describe('the record slot (§1.3, §4.2): words for a purchase whose data reads 
 describe('#21 for a purchase (§4.2, C17)', () => {
   const renderStatus = (records: PendingRecord[], over: Partial<{canRetry: boolean}> = {}) => renderInWallet(<Status account={ACCOUNT.publicKey} id="b1" since={0} canRetry {...nav} {...over} />, seed(records));
 
-  it('broadcasting: Q53 as the title, the "Presale" badge beside the status, Q32 as the amount line — no To row; B1b’s honest lines', async () => {
+  it('broadcasting: Q53 as the title, the "Presale" badge beside the status, Q32’s words in the drawn amount card (eyebrow, figure, ticker, dollars) and the To row (Q10); B1b’s honest lines', async () => {
     await renderStatus([purchase()]);
     expect(await screen.findByText(STATUS_TEXT.broadcasting)).toBeTruthy();
     expect(text('.top-bar .title')).toBe('Buying NOC…');
     expect(text('.top-bar .status-pill')).toBe('Presale');
-    expect(text('.amount-card')).toBe('Buying NOC with 25.00 USDC');
-    expect(document.querySelector('.amount-card .ticker')).toBeNull();
-    expect(meta()).toEqual([['Status', STATUS_TEXT.statusBroadcasting]]);
+    expectCard();
+    expect(meta()).toEqual([
+      ['To', 'Noctura presale'],
+      ['Status', STATUS_TEXT.statusBroadcasting],
+    ]);
     expect(screen.getByText(STATUS_TEXT.canClose)).toBeTruthy();
     expectNoSendWords();
     expect(unstyledClasses(document.querySelector('.s-stat')!, SELECTORS)).toEqual([]);
@@ -126,8 +138,9 @@ describe('#21 for a purchase (§4.2, C17)', () => {
     expect(text('.top-bar .title')).toBe('Purchased');
     expect(text('.top-bar .status-pill')).toBe('Presale');
     expect(text('.top-bar .step')).toBe(STATUS_TEXT.confirmed);
-    expect(text('.amount-card')).toBe('Buying NOC with 25.00 USDC');
+    expectCard();
     expect(meta()).toEqual([
+      ['To', 'Noctura presale'],
       ['Tx hash', SIGNATURE],
       ['Fee paid', '0.000011 SOL'],
     ]);

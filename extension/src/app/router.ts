@@ -93,9 +93,14 @@ export interface KindRecord {
   slow: string;
   /** #44's sub when the program refused it on chain (the network fee paid). */
   rejectedSub: string;
-  /** #44's kept payload (an expired blockhash) and #54's rows: what was paid, and to whom. */
+  /** #44's kept payload (an expired blockhash) and #54's rows: what was paid, and to whom (#21's To row too). */
   amount: string;
   to: string;
+  /**
+   * B1d-1b Task 9: #21's amount card as drawn (index.html #s21: eyebrow, figure, ticker, the dollar line) — the line's
+   * words before the amount as the eyebrow, the amount and its ticker as the figure, and the dollars it was worth.
+   */
+  card: {lead: string; figure: string; ticker: string; usd: string};
   /** #21's Done and close: where the record's own flow goes on. */
   done: PresaleRouteValue;
   /** #44's and #54's [Try again] (and #44's back arrow): a fresh start of that flow with what the record paid. */

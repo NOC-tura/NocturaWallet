@@ -109,7 +109,7 @@ export const MARKERS = [
   'Re-auth required for your first presale purchase from this account.',
   'Confirm buying NOC with',
   'Purchase cancelled. Nothing was sent.',
-  'Buying NOC with ',
+  'Buying NOC with',
   'Buying NOC…',
   'Purchase confirmed',
   'The presale program returned an error. The network fee was charged; no NOC was bought.',

@@ -35,7 +35,8 @@ export const PRESALE_TEXT = {
   paid: 'Paid',
   estimated: 'Estimated NOC',
   stage: 'Stage',
-  stageRow: (stage: number, price: string): string => `Stage ${stage} of 10 · @ ${price}`,
+  /** As drawn (index.html 23b: "3 of 10 · @ $ 0.025") — the row's label already says "Stage". */
+  stageRow: (stage: number, price: string): string => `${stage} of 10 · @ ${price}`,
   txHash: 'Tx hash',
   /** Q06. */
   closeNote: 'You can close the popup — Noctura keeps watching this purchase. Funds are non-refundable per presale terms.',
@@ -106,11 +107,13 @@ export const CONFIRM_PURCHASE_TEXT = {
  * in B1d-1b Task 5 — controller copy, flagged to the owner: they replace B1b's send words ("Sending…", "Sent", "Sent
  * successfully", "…the amount did not move") that the generic rendering (Q42) keeps.
  */
+const RECORD_LEAD = 'Buying NOC with';
 export const RECORD_TEXT = {
   /** Q31. */
   badge: 'Presale',
-  /** Q32. */
-  line: (amount: string, currency: PresaleCurrency): string => `Buying NOC with ${amount} ${currency}`,
+  /** Q32, and its words before the amount (#21's amount card sets them as the eyebrow). */
+  line: (amount: string, currency: PresaleCurrency): string => `${RECORD_LEAD} ${amount} ${currency}`,
+  lead: RECORD_LEAD,
   /** Q53. */
   sending: 'Buying NOC…',
   /** Q54 a, b. */

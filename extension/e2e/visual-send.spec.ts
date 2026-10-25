@@ -194,6 +194,8 @@ test('visual: #20’s states — first-time, high-value, the proof in #10 with i
     const [to, first] = [await p.locator('.headline .to-prefix').boundingBox(), await group.boundingBox()];
     expect(Math.abs((to?.y ?? 0) + (to?.height ?? 0) - ((first?.y ?? 99) + (first?.height ?? 0)))).toBeLessThanOrEqual(6);
     await pinned(p, 'Send 0.0100 SOL', {scrolls: true});
+    // B1d-1b Task 9: the Network row's words wrap between words ("Noctura's" was split by the design's break-all).
+    await expect(p.locator('.detail-row .val.app-prose')).toHaveCSS('word-break', 'normal');
     await seen(p, p.getByText("You've never sent to this address"));
     await shot(p, '20-first-time', true);
     await p.getByRole('button', {name: 'Back'}).click();

@@ -108,6 +108,8 @@ export interface FakeCoordinator {
   presale: FakePresale;
   /** B1d-1b Task 8: the coordinator's jurisdiction routes, /geo/check and /geo/restricted-list. */
   geo: FakeGeo;
+  /** B1d-1b Task 9: SOL's dollar price /wallet/prices answers — null leaves `solana` out of the answer (#23's Q19). */
+  marketSolUsd: number | null;
   /**
    * Holds every answer until the returned function is called — how a visual spec keeps a loading
    * state (#40's, #8's "Checking…") on screen deterministically while it is asserted and shot.
@@ -302,6 +304,7 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
     history: new Map(),
     presale: {accounts: new Map(), solUsd: 150, read: 'ok', wrongDestination: false, simulated: [], landed: []},
     geo: {check: {countryCode: 'SI', isVpn: false}, list: restrictedList(), checks: 0, lists: 0},
+    marketSolUsd: 150,
     hold: () => {
       let release: () => void = () => undefined;
       held = new Promise<void>(r => (release = r));
@@ -743,7 +746,7 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
       return json(route, 200, {signature});
     }
     if (url.startsWith(PRICES) && req.method() === 'GET') {
-      return json(route, 200, {success: true, data: {solana: {usd: 150}, 'usd-coin': {usd: 1}, tether: {usd: 1}}});
+      return json(route, 200, {success: true, data: {...(fake.marketSolUsd === null ? {} : {solana: {usd: fake.marketSolUsd}}), 'usd-coin': {usd: 1}, tether: {usd: 1}}});
     }
     if (url === GEO_CHECK && req.method() === 'GET') {
       fake.geo.checks += 1;

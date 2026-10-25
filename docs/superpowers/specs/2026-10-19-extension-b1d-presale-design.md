@@ -1,7 +1,8 @@
 # Noctura Extension B1d — presale in the extension (buy, allocation, referral, jurisdiction gate)
 
 **Status:** **approved rev 3**, 2026-10-19 (owner: "ok je") — Fable reviews 1–2 applied with owner decisions D7–D15; **rev 3.1**
-(D16): rev 3 plus plan B1d-1a's spec edits, listed below. The owner approved
+(D16): rev 3 plus plan B1d-1a's spec edits, listed below; **rev 3.2** (D23): rev 3.1 plus every departure plan B1d-1b
+makes, listed below. The owner approved
 the design in conversation section by section (`.superpowers/sdd/b1d-approved-design.md`, approach A) and took
 decisions D1–D6, then D7–D14 on Fable's review 1 and D15 on review 2 (`.superpowers/sdd/b1d-owner-decisions.md`,
 `.superpowers/sdd/b1d-spec-review-1.md`, `.superpowers/sdd/b1d-spec-review-2.md`).
@@ -34,6 +35,54 @@ other passage is rev 3 as approved:
 - §3.3 step 7 (Task 6): `PurchaseView.fees.rentLamports` = `simulatedRent`.
 - §6.2 (Task 2): the encoding bullet — three symbols, and the three core modules that import them.
 - §8.2 (Task 2): the `core/` rows name the three moved symbols and `core/solana/{transfer,history,balances}.ts`.
+
+**Rev 3.2 (2026-10-24, owner decision D23): rev 3.1 plus every departure plan B1d-1b makes, collected here — no
+per-item re-approval.** Each was built in the plan task named (`docs/superpowers/plans/2026-10-24-extension-b1d-plan1b.md`,
+rev 2) and is stated loudly there; the passages marked "rev 3.2" below are edited to match. Every other passage is rev
+3.1:
+- §1.4 (Task 1): `presale.banner` answers `locked` while the wallet is locked (no network for a locked wallet), `null`
+  otherwise on any failure; `presale.preparedFor` and `presale.discardPrepared` check the session too (Task 3).
+- §2.3 (Task 3): `stage` is the program's 0-indexed `current_stage` as a decimal string (the renderer adds 1; the §2.4
+  recording sends stage + 1).
+- §2.5 (Tasks 1, 4, D22): the open variant carries `countryCode` — the country the gate detected, or null; the inactive
+  and blocked variants carry none (#50b shows the disclosure line alone for them).
+- §3.2 (Task 1, D25): the quote prices the network fee at its upper bound `PRESALE_FEE_BOUND_LAMPORTS` (2 405 000 =
+  5 000 + the normal tier's priority ceiling × 120 000 CU; prepare prices at the normal tier and refuses above it) and
+  requires ≥ 890 880 lamports left on every path — never exactly 0, and for a stablecoin too: a first stablecoin
+  purchase needs ≈ 0.0063 SOL (fee bound + rent bound + 890 880), stricter than "SOL ≥ networkFee + newPdaRent".
+- §3.3 step 5 / C39 (Task 2): "destination-only" = a well-formed destination with a different gain (a wrong shape is
+  refused at once); the retry re-reads the §2.1 snapshot and re-checks the stage, the created accounts, the referrer and
+  the three limits before the second simulation (`below-min` / `above-user-limit` …, no second simulation), but the
+  payer's SOL and the source token account's "before" are this prepare's own reads, not re-read: a balance that moved
+  between the two simulations fails the second outflow check as `simulation-mismatch` (fail closed). The gate is asked
+  once per prepare, not again in the retry.
+- §3.3 sign time / C22 (Task 3; review 1 M1): `beforeSign` refuses `in-flight` before the take, checks all three limits
+  on the prepared cents (C22 names the remainder), and checks the signed bytes themselves: the entry must read back
+  under its integrity and its message must be exactly this intent's purchase to the pinned destination, crediting the
+  referrer allocation the fresh snapshot resolves — `state-changed` when only that allocation differs, `prepared-invalid`
+  otherwise. `shown` is read as a claim, never as the evidence.
+- §3.6 (Task 7): F12 is detected from the raw instruction bytes (the static program key and one of the six purchase
+  discriminators); it does not suppress F2; the country reaches #48 through the view, not the stored flag; a stored
+  simulation without `presaleRegion` is simulated again; `decide` asks the gate before the re-authentication gate.
+- §4.1 23b (Task 9 F1): the Stage row reads "N of 10 · @ $ 0.1501", as drawn.
+- §4.1 closed answers (Task 4, D20): one warning banner on 23a; the region answer's line is "Not available here — " and
+  #50b's sub for the reason (Q59), a link to #50b.
+- §4.2 (D21): #20's purchase variant has no headline, as the design draws it.
+- §4.3 (Task 6): #50b renders a skeleton until its own `presale.view` answers — the `geo` route carries no data (§4),
+  so one view per mount; the design's structure is built: "Why this matters" + Q28 is the second reason row, the info
+  banner carries Q29 and "Re-checked at every presale screen mount."; the open variant shows "Detected region: …"
+  when the gate named a country (D22).
+- §4.5 (Task 6): a Buy tap asks two full views (~10 requests), inside the 900/min budget.
+- §6.2 (Tasks 4, 6, 8; D26; review 1 L1): one generated `design-ext.css` for both builds — the off build carries the
+  design's #23 / #50 selectors (`.s-pre`, `.s11-*`; no text, no marker); no marker is one bare word (Q44's "Programs"
+  and Q54a's "Purchased" are armed by their longer parts).
+- §6.3 E2E 5 (Task 8): built as "the presale's program reads unreachable" (#23 closed with Q11; Send and Receive still
+  work) — with the whole coordinator down the gate answers `no_check` first (#50b, E2E 4).
+- §6.4 (Task 9): the popup is shot in its 412 × 600 frame, #48 at 412 × 720, #10 at 412 × 916.
+- §8.1 (review 1 L2, D25): the accepted limits gain the two outflow readings, the rent slack and the stablecoin SOL floor.
+- §10 (D20): Q53–Q59, controller copy delegated by the owner, shown in the visual pass after execution.
+- D24: C36 confirmed as approved (the larger of the display value and the simulation's cents; "missing = above" only
+  when both are missing) — no change.
 
 **Ledger (review L12).** The order, so nobody has to guess it: the facts were re-read from the code on 2026-10-18 (§8.2)
 and rev 1 was written from them; the owner's decisions D1–D6 and D7–D14 carry the date the decisions file records,
@@ -284,7 +333,7 @@ existing `vault.challengeInfo`).
 |---|---|---|
 | `presale.view` | `{account, refresh?: 'gate'}` | `PresaleView` (§2.5) — the account's open record first (no network), then a fresh state read **and** a fresh geo check (C12), then balances and the SOL price; with `refresh: 'gate'` the balances and price are the last full view's (C35) — never older than that view, and a view without one answers in full |
 | `presale.pending` | `{account}` | `PendingView \| null` — the account's open `presale-buy` record from `v1_pending`; **no network call** (C30, 23b's poll) |
-| `presale.banner` | `{}` | `{stage, priceTicks, stagePercent}` or `null` — the last config snapshot ≤ 60 s old, else a config-only read (§2.1 rules 1–4); **no geo check**; `null` on any failure or an inactive sale |
+| `presale.banner` | `{}` | `{stage, priceTicks, stagePercent}` or `null` — the last config snapshot ≤ 60 s old, else a config-only read (§2.1 rules 1–4); **no geo check**; `null` on any failure or an inactive sale; `locked` while the wallet is locked (rev 3.2) |
 | `presale.quote` | `{account, currency, amount: string \| 'max'}` | `Quote` (§3.2) from the last `presale.view` snapshot of that account ≤ 30 s old; older → `{stale: true}` |
 | `presale.prepareBuy` | `{account, intent: {currency, amount, stage}, challengeId?}` (B1d-2: `intent.referrer: string \| null`) | `PurchaseView` (§3.3) or a refusal code (§5) |
 | `presale.preparedFor` | `{account}` | the account's `presale-buy` prepared entry's view, `expired` as B1b's `wallet.preparedFor` |
@@ -458,7 +507,8 @@ A `presale-buy` record is a B1b `PendingRecord` with `intent: null`, `origin: nu
 as prepared (network part; markup `'0'`, C25) and `extra = {kind: 'presale-buy', data: {currency, amount, stage,
 priceTicks, nocBase, spentCents, destination, referrer}}`: what was paid (base units), the stage and price it was
 simulated at, the simulated NOC (`Δtotal_tokens`) and cents (`Δtotal_spent_cents`), the treasury or vault ATA it pays,
-and the effective referrer (or null). All strings (decimal strings for numbers). Readable in both builds (§1.3).
+and the effective referrer (or null). All strings (decimal strings for numbers); `stage` is the program's 0-indexed
+`current_stage` (rev 3.2 — the renderer adds 1, and the §2.4 recording sends stage + 1). Readable in both builds (§1.3).
 Shown by #23b, #11, #21, #26, #27, #44 and #54; never used to decide anything.
 
 ### 2.4 The coordinator record (`record.ts`, B1d-2, C24)
@@ -491,13 +541,14 @@ PresaleView =
   | {open: false, why: 'unavailable', code: 'read-failed' | 'refused' | 'malformed', pending}
   | {open: false, why: 'inactive' | 'blocked', state: StageView, pending}
   | {open: false, why: 'geo', geo: GeoAnswer, state: StageView | null, pending}
-  | {open: true, state: StageView, limits, allocation, balances, solUsdMicros | null, referral, pending}
+  | {open: true, state: StageView, limits, allocation, balances, solUsdMicros | null, countryCode | null, referral, pending}
 pending    = PendingView | null                — the account's open presale-buy record, in every variant (C30)
 StageView  = {stage, priceTicks, nextPriceTicks | null, stageSoldBase, stageCapBase, raisedCents}
 limits     = {minCents, maxTxCents, userRemainingCents, firstPurchase}
 allocation = {exists, totalBase, bonusBase}
 balances   = {SOL: lamports, USDC: {largest, total}, USDT: {largest, total}}
 referral   = {onChain: address | null, canRegister: boolean}   — B1d-2; canRegister = firstPurchase and no onChain
+countryCode = the country the gate detected (two capital letters), or null — D22, rev 3.2 (#50b's open variant)
 ```
 
 All numbers are decimal strings of bigints. The popup renders from this and from `Quote`; it parses no account data
@@ -529,9 +580,11 @@ Integer arithmetic only (cardinal rule 2); every division floors, as the program
 - `checkLimits({cents, minCents, maxTxCents, userRemainingCents})` → `null` | `below-min` | `above-max-tx` |
   `above-user-limit`: `cents < minCents`; `cents > maxTxCents`; `cents > userRemainingCents` — checked in that order,
   the same for SOL, USDC and USDT (D7).
-- Balance lines: SOL needs `amount + networkFee + newPdaRent` ≤ balance and must leave 0 or ≥ 890 880 (B1b's
+- Balance lines: SOL needs `amount + networkFee + newPdaRent` ≤ balance and must leave ≥ 890 880 (B1b's
   `sender-below-rent` rule); a stablecoin needs `amount` ≤ the largest holding (`split-balance` when the total covers it
-  and the largest does not; `insufficient-token` otherwise) and SOL ≥ `networkFee + newPdaRent` (`insufficient-sol`).
+  and the largest does not; `insufficient-token` otherwise) and SOL ≥ `networkFee + newPdaRent` + 890 880
+  (`insufficient-sol` / `sender-below-rent`). `networkFee` and `newPdaRent` are their upper bounds here (the quote has
+  no network): `PRESALE_FEE_BOUND_LAMPORTS` and §2.1's rent constants — rev 3.2, D25.
 - `Quote` = `{amount, cents, nocBase, line: LimitCode | BalanceCode | 'no-sol-price' | null}`; `amount: 'max'` answers
   C9's MAX (capped by `maxTxCents` and `userRemainingCents` converted back — for SOL at our price, floored, then
   re-checked), or `line` when even MAX is below the minimum.
@@ -758,7 +811,7 @@ B1d-2). #21 is the existing `status` route. Every CTA follows rule 6 (`LockedBut
     re-read pauses while `document.visibilityState !== 'visible'` and resumes with a full view.
 - **23b pending** (`pending` set, C17, C30): title "NOC presale"; the ring spinner (static under
   `prefers-reduced-motion`); **"Order pending"**; sub Q05 (replaces "Tokens will be claimable when stage 3 closes",
-  D5); rows **Paid** "<amount> <CUR>", **Estimated NOC** "<nocBase> NOC", **Stage** "Stage N of 10 · @ $ 0.1501",
+  D5); rows **Paid** "<amount> <CUR>", **Estimated NOC** "<nocBase> NOC", **Stage** "N of 10 · @ $ 0.1501" (as drawn, rev 3.2),
   **Tx hash** (`.noc-mono` 12 px, the signature's first 4 … last 6 as drawn; the full value on hover and in the
   explorer link); banner Q06; **[View on Solana explorer]** (`explorerUrl(signature)`, the one external link, as #27)
   and **[Done]** → #11. "Order ID" omitted (§9). 23b re-reads **`presale.pending`** (no network) on focus and every 6 s
@@ -794,10 +847,9 @@ B1d-2). #21 is the existing `status` route. Every CTA follows rule 6 (`LockedBut
 
 ### 4.3 #50b region blocked (presale) — ix 19612-19906
 
-Route `geo`; on mount `presale.view` (a fresh geo check — "Re-checked at every presale screen mount"). When #50b
-**replaced** #23 (a closed answer, no open record), it renders first from the `PresaleView` it was routed with and its
-mount re-check replaces that answer when it lands — one view for the replacement, one for the mount, as approved
-(review 2 L3). Chrome as drawn:
+Route `geo`; on mount `presale.view` (a fresh geo check — "Re-checked at every presale screen mount"). The route
+carries no data (§4), so #50b shows a skeleton until its own view answers — also when it **replaced** #23 (rev 3.2;
+review 2 L3's "renders first from the routed view" is not built). Chrome as drawn:
 top bar **"Not available here"** (`.t-title`) with back and ✕ (→ #11); hero glyph (72 px circle, `--warning` + i-lock);
 headline; sub; region card; reason row; info banner; "What still works"; sticky **[Got it]** → back to the trigger:
 #23 when #50b was opened from #23's link (#23 is on the stack), **#11** when #50b replaced #23 or came from #11's
@@ -810,12 +862,13 @@ Buy — never a dead end.
 | `unknown_country` | Q23 | Q26 (approved: "unknown country") | the disclosure line only | Q24 · Q25 |
 | `no_check` | Q23 | **"The region check is unavailable — try again later."** (approved) | the disclosure line only | Q24 · Q25 |
 | `refused` | Q23 | **"The presale service refused this network."** (approved) | the disclosure line only | Q24 · Q27 |
-| open (C18) | Q20 | — | as `sanctioned` | — |
+| open (C18) | Q20 | — | as `sanctioned` when the gate named a country (D22: the open view's `countryCode`), else the disclosure line only | — |
 
 - Country name and " · EU": the shared `src/app/ui/regionName.ts` (§3.6) — `Intl.DisplayNames(['en'], {type:
   'region'}).of(code)`, the code itself if that throws or answers undefined; the EU-27 table is a static list there. The design's CSS flag tile is omitted (§9).
-- Info banner: head **"Why this matters"**, sub Q28 (replaces "we honor the program's restrictions"); line Q29
-  (replaces "If the program updates its allowlist…"); **"Re-checked at every presale screen mount."** kept.
+- "Why this matters" (rev 3.2, as drawn): the second reason row, head **"Why this matters"**, sub Q28 (replaces "we
+  honor the program's restrictions"); the info banner: Q29 (replaces "If the program updates its allowlist…") and
+  **"Re-checked at every presale screen mount."** kept.
 - "What still works": **"Send / Receive NOC"** kept; Q30 replaces "View portfolio"; "Stake existing NOC" and the
   post-TGE claim line omitted (§9).
 
@@ -1059,7 +1112,8 @@ review 2 L10). B1d-1b: the rest of 1–9.
 3. **Below minimum refused:** the line, Buy disabled; a forced prepare is refused by the background (C3).
 4. **Geo blocked:** #50b for each reason (`sanctioned`, `stale_list`, `unknown_country`, `no_check`, `refused`); Got it
    → back; nothing was prepared. And with a purchase pending: 23b stays, the closed line beneath (C30).
-5. **Coordinator unreachable:** #23 closed with Q11; Send and Receive still work.
+5. **The presale's program reads unreachable** (rev 3.2 — with the whole coordinator down the gate answers `no_check`
+   first, which is E2E 4): #23 closed with Q11; Send and Receive still work.
 6. **Stage moved:** the fake advances the stage between view and Buy → Q15; the next Buy simulates at the new price.
 7. **Off build:** `dist-nopresale` loaded; no banner, no Buy, no #31 row; `presale.view` from the popup's context is
    refused; a `v1_pending` record of exactly §2.3's shape (`intent: null`, `origin: null`, `extra` of kind
@@ -1083,7 +1137,7 @@ B1d-2:
 
 ### 6.4 Visual
 
-`e2e/visual-presale.spec.ts` shoots at 412 px: #23a (SOL, USDC, below min, after MAX), #23b (and with a closed line
+`e2e/visual-presale.spec.ts` shoots at 412 px (the popup in its 412 × 600 frame, #48 at 412 × 720 — rev 3.2): #23a (SOL, USDC, below min, after MAX), #23b (and with a closed line
 beneath), the allocation row, each #23 closed answer, #20 purchase (with and without account setup), #21 with the badge,
 #44 and #54 for a purchase, #50b × 6, #11 with the banner and Buy, #48 with F12 (B1d-1b); #24 (populated, empty, a null
 stat, copied), the referral field with a line, #20 with "Referred by", #26 badge, #27 line (B1d-2); the opus-tier review
@@ -1179,6 +1233,13 @@ Also asked, not blocking: whether `/referral-stats` counts referrals made throug
     is closed or unreachable, allowed (as B1c's F2 warning) when it is open; the cost is one `/geo/check` (and the
     cached list) when a site sends a purchase — so a `--no-presale` store build still contains the jurisdiction gate
     and `core/geo/**`, as compliance code, never presale UI;
+  - **the payer's outflow is accepted in two readings** (rev 3.2, review 1 L2; B1b's rule): amount + simulated rent +
+    network fee, or that minus the fee — so a program that charged no fee but took `networkLamports` extra reads as
+    honest, bounded by `PRESALE_FEE_BOUND_LAMPORTS` (≤ 0.0024 SOL); and **the rent slack**: each created PDA's rent is
+    accepted up to its §2.1 bound, so a lying program can hide at most (bound − runtime rent) ≈ 0.8 M lamports in
+    "rent" for two PDAs — the cost of not pinning a rate the runtime can change;
+  - **a first stablecoin purchase needs ≈ 0.0063 SOL** (rev 3.2, D25): the fee bound + the rent bound + 890 880 left,
+    stricter than the network fee and the runtime rent alone; a user with only the fee's worth of SOL sees Q41b;
   - the coordinator stores what the record says until P2b; every input goes through one host (`api.noc-tura.io`) — an
     outage closes the presale (B1 §4, accepted by the owner).
 
@@ -1261,7 +1322,9 @@ and `RegisterReferrer`, `calculate_tokens_for_usd`, `SPACE`s, stablecoin constra
 | #50b "What still works": "Stake existing NOC", the post-TGE claim line, "View portfolio" | stake and the claim line **omitted** (not in B1; the TGE date); "View portfolio" → Q30 (no #25 in B1) |
 | #50b CSS flag tile | **omitted:** one gradient per country is not worth it; the region text carries the information |
 | #50 "v1_geo_seen_at · suppresses re-rendering within 24 h" (annotation, v0.3) | **omitted:** the screen re-checks on every mount (approved) |
-| #50b reached when the region is fine (the link is always visible) | the open variant (C18, Q20) |
+| #50b reached when the region is fine (the link is always visible) | the open variant (C18, Q20), with "Detected region: <Country>" when the gate named one (D22, rev 3.2) |
+| #50b "Why this matters" | built as drawn: the second reason row (Q28), the info banner Q29 + "Re-checked at every presale screen mount." (rev 3.2) |
+| #20 headline "Send <amount> to <address>" | **omitted for a purchase** (D21, rev 3.2): the design draws none; Q08 over the amount card |
 | #11 "Buy → presale (#23) if active else fiat-onramp sheet" | #23 when open or a purchase is pending, #50b when geo-closed, otherwise no Buy (approved); no fiat |
 | #11 shielded-tint banner variant; TipKit "Tap to see presale stage" / Android "New" badge | B2 / mobile-only — omitted |
 | #20 "recipient" for a purchase | "Noctura presale" + the full treasury / vault ATA address (B1's address rule) |
@@ -1335,6 +1398,13 @@ carry it (§6.2's markers are the "on" rows of source new / approved / app). Non
 | Q50 | #48 F12 banner body | a (sanctioned) "This transaction buys NOC in the presale, which this wallet doesn't allow from your region (<Country>)." · b (any fail-closed reason) "This transaction buys NOC in the presale. The wallet's region check did not succeed, so it can't be approved — try again later." (c removed in rev 3, D15) | new | both | controller copy, owner-delegated 2026-10-19 |
 | Q51 | #48 F12 banner meta | "Only Reject is available · no override" | new | both | controller copy, owner-delegated 2026-10-19 |
 | Q52 | #23, the destination moved twice during prepare (C39) | "The presale is busy right now — try again." | new | on | controller copy, owner-delegated 2026-10-19 |
+| Q53 | #21 title, a purchase broadcasting | "Buying NOC…" | new | on | controller copy, delegated (D20, rev 3.2) |
+| Q54 | #21, a purchase confirmed: title · stage line | a "Purchased" · b "Purchase confirmed" | new | on | controller copy, delegated (D20, rev 3.2) |
+| Q55 | #44 sub, a purchase the program rejected | "The presale program returned an error. The network fee was charged; no NOC was bought." | new | on | controller copy, delegated (D20, rev 3.2) |
+| Q56 | #10, a purchase re-authentication cancelled | "Purchase cancelled. Nothing was sent." | new | on | controller copy, delegated (D20, rev 3.2) |
+| Q57 | #20, the resume of a prepared purchase | "You have a purchase waiting." | new | on | controller copy, delegated (D20, rev 3.2) |
+| Q58 | #20, a purchase proven on #10 | "Confirmed. Review the fresh quote and buy." | new | on | controller copy, delegated (D20, rev 3.2) |
+| Q59 | #23, the closed line of a region answer | "Not available here — " + #50b's sub for the reason (Q21's first sentence for `sanctioned`) | new | on | controller copy, delegated (D20, rev 3.2) |
 
 ---
 

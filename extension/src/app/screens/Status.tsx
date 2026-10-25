@@ -226,14 +226,28 @@ function Tracked({account, id, since, canRetry, onDone: home, onDetails, onActiv
 
   const intent = record.intent;
   // The fiat line: --fg-secondary on success and slow, --fg-tertiary while broadcasting (index.html #s21). A record
-  // without an intent (B1d §1.3: another kind) has its kind's line in the amount's place (Q32), or Q42's when the build
-  // cannot show its kind, and no To row: no amount, no recipient, no fiat.
+  // without an intent (B1d §1.3: another kind) has its kind's card and To row (a purchase: Q32's words, "Noctura
+  // presale"), or Q42's line in the amount's place when the build cannot show its kind, and no To row: no amount, no
+  // recipient, no fiat.
   const amountCard = (big: boolean, dim: boolean) => {
+    // B1d-1b Task 9: a purchase in the drawn card — Q32's words as the eyebrow and the figure, its dollars below.
+    if (intent === null && words !== null) {
+      return (
+        <div className="amount-card">
+          <span className="eyebrow">{words.card.lead}</span>{' '}
+          <div className="amount-line">
+            <span className={`amount noc-numeral${big ? ' noc-balance-lg app-amount-big' : ''}`}>{words.card.figure}</span>{' '}
+            <span className="ticker">{words.card.ticker}</span>
+          </div>{' '}
+          <span className={`noc-caption noc-numeral ${dim ? 'app-dim' : 'app-secondary'}`}>≈ {words.card.usd} USD</span>
+        </div>
+      );
+    }
     if (intent === null) {
       return (
         <div className="amount-card">
           <div className="amount-line">
-            <span className={words === null ? 'amount' : 'amount noc-numeral'}>{words?.line ?? GENERIC_TEXT.line}</span>
+            <span className="amount">{GENERIC_TEXT.line}</span>
           </div>
         </div>
       );
@@ -251,7 +265,15 @@ function Tracked({account, id, since, canRetry, onDone: home, onDetails, onActiv
     );
   };
   const toRow =
-    intent === null ? null : (
+    intent === null ? (
+      words === null ? null : (
+        <div className="meta-row">
+          <span className="lbl">To</span>
+          <span className="val">{words.to}</span>
+          <NoCopy />
+        </div>
+      )
+    ) : (
       <div className="meta-row">
         <span className="lbl">To</span>
         <span className="val mono noc-mono">

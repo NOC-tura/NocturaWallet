@@ -671,6 +671,12 @@ a.btn {
   flex-direction: column;
   gap: 2px;
 }
+/* B1d-1b Task 9 visual pass: a row of words, not an address — the design's .val breaks anywhere (for addresses), which
+   split "Noctura's" over two lines in the Network row of #20 (the send's and the purchase's). Words wrap between words. */
+.s-conf .detail-row .val.app-prose {
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
 .s-conf .high-value-banner .app-danger {
   color: var(--danger);
 }

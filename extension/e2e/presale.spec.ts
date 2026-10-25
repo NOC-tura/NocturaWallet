@@ -138,7 +138,7 @@ test('1 · SOL purchase end to end: #11 Buy → #23a → amount → #20 (rows, t
     // #21: Q53 and the badge (Q31), Q32's line.
     await expect(tab.locator('.top-bar .title')).toHaveText('Buying NOC…', {timeout: 30_000});
     await expect(tab.locator('.top-bar .status-pill')).toHaveText('Presale');
-    await expect(tab.locator('.amount-card')).toHaveText('Buying NOC with 0.5000 SOL');
+    await expect(tab.locator('.amount-card')).toHaveText('Buying NOC with 0.5000 SOL ≈ $75.00 USD');
     // Exactly one broadcast, of the purchase the program simulated: the presale instruction paying the treasury.
     expect(h.fake.broadcasts).toHaveLength(1);
     const wire = parseV0(base64.decode(h.fake.broadcastWires[0] ?? ''));

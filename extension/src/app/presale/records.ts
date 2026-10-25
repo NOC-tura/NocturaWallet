@@ -1,4 +1,5 @@
 import {showExact} from '../send/rules';
+import {showUsd} from '../format';
 import type {KindRecord, PresaleSlots} from '../router';
 import {PURCHASE_KIND, presaleClient, purchaseDataOf} from './client';
 import {BANNER_TEXT, CONFIRM_PURCHASE_TEXT, RECORD_TEXT, priceText} from './text';
@@ -31,6 +32,8 @@ export const PRESALE_SLOTS: PresaleSlots = {
       slow: RECORD_TEXT.slow,
       amount: `${amount} ${data.currency}`,
       to: CONFIRM_PURCHASE_TEXT.presale,
+      // Display only: the dollars the program counted for it (§2.3's spentCents), as #20 showed them.
+      card: {lead: RECORD_TEXT.lead, figure: amount, ticker: data.currency, usd: showUsd(Number(data.spentCents) / 100)},
       // C17: #21's Done after a purchase returns to #23.
       done: {screen: 'presale'},
       again: againRoute({currency: data.currency, amount: data.amount.toString(), code: null, challengeId: null}),

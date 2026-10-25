@@ -291,7 +291,7 @@ describe('23b pending (§4.1, C17, C30)', () => {
     expect([...document.querySelectorAll('.pending-card .row')].map(r => [r.querySelector('.l')?.textContent, r.querySelector('.r')?.textContent])).toEqual([
       ['Paid', '2.0000 SOL'],
       ['Estimated NOC', '2,643.83 NOC'],
-      ['Stage', 'Stage 1 of 10 · @ $ 0.1501'],
+      ['Stage', '1 of 10 · @ $ 0.1501'],
       ['Tx hash', `${SIGNATURE.slice(0, 4)}…${SIGNATURE.slice(-6)}`],
     ]);
     expect(document.querySelector('.pending-card .r.mono.noc-mono')?.getAttribute('title')).toBe(SIGNATURE);
