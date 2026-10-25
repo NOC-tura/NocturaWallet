@@ -15,7 +15,7 @@ import type {Engine, Pending} from '../engine';
 
 // Spec §4.8 (#54, D23): the design's layout, only the levers differ — "Send again" re-sends the same signed bytes.
 const SELECTORS = selectorsOf(UI_SHEETS);
-const nav = {onClose: vi.fn(), onActivity: vi.fn(), onTryAgain: vi.fn(), canRetry: true};
+const nav = {onClose: vi.fn(), onActivity: vi.fn(), onTryAgain: vi.fn(), onRoute: vi.fn(), canRetry: true};
 const WIRE = signedWire(2_480_000_000n);
 const SIGNATURE = firstSignature(WIRE);
 const CREATED = 1_000_000_000_000;

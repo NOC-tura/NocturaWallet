@@ -17,6 +17,7 @@ import {runUnlockHook} from './dapp/queue';
 import {dropAccountGrants, listBlocked, listGrants, revokeAll, revokeGrant, undoRevoke, unblock} from './dapp/grantsApi';
 import {reauthWaiting} from './dapp/signTx';
 import {PRESALE_MESSAGE_TYPES} from './presale/api';
+import type {PresaleHandler} from './presaleHost';
 
 /** What the browser reports about a message's origin (runtime.MessageSender). */
 export interface Sender {
@@ -91,9 +92,22 @@ const APPROVE_PAGE_ONLY: readonly string[] = ['dapp.pending', 'dapp.decide'];
  * change the vault's state (vault.status, vault.lock) or reach the popup's routes (wallet.*, contacts.*, accounts.*).
  */
 const APPROVE_PAGE_ALLOWED: readonly string[] = APPROVE_PAGE_ONLY;
-/** …and #49's from the popup or the UI tab only — never the approval window a site caused, nor the vault page. */
-const WALLET_UI_ONLY: readonly string[] = ['dapp.grants.list', 'dapp.grants.revoke', 'dapp.grants.undo', 'dapp.grants.revokeAll', 'dapp.blocked.list', 'dapp.blocked.remove', 'dapp.reauth'];
+/**
+ * …and #49's from the popup or the UI tab only — never the approval window a site caused, nor the vault page; so are
+ * the presale entry's (B1d §1.4).
+ */
+const WALLET_UI_ONLY: readonly string[] = ['dapp.grants.list', 'dapp.grants.revoke', 'dapp.grants.undo', 'dapp.grants.revokeAll', 'dapp.blocked.list', 'dapp.blocked.remove', 'dapp.reauth', ...PRESALE_MESSAGE_TYPES];
 export const PAGE: readonly string[] = PAGE_TYPES;
+
+/** B1d §1.4: the presale entry's handlers, one per type of PRESALE_MESSAGE_TYPES (none in the build without presale). */
+const presaleHandlers = new Map<string, PresaleHandler>();
+
+/** What index.ts hands `registerPresale` as `host.handle`. A type outside the presale list, or registered twice, throws. */
+export function registerPresaleHandler(type: string, handler: PresaleHandler): void {
+  if (!PRESALE_MESSAGE_TYPES.includes(type)) throw new Error(`registerPresaleHandler: ${type} is not a presale message type`);
+  if (presaleHandlers.has(type)) throw new Error(`registerPresaleHandler: ${type} is registered already`);
+  presaleHandlers.set(type, handler);
+}
 
 function isOwnPage(ext: Ext, s: Sender): boolean {
   return s.id === ext.runtimeId && s.origin === ext.extensionOrigin;
@@ -325,6 +339,11 @@ export async function handleMessage(ext: Ext, msg: unknown, sender: Sender, deps
     default:
       if (isWalletType(type)) {
         return deps === undefined ? {ok: false, error: 'unavailable'} : handleWallet(ext, deps, type, msg as Record<string, unknown>);
+      }
+      if (PRESALE_MESSAGE_TYPES.includes(type)) {
+        // A listed type with no handler registered (registerPresale not run) is unavailable, never another type's answer.
+        const presale = presaleHandlers.get(type);
+        return deps === undefined || presale === undefined ? {ok: false, error: 'unavailable'} : presale(ext, deps, msg as Record<string, unknown>);
       }
       return {ok: false, error: 'unknown type'};
   }

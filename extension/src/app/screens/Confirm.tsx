@@ -576,7 +576,7 @@ export function Confirm(props: ConfirmProps) {
             ) : null}
             <div className="detail-row">
               <span className="lbl">Network</span>
-              <span className="val">{CONFIRM_TEXT.network}</span>
+              <span className="val app-prose">{CONFIRM_TEXT.network}</span>
             </div>
           </div>
           <div className="fee-block">

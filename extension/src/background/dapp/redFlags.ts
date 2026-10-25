@@ -1,7 +1,9 @@
 import {tokenForMint, WALLET_TOKENS, type WalletToken} from '../../../../core/solana/balances';
 import type {AccountData} from '../../../../core/solana/rpc';
+import type {GeoAnswer, GeoReason} from '../geo/gate';
 import {WHOLE_BALANCE_PERCENT, type DappReauthReason} from '../reauthPolicy';
-import {AUTHORITY_TYPES, SYSTEM_PROGRAM, TOKEN_2022_PROGRAM, TOKEN_PROGRAM, addressField, type DecodedInstruction, type ProgramKey} from './decode/decode';
+import {AUTHORITY_TYPES, PRESALE_PROGRAM, SYSTEM_PROGRAM, TOKEN_2022_PROGRAM, TOKEN_PROGRAM, addressField, type DecodedInstruction, type ProgramKey} from './decode/decode';
+import {PRESALE_INSTRUCTIONS} from './decode/presaleIdl';
 import type {ParsedTx} from './decode/wire';
 import {mintInfo, tokenAccountInfo, type TokenAccountInfo} from './tokenState';
 import {usesDurableNonce} from './txRequest';
@@ -26,6 +28,8 @@ import {usesDurableNonce} from './txRequest';
  * Token-2022 mint's freeze authority, permanent delegate or transfer hook, or a mint that cannot be read (warn; a
  * classic mint never, O3) · F8 a durable nonce (warn) · F9 the whole balance to a first-time address (warn) · F10 a
  * step that depends on an earlier one (block, UNCHECKED). F11 (origin mismatch) is B1c-1/2's and never reaches here.
+ * F12 (B1d §3.6, D9, D15) a presale purchase while the jurisdiction gate is not open — a refusal (`severity: 'refuse'`):
+ * no word, no re-authentication and no setting opens it; it sorts before every block.
  */
 export const OVERRIDE_WORDS = {assign: 'ASSIGN', setAuthority: 'AUTHORITY', unlimited: 'UNLIMITED', dependent: 'UNCHECKED'} as const;
 /** F5's word for a token the wallet cannot name below u64::MAX (review 3 L14) — a second word for the same block kind, so not in OVERRIDE_WORDS (one per kind). */
@@ -53,6 +57,8 @@ export interface RedFlagInput {
   mints: ReadonlyMap<string, AccountData | null>;
   /** The request's re-authentication reasons (B1b's rules over the whole batch). */
   reasons: readonly DappReauthReason[];
+  /** B1d §3.6: the jurisdiction gate's answer for a request carrying a presale purchase; absent or null — not asked, so a purchase is F12 `no_check`. */
+  region?: GeoAnswer | null;
 }
 
 export interface FlaggedInstruction {
@@ -122,12 +128,37 @@ export type RedFlag =
   | {kind: 'token-2022'; severity: 'warn'; word: null; at: number | null; mint: string; settings: Token2022Settings | null}
   | {kind: 'durable-nonce'; severity: 'warn'; word: null; at: number}
   | {kind: 'whole-balance'; severity: 'warn'; word: null; at: null}
-  | {kind: 'dependent'; severity: 'block'; word: 'UNCHECKED'; at: null; on: number};
+  | {kind: 'dependent'; severity: 'block'; word: 'UNCHECKED'; at: null; on: number}
+  /** F12: `at` the transaction's first purchase instruction; `reason` the gate's closed answer. */
+  | {kind: 'presale-region'; severity: 'refuse'; word: null; at: number; reason: GeoReason};
 export type RedFlagKind = RedFlag['kind'];
 export type TxFlags = RedFlag[];
 
-const KIND_ORDER: readonly RedFlagKind[] = ['unknown-program', 'non-transfer', 'assign', 'set-authority', 'unlimited-approve', 'bounded-approve', 'token-2022', 'durable-nonce', 'whole-balance', 'dependent'];
+const KIND_ORDER: readonly RedFlagKind[] = ['presale-region', 'unknown-program', 'non-transfer', 'assign', 'set-authority', 'unlimited-approve', 'bounded-approve', 'token-2022', 'durable-nonce', 'whole-balance', 'dependent'];
 const ASSIGNS: readonly string[] = ['assign', 'allocate', 'assignWithSeed', 'allocateWithSeed'];
+/** A refusal first, then the blocks, then the warnings. */
+const SEVERITY_RANK: Readonly<Record<RedFlag['severity'], number>> = {refuse: 0, block: 1, warn: 2};
+
+/** B1d §3.6: the presale program's six purchase instructions — F12's; never a claim, the referral or an admin instruction. */
+export const PRESALE_PURCHASES: readonly string[] = [
+  'presale_purchase_with_sol',
+  'presale_purchase_with_usdc',
+  'presale_purchase_with_usdt',
+  'presale_purchase_and_vest_stake',
+  'presale_purchase_usdc_and_vest_stake',
+  'presale_purchase_usdt_and_vest_stake',
+];
+const PURCHASE_DISCRIMINATORS: readonly (readonly number[])[] = PRESALE_INSTRUCTIONS.filter(x => PRESALE_PURCHASES.includes(x.name)).map(x => x.discriminator);
+
+/**
+ * The indexes of `tx`'s top-level presale purchases: the program the presale's and the first 8 data bytes one of the
+ * six discriminators, whether or not the rest parses strictly (B1d §3.6). A purchase reached by a CPI is not seen here.
+ */
+export function presalePurchasesOf(tx: ParsedTx): number[] {
+  return tx.instructions.flatMap((ix, i) =>
+    tx.staticKeys[ix.program] === PRESALE_PROGRAM && ix.data.length >= 8 && PURCHASE_DISCRIMINATORS.some(d => d.every((b, j) => ix.data[j] === b)) ? [i] : [],
+  );
+}
 
 // Fix round 1 (Task 4 ⚠️, type parity): a type predicate, not a plain boolean — the only producer of F4's
 // `AuthorityInstruction.program`, so its narrowing is what proves that field's type below; no behaviour change.
@@ -166,7 +197,7 @@ function ordered(flags: RedFlag[]): RedFlag[] {
   const at = (f: RedFlag): number => f.at ?? Number.MAX_SAFE_INTEGER;
   return flags
     .map((f, i) => ({f, i}))
-    .sort((x, y) => (x.f.severity === y.f.severity ? 0 : x.f.severity === 'block' ? -1 : 1) || at(x.f) - at(y.f) || KIND_ORDER.indexOf(x.f.kind) - KIND_ORDER.indexOf(y.f.kind) || x.i - y.i)
+    .sort((x, y) => SEVERITY_RANK[x.f.severity] - SEVERITY_RANK[y.f.severity] || at(x.f) - at(y.f) || KIND_ORDER.indexOf(x.f.kind) - KIND_ORDER.indexOf(y.f.kind) || x.i - y.i)
     .map(x => x.f);
 }
 
@@ -176,6 +207,10 @@ function txFlags(input: RedFlagInput, t: TxFlagInput, k: number): RedFlag[] {
   const post = t.outcome.status === 'simulated' ? t.outcome.post : null;
   const out: RedFlag[] = [];
   const indexed = decoded.map((ix, index) => ({ix, index}));
+
+  // F12
+  const purchase = presalePurchasesOf(t.tx)[0];
+  if (purchase !== undefined && input.region?.open !== true) out.push({kind: 'presale-region', severity: 'refuse', word: null, at: purchase, reason: input.region?.reason ?? 'no_check'});
 
   // F1
   const unknown = indexed.filter(x => x.ix.program === null);
@@ -386,6 +421,9 @@ const DIGITS = /^\d{1,20}$/;
 const PROGRAM_KEYS: readonly string[] = ['system', 'token', 'token-2022', 'associated-token', 'compute-budget', 'presale'];
 const AUTHORITY_TYPE_NAMES: readonly string[] = ['', ...AUTHORITY_TYPES];
 const TOKENS: readonly string[] = Object.keys(WALLET_TOKENS);
+const GEO_REASONS: Readonly<Record<GeoReason, true>> = {refused: true, no_check: true, stale_list: true, unknown_country: true, sanctioned: true};
+/** One of the gate's closed reasons (geo/gate.ts). */
+export const isGeoReason = (x: unknown): x is GeoReason => typeof x === 'string' && Object.hasOwn(GEO_REASONS, x);
 /** `x` as an object with exactly these keys, or null. */
 const exactly = (x: unknown, keys: readonly string[]): J | null => {
   if (typeof x !== 'object' || x === null || Array.isArray(x)) return null;
@@ -516,6 +554,10 @@ function storedFlagOf(x: unknown): RedFlag | null {
     case 'dependent': {
       const o = exactly(x, ['kind', 'severity', 'word', 'at', 'on']);
       return o !== null && o.severity === 'block' && o.word === OVERRIDE_WORDS.dependent && o.at === null && isIndex(o.on) ? {kind: 'dependent', severity: 'block', word: OVERRIDE_WORDS.dependent, at: null, on: o.on} : null;
+    }
+    case 'presale-region': {
+      const o = exactly(x, ['kind', 'severity', 'word', 'at', 'reason']);
+      return o !== null && o.severity === 'refuse' && o.word === null && isIndex(o.at) && isGeoReason(o.reason) ? {kind: 'presale-region', severity: 'refuse', word: null, at: o.at, reason: o.reason} : null;
     }
     default:
       return null;

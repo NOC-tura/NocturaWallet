@@ -2,7 +2,9 @@ import {PublicKey} from '@solana/web3.js';
 import {
   buildBuyInstructions,
   buildSolPurchaseInstruction,
+  buildStablecoinBuyInstructions,
   buildStablecoinPurchaseInstruction,
+  derivedStablecoinAccount,
   findAssociatedTokenAddress,
   encodeU64LE,
 } from '../buyInstructions';
@@ -97,7 +99,7 @@ describe('buildStablecoinPurchaseInstruction — the destination', () => {
     // USDC/USDT purchase failed with InvalidTokenAccountOwner. The account LIST had not
     // moved, which is why both sides concluded nothing had to change.
     const {referrerAllocation} = derivePresalePdas(USER);
-    const ix = buildStablecoinPurchaseInstruction(USER, 'USDC', 10_000_000n, referrerAllocation, TREASURY);
+    const ix = buildStablecoinPurchaseInstruction(USER, 'USDC', 10_000_000n, referrerAllocation, TREASURY, derivedStablecoinAccount(USER, 'USDC'));
     expect(ix.keys[5]!.pubkey.toBase58()).toBe(findAssociatedTokenAddress(TREASURY, USDC).toBase58());
   });
 
@@ -113,10 +115,38 @@ describe('buildStablecoinPurchaseInstruction — the destination', () => {
   it('carries whichever treasury it is handed, so a moved treasury is followed', () => {
     const elsewhere = new PublicKey('BMLGUnWW2odX2sNnDcbvf5EFQJwrCtLaX6ka2rXfeKYi');
     const {referrerAllocation} = derivePresalePdas(USER);
-    const ix = buildStablecoinPurchaseInstruction(USER, 'USDT', 10_000_000n, referrerAllocation, elsewhere);
+    const source = derivedStablecoinAccount(USER, 'USDT');
+    const ix = buildStablecoinPurchaseInstruction(USER, 'USDT', 10_000_000n, referrerAllocation, elsewhere, source);
     expect(ix.keys[5]!.pubkey.toBase58()).not.toBe(
-      buildStablecoinPurchaseInstruction(USER, 'USDT', 10_000_000n, referrerAllocation, TREASURY)
+      buildStablecoinPurchaseInstruction(USER, 'USDT', 10_000_000n, referrerAllocation, TREASURY, source)
         .keys[5]!.pubkey.toBase58(),
     );
+  });
+});
+
+// B1d C2: the program checks the paying account's owner and mint only, so a wallet holding its tokens in an account
+// that is not the derived ATA pays from that account. The extension passes it; the app and the web pass the ATA.
+describe('buildStablecoinPurchaseInstruction — the paying account (B1d C2)', () => {
+  const HOLDING = new PublicKey('7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU');
+  const USDT = new PublicKey('Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB');
+
+  it('slot 4 is the account it is handed, nothing derived from it; every other slot unchanged', () => {
+    const {referrerAllocation} = derivePresalePdas(USER);
+    const held = buildStablecoinPurchaseInstruction(USER, 'USDT', 10_000_000n, referrerAllocation, TREASURY, HOLDING);
+    const derived = buildStablecoinPurchaseInstruction(USER, 'USDT', 10_000_000n, referrerAllocation, TREASURY, derivedStablecoinAccount(USER, 'USDT'));
+    expect(held.keys[4]!.pubkey.toBase58()).toBe(HOLDING.toBase58());
+    expect(held.keys.map((k, i) => (i === 4 ? null : k))).toEqual(derived.keys.map((k, i) => (i === 4 ? null : k)));
+    expect(held.data).toEqual(derived.data);
+  });
+
+  it('derivedStablecoinAccount is the derived ATA of that mint (what the app and the web keep passing)', () => {
+    expect(derivedStablecoinAccount(USER, 'USDT').toBase58()).toBe(findAssociatedTokenAddress(USER, USDT).toBase58());
+    expect(derivedStablecoinAccount(USER, 'USDT').toBase58()).not.toBe(HOLDING.toBase58());
+  });
+
+  it('the bundle passes it through to the purchase', () => {
+    const {referrerAllocation} = derivePresalePdas(USER);
+    const ixs = buildStablecoinBuyInstructions(USER, 'USDC', 10_000_000n, 0, {referrerAllocation, registerReferrer: null}, TREASURY, HOLDING);
+    expect(ixs.at(-1)!.keys[4]!.pubkey.toBase58()).toBe(HOLDING.toBase58());
   });
 });

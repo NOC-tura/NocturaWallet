@@ -8,7 +8,8 @@ import {VAULT_KEY} from '../../accountsStore';
 import {GRANTS_KEY, type Grant} from '../grants';
 import {runUnlockHook} from '../queue';
 import {readDappSession, type Entry} from '../store';
-import {ATA_PROGRAM, TOKEN_PROGRAM} from '../decode/decode';
+import {ATA_PROGRAM, PRESALE_PROGRAM, TOKEN_PROGRAM} from '../decode/decode';
+import {PRESALE_INSTRUCTIONS} from '../decode/presaleIdl';
 import {fakeExt} from '../../__tests__/fakeExt';
 import {fakeDeps, fakeReader} from '../../__tests__/fakeDeps';
 import {ACCOUNT, BLOCKHASH, RECIPIENT} from '../../__tests__/fixtures';
@@ -110,6 +111,21 @@ export const tokenApprove = (source: PublicKey, delegate: PublicKey, amount: big
       {pubkey: ME, isSigner: true, isWritable: false},
     ],
   });
+
+/**
+ * B1d §3.6: a presale instruction exactly as its IDL row reads — every argument in order (u64s of 1 000 000, tier and
+ * bool 0, pubkeys and byte arrays filled), every account (the account as `user`, the signer) — or `data` as given.
+ */
+export function presaleIx(name: string, o: {data?: number[]} = {}): TransactionInstruction {
+  const row = PRESALE_INSTRUCTIONS.find(x => x.name === name);
+  if (row === undefined) throw new Error(`no presale instruction ${name}`);
+  const args = row.args.flatMap(a => (a.type === 'u64' || a.type === 'i64' ? u64le(1_000_000n) : a.type === 'pubkey' ? [...TO.toBytes()] : typeof a.type === 'object' ? new Array<number>(a.type.bytes).fill(1) : [0]));
+  return new TransactionInstruction({
+    programId: new PublicKey(PRESALE_PROGRAM),
+    data: Buffer.from(o.data ?? [...row.discriminator, ...args]),
+    keys: row.accounts.map((a, i) => (a === 'user' ? {pubkey: ME, isSigner: true, isWritable: true} : {pubkey: new PublicKey(new Uint8Array(32).fill(100 + i)), isSigner: false, isWritable: i < 3})),
+  });
+}
 
 export interface Chain {
   /** simulateTransaction's error (null: it runs). */

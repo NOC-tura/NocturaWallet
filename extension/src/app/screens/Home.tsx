@@ -10,9 +10,11 @@ import {LockedButton} from '../ui/LockedButton';
 import {RefusedBanner} from '../ui/Banner';
 import {SkelCircle, SkelLine} from '../ui/Skeleton';
 import {TokenTile} from '../ui/TokenTile';
-import type {DappReauth, Pending, Token} from '../engine';
+import type {DappReauth, Engine, Pending, Token} from '../engine';
 import {reauthPage} from '../platform';
-import {GENERIC_TEXT} from '../generic';
+import {kindPendingLine} from '../generic';
+import {presaleSlots} from '../presale';
+import type {HomeBanner, PresaleRouteValue} from '../router';
 
 /** #42's banner: offline is navigator's word; unreachable says the server did not answer (review L3). */
 function NetBanner({mode, sustainedNow, lastSync, failures, now}: {mode: NetMode; sustainedNow: boolean; lastSync: number | null; failures: number; now: number}) {
@@ -50,7 +52,7 @@ function NetBanner({mode, sustainedNow, lastSync, failures, now}: {mode: NetMode
 /**
  * #11's pending strip: an open send of this account, which opens #21 (or #54 once it is stuck). B1c-3: on the dApp
  * strip's gutter, with the same trailing chevron — a strip that opens something says so. A record without an intent
- * (B1d §1.3: another kind) reads Q42.
+ * (B1d §1.3: another kind) reads its kind's words (a purchase: Q33, B1d-1b), or Q42 when the build cannot show it.
  */
 function PendingStrip({p, now, onOpen}: {p: Pending; now: number; onOpen: () => void}) {
   const slow = p.state === 'stuck' || now - p.createdAt > 80_000;
@@ -59,7 +61,7 @@ function PendingStrip({p, now, onOpen}: {p: Pending; now: number; onOpen: () => 
     <button type="button" className="banner info app-banner app-strip app-pending-strip" onClick={onOpen}>
       <ExtIcon name="send" size={18} />
       {intent === null ? (
-        <span className="noc-body-sm">{slow ? GENERIC_TEXT.slow : GENERIC_TEXT.pending}</span>
+        <span className="noc-body-sm">{kindPendingLine(p, slow)}</span>
       ) : (
         <span className="noc-body-sm">
           Sending {formatAmount(intent.amount, TOKEN_INFO[intent.token].decimals, {min: 0, max: TOKEN_INFO[intent.token].decimals})} {intent.token} · {slow ? 'taking longer than usual' : 'pending'}
@@ -119,6 +121,39 @@ function useDappReauth(engine: {dappReauth(): Promise<{ok: true; data: DappReaut
   return waiting;
 }
 
+/**
+ * B1d §4.5: #11's presale banner, read from the presale entry when Home mounts and whenever the window regains focus
+ * (the build without presale has no entry: nothing is read). Only the newest answer counts; nothing is set after
+ * unmount. `hide` takes it away until the next read: a Buy that found no route hides the action and its banner.
+ */
+function useHomeBanner(engine: Engine): {banner: HomeBanner | null; hide: () => void} {
+  const [banner, setBanner] = useState<HomeBanner | null>(null);
+  const reads = useRef(0);
+  useEffect(() => {
+    const slots = presaleSlots;
+    if (slots === null) return;
+    let alive = true;
+    const read = async () => {
+      const n = ++reads.current;
+      const b = await slots.banner(engine);
+      if (!alive || n !== reads.current) return;
+      setBanner(b);
+    };
+    void read();
+    const again = () => void read();
+    window.addEventListener('focus', again);
+    return () => {
+      alive = false;
+      window.removeEventListener('focus', again);
+    };
+  }, [engine]);
+  const hide = () => {
+    reads.current += 1;
+    setBanner(null);
+  };
+  return {banner, hide};
+}
+
 /** A balance read that failed with 'failed' (final review I1; over shown balances, owner decision 2026-10-01) — copy confirmed by the owner 2026-10-01. */
 export const BALANCES_FAILED_TEXT = 'Could not read your balances. Try again.';
 const HIDDEN_ROW = '••••••';
@@ -128,9 +163,24 @@ const joined = (...parts: (string | null)[]): string => parts.filter((x): x is s
 /**
  * #11 dashboard (spec §5.1) with #42's offline states and the D26 refused state (§5.4). Send opens #12 —
  * disabled offline, while the server cannot be reached and in the 403 cool-down (D36: Receive stays, the
- * address is local); the pending strip opens the open send at #21/#54.
+ * address is local); the pending strip opens the open send at #21/#54. B1d §4.5: in the build with presale, the
+ * presale banner below the tokens and the Buy quick action — both while the entry answers a banner, both disabled as
+ * Send is; a tap asks the entry where to go (`onRoute`: #23 or #50b), and no route hides them.
  */
-export function Home({onSend, onReceive, onPending, onAccounts}: {onSend: () => void; onReceive: () => void; onPending: (p: Pending) => void; onAccounts: () => void}) {
+export function Home({
+  onSend,
+  onReceive,
+  onPending,
+  onAccounts,
+  onRoute,
+}: {
+  onSend: () => void;
+  onReceive: () => void;
+  onPending: (p: Pending) => void;
+  onAccounts: () => void;
+  /** B1d-1b Task 6: a presale route the entry chose for Buy (#23 or #50b). */
+  onRoute: (route: PresaleRouteValue) => void;
+}) {
   const m = useWallet();
   const now = useNow(1_000, m.now);
   const [hidden, setHidden] = useState(() => readPref(HIDE_BALANCES_KEY) === '1');
@@ -165,6 +215,24 @@ export function Home({onSend, onReceive, onPending, onAccounts}: {onSend: () => 
    */
   const readFailed = m.settled && !away && !refused && (b === null || m.balanceError === 'failed');
   const open = m.pending.find(p => p.account === account?.publicKey && (p.state === 'pending' || p.state === 'stuck'));
+  const presale = useHomeBanner(m.engine);
+  const alive = useRef(true);
+  useEffect(
+    () => () => {
+      alive.current = false;
+    },
+    [],
+  );
+  /** §4.5: Buy and the banner ask the entry where to go for the selected account; no route hides them. */
+  const buy = async () => {
+    const slots = presaleSlots;
+    const selected = account?.publicKey ?? null;
+    if (slots === null || selected === null) return;
+    const next = await slots.buy(m.engine, selected);
+    if (!alive.current) return;
+    if (next === null) presale.hide();
+    else onRoute(next);
+  };
 
   const top = (
     <div className="top">
@@ -320,6 +388,14 @@ export function Home({onSend, onReceive, onPending, onAccounts}: {onSend: () => 
           </span>
           <span className="lbl">Receive</span>
         </button>
+        {presale.banner === null ? null : (
+          <LockedButton className="qa" disabled={away || refused} onPress={buy}>
+            <span className="icon">
+              <ExtIcon name="buy" size={18} />
+            </span>
+            <span className="lbl">Buy</span>
+          </LockedButton>
+        )}
       </div>
       {readFailed ? (
         <p className="field-msg noc-danger app-offline-note" role="alert">
@@ -368,6 +444,21 @@ export function Home({onSend, onReceive, onPending, onAccounts}: {onSend: () => 
           );
         })}
       </div>
+      {presale.banner === null ? null : (
+        // index.html #11 (ix:6371): the presale card below the tokens; a tap is Buy's routing (§4.5).
+        <LockedButton className="presale app-presale-banner" disabled={away || refused} onPress={buy}>
+          <span className="ic">
+            <ExtIcon name="rocket" size={20} />
+          </span>
+          <span className="copy">
+            <span className="noc-body-lg">{presale.banner.title}</span>
+            <span className="sm noc-body-sm noc-numeral">{presale.banner.line}</span>
+          </span>
+          <span className="app-strip-chev app-presale-chev">
+            <ExtIcon name="chevron-right" size={18} />
+          </span>
+        </LockedButton>
+      )}
     </div>
   );
 }

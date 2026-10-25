@@ -258,6 +258,14 @@ export const FLAG_TEXT = {
   noChangesAuthority: 'No SOL or token balance changes — but this transaction changes who controls an account of yours (above).',
   /** Q55: the banners' meta — the instruction (`#<n> <program>::<Instruction>`), the simulation's chain state. */
   postSimulation: 'post-simulation',
+  /** B1d Q49: F12's head (B1d §3.6, D9). */
+  regionHead: 'Presale purchase blocked',
+  /** B1d Q50a: F12's body for a sanctioned region, with the country's name. */
+  regionSanctioned: (country: string): string => `This transaction buys NOC in the presale, which this wallet doesn't allow from your region (${country}).`,
+  /** B1d Q50b: F12's body for every fail-closed reason. */
+  regionClosed: "This transaction buys NOC in the presale. The wallet's region check did not succeed, so it can't be approved — try again later.",
+  /** B1d Q51: F12's meta. */
+  regionMeta: 'Only Reject is available · no override',
 } as const;
 
 /** #48's origin-mismatch · auto-reject (ix:18484-18521), as drawn — "Settings → dApps" reads Settings → Connected dApps (Q03, D1). */

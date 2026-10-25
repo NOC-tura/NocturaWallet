@@ -245,6 +245,12 @@ export interface Engine {
   dappReauth(): Promise<Reply<DappReauth | null, 'locked'>>;
   lock(): Promise<Reply<null, never>>;
   ping(): Promise<Reply<null, never>>;
+  /**
+   * B1d §1.1: a message this client does not name — the presale entry's own client (src/app/presale/client.ts) asks its
+   * types through it, so shared code names none of them. The same transport, retry and reply rule as every call above:
+   * `parse` is the caller's shape check, and a reply it refuses, or an error outside `codes`, is `failed`.
+   */
+  request<T, C extends string>(message: Readonly<Record<string, unknown>>, codes: readonly C[], parse: (data: unknown) => T | undefined): Promise<Reply<T, C>>;
 }
 
 // ── Shape checks ──────────────────────────────────────────────────────────────────────────────
@@ -387,7 +393,7 @@ function resumableOf(x: unknown): Resumable | null | undefined {
 
 const STATES = ['pending', 'stuck', 'confirmed', 'failed', 'expired'] as const;
 const DETAIL_CODES = ['forbidden', 'cooling', 'unacked', 'substituted'] as const;
-function pendingOf(x: unknown): Pending | undefined {
+export function pendingOf(x: unknown): Pending | undefined {
   const o = obj(x);
   if (o === undefined || typeof o.id !== 'string' || !isAddress(o.account) || typeof o.signature !== 'string' || !SIGNATURE.test(o.signature)) return undefined;
   const state = oneOf(o.state, STATES);
@@ -590,7 +596,7 @@ export function createEngine(transport: Transport = runtimeSend, sleep: (ms: num
     }
   }
 
-  async function call<T, C extends string>(message: J, codes: readonly C[], parse: (data: unknown) => T | undefined): Promise<Reply<T, C>> {
+  async function call<T, C extends string>(message: Readonly<J>, codes: readonly C[], parse: (data: unknown) => T | undefined): Promise<Reply<T, C>> {
     let raw: unknown;
     try {
       raw = await ask(message);
@@ -647,5 +653,6 @@ export function createEngine(transport: Transport = runtimeSend, sleep: (ms: num
     dappReauth: () => call({type: 'dapp.reauth'}, ['locked'], dappReauthOf),
     lock: () => call({type: 'vault.lock'}, [], nothing),
     ping: () => call({type: 'activity.ping'}, [], nothing),
+    request: (message, codes, parse) => call(message, codes, parse),
   };
 }

@@ -36,7 +36,7 @@ const cache = (now = Date.now()) => ({[ACCOUNT.publicKey]: {sol: '62482100000', 
 const NOON = new Date(2026, 4, 6, 12, 0, 0).getTime();
 const never = () => new Promise<never>(() => undefined);
 const setOnline = (value: boolean) => Object.defineProperty(navigator, 'onLine', {value, configurable: true});
-const nav = {onSend: vi.fn(), onReceive: vi.fn(), onPending: vi.fn(), onAccounts: vi.fn()};
+const nav = {onSend: vi.fn(), onReceive: vi.fn(), onPending: vi.fn(), onAccounts: vi.fn(), onRoute: vi.fn()};
 /** #11 inside the real provider; its three ways out are spies (App.test.tsx follows them). */
 const renderHome = (o: WalletOptions = {}) => renderInWallet(<Home {...nav} />, o);
 /** #11 plus a probe that hands the test the live model (to call refresh() and lock() as a screen would). */

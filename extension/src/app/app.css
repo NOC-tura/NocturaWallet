@@ -671,6 +671,12 @@ a.btn {
   flex-direction: column;
   gap: 2px;
 }
+/* B1d-1b Task 9 visual pass: a row of words, not an address — the design's .val breaks anywhere (for addresses), which
+   split "Noctura's" over two lines in the Network row of #20 (the send's and the purchase's). Words wrap between words. */
+.s-conf .detail-row .val.app-prose {
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
 .s-conf .high-value-banner .app-danger {
   color: var(--danger);
 }
@@ -725,6 +731,27 @@ a.btn {
 .s-stat .stage-label.app-success,
 .s-stat .top-bar .step.app-success {
   color: var(--success);
+}
+/* B1d-1b Task 5: #20's purchase variant — the label column wide enough for §4.2's "You receive (est.)" on two lines
+   (B1b's 80 px column, drawn for From / To / Network, broke it over three; found in the visual check). */
+.s-conf .detail-grid.app-pre-grid .detail-row {
+  grid-template-columns: 112px 1fr;
+}
+/* B1d-1b Task 5: #44's amount line for a purchase (Q32), under the head: no UA paragraph margin, so it sits with the head
+   and the sub below keeps the design's spacing (two stacked margins opened a gap; found in the visual check). */
+.s9-fail-hero .sub.app-fail-line {
+  margin: 0;
+}
+/* B1d-1b Task 5: #21's kind badge (Q31 "Presale", StatusPill `badge`; approved, undrawn) — #27's status pill shape at
+   the top bar's size, in the accent: it names the kind, not the outcome. */
+.s-stat .top-bar .status-pill.app-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: var(--radius-pill);
+  font: 600 12px/16px var(--font-body);
+  background: color-mix(in oklab, var(--accent) 14%, transparent);
+  color: var(--accent);
 }
 .s-stat .stage-label.app-warning,
 .s-stat .top-bar .step.app-warning,
@@ -2076,4 +2103,176 @@ body:has(.app-window) {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
+}
+
+/* B1d-1b: #23 presale (index.html #23, ix 10603-10902) — what the mockup says inline, and the popup's controls. */
+/* 23a's second meta row (`style="margin-top:-4px"`). */
+.s-pre .stage-card .meta.app-pre-meta2 {
+  margin-top: -4px;
+}
+/* The unit label is the currency choice (C20): the design's ticker, as a button. */
+.s-pre .input-card button.ticker {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+/* [MAX], as the mockup styles it inline. */
+.s-pre .input-card .max {
+  background: var(--bg-surface-3);
+  color: var(--fg-primary);
+  padding: 0 12px;
+  height: 32px;
+  border-radius: var(--radius-pill);
+  border: 0;
+  font: 600 12px/1 var(--font-body);
+  cursor: pointer;
+}
+/* The amount is an <input> where the mockup draws text: no UA padding, so it starts on the card's edge as drawn. */
+.s-pre .input-card input.input {
+  padding: 0;
+}
+.s-pre .input-card .input::placeholder {
+  color: var(--fg-disabled);
+}
+/* The limit or balance line under the amount, in #12's error style (.s-send .helper.error). */
+.s-pre .input-card .helper {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  font: 400 12px/16px var(--font-body);
+}
+.s-pre .input-card .helper svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+.s-pre .input-card .helper.error {
+  color: var(--danger);
+}
+/* The allocation row: its value, and D5's TGE line under it (no drawn state; the receipt-row style). */
+.s-pre .receipt .row .r.app-pre-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+.s-pre .receipt .row .r .app-pre-claimable {
+  color: var(--fg-tertiary);
+}
+/* 23b's head: the mockup's h3 and p carry no margin (UA margins pushed the two lines apart). */
+.s-pre .pending-card .head .copy h3,
+.s-pre .pending-card .head .copy p {
+  margin: 0;
+}
+/* 23b's [View on Solana explorer]: the design's geo-link, as the link it is. */
+.s-pre a.geo-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+/* index.html #23 (D): the pending ring collapses to a static accent ring under reduced motion. */
+@media (prefers-reduced-motion: reduce) {
+  .s-pre .pending-card .ring {
+    animation: none;
+    border-top-color: var(--accent);
+  }
+}
+/* 23b's region line (B1d-1b Task 6): the warning banner as the link to #50b it is, with the strips' trailing chevron. */
+.s-pre .banner.app-pre-region {
+  align-items: center;
+}
+.s-pre .banner.app-pre-region > .noc-body-sm {
+  flex: 1;
+  min-width: 0;
+  margin-bottom: 0;
+}
+.s-pre .banner.warning.app-pre-region .app-strip-chev svg {
+  color: var(--fg-secondary);
+  margin-top: 0;
+}
+
+/* B1d-1b Task 6: #11's presale card (index.html #11, ix:6371-6373) as the button it is — the design's .presale. */
+.s-dash button.presale.app-presale-banner {
+  font: inherit;
+  color: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.s-dash button.presale.app-presale-banner:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.s-dash .presale.app-presale-banner .copy > span {
+  display: block;
+}
+/* The trailing chevron in --fg-secondary (ix:6374, inline there). */
+.s-dash .presale .app-presale-chev svg {
+  color: var(--fg-secondary);
+}
+
+/* B1d-1b Task 6: #50b (index.html #50, the 50b phone, ix:19712-19790) — what the mockup sets inline. */
+.app-geo-body {
+  flex: 1 0 auto;
+}
+/* The mockup's hero headline and sub carry no margin (UA margins pushed them apart — found in the visual check). */
+.s11-geo-hero h2,
+.s11-geo-hero p {
+  margin: 0;
+}
+/* The region card's text column is the design's block (web's design-system `.col` is a 28 px-gap layout column — the
+   two lines stood apart). */
+.s11-geo-region .col {
+  display: block;
+}
+.s11-geo-hero .glyph.app-geo-warn {
+  background: color-mix(in oklab, var(--warning) 14%, var(--bg-surface-1));
+  border-color: color-mix(in oklab, var(--warning) 32%, transparent);
+}
+.s11-geo-hero .glyph.app-geo-warn svg,
+.s11-reason-row .ico.app-geo-warn svg {
+  color: var(--warning);
+}
+.s11-geo-hero .app-geo-sub {
+  color: var(--fg-secondary);
+  max-width: 280px;
+}
+.s11-reason-row .ico.app-geo-warn {
+  background: color-mix(in oklab, var(--warning) 14%, transparent);
+}
+.app-geo-primary {
+  color: var(--fg-primary);
+}
+.app-geo-tertiary {
+  color: var(--fg-tertiary);
+}
+.app-geo-disclosure {
+  margin-top: 2px;
+}
+.card.app-geo-card {
+  margin: 0 var(--space-5) var(--space-4);
+  padding: 0;
+  overflow: hidden;
+}
+.banner.app-geo-banner {
+  margin: 0 var(--space-5) var(--space-4);
+  background: color-mix(in oklab, var(--info) 10%, var(--bg-surface-1));
+  border: 1px solid color-mix(in oklab, var(--info) 28%, transparent);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+}
+.banner.app-geo-banner svg {
+  width: 18px;
+  height: 18px;
+  color: var(--info);
+  flex-shrink: 0;
+}
+.s11-stillworks .app-geo-works {
+  color: var(--success);
 }

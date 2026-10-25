@@ -1,225 +1,43 @@
 import {PublicKey} from '@solana/web3.js';
-import {readPresaleState, referrerAllocationOf, type PresaleSnapshot, type PresaleState} from '../state';
+import {readPresaleConfig, readPresaleState, readPresaleStateAt, referrerAllocationOf, type PresaleSnapshot, type PresaleState} from '../state';
 import {CONFIG_LAYOUT, PRESALE_ALLOCATION_LAYOUT, USER_ACCOUNT_LAYOUT} from '../layouts';
 import {fakeReader} from '../../__tests__/fakeDeps';
-import {ACCOUNT as SESSION_ACCOUNT, HOLDING_SMALL, RECIPIENT} from '../../__tests__/fixtures';
-import {
-  MAINNET_ADMIN_ADDRESS,
-  MAINNET_NOC_MINT,
-  MAINNET_PROGRAM_ID,
-  MAINNET_SOL_TREASURY,
-  MAINNET_USDC_MINT,
-  MAINNET_USDT_MINT,
-  MAINNET_VAULT_USDC_ATA,
-  MAINNET_VAULT_USDT_ATA,
-} from '../../../../../core/presale/addresses';
+import {MAINNET_ADMIN_ADDRESS, MAINNET_SOL_TREASURY, MAINNET_USDC_MINT, MAINNET_USDT_MINT, MAINNET_VAULT_USDC_ATA, MAINNET_VAULT_USDT_ATA} from '../../../../../core/presale/addresses';
 import {derivePresalePdas, readSolTreasury} from '../../../../../core/presale/allocation';
 import {PRESALE_HARD_CAP_BASE, TOKENS_PER_STAGE_BASE} from '../../../../../core/presale/limits';
 import {SPL_TOKEN_PROGRAM} from '../../../../../core/solana/encoding';
+import {RequestUnreachable, RpcCoolingDown, RpcForbidden, RpcHttpError, RpcMalformed, RpcResponseError, type AccountData} from '../../../../../core/solana/rpc';
 import {
-  RequestUnreachable,
-  RpcCoolingDown,
-  RpcForbidden,
-  RpcHttpError,
-  RpcMalformed,
-  RpcResponseError,
-  SYSTEM_PROGRAM_ID,
-  type AccountData,
-} from '../../../../../core/solana/rpc';
+  ACCOUNT,
+  CHAIN,
+  CONFIG_PDA,
+  NOW_MS,
+  NOW_S,
+  OTHER,
+  REFERRER,
+  SNAPSHOT_SLOT,
+  TOKEN_2022,
+  TREASURY,
+  TREASURY_ADDRESS,
+  USDC_VAULT,
+  USDT_VAULT,
+  allocationData,
+  chainMap,
+  chainReader,
+  configData,
+  program,
+  userData,
+  vault,
+  type Chain,
+} from './chain';
 import {RequestTimedOut} from '../../deps';
 
 // B1d §2.1, §6.1 "State (1a)": the presale opens only on a read where every rule holds; one refusal per rule, each a
 // byte builder's single change from the valid fixture (never a hand-typed blob).
-const ACCOUNT = SESSION_ACCOUNT.publicKey;
-const REFERRER = RECIPIENT;
-const OTHER = HOLDING_SMALL;
-const TOKEN_2022 = 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb';
-const NOW_MS = 1_760_000_000_000;
-const NOW_S = 1_760_000_000n;
-
-type Field = {offset: number};
-const putKey = (d: Uint8Array, f: Field, address: string) => d.set(new PublicKey(address).toBytes(), f.offset);
-const putU64 = (d: Uint8Array, f: Field, v: bigint) => {
-  let x = BigInt.asUintN(64, v);
-  for (let i = 0; i < 8; i++) {
-    d[f.offset + i] = Number(x & 0xffn);
-    x >>= 8n;
-  }
-};
-const putU32 = (d: Uint8Array, f: Field, v: number) => {
-  for (let i = 0; i < 4; i++) d[f.offset + i] = (v >>> (8 * i)) & 0xff;
-};
-
-interface ConfigBytes {
-  length: number;
-  discriminator: readonly number[];
-  admin: string;
-  saleToken: string;
-  usdt: string;
-  usdc: string;
-  stage: number;
-  stageSold: bigint;
-  tokensSold: bigint;
-  raised: bigint;
-  start: bigint;
-  active: number;
-  maxPerUser: bigint;
-  minPurchase: bigint;
-  treasury: string;
-}
-const CONFIG: ConfigBytes = {
-  length: CONFIG_LAYOUT.length,
-  discriminator: CONFIG_LAYOUT.discriminator,
-  admin: MAINNET_ADMIN_ADDRESS,
-  saleToken: MAINNET_NOC_MINT,
-  usdt: MAINNET_USDT_MINT,
-  usdc: MAINNET_USDC_MINT,
-  stage: 0,
-  stageSold: 1_312_240_123_017_711n,
-  tokensSold: 1_312_240_123_017_711n,
-  raised: 19_696_720n,
-  start: NOW_S - 86_400n,
-  active: 1,
-  maxPerUser: 0n,
-  minPurchase: 1_000n,
-  treasury: MAINNET_SOL_TREASURY,
-};
-function configData(o: Partial<ConfigBytes> = {}): Uint8Array {
-  const c = {...CONFIG, ...o};
-  const F = CONFIG_LAYOUT.fields;
-  const d = new Uint8Array(Math.max(c.length, CONFIG_LAYOUT.length));
-  d.set(c.discriminator, 0);
-  putKey(d, F.admin, c.admin);
-  putKey(d, F.sale_token, c.saleToken);
-  putKey(d, F.usdt_address, c.usdt);
-  putKey(d, F.usdc_address, c.usdc);
-  d[F.current_stage.offset] = c.stage;
-  putU64(d, F.stage_tokens_sold, c.stageSold);
-  putU64(d, F.tokens_sold, c.tokensSold);
-  putU64(d, F.total_usd_raised_cents, c.raised);
-  putU64(d, F.presale_start_time, c.start);
-  d[F.presale_active.offset] = c.active;
-  putU64(d, F.max_per_user_usd, c.maxPerUser);
-  putU64(d, F.min_purchase_usd, c.minPurchase);
-  putKey(d, F.sol_treasury, c.treasury);
-  return d.subarray(0, c.length);
-}
-
-interface UserBytes {
-  length: number;
-  discriminator: readonly number[];
-  blocked: number;
-}
-function userData(o: Partial<UserBytes> = {}): Uint8Array {
-  const u = {length: USER_ACCOUNT_LAYOUT.length, discriminator: USER_ACCOUNT_LAYOUT.discriminator, blocked: 0, ...o};
-  const d = new Uint8Array(Math.max(u.length, USER_ACCOUNT_LAYOUT.length));
-  d.set(u.discriminator, 0);
-  d[USER_ACCOUNT_LAYOUT.fields.is_blocked.offset] = u.blocked;
-  return d.subarray(0, u.length);
-}
-
-interface AllocationBytes {
-  length: number;
-  discriminator: readonly number[];
-  user: string;
-  totalTokens: bigint;
-  spent: bigint;
-  count: number;
-  bonus: bigint;
-  referrer: string | null;
-  claimed: number;
-}
-function allocationData(o: Partial<AllocationBytes> = {}): Uint8Array {
-  const a: AllocationBytes = {
-    length: PRESALE_ALLOCATION_LAYOUT.length,
-    discriminator: PRESALE_ALLOCATION_LAYOUT.discriminator,
-    user: ACCOUNT,
-    totalTokens: 1_998_667_554_963n,
-    spent: 30_000n,
-    count: 2,
-    bonus: 16_142_571_618n,
-    referrer: null,
-    claimed: 0,
-    ...o,
-  };
-  const F = PRESALE_ALLOCATION_LAYOUT.fields;
-  const d = new Uint8Array(Math.max(a.length, PRESALE_ALLOCATION_LAYOUT.length));
-  d.set(a.discriminator, 0);
-  putKey(d, F.user, a.user);
-  putU64(d, F.total_tokens, a.totalTokens);
-  putU64(d, F.total_spent_cents, a.spent);
-  putU32(d, F.purchase_count, a.count);
-  putU64(d, F.referral_bonus_tokens, a.bonus);
-  if (a.referrer !== null) putKey(d, F.referrer, a.referrer);
-  d[F.claimed.offset] = a.claimed;
-  return d.subarray(0, a.length);
-}
-
-/** An SPL Token account (165 bytes): mint 0, owner 32, amount 64, delegate tag 72, state 108, is_native tag 109, close authority tag 129. */
-function tokenAccountData(o: {mint: string; owner?: string; amount?: bigint; state?: number}): Uint8Array {
-  const d = new Uint8Array(165);
-  putKey(d, {offset: 0}, o.mint);
-  putKey(d, {offset: 32}, o.owner ?? MAINNET_SOL_TREASURY);
-  putU64(d, {offset: 64}, o.amount ?? 0n);
-  d[108] = o.state ?? 1;
-  return d;
-}
-
-const program = (data: Uint8Array): AccountData => ({lamports: 3_466_080n, owner: MAINNET_PROGRAM_ID, data});
-const TREASURY: AccountData = {lamports: 48_288_800_000n, owner: SYSTEM_PROGRAM_ID, data: new Uint8Array(0)};
-const vault = (o: {mint: string; owner?: string; amount?: bigint; state?: number}, programId = SPL_TOKEN_PROGRAM): AccountData => ({
-  lamports: 1_488_440n,
-  owner: programId,
-  data: tokenAccountData(o),
-});
-
-interface Chain {
-  config: AccountData | null;
-  user: AccountData | null;
-  allocation: AccountData | null;
-  treasury: AccountData | null;
-  usdc: AccountData | null;
-  usdt: AccountData | null;
-}
-const CHAIN: Chain = {
-  config: program(configData()),
-  user: null,
-  allocation: null,
-  treasury: TREASURY,
-  usdc: vault({mint: MAINNET_USDC_MINT, amount: 172_099_207n}),
-  usdt: vault({mint: MAINNET_USDT_MINT, amount: 0n}),
-};
-
-// The chain answers by address — the spec's literals (§2.1), whole — so a reader that asks for the wrong account gets
-// that account's bytes, not the slot it expected.
-const CONFIG_PDA = '8MwasPrRzsCDuH78PJSDdWhdjFXT15MX7pHs3iE4b7Gx';
-const TREASURY_ADDRESS = '6Zia7b1b3NTFMQ8Kd588m8GJioMhY3YLbtcLwbB5o6Vd';
-const USDC_VAULT = 'DNMn9dt7sqLoKZ27ms2U7kyBJPJUL9dvtqgTavVNDGW3';
-const USDT_VAULT = '8mk9WSfsioRXUv2VtMjMmbGC3baXqTs4CZqseD8cvsRp';
 
 async function read(o: Partial<Chain> = {}): Promise<{state: PresaleState; calls: string[][]}> {
-  const c = {...CHAIN, ...o};
-  const pdas = derivePresalePdas(new PublicKey(ACCOUNT));
-  const chain = new Map<string, AccountData | null>([
-    [CONFIG_PDA, c.config],
-    [pdas.userAccount.toBase58(), c.user],
-    [pdas.userAllocation.toBase58(), c.allocation],
-    [TREASURY_ADDRESS, c.treasury],
-    [USDC_VAULT, c.usdc],
-    [USDT_VAULT, c.usdt],
-  ]);
   const calls: string[][] = [];
-  const reader = fakeReader({
-    getAccountsData: async addresses => {
-      calls.push([...addresses]);
-      return addresses.map(a => {
-        const account = chain.get(a);
-        if (account === undefined) throw new Error(`unexpected address ${a}`);
-        return account;
-      });
-    },
-  });
-  return {state: await readPresaleState(reader, ACCOUNT, NOW_MS), calls};
+  return {state: await readPresaleState(chainReader(chainMap(o), calls), ACCOUNT, NOW_MS), calls};
 }
 const stateOf = async (o: Partial<Chain> = {}) => (await read(o)).state;
 const openSnapshot = async (o: Partial<Chain> = {}): Promise<PresaleSnapshot> => {
@@ -462,5 +280,85 @@ describe('readPresaleState — every rule refuses on its own (never open on doub
       },
     });
     expect(await readPresaleState(reader, ACCOUNT, NOW_MS)).toEqual({kind: 'unavailable', code});
+  });
+});
+
+// B1d-1b Task 2 (§3.3 step 5, C39): the purchase's snapshot carries the slot it was read at — the same read, the same rules.
+describe('readPresaleStateAt — readPresaleState with the slot of its one read', () => {
+  const at = async (o: Partial<Chain> = {}) => {
+    const calls: string[][] = [];
+    return {read: await readPresaleStateAt(chainReader(chainMap(o), calls), ACCOUNT, NOW_MS), calls};
+  };
+
+  it('the same state as readPresaleState for the same chain — open, inactive, blocked, malformed — with the reply’s slot; one call of the six', async () => {
+    const pdas = derivePresalePdas(new PublicKey(ACCOUNT));
+    for (const o of [{}, {user: program(userData()), allocation: program(allocationData())}, {config: program(configData({active: 0}))}, {user: program(userData({blocked: 1}))}, {treasury: null}]) {
+      const {read, calls} = await at(o);
+      expect(read).toEqual({state: await stateOf(o), slot: SNAPSHOT_SLOT});
+      expect(calls).toEqual([[CONFIG_PDA, pdas.userAccount.toBase58(), pdas.userAllocation.toBase58(), TREASURY_ADDRESS, USDC_VAULT, USDT_VAULT]]);
+    }
+  });
+
+  it('a failed read: unavailable with no slot — a 403 refused, anything else read-failed; a wrong length malformed; a non-key read nothing', async () => {
+    const failing = (error: Error) => fakeReader({getAccountsDataAt: async () => Promise.reject(error)});
+    expect(await readPresaleStateAt(failing(new RpcForbidden('getMultipleAccounts')), ACCOUNT, NOW_MS)).toEqual({state: {kind: 'unavailable', code: 'refused'}, slot: null});
+    expect(await readPresaleStateAt(failing(new RequestUnreachable('rpc', 'offline')), ACCOUNT, NOW_MS)).toEqual({state: {kind: 'unavailable', code: 'read-failed'}, slot: null});
+    const short = fakeReader({getAccountsDataAt: async () => ({slot: 5, accounts: [CHAIN.config]})});
+    expect(await readPresaleStateAt(short, ACCOUNT, NOW_MS)).toEqual({state: MALFORMED, slot: 5});
+    expect(await readPresaleStateAt(fakeReader(), 'not a key', NOW_MS)).toEqual({state: MALFORMED, slot: null});
+  });
+});
+
+// B1d-1b Task 1: presale.banner's config-only read (§1.4: "§2.1 rules 1–4") — the same rules as readPresaleState's, on
+// the config account alone.
+describe('readPresaleConfig — rules 1–4 on the config account alone', () => {
+  const readConfig = async (config: AccountData | null, nowMs = NOW_MS) => {
+    const calls: string[][] = [];
+    return {state: await readPresaleConfig(chainReader(chainMap({config}), calls), nowMs), calls};
+  };
+  const STAGE_FACTS = {stage: 0, priceTicks: 1501n, nextPriceTicks: 1723n, stageSoldBase: 1_312_240_123_017_711n, stageCapBase: TOKENS_PER_STAGE_BASE, raisedCents: 19_696_720n};
+
+  it('active, with the stage facts; one getAccountsData of the config PDA alone (positive control)', async () => {
+    expect(await readConfig(CHAIN.config)).toEqual({state: {kind: 'active', stage: STAGE_FACTS}, calls: [[CONFIG_PDA]]});
+  });
+
+  it.each<[string, AccountData | null]>([
+    ['absent', null],
+    ['not the program’s', {...program(configData()), owner: OTHER}],
+    ['369 bytes', program(configData({length: 369}))],
+    ['371 bytes', program(configData({length: 371}))],
+    ['a wrong discriminator', program(configData({discriminator: flipped(CONFIG_LAYOUT.discriminator, 7)}))],
+    ['admin@8 moved', program(configData({admin: OTHER}))],
+    ['sale_token@40 moved', program(configData({saleToken: OTHER}))],
+    ['sol_treasury changed', program(configData({treasury: OTHER}))],
+    ['usdc_address changed', program(configData({usdc: OTHER}))],
+    ['usdt_address changed', program(configData({usdt: OTHER}))],
+    ['presale_active = 2', program(configData({active: 2}))],
+    ['stage 10', program(configData({stage: 10}))],
+    ['stage_tokens_sold at a stage’s size while active', program(configData({stageSold: TOKENS_PER_STAGE_BASE}))],
+  ])('%s → malformed', async (_name, config) => {
+    expect((await readConfig(config)).state).toEqual(MALFORMED);
+  });
+
+  it.each<[string, AccountData]>([
+    ['presale_active = 0', program(configData({active: 0}))],
+    ['the start time one second ahead', program(configData({start: NOW_S + 1n}))],
+    ['tokens_sold at the hard cap', program(configData({tokensSold: PRESALE_HARD_CAP_BASE}))],
+    ['the hard cap with the stage total at the cap (the inactive test first)', program(configData({tokensSold: PRESALE_HARD_CAP_BASE, stage: 9, stageSold: TOKENS_PER_STAGE_BASE}))],
+  ])('%s → inactive, with the stage', async (_name, config) => {
+    expect((await readConfig(config)).state).toMatchObject({kind: 'inactive', stage: {priceTicks: expect.any(BigInt)}});
+  });
+
+  it('a reply of the wrong length is malformed', async () => {
+    for (const reply of [[], [CHAIN.config, null]]) expect(await readPresaleConfig(fakeReader({getAccountsData: async () => reply}), NOW_MS)).toEqual(MALFORMED);
+  });
+
+  it.each<[string, Error, string]>([
+    ['a 403', new RpcForbidden('getMultipleAccounts'), 'refused'],
+    ['the latch’s cool-down', new RpcCoolingDown('getMultipleAccounts'), 'refused'],
+    ['no answer', new RequestUnreachable('rpc', 'offline'), 'read-failed'],
+    ['a malformed RPC answer', new RpcMalformed('getMultipleAccounts'), 'read-failed'],
+  ])('%s → unavailable (%s)', async (_name, error, code) => {
+    expect(await readPresaleConfig(fakeReader({getAccountsData: async () => Promise.reject(error)}), NOW_MS)).toEqual({kind: 'unavailable', code});
   });
 });

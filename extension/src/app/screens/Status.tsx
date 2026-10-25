@@ -11,8 +11,10 @@ import {useEscape} from '../ui/useEscape';
 import {useNow} from '../useNow';
 import {Stuck, STUCK_TEXT} from './Stuck';
 import {Failed} from './Failed';
+import {StatusPill} from '../ui/StatusPill';
 import {feePaidLamports, type Intent, type Pending, type PendingState} from '../engine';
-import {GENERIC_TEXT} from '../generic';
+import {GENERIC_TEXT, kindRecord} from '../generic';
+import type {PresaleRouteValue} from '../router';
 
 /** The fixed strings #21 shows (spec §4.6); adapted ones are marked there. */
 export const STATUS_TEXT = {
@@ -71,6 +73,11 @@ interface Props {
   canRetry: boolean;
   onTryAgain: (intent: Intent) => void;
   onEdit: (draft: Draft) => void;
+  /**
+   * B1d §4.2: a record of a kind the presale entry renders goes on in its own flow — #21's Done and close (C17: #23),
+   * #44's and #54's [Try again]: that entry's route, on a new stack over #11.
+   */
+  onRoute: (route: PresaleRouteValue) => void;
 }
 
 /**
@@ -104,7 +111,7 @@ interface Seen {
  * the read checks it is still its generation's (unmount, a settled record) and not older than one already applied;
  * once a record is settled (confirmed, failed, expired) the reads stop, so no later answer moves the screen.
  */
-function Tracked({account, id, since, canRetry, onDone, onDetails, onActivity, onTryAgain, onEdit}: Props) {
+function Tracked({account, id, since, canRetry, onDone: home, onDetails, onActivity, onTryAgain, onEdit, onRoute}: Props) {
   const m = useWallet();
   const {engine, now: clock, platform, surface} = m;
   const now = useNow(1_000, clock);
@@ -173,6 +180,9 @@ function Tracked({account, id, since, canRetry, onDone, onDetails, onActivity, o
   }, [engine, account, since, clock, selected]);
 
   const record = seen.record;
+  // B1d §4.2: a record of a kind the presale entry renders — its words, its badge, and Done back into its own flow (C17).
+  const words = record === null ? null : kindRecord(record);
+  const onDone = words === null ? home : () => onRoute(words.done);
   const success = record?.state === 'confirmed';
   const toFailed = record !== null && (record.state === 'failed' || (record.state === 'expired' && !stuckShown));
   const toStuck = record !== null && !toFailed && !success && (record.state === 'expired' || record.state === 'stuck' || stuckShown || now - record.createdAt >= STUCK_AFTER_MS);
@@ -181,8 +191,8 @@ function Tracked({account, id, since, canRetry, onDone, onDetails, onActivity, o
   }, [toStuck]);
   useEscape(onDone, success);
 
-  if (record !== null && toFailed) return <Failed record={record} canRetry={canRetry} onTryAgain={onTryAgain} onEdit={onEdit} onDetails={onDetails} onClose={onDone} />;
-  if (record !== null && toStuck) return <Stuck record={record} now={now} canRetry={canRetry} onClose={onDone} onActivity={onActivity} onTryAgain={onTryAgain} />;
+  if (record !== null && toFailed) return <Failed record={record} canRetry={canRetry} onTryAgain={onTryAgain} onEdit={onEdit} onDetails={onDetails} onClose={home} onRoute={onRoute} />;
+  if (record !== null && toStuck) return <Stuck record={record} now={now} canRetry={canRetry} onClose={home} onActivity={onActivity} onTryAgain={onTryAgain} onRoute={onRoute} />;
 
   if (record === null) {
     // A failed read before any answered: the outcome is not known, so the check-pending line and a way out.
@@ -216,9 +226,23 @@ function Tracked({account, id, since, canRetry, onDone, onDetails, onActivity, o
 
   const intent = record.intent;
   // The fiat line: --fg-secondary on success and slow, --fg-tertiary while broadcasting (index.html #s21). A record
-  // without an intent (B1d §1.3: another kind) has Q42's line in the amount's place, and no To row: no amount, no
+  // without an intent (B1d §1.3: another kind) has its kind's card and To row (a purchase: Q32's words, "Noctura
+  // presale"), or Q42's line in the amount's place when the build cannot show its kind, and no To row: no amount, no
   // recipient, no fiat.
   const amountCard = (big: boolean, dim: boolean) => {
+    // B1d-1b Task 9: a purchase in the drawn card — Q32's words as the eyebrow and the figure, its dollars below.
+    if (intent === null && words !== null) {
+      return (
+        <div className="amount-card">
+          <span className="eyebrow">{words.card.lead}</span>{' '}
+          <div className="amount-line">
+            <span className={`amount noc-numeral${big ? ' noc-balance-lg app-amount-big' : ''}`}>{words.card.figure}</span>{' '}
+            <span className="ticker">{words.card.ticker}</span>
+          </div>{' '}
+          <span className={`noc-caption noc-numeral ${dim ? 'app-dim' : 'app-secondary'}`}>≈ {words.card.usd} USD</span>
+        </div>
+      );
+    }
     if (intent === null) {
       return (
         <div className="amount-card">
@@ -241,7 +265,15 @@ function Tracked({account, id, since, canRetry, onDone, onDetails, onActivity, o
     );
   };
   const toRow =
-    intent === null ? null : (
+    intent === null ? (
+      words === null ? null : (
+        <div className="meta-row">
+          <span className="lbl">To</span>
+          <span className="val">{words.to}</span>
+          <NoCopy />
+        </div>
+      )
+    ) : (
       <div className="meta-row">
         <span className="lbl">To</span>
         <span className="val mono noc-mono">
@@ -250,6 +282,8 @@ function Tracked({account, id, since, canRetry, onDone, onDetails, onActivity, o
         <CopyIcon value={intent.recipient} label="Copy recipient" />
       </div>
     );
+  // Q31: the kind's badge beside the status (the top bar's step).
+  const badge = words === null ? null : <StatusPill text={words.badge} badge />;
   const hashRow = (
     <div className="meta-row">
       <span className="lbl">Tx hash</span>
@@ -267,7 +301,8 @@ function Tracked({account, id, since, canRetry, onDone, onDetails, onActivity, o
           <button type="button" className="icon-btn" aria-label="Close" onClick={onDone}>
             <ExtIcon name="close" size={22} />
           </button>
-          <div className="title">{STATUS_TEXT.sent}</div>
+          <div className="title">{words?.sent ?? STATUS_TEXT.sent}</div>
+          {badge}
           <span className="step app-success">{STATUS_TEXT.confirmed}</span>
         </div>
         <div className="scroll">
@@ -275,7 +310,7 @@ function Tracked({account, id, since, canRetry, onDone, onDetails, onActivity, o
             <div className="ring success">
               <ExtIcon name="check" size={56} />
             </div>
-            <div className="stage-label app-success">{STATUS_TEXT.sentOk}</div>
+            <div className="stage-label app-success">{words?.sentOk ?? STATUS_TEXT.sentOk}</div>
             {confirmedAt === null ? null : <div className="stage-sub">Confirmed in {Math.max(1, Math.round((confirmedAt - record.createdAt) / 1000))} s</div>}
             {amountCard(true, false)}
             <div className="meta-grid">
@@ -322,7 +357,8 @@ function Tracked({account, id, since, canRetry, onDone, onDetails, onActivity, o
         <button type="button" className="icon-btn" aria-label="Back" disabled>
           <ExtIcon name="back" size={22} />
         </button>
-        <div className="title">{STATUS_TEXT.sending}</div>
+        <div className="title">{words?.sending ?? STATUS_TEXT.sending}</div>
+        {badge}
         <span className={`step${slow ? ' app-warning' : ''}`}>{slow ? STATUS_TEXT.slow : ''}</span>
       </div>
       <div className="scroll">

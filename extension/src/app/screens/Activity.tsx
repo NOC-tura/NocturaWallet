@@ -10,7 +10,7 @@ import {ExtIcon} from '../ui/ExtIcon';
 import {Banner, RefusedBanner} from '../ui/Banner';
 import {OriginBadge} from '../ui/OriginBadge';
 import type {HistoryItem, Pending} from '../engine';
-import {GENERIC_TEXT} from '../generic';
+import {kindPendingLine} from '../generic';
 
 /** wallet.history answers 10 per page (background HISTORY_PAGE_SIZE); "Load more" follows the reply's own `next` cursor (review fix round 1 #1), not this count. */
 export const PAGE_SIZE = 10;
@@ -18,12 +18,11 @@ export const PAGE_SIZE = 10;
 function PendingRow({p, now, onOpen}: {p: Pending; now: number; onOpen: () => void}) {
   const secs = Math.max(0, Math.floor((now - p.createdAt) / 1000));
   const intent = p.intent;
-  // A record without an intent (B1d §1.3: another kind) reads Q42, with #11's rule for "taking longer than usual".
+  // A record without an intent (B1d §1.3: another kind) reads its kind's words (Q33) or Q42, with #11's rule for
+  // "taking longer than usual".
   const title =
     intent === null
-      ? p.state === 'stuck' || now - p.createdAt > 80_000
-        ? GENERIC_TEXT.slow
-        : GENERIC_TEXT.pending
+      ? kindPendingLine(p, p.state === 'stuck' || now - p.createdAt > 80_000)
       : `Sending ${formatAmount(intent.amount, TOKEN_INFO[intent.token].decimals, {min: 0, max: TOKEN_INFO[intent.token].decimals})} ${intent.token}`;
   // An open send opens #21 (or #54 once it is stuck).
   return (

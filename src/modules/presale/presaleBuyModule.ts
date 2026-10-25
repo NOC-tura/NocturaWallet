@@ -25,6 +25,7 @@ import {
   buildRegisterReferrerInstruction,
   buildSolPurchaseInstruction,
   buildStablecoinBuyInstructions as coreBuildStablecoinBuyInstructions,
+  derivedStablecoinAccount,
   encodeU64LE,
   estimateNocForSol,
   REGISTER_REFERRER_DISCRIMINATOR,
@@ -210,7 +211,7 @@ export async function buildStablecoinPurchaseTx(
   const message = new TransactionMessage({
     payerKey: user,
     recentBlockhash: blockhash,
-    instructions: buildStablecoinInstructions(user, token, amountBaseUnits, 0, r, await self.fetchTreasury()),
+    instructions: buildStablecoinInstructions(user, token, amountBaseUnits, 0, r, await self.fetchTreasury(), derivedStablecoinAccount(user, token)),
   }).compileToV0Message();
   return new VersionedTransaction(message);
 }
@@ -237,6 +238,7 @@ export async function submitPresaleBuyStablecoin(
       recentBlockhash: blockhash,
       instructions: buildStablecoinInstructions(
         signer.publicKey, token, amountBaseUnits, priorityFee, r, await self.fetchTreasury(),
+        derivedStablecoinAccount(signer.publicKey, token),
       ),
     }).compileToV0Message();
     const tx = new VersionedTransaction(message);

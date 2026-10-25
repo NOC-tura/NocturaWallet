@@ -11,16 +11,25 @@ const PRICE_SCALE = 1_000_000_000_000;
 const MICROS_PER_PRICE_UNIT = 1_000_000n; // 1e12 / 1e6
 
 /**
+ * The price in 1e-12 dollars, BigInt — what usdMicros multiplies by. Null without a usable price, and for a non-zero
+ * price too small to represent (never $0). B1d-1b: the presale quote converts both ways with it (presale/quote.ts).
+ */
+export function scaledUsdPrice(unitPriceUsd: number | undefined): bigint | null {
+  if (unitPriceUsd === undefined || !Number.isFinite(unitPriceUsd) || unitPriceUsd <= 0) return null;
+  const scaled = Math.round(unitPriceUsd * PRICE_SCALE);
+  return Number.isFinite(scaled) && scaled !== 0 ? BigInt(scaled) : null;
+}
+
+/**
  * amount × price in micro-dollars, BigInt. Null — unknown, which the policy treats as above the
  * threshold — without a usable price, and for a non-zero price too small to represent (never $0).
  * A negative amount is a caller bug and throws.
  */
 export function usdMicros(amount: bigint, decimals: number, unitPriceUsd: number | undefined): bigint | null {
   if (amount < 0n) throw new RangeError('usdMicros: negative amount');
-  if (unitPriceUsd === undefined || !Number.isFinite(unitPriceUsd) || unitPriceUsd <= 0) return null;
-  const scaled = Math.round(unitPriceUsd * PRICE_SCALE);
-  if (!Number.isFinite(scaled) || scaled === 0) return null;
-  return (amount * BigInt(scaled)) / (10n ** BigInt(decimals) * MICROS_PER_PRICE_UNIT);
+  const scaled = scaledUsdPrice(unitPriceUsd);
+  if (scaled === null) return null;
+  return (amount * scaled) / (10n ** BigInt(decimals) * MICROS_PER_PRICE_UNIT);
 }
 
 /**

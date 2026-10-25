@@ -72,7 +72,23 @@ export interface DappDescription {
   /** B1c-3: one row per block — what is overridden and, in a batch, on which transaction ("Transaction 2 of 3"). */
   overrides: {label: string; transaction: string | null}[];
 }
-export type Description = SendDescription | SettingsDescription | DappDescription;
+/**
+ * B1d §4.2: a challenge of a kind outside the three above, described by the presale entry (`describePresale`, in the
+ * build with presale only) from its own fixed strings and the values it re-validated, as the three are: the eyebrow
+ * and the headline amount, the rows (a value, an address shown whole in groups of four, or both), the reason lines, and
+ * the line said once [Cancel] discarded it. Proven, it hands over to the tab's resume route as a send does (D38).
+ */
+export interface OtherDescription {
+  kind: 'other';
+  account: string;
+  about: string;
+  amount: string;
+  symbol: string;
+  rows: {label: string; value: string | null; address: string | null}[];
+  reasons: string[];
+  cancelled: string;
+}
+export type Description = SendDescription | SettingsDescription | DappDescription | OtherDescription;
 
 const sol = (lamports: string): string => `${formatAmount(BigInt(lamports), 9, {min: 0, max: 9})} SOL`;
 const dollars = (cents: number): string => formatAmount(BigInt(cents), 2, cents % 100 === 0 ? {min: 0, max: 0} : {min: 2, max: 2});

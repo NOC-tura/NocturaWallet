@@ -6,6 +6,7 @@ import {fakeExt} from '../../background/__tests__/fakeExt';
 import {ACCOUNT, RECIPIENT, unlocked} from '../../background/__tests__/fixtures';
 import {describeChallenge, discardPrepared, readChallenge} from '../challenge';
 import type {Send} from '../types';
+import {MAINNET_SOL_TREASURY, MAINNET_VAULT_USDC_ATA} from '../../../../core/presale/addresses';
 
 // Spec B1b-2a E3, the vault page's half (plan-1 carry): #10 renders `about` only after re-validating
 // every field against a closed alphabet; anything else is "could not be shown".
@@ -283,6 +284,89 @@ async function background() {
   const send: Send = async m => (await handleMessage(ext, m, UNLOCK, deps)) as {ok: boolean; error?: string; data?: unknown};
   return {ext, deps, send};
 }
+
+// B1d §4.2 (B1d-1b Task 5): #10's description of a purchase challenge — the presale entry's (`src/unlock/presale.ts`),
+// re-validated there as a send's is here: in the build with presale, Q18 and #20's rows; in the build without it, the
+// stub describes nothing and #10 offers only Cancel (C19). This file runs in both vitest runs.
+const PURCHASE = {
+  kind: 'presale-buy',
+  account: ACCOUNT.publicKey,
+  currency: 'SOL',
+  amount: '2000000000',
+  stage: 0,
+  priceTicks: '1501',
+  nocBase: '2643837441705',
+  spentCents: '39684',
+  destination: MAINNET_SOL_TREASURY,
+  networkLamports: '11000',
+  priorityLamports: '6000',
+  rentLamports: '2189480',
+  reasons: ['first-purchase', 'over-5-percent', 'over-usd-threshold'],
+  thresholdCents: 10_000,
+};
+describe(`describeChallenge: a purchase in this build (${process.env.NOCTURA_PRESALE === '0' ? 'off' : 'on'})`, () => {
+  const off = process.env.NOCTURA_PRESALE === '0';
+
+  it(off ? 'off: not described — #10 offers only Cancel' : 'on: Q18 as the eyebrow and headline, #20’s rows (the recipient whole after Q10), the fees with Q09, Q17 and B1b’s reason lines', () => {
+    expect(describeChallenge(PURCHASE)).toEqual(
+      off
+        ? null
+        : {
+            kind: 'other',
+            account: ACCOUNT.publicKey,
+            about: 'Confirm buying NOC with',
+            amount: '2.0000',
+            symbol: 'SOL',
+            rows: [
+              {label: 'You receive (est.)', value: '2,643.83 NOC', address: null},
+              {label: 'Stage', value: '1 of 10', address: null},
+              {label: 'Price', value: '$ 0.1501 / NOC', address: null},
+              {label: 'To', value: 'Noctura presale', address: MAINNET_SOL_TREASURY},
+              {label: 'Network fee', value: '0.000005 SOL', address: null},
+              {label: 'Priority', value: '0.000006 SOL', address: null},
+              {label: 'Account setup (first purchase)', value: '0.00218948 SOL', address: null},
+            ],
+            reasons: ['Re-auth required for your first presale purchase from this account.', 'Re-auth required for transactions over 5 % of balance.', 'Re-auth required for transactions over $100.'],
+            cancelled: 'Purchase cancelled. Nothing was sent.',
+          },
+    );
+  });
+
+  it.skipIf(off)('on: a stablecoin purchase with no account setup — its exact amount, no Q09 row, the vault ATA as recipient', () => {
+    const d = describeChallenge({...PURCHASE, currency: 'USDC', amount: '25000000', rentLamports: '0', destination: MAINNET_VAULT_USDC_ATA, reasons: ['over-5-percent']});
+    expect(d === null ? null : {amount: d.kind === 'other' ? d.amount : null, symbol: d.kind === 'other' ? d.symbol : null, rows: d.kind === 'other' ? d.rows.map(r => r.label) : null}).toEqual({
+      amount: '25.00',
+      symbol: 'USDC',
+      rows: ['You receive (est.)', 'Stage', 'Price', 'To', 'Network fee', 'Priority'],
+    });
+  });
+
+  it.skipIf(off)('on: anything outside the record is not described (fail closed) — each field, each rule', () => {
+    const {thresholdCents: _t, ...missing} = PURCHASE;
+    for (const bad of [
+      missing,
+      {...PURCHASE, extra: 1},
+      {...PURCHASE, kind: 'presale-claim'},
+      {...PURCHASE, currency: 'NOC'},
+      {...PURCHASE, amount: '0'},
+      {...PURCHASE, amount: '2e9'},
+      {...PURCHASE, stage: 10},
+      {...PURCHASE, stage: '0'},
+      {...PURCHASE, priceTicks: '1.5'},
+      {...PURCHASE, nocBase: -1},
+      {...PURCHASE, account: 'not-an-address'},
+      {...PURCHASE, destination: '0'.repeat(44)},
+      {...PURCHASE, priorityLamports: '11001'},
+      {...PURCHASE, thresholdCents: 99},
+      {...PURCHASE, thresholdCents: 100.5},
+      {...PURCHASE, reasons: []},
+      {...PURCHASE, reasons: ['first-purchase', 'first-purchase']},
+      {...PURCHASE, reasons: ['first-send']},
+    ]) {
+      expect(describeChallenge(bad)).toBeNull();
+    }
+  });
+});
 
 describe('readChallenge against the real background', () => {
   it('a live challenge is described; an expired one is "expired"; while locked, "not-unlocked"', async () => {

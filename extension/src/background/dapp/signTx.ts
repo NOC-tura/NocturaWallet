@@ -2,11 +2,12 @@ import {ed25519} from '@noble/curves/ed25519.js';
 import {base64} from '@scure/base';
 import type {Ext} from '../../ext';
 import type {WalletDeps} from '../deps';
+import type {GeoAnswer, GeoReason} from '../geo/gate';
 import {digestOf} from '../digest';
 import {getSession} from '../session';
 import {readSettings} from '../settings';
 import {recipientFacts} from '../knownRecipients';
-import {FLAG_ROW, MAX_DAPP_OUTGOING, challengeInfo, challengeSatisfied, dropChallenge, isAbout, issueChallenge, type ChallengeAbout, type DappFlag, type DappOutgoing} from '../reauthChallenges';
+import {FLAG_ROW, MAX_DAPP_OUTGOING, challengeInfo, challengeSatisfied, dropChallenge, isAbout, isDappAbout, issueChallenge, type ChallengeAbout, type DappFlag, type DappOutgoing} from '../reauthChallenges';
 import {readContacts} from '../contacts';
 import {decodeInstructions, type DecodedInstruction} from './decode/decode';
 import {resolveKeys} from './decode/keys';
@@ -18,8 +19,8 @@ import {firstSignature} from '../../../../core/solana/broadcast';
 import {tokenForMint, WALLET_TOKENS} from '../../../../core/solana/balances';
 import {runtimeFor} from './ports';
 import {answer, queueAccess} from './queue';
-import {feeOf, simulateTransactions, withAmountDecimals, type SimState, type TxOutcome} from './simulate';
-import {overridesMatch, type RedFlag} from './redFlags';
+import {feeOf, noCheck, simulateTransactions, withAmountDecimals, type SimState, type TxOutcome} from './simulate';
+import {overridesMatch, presalePurchasesOf, type RedFlag} from './redFlags';
 import {grantIn, putGrant, type Entry, type Tx} from './store';
 import {slotOf} from './txRequest';
 import type {DappReauthReason} from '../reauthPolicy';
@@ -63,6 +64,14 @@ export function txsOf(e: Pick<Entry, 'transactions'>): {wires: Uint8Array[]; txs
   return {wires, txs};
 }
 
+/** B1d §3.6: whether a transaction of the request carries a presale purchase (F12's detection, from the stored bytes). */
+export function carriesPurchase(e: Pick<Entry, 'transactions'>): boolean {
+  return txsOf(e)?.txs.some(p => presalePurchasesOf(p).length > 0) ?? false;
+}
+
+/** B1d §3.6, C12: the jurisdiction gate asked now — a fresh /geo/check; one that throws is `no_check` (fail closed). */
+export const regionNow = (deps: Pick<WalletDeps, 'geo'>): Promise<GeoAnswer> => deps.geo().catch(() => noCheck());
+
 /** Whether `dapp.pending` should start a simulation of this head now. */
 export function needsSimulation(e: Entry, now: number): boolean {
   if (!isTxType(e.type) || e.state !== 'queued') return false;
@@ -74,7 +83,8 @@ export function needsSimulation(e: Entry, now: number): boolean {
  * One simulation of a queued transaction request. Section 1 reads what to simulate (still queued, the session unlocked,
  * its account still in it); the reads and the simulation run outside any section; section 2 stores the result only if
  * the entry is still `queued` — a decision, a lock or an expiry meanwhile wins. A thrown read is stored as `unreachable`
- * (the window says so and offers only Reject until the next attempt answers).
+ * (the window says so and offers only Reject until the next attempt answers). B1d §3.6: a request carrying a presale
+ * purchase asks the jurisdiction gate beside the recipients (C12: on every simulation), its answer stored with it.
  */
 export async function runSimulation(ext: Ext, deps: WalletDeps, requestId: string): Promise<void> {
   const rt = runtimeFor(ext);
@@ -92,8 +102,9 @@ export async function runSimulation(ext: Ext, deps: WalletDeps, requestId: strin
     if (work === null) return;
     let state: SimState;
     try {
-      const [facts, settings] = await Promise.all([recipientFacts(ext, work.session), readSettings(ext)]);
-      const sim = await simulateTransactions(deps, {account: work.account, wires: work.wires, txs: work.txs, known: facts.known, thresholdCents: settings.reauthUsdCents});
+      const purchase = work.txs.some(p => presalePurchasesOf(p).length > 0);
+      const [facts, settings, region] = await Promise.all([recipientFacts(ext, work.session), readSettings(ext), purchase ? regionNow(deps) : Promise.resolve(null)]);
+      const sim = await simulateTransactions(deps, {account: work.account, wires: work.wires, txs: work.txs, known: facts.known, thresholdCents: settings.reauthUsdCents, region});
       state = {status: 'ok', sim};
     } catch {
       state = {status: 'unreachable', at: deps.now()};
@@ -137,10 +148,14 @@ export interface TxItemView {
 /**
  * B1c-3: a red flag as the window sees it — the background's own, except that a dependent step names the step it
  * depends on as `step`, 1-based as Q32 says it ("depends on step <N>"), never redFlags.ts's 0-based `on`: the window
- * gets one convention only, the same as its outcome's `on`.
+ * gets one convention only, the same as its outcome's `on`. B1d §3.6: F12 carries the stored answer's country (Q50a).
  */
-export type FlagView = Exclude<RedFlag, {kind: 'dependent'}> | {kind: 'dependent'; severity: 'block'; word: 'UNCHECKED'; at: null; step: number};
-export const flagView = (f: RedFlag): FlagView => (f.kind === 'dependent' ? {kind: 'dependent', severity: 'block', word: f.word, at: null, step: f.on + 1} : f);
+export type FlagView =
+  | Exclude<RedFlag, {kind: 'dependent'} | {kind: 'presale-region'}>
+  | {kind: 'dependent'; severity: 'block'; word: 'UNCHECKED'; at: null; step: number}
+  | {kind: 'presale-region'; severity: 'refuse'; word: null; at: number; reason: GeoReason; countryCode: string | null};
+export const flagView = (f: RedFlag, region: GeoAnswer | null): FlagView =>
+  f.kind === 'dependent' ? {kind: 'dependent', severity: 'block', word: f.word, at: null, step: f.on + 1} : f.kind === 'presale-region' ? {...f, countryCode: region?.countryCode ?? null} : f;
 
 export type SimulationView = {status: 'simulating'} | {status: 'unreachable'} | {status: 'ok'; id: string; slot: number; elapsedMs: number; at: number};
 
@@ -169,7 +184,7 @@ export async function txDetail(ext: Ext, e: Entry, session: readonly {publicKey:
       unitLimit: local?.unitLimit ?? null,
       feeLamports: local !== null && p.signers[0] === e.account ? local.feeLamports.toString() : null,
       outcome: sim?.outcomes[i] ?? null,
-      flags: sim === null ? null : (sim.flags[i] ?? []).map(flagView),
+      flags: sim === null ? null : (sim.flags[i] ?? []).map(f => flagView(f, sim.presaleRegion)),
     };
   });
   const simulation: SimulationView =
@@ -202,9 +217,10 @@ export const dappDigest = (e: Pick<Entry, 'requestId' | 'account' | 'transaction
  * The decision's checks for a transaction request (§2.3's table, extended by §3.3): null when approvable. B1c-3 (the
  * override rule): after every B1c-2 row, the typed words against the flags THIS stored simulation carries (C13: the
  * background recomputes them; the window's are only compared) — `override-mismatch` for any word not expected or given
- * twice, `override-missing` for a block with no word.
+ * twice, `override-missing` for a block with no word. B1d §3.6: `presale-region` for an F12 in any transaction — after
+ * the failed-simulation row, before the words, so no word and no re-authentication approves it.
  */
-export type TxRefusal = 'not-simulated' | 'stale' | 'out-of-date' | 'simulation-failed' | 'blockhash-expired' | 'override-mismatch' | 'override-missing';
+export type TxRefusal = 'not-simulated' | 'stale' | 'out-of-date' | 'simulation-failed' | 'blockhash-expired' | 'presale-region' | 'override-mismatch' | 'override-missing';
 export function txRefused(e: Entry, simulation: string | null, overrides: readonly {tx: number; word: string}[], now: number): TxRefusal | null {
   if (e.sim?.status !== 'ok') return 'not-simulated';
   const sim = e.sim.sim;
@@ -220,6 +236,7 @@ export function txRefused(e: Entry, simulation: string | null, overrides: readon
   // O2: a step that depends on an earlier one is not a failure of its own only beside its F10 flag for that same step
   // — a block, so approvable only with UNCHECKED (below). Every other failure stays Reject-only.
   if (sim.outcomes.some((o, i) => !o.ok && !(o.error === 'dependent' && sim.flags[i]?.some(f => f.kind === 'dependent' && f.on === o.on - 1)))) return 'simulation-failed';
+  if (sim.flags.some(list => list.some(f => f.kind === 'presale-region'))) return 'presale-region';
   const words = overridesMatch(sim.flags, overrides);
   if (words === 'mismatch') return 'override-mismatch';
   if (words === 'missing') return 'override-missing';
@@ -270,6 +287,7 @@ export function dappAbout(e: Entry, site: string, thresholdCents: number): Extra
   const flags: DappFlag[] = [];
   e.sim.sim.flags.forEach((list, tx) => {
     for (const f of list) {
+      if (f.kind === 'presale-region') continue;
       const row = FLAG_ROW[f.kind];
       if (flags.some(x => x.tx === tx && x.row === row)) continue;
       const step = f.kind === 'dependent' ? f.on + 1 : null;
@@ -335,7 +353,7 @@ export async function reauthGate(ext: Ext, deps: Pick<WalletDeps, 'now' | 'rando
   // added to one list and not the other) is answered `malformed`, Reject only — never issueChallenge's TypeError
   // escaping dapp.decide. The challenge's `about` is only ever this `fresh`, so this is the one place to ask.
   if (!isAbout(fresh)) return 'malformed';
-  const stillCovers = current !== null && current.kind === 'dapp' && reasonsCovered(fresh.reasons, current.reasons) && !outgoingGrew(fresh, current) && flagsCovered(fresh.flags, current.flags);
+  const stillCovers = current !== null && isDappAbout(current) && reasonsCovered(fresh.reasons, current.reasons) && !outgoingGrew(fresh, current) && flagsCovered(fresh.flags, current.flags);
   if (!stillCovers) {
     const id = await issueChallenge(ext, deps, digest, fresh);
     const superseded = e.challengeId;
@@ -502,7 +520,7 @@ export async function reauthWaiting(ext: Ext, deps: Pick<WalletDeps, 'now'>): Pr
     if (h === undefined || h.state !== 'queued' || !isTxType(h.type) || h.challengeId === null) return {ok: true as const, data: null};
     // Read-only loads of the challenge store (no mutex of their own): safe inside the section.
     const about = await challengeInfo(ext, tx.now, h.challengeId);
-    if (about === null || about.kind !== 'dapp') return {ok: true as const, data: null};
+    if (about === null || !isDappAbout(about)) return {ok: true as const, data: null};
     if (await challengeSatisfied(ext, tx.now, h.challengeId, dappDigest(h))) return {ok: true as const, data: null};
     return {ok: true as const, data: {challengeId: h.challengeId, site: about.site}};
   });

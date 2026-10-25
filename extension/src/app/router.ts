@@ -1,6 +1,7 @@
+import type {ReactNode} from 'react';
 import type {Tab} from './ui/TabBar';
 import type {Surface} from './WalletContext';
-import type {Intent} from './engine';
+import type {Engine, Intent, PendingExtra} from './engine';
 import {isDraft, isIntent, type Draft} from './send/rules';
 import {presaleRoutes} from './presale';
 
@@ -52,6 +53,77 @@ export type Route =
 export interface PresaleRoute {
   screen: string;
   isRoute(o: Readonly<Record<string, unknown>>): boolean;
+  /** B1d-1b: the route's screen, drawn by App for a route this validator accepted; it moves only through `nav`. */
+  render(route: PresaleRouteValue, nav: PresaleNav): ReactNode;
+  /** B1d-1b: the screen handles Esc itself, as the send flow's screens do (FLOW) — App's Esc-goes-back leaves it alone. */
+  ownEscape?: boolean;
+}
+/** A presale route as its entry builds it: a screen name and that route's own keys, which its validator decides. */
+export type PresaleRouteValue = {readonly screen: string} & Readonly<Record<string, unknown>>;
+/**
+ * The ways a presale screen leaves (B1d-1b): back one step, home to #11, or a push the reducer decides like any other
+ * — a route no entry accepts leaves the stack as it is.
+ */
+export interface PresaleNav {
+  pop(): void;
+  home(): void;
+  push(route: PresaleRouteValue): void;
+  /** B1d-1b Task 6: this screen replaced by `route` (#23 by #50b, §4.3) — the reducer decides it; refused, the stack stays. */
+  replace(route: PresaleRouteValue): void;
+  /** B1d-1b: a new stack — #11, then these routes; the reducer decides every one, and refuses the whole stack for one it refuses. */
+  reset(routes: readonly PresaleRouteValue[]): void;
+}
+/**
+ * B1d §1.3, §4.2: how #21, #44 and #54 show a wallet record of a kind the presale entry renders — its own words, and
+ * where its own flow goes on. Every string is the entry's (shared code names none of them); nothing in it decides
+ * anything: the record's state, signature, fee and actions are the record's own, as for a send.
+ */
+export interface KindRecord {
+  /** The amount line: #21's amount card, under #44's head, #54's original-transaction row. */
+  line: string;
+  /** The badge beside #21's status, and #54's original-transaction pill. */
+  badge: string;
+  /** #21's top-bar title while the record is open, and once it is confirmed. */
+  sending: string;
+  sent: string;
+  /** #21's confirmed line. */
+  sentOk: string;
+  /** B1d-1b Task 6: #11's and #26's pending row while the record is open, and once it takes longer than usual (Q33). */
+  pending: string;
+  slow: string;
+  /** #44's sub when the program refused it on chain (the network fee paid). */
+  rejectedSub: string;
+  /** #44's kept payload (an expired blockhash) and #54's rows: what was paid, and to whom (#21's To row too). */
+  amount: string;
+  to: string;
+  /**
+   * B1d-1b Task 9: #21's amount card as drawn (index.html #s21: eyebrow, figure, ticker, the dollar line) — the line's
+   * words before the amount as the eyebrow, the amount and its ticker as the figure, and the dollars it was worth.
+   */
+  card: {lead: string; figure: string; ticker: string; usd: string};
+  /** #21's Done and close: where the record's own flow goes on. */
+  done: PresaleRouteValue;
+  /** #44's and #54's [Try again] (and #44's back arrow): a fresh start of that flow with what the record paid. */
+  again: PresaleRouteValue;
+}
+/**
+ * B1d §4.5: #11's presale banner — the entry's words for the sale as `presale.banner` answered it (two lines, as drawn).
+ * Nothing in it decides anything: Home shows it and its Buy only while the entry answers one.
+ */
+export interface HomeBanner {
+  title: string;
+  line: string;
+}
+/** B1d §1.1, §1.3, §4.2: the presale entry's slots — `presaleSlots`, null in the build without presale. */
+export interface PresaleSlots {
+  /** The words for a record of the entry's own kind whose data reads back; null for any other. */
+  record(extra: PendingExtra): KindRecord | null;
+  /** §4.2's resume paths: the route that shows this account's prepared entry of the entry's own kind, or null for none. */
+  resume(engine: Engine, account: string): Promise<PresaleRouteValue | null>;
+  /** B1d-1b Task 6, §4.5: #11's banner, or null — no sale shown (inactive, unreadable, refused, locked). */
+  banner(engine: Engine): Promise<HomeBanner | null>;
+  /** §4.5: where #11's Buy (and its banner) goes for this account — #23, #50b, or null: no route, the action hides. */
+  buy(engine: Engine, account: string): Promise<PresaleRouteValue | null>;
 }
 export type RouteAction = {type: 'push'; route: Route} | {type: 'pop'} | {type: 'tab'; tab: Tab} | {type: 'replace'; route: Route} | {type: 'reset'; routes: Route[]};
 
@@ -89,6 +161,22 @@ function isRoute(r: unknown): r is Route {
   }
   if (o.screen === 'status') return only(o, ['screen', 'account', 'id', 'since']) && isAddress(o.account) && (o.id === null || (typeof o.id === 'string' && HEX_ID.test(o.id))) && typeof o.since === 'number' && Number.isFinite(o.since);
   return true;
+}
+
+/** The presale route a stack's top is, if any (B1d §1.1): never a screen of the closed list. */
+export function presaleRouteOf(route: Route): PresaleRoute | undefined {
+  return SCREENS.has(route.screen) ? undefined : presaleRoutes.find(p => p.screen === route.screen);
+}
+
+/** How a presale screen moves the stack: each a reducer action, a push or reset decided by the targets' own validators. */
+export function presaleNav(go: (action: RouteAction) => void, home: Route): PresaleNav {
+  return {
+    pop: () => go({type: 'pop'}),
+    home: () => go({type: 'reset', routes: [home]}),
+    push: route => go({type: 'push', route: route as Route}),
+    replace: route => go({type: 'replace', route: route as Route}),
+    reset: routes => go({type: 'reset', routes: [home, ...(routes as readonly Route[])]}),
+  };
 }
 
 export function routeReducer(stack: Route[], action: RouteAction): Route[] {

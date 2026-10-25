@@ -507,11 +507,19 @@ async function viewOf(ext: Ext, deps: Pick<WalletDeps, 'now'>, p: PreparedSend):
 export async function preparedFor(ext: Ext, deps: Pick<WalletDeps, 'now'>, account: string): Promise<ResumableView | null> {
   const now = deps.now();
   // A send only (B1d §1.3): another kind's entry is resumed by its own message (presale.preparedFor, B1d-1b).
-  const mine = (await loadPrepared(ext)).filter(isSend).filter(p => p.account === account && now - p.createdAt < CHALLENGE_TTL_MS);
-  const newest = mine.reduce<PreparedSend | null>((a, p) => (a === null || p.createdAt >= a.createdAt ? p : a), null);
-  if (newest === null) return null;
+  const newest = await newestPrepared(ext, now, account, SEND_KIND);
+  if (newest === null || !isSend(newest)) return null;
   const challengeDead = newest.challengeId !== null && (await challengeInfo(ext, now, newest.challengeId)) === null;
   return {...(await viewOf(ext, deps, newest)), intent: newest.intent, expired: challengeDead || now - newest.createdAt >= PREPARED_TTL_MS};
+}
+
+/**
+ * The newest prepared entry of one kind for this account that a resume may still show — younger than a challenge's
+ * life (CHALLENGE_TTL_MS), sendable or not — or null. Each kind's resume message asks for its own kind only (§1.3).
+ */
+export async function newestPrepared(ext: Ext, now: number, account: string, kind: string): Promise<PreparedEntry | null> {
+  const mine = (await loadPrepared(ext)).filter(p => p.kind === kind && p.account === account && now - p.createdAt < CHALLENGE_TTL_MS);
+  return mine.reduce<PreparedEntry | null>((a, p) => (a === null || p.createdAt >= a.createdAt ? p : a), null);
 }
 
 /**

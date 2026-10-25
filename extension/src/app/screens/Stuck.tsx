@@ -8,7 +8,8 @@ import {RefusedBanner} from '../ui/Banner';
 import {LockedButton} from '../ui/LockedButton';
 import {useCopy} from '../ui/useCopy';
 import type {Intent, Pending, PendingState} from '../engine';
-import {GENERIC_TEXT} from '../generic';
+import {GENERIC_TEXT, kindRecord} from '../generic';
+import type {PresaleRouteValue} from '../router';
 
 /** The fixed strings #54 shows (spec §4.8, D23); adapted ones are marked there. */
 export const STUCK_TEXT = {
@@ -75,7 +76,9 @@ const OPEN: readonly PendingState[] = ['pending', 'stuck'];
  * the screen's own. No fee is shown on any of its layouts: none of them has paid one (feePaidLamports is null for
  * stuck and expired, and a re-send pays nothing new). A record without an intent (B1d §1.3: another kind, Q42): the
  * original's card names it "Transaction" and shows no amount and no recipient; "Send again" is the same (it re-sends
- * the record's own bytes); there is nothing to prepare again, so the expired layout has no [Try again].
+ * the record's own bytes); there is nothing to prepare again, so the expired layout has no [Try again]. B1d §4.2: a
+ * record of a kind the presale entry renders (a purchase) is named by that kind's badge, its amount line (Q32) and
+ * recipient in the original's rows, and its expired [Try again] starts that kind's flow again (#23 with the amount).
  */
 export function Stuck({
   record,
@@ -84,6 +87,7 @@ export function Stuck({
   onClose,
   onActivity,
   onTryAgain,
+  onRoute,
 }: {
   record: Pending;
   now: number;
@@ -92,6 +96,8 @@ export function Stuck({
   onClose: () => void;
   onActivity: () => void;
   onTryAgain: (intent: Intent) => void;
+  /** B1d §4.2: a purchase's expired [Try again] — the presale entry's route (#23 with the amount). */
+  onRoute: (route: PresaleRouteValue) => void;
 }) {
   const m = useWallet();
   const [phase, setPhase] = useState<'stuck' | 'sending' | 'sent' | 'untracked'>('stuck');
@@ -118,7 +124,9 @@ export function Stuck({
   }, [record.id, record.state, record.account, elsewhere]);
   const refused = m.net.mode === 'refused';
   const intent = record.intent;
-  const amount = intent === null ? null : `${showExact(intent.token, intent.amount)} ${intent.token}`;
+  const words = kindRecord(record);
+  const amount = intent !== null ? `${showExact(intent.token, intent.amount)} ${intent.token}` : (words?.line ?? null);
+  const again = intent !== null ? () => onTryAgain(intent) : words !== null ? () => onRoute(words.again) : null;
   const {mm, ss} = mmss(record.createdAt, now);
   const hash = shortAddress(record.signature);
   const state = OPEN.includes(record.state) ? moved ?? record.state : record.state;
@@ -178,8 +186,8 @@ export function Stuck({
           </div>
         </div>
         <div className="sticky-bar">
-          {canRetry && intent !== null ? (
-            <LockedButton className="btn btn-primary" disabled={refused} onPress={() => onTryAgain(intent)}>
+          {canRetry && again !== null ? (
+            <LockedButton className="btn btn-primary" disabled={refused} onPress={again}>
               {STUCK_TEXT.tryAgain}
             </LockedButton>
           ) : null}
@@ -300,12 +308,18 @@ export function Stuck({
           <div className="orig-card">
             <div className="head">
               <span className="label">{STUCK_TEXT.original}</span>
-              <span className="pill">{intent === null ? GENERIC_TEXT.line : 'Send'}</span>
+              <span className="pill">{intent !== null ? 'Send' : (words?.badge ?? GENERIC_TEXT.line)}</span>
             </div>
             {amount === null ? null : (
               <div className="row">
                 <span className="k">Amount</span>
                 <span className="v amount noc-numeral">{amount}</span>
+              </div>
+            )}
+            {words === null ? null : (
+              <div className="row">
+                <span className="k">Recipient</span>
+                <span className="v">{words.to}</span>
               </div>
             )}
             {intent === null ? null : (

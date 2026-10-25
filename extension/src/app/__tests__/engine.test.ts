@@ -396,3 +396,35 @@ describe('a thrown sendMessage (the service worker restarting)', () => {
     expect(calls).toBe(2);
   });
 });
+
+// B1d §1.1 (B1d-1b Task 4): the generic request — the presale entry's client asks its own types through it, so this
+// client names none. The same transport, retry and reply rule as every named call; both builds.
+describe('request: a message this client does not name', () => {
+  const parseN = (x: unknown) => (typeof x === 'number' ? x : undefined);
+  it('sends the message as given, and answers what the caller’s shape check accepts; a refused shape, an unlisted code, a thrown transport twice: failed', async () => {
+    const sent: unknown[] = [];
+    const answering = (reply: unknown) =>
+      createEngine(async m => {
+        sent.push(m);
+        return reply;
+      }, noSleep);
+    expect(await answering({ok: true, data: 7}).request({type: 'x.get', a: 1}, ['nope'], parseN)).toEqual({ok: true, data: 7});
+    expect(sent).toEqual([{type: 'x.get', a: 1}]);
+    expect(await answering({ok: true, data: '7'}).request({type: 'x.get'}, ['nope'], parseN)).toEqual({ok: false, error: 'failed'});
+    expect(await answering({ok: false, error: 'nope', data: {detail: 'd'}}).request({type: 'x.get'}, ['nope'], parseN)).toEqual({ok: false, error: 'nope', data: {detail: 'd'}});
+    expect(await answering({ok: false, error: 'other'}).request({type: 'x.get'}, ['nope'], parseN)).toEqual({ok: false, error: 'failed'});
+    let calls = 0;
+    const throwing = createEngine(async () => {
+      calls += 1;
+      throw new Error('gone');
+    }, noSleep);
+    expect(await throwing.request({type: 'x.get'}, [], parseN)).toEqual({ok: false, error: 'failed'});
+    expect(calls).toBe(2);
+  });
+
+  it('through the real background: an unknown type is refused as the background refuses it — failed unless listed', async () => {
+    const {engine} = await wired();
+    expect(await engine.request({type: 'x.unknown'}, ['unknown type'], parseN)).toEqual({ok: false, error: 'unknown type'});
+    expect(await engine.request({type: 'x.unknown'}, [], parseN)).toEqual({ok: false, error: 'failed'});
+  });
+});

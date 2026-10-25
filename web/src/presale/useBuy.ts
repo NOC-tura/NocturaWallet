@@ -13,6 +13,7 @@ import {accountReader, connection} from '../lib/solana';
 import {
   buildBuyInstructions,
   buildStablecoinBuyInstructions,
+  derivedStablecoinAccount,
   estimateNocForSol,
   estimateNocForUsd,
   TOKEN_DECIMALS,
@@ -115,6 +116,7 @@ export function useBuy(stage: {displayStage: number; pricePerNocUsd: number}) {
                 priorityFee,
                 resolved,
                 treasury,
+                derivedStablecoinAccount(publicKey, token),
               );
         const foreign = instructions.find(ix => !ALLOWED_PROGRAM_IDS.includes(ix.programId.toBase58()));
         if (foreign) {

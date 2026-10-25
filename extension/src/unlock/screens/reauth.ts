@@ -193,6 +193,24 @@ export function mountReauth(deps: PageDeps): ReauthScreen {
       byId('ra-rows').replaceChildren(...rows);
       byId('ra-reasons').replaceChildren(...d.reasons.map(r => h('p', 'noc-body-sm vlt-lede', r)));
       setText(cancel, REAUTH.cancel);
+    } else if (d.kind === 'other') {
+      // B1d §4.2: a kind the presale entry described (a purchase) — its eyebrow and headline amount, its rows (an address
+      // whole, in groups of four, after its name), its reasons. Proven, it hands over to the resume route as a send.
+      setText(byId('ra-about'), d.about);
+      setText(byId('ra-amount'), d.amount);
+      setText(byId('ra-symbol'), d.symbol);
+      shown(byId('ra-amount-row'), true);
+      byId('ra-rows').replaceChildren(
+        ...d.rows.map(r => {
+          if (r.address === null) return row(r.label, r.value);
+          const value = h('span');
+          if (r.value !== null) value.append(r.value, ' · ');
+          value.append(addressGroups(r.address));
+          return row(r.label, value);
+        }),
+      );
+      byId('ra-reasons').replaceChildren(...d.reasons.map(r => h('p', 'noc-body-sm vlt-lede', r)));
+      setText(cancel, REAUTH.cancel);
     } else {
       setText(byId('ra-about'), REAUTH.aboutChange);
       shown(byId('ra-amount-row'), false);
@@ -231,9 +249,14 @@ export function mountReauth(deps: PageDeps): ReauthScreen {
       // Never "Confirmed" for a setting the background did not say it applied (fail closed).
       if (out === 'confirmed' || out === 'refused') return notice(REAUTH.settingsFailed);
     }
+    // B1d §4.2: a kind the presale entry described — what is true of any request when it expired or the wallet locked.
+    if (described?.kind === 'other') {
+      if (out === 'expired') return notice(REAUTH.requestExpired);
+      if (out === 'not-unlocked') return notice(REAUTH.requestNotUnlocked, {unlock: true});
+    }
     if (out === 'confirmed') {
       helper('', false);
-      if (described?.kind === 'send') {
+      if (described?.kind === 'send' || described?.kind === 'other') {
         // D38: the hand-over is the only thing a confirmed send does here; the account is the one challenge.ts
         // validated, checked again by resumeTarget. Nothing is sent from #10.
         const target = resumeTarget(described.account);
@@ -306,12 +329,13 @@ export function mountReauth(deps: PageDeps): ReauthScreen {
       if (described?.kind === 'settings' || described?.kind === 'dapp' || closeOnly) return deps.closeTab();
       // E7: nothing of this send may outlive the cancel — its prepared send and its challenge go. The account is
       // the one challenge.ts validated (the description's, or the undescribable record's own).
-      const account = described?.kind === 'send' ? described.account : orphan;
+      const account = described?.kind === 'send' || described?.kind === 'other' ? described.account : orphan;
       if (account === null || !(await discardPrepared(deps.send, account))) return failed();
+      const said = described?.kind === 'other' ? described.cancelled : REAUTH.cancelled;
       described = null;
       orphan = null;
       endCooldown();
-      notice(REAUTH.cancelled);
+      notice(said);
       deps.closeTab();
     });
   };

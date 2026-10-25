@@ -2,6 +2,7 @@ import {useEffect, useId, useRef, useState, type ReactNode} from 'react';
 import {AddressGroups} from '../../../web/src/ui/AddressGroups';
 import {ExtIcon} from '../app/ui/ExtIcon';
 import {LockedButton} from '../app/ui/LockedButton';
+import {regionName} from '../app/ui/regionName';
 import {SkelCircle, SkelLine} from '../app/ui/Skeleton';
 import {feeUsd, shortAddress, showSol} from '../app/format';
 import {fromBook} from '../app/addressBook';
@@ -434,6 +435,9 @@ function flagBanner(item: TxItem, f: Flag, key: number): ReactNode {
       return <FlagBanner key={key} tone="warn" head={FLAG_TEXT.nonce} meta={[instructionMeta(item, f.at)]} />;
     case 'whole-balance':
       return <FlagBanner key={key} tone="warn" head={FLAG_TEXT.wholeHead} body={[FLAG_TEXT.whole]} />;
+    // B1d §3.6 (F12): Q49, Q50a with the country's name for a sanctioned region, Q50b for every fail-closed reason, Q51.
+    case 'presale-region':
+      return <FlagBanner key={key} tone="danger" head={FLAG_TEXT.regionHead} body={[f.reason === 'sanctioned' && f.countryCode !== null ? FLAG_TEXT.regionSanctioned(regionName(f.countryCode)) : FLAG_TEXT.regionClosed]} meta={[FLAG_TEXT.regionMeta]} />;
     // Fix round 1 Minor 2: exhaustive at compile time — a new Flag kind fails to build here, rather than rendering
     // silently as no banner (`ReactNode` includes `undefined`, so a missing case would otherwise compile clean).
     default: {
@@ -443,10 +447,10 @@ function flagBanner(item: TxItem, f: Flag, key: number): ReactNode {
   }
 }
 
-/** A transaction's banners: its blocks first, then its warnings (spec §3.3 "Banners"), each as the background listed it. */
+/** A transaction's banners: B1d's F12 first, then its blocks, then its warnings (spec §3.3 "Banners"), each as the background listed it. */
 function FlagBanners({item}: {item: TxItem}) {
   const flags = item.flags ?? [];
-  const ordered = [...flags.filter(f => f.severity === 'block'), ...flags.filter(f => f.severity === 'warn')];
+  const ordered = [...flags.filter(f => f.severity === 'refuse'), ...flags.filter(f => f.severity === 'block'), ...flags.filter(f => f.severity === 'warn')];
   return <>{ordered.map((f, i) => flagBanner(item, f, i))}</>;
 }
 
@@ -477,7 +481,7 @@ function TypedConfirm({field, value, onChange}: {field: TypedField; value: strin
 const typedFieldsOf = (d: TxDetail | null): TypedField[] =>
   (d?.transactions ?? []).flatMap((t, tx) => (t.flags ?? []).flatMap(f => (f.severity === 'block' ? [{key: `${tx}:${f.kind}`, tx, word: f.word}] : [])));
 
-type TxState = 'simulating' | 'ready' | 'failed' | 'expired' | 'unreachable';
+type TxState = 'simulating' | 'ready' | 'failed' | 'expired' | 'unreachable' | 'refused';
 function stateOf(d: TxDetail | null): TxState | null {
   if (d === null) return null;
   if (d.simulation.status === 'simulating') return 'simulating';
@@ -486,6 +490,8 @@ function stateOf(d: TxDetail | null): TxState | null {
   if (outcomes.some(o => o !== null && !o.ok && o.error === 'expired')) return 'expired';
   // B1c-3 (F10, O2): a step that depends on an earlier one is no failure here — its own block (UNCHECKED) gates it.
   if (outcomes.some(o => o === null || (!o.ok && o.error !== 'dependent'))) return 'failed';
+  // B1d §3.6 (F12): a presale purchase the region check did not open — only Reject, no typed field.
+  if (d.transactions.some(t => (t.flags ?? []).some(f => f.kind === 'presale-region'))) return 'refused';
   return 'ready';
 }
 
@@ -510,6 +516,8 @@ function stateOf(d: TxDetail | null): TxState | null {
  * unlimited approves only, "Approve anyway" (Q34) for any other block, greyed as #37's until every field matches, and
  * the approval sends the matched words (`overrides`). A lookalike origin with a block passes both gates: the typed
  * fields enable its demoted "Approve anyway (not recommended)", which then opens the 2-second confirm.
+ * B1d §3.6 (F12): a presale purchase the jurisdiction gate did not open is `refused` — its banner first in its section,
+ * the eyebrow "Critical · Blocked transaction", no typed field, and only Reject (no word opens it).
  * C15 holds Approve (and its demoted forms) 500 ms after focus and after each state change — the request, a new
  * simulation, the re-authentication's state, busy, every typed field's match; on a screen with any flag, 1.5 s (B1 §3).
  * Reject is never held.
@@ -601,15 +609,17 @@ export function Tx({request, waiting, notice, busy, onDecide}: {request: Request
   const stale = refused !== null && refused.kind === 'stale';
   const outOfDate = refused !== null && refused.kind === 'out-of-date' && refused.simId === simId;
   const n = detail.transactions.length;
+  // B1d §3.6: F12 in any transaction — the eyebrow says the transaction is blocked, whatever else the simulation says.
+  const regionBlocked = detail.transactions.some(t => (t.flags ?? []).some(f => f.kind === 'presale-region'));
   const blocks = ready ? detail.transactions.flatMap(t => (t.flags ?? []).filter(f => f.severity === 'block')) : [];
   // The design's red "Approve unlimited" (and its eyebrow) only when every block is an F5 and one is of u64::MAX (O9);
   // every block an F5 below it: Q57's eyebrow and Q34's CTA.
   const approvalsOnly = blocks.length > 0 && blocks.every(f => f.kind === 'unlimited-approve');
   const unlimitedOnly = approvalsOnly && blocks.some(unlimitedMax);
-  const overline = busy ? TX_TEXT.overlineApproving : unlimitedOnly ? FLAG_TEXT.overlineUnlimited : approvalsOnly ? FLAG_TEXT.overlineLarge : blocks.length > 0 ? FLAG_TEXT.overlineBlocked : lookalike ? TX_TEXT.overlineLookalike : TX_TEXT.overline;
+  const overline = busy ? TX_TEXT.overlineApproving : regionBlocked ? FLAG_TEXT.overlineBlocked : unlimitedOnly ? FLAG_TEXT.overlineUnlimited : approvalsOnly ? FLAG_TEXT.overlineLarge : blocks.length > 0 ? FLAG_TEXT.overlineBlocked : lookalike ? TX_TEXT.overlineLookalike : TX_TEXT.overline;
   return (
     <div className="screen app-approve">
-      <WindowTop overline={overline} tone={!busy && (lookalike || blocks.length > 0) ? 'danger' : 'neutral'} onClose={reject} disabled={busy || simulating} />
+      <WindowTop overline={overline} tone={!busy && (lookalike || blocks.length > 0 || regionBlocked) ? 'danger' : 'neutral'} onClose={reject} disabled={busy || simulating} />
       <div className={busy ? 'scroll-area app-approve-scroll app-tx-busy' : 'scroll-area app-approve-scroll'}>
         {notice ? <BudgetNotice /> : null}
         <div className="app-origin-slot">

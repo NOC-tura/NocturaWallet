@@ -53,6 +53,8 @@ async function offBuild(prefix: string): Promise<Harness> {
   expect(JSON.parse(readFileSync(join(dirname(EXT_NOPRESALE), 'app.features.json'), 'utf8'))).toEqual({presale: false});
   return launchPopup(prefix, {ext: EXT_NOPRESALE});
 }
+/** #31's rows (visual.spec.ts's list): B1d-1b adds none — the referral row is B1d-2's, and never in this build. */
+const SETTINGS_ROWS = ['Profile', 'Security center', 'Passkey', 'Change password', 'Recovery phrase', 'Lock now', 'Connected dApps', 'Address book', 'Delete wallet', 'About Noctura'];
 const seed = (h: Harness, record: object) => h.sw.evaluate(r => chrome.storage.local.set({v1_pending: [r]}), record);
 const meta = (p: Page) => p.locator('.meta-row').evaluateAll(rows => rows.map(r => [r.querySelector('.lbl')?.textContent, r.querySelector('.val')?.textContent]));
 
@@ -101,10 +103,11 @@ test('7 · off build: no presale UI or handler; a seeded purchase record is show
     expect((await msg(popup, {type: 'wallet.pending'})).data).toEqual([expect.objectContaining({id: 'e7'.repeat(16), state: 'confirmed', intent: null, extra: {kind: 'presale-buy', data: DATA}})]);
     // Nothing was broadcast: polling a record never sends it.
     expect(h.fake.broadcasts).toEqual([]);
-    // #31 (Settings) has no presale row.
+    // #31 (Settings) has no presale row — read once its rows have rendered (B1d-1b Task 8: `.screen` alone was already
+    // #11's, so the text below could be read before Settings drew anything).
     await popup.getByRole('button', {name: 'Done'}).click();
     await popup.getByRole('button', {name: 'Settings'}).click();
-    await expect(popup.locator('.screen').first()).toBeVisible();
+    await expect(popup.locator('.s7-row .s7-title')).toHaveText(SETTINGS_ROWS, {timeout: 30_000});
     expect(await popup.locator('main').textContent()).not.toMatch(/presale|referral/i);
     contained(h);
   } finally {

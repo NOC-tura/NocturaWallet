@@ -4,7 +4,7 @@ import {VersionedTransaction} from '@solana/web3.js';
 import {KIND_NAME, SEND_KIND, intentDigest, intentKind, registerIntentKind, registeredKinds, type IntentKind, type KindHost} from '../intents';
 import {PREPARED_TTL_MS, SEND_INTENT, parseIntent, peekPrepared, preparedFor, preparedIntegrity, prepareSend, sendIntentDigest, storePrepared, type PreparedEntry} from '../prepare';
 import {sendPrepared} from '../send';
-import {challengeSatisfied, issueChallenge, satisfyChallenge} from '../reauthChallenges';
+import {challengeInfo, challengeSatisfied, issueChallenge, rebaseKindChallenge, satisfyChallenge} from '../reauthChallenges';
 import {PREPARED_KEY, REAUTH_KEY, clearSession} from '../session';
 import {PENDING_KEY, markDue, readPending} from '../pendingStore';
 import {pollOnce, recordDappSend} from '../pending';
@@ -101,14 +101,17 @@ beforeEach(() => {
   gate.calls = [];
 });
 
+// This file runs in both vitest runs (vitest.nopresale.config.ts marks the off one).
+const off = process.env.NOCTURA_PRESALE === '0';
+
 describe('the intent-kind registry (B1d §1.3, C19)', () => {
-  it('send is registered by prepare.ts itself, and in this build registerPresale adds no kind (B1d-1a: no presale-buy in either build)', () => {
+  it(`send is registered by prepare.ts itself; ${off ? 'no other kind in the build without presale' : 'presale-buy when the presale entry module loads (B1d-1b Task 2)'}; registerPresale adds none`, () => {
     expect(intentKind(SEND_KIND)).toBe(SEND_INTENT);
     const before = registeredKinds();
-    registerPresale({ext: fakeExt(), deps: fakeDeps()});
+    registerPresale({ext: fakeExt(), deps: fakeDeps(), handle: () => undefined});
     expect(registeredKinds()).toEqual(before);
-    // This file's own kinds are named test-…; besides them, only send.
-    expect(before.filter(k => !k.startsWith('test-'))).toEqual(['send']);
+    // This file's own kinds are named test-…; besides them, send and — with presale — the purchase.
+    expect(before.filter(k => !k.startsWith('test-'))).toEqual(off ? ['send'] : ['send', 'presale-buy']);
   });
 
   it('refuses a name that is not a kind name, and a kind registered twice (send included)', () => {
@@ -219,6 +222,52 @@ describe('a send is byte-for-byte what it was before kinds (captured from commit
     expect(again.reauth).toMatchObject({challengeId, proven: true});
     expect((await sendPrepared(ext, deps, again.id)).state).toBe('pending');
     expect(deps.broadcasts).toHaveLength(1);
+  });
+});
+
+describe('a kind’s own challenge description (B1d §1.3 describe; B1d-1b Task 2)', () => {
+  /** A purchase challenge's description as presale/buy.ts issues it. */
+  const PURCHASE_ABOUT = {
+    kind: 'presale-buy',
+    account: ACCOUNT.publicKey,
+    currency: 'SOL',
+    amount: '2000000000',
+    stage: 0,
+    priceTicks: '1501',
+    nocBase: '2643437708194',
+    spentCents: '39678',
+    destination: '6Zia7b1b3NTFMQ8Kd588m8GJioMhY3YLbtcLwbB5o6Vd',
+    networkLamports: '11000',
+    priorityLamports: '6000',
+    rentLamports: '2189480',
+    reasons: ['first-purchase'],
+    thresholdCents: 10_000,
+  };
+  const stash = async (ext: ReturnType<typeof fakeExt>, about: object) =>
+    ext.session.set(REAUTH_KEY, {['ab'.repeat(16)]: {digest: 'd', issuedAt: 0, expiresAt: Number.MAX_SAFE_INTEGER, satisfied: true, about}});
+
+  it(
+    off ? 'the build without presale stores no purchase challenge and drops one stored by a build with it (fail closed)' : 'a purchase challenge is stored through its kind’s isAbout and read back as issued (positive control)',
+    async () => {
+      const {ext, deps} = setup();
+      await unlocked(ext);
+      if (off) await expect(issueChallenge(ext, deps, 'd', PURCHASE_ABOUT)).rejects.toThrow('malformed about');
+      else expect(await challengeInfo(ext, deps.now(), await issueChallenge(ext, deps, 'd', PURCHASE_ABOUT))).toEqual(PURCHASE_ABOUT);
+      await stash(ext, PURCHASE_ABOUT);
+      expect(await challengeInfo(ext, deps.now(), 'ab'.repeat(16))).toEqual(off ? null : PURCHASE_ABOUT);
+      expect(await rebaseKindChallenge(ext, deps.now(), 'ab'.repeat(16), 'd', PURCHASE_ABOUT)).toBe(!off);
+    },
+  );
+
+  it('a kind without its own isAbout, an unregistered kind, or a shared kind’s name with another shape is refused, and dropped when stored', async () => {
+    const {ext, deps} = setup();
+    await unlocked(ext);
+    for (const about of [{kind: 'test-buy', amount: '5'}, {kind: 'not-registered', amount: '5'}, {kind: 'send', amount: '5'}, {kind: 'dapp', site: 'x'}]) {
+      await expect(issueChallenge(ext, deps, 'd', about as never)).rejects.toThrow('malformed about');
+      await stash(ext, about);
+      expect([about, await challengeInfo(ext, deps.now(), 'ab'.repeat(16))]).toEqual([about, null]);
+      expect(await rebaseKindChallenge(ext, deps.now(), 'ab'.repeat(16), 'd', about as never)).toBe(false);
+    }
   });
 });
 

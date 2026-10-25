@@ -148,3 +148,68 @@ describe('the router', () => {
     expect(firstRoute()).toEqual(HOME);
   });
 });
+
+// B1d §4 (B1d-1b Task 4): #23's route `presale`, carrying nothing, comes from the presale entry — in the build with
+// presale only. This file runs in both vitest runs (vitest.nopresale.config.ts marks the off one).
+describe(`#23's route in this build (${process.env.NOCTURA_PRESALE === '0' ? 'off' : 'on'})`, () => {
+  const off = process.env.NOCTURA_PRESALE === '0';
+  const push = (route: unknown) => routeReducer(HOME, {type: 'push', route: route as Route});
+
+  it(off ? 'off: {screen: "presale"} is refused like any unknown screen' : 'on: exactly {screen: "presale"} is pushed; any other key refuses it', () => {
+    expect(push({screen: 'presale'})).toEqual(off ? HOME : [...HOME, {screen: 'presale'}]);
+    for (const extra of [{account: ADDR}, {preparedId: PREPARED}, {stage: 0}]) expect(push({screen: 'presale', ...extra})).toBe(HOME);
+    expect(SCREENS.has('presale')).toBe(false);
+  });
+
+  // B1d-1b Task 5: #23 again with what was being bought, and #20's purchase variant — its two entries, nothing else.
+  const AGAIN = {currency: 'USDC', amount: '25000000', code: 'price-changed', challengeId: PREPARED};
+  it(off ? 'off: #23 again and `presale-confirm` are refused' : 'on: #23 again with exactly its four keys, each checked', () => {
+    expect(push({screen: 'presale', again: AGAIN})).toEqual(off ? HOME : [...HOME, {screen: 'presale', again: AGAIN}]);
+    expect(push({screen: 'presale', again: {...AGAIN, code: null, challengeId: null}})).toEqual(off ? HOME : [...HOME, {screen: 'presale', again: {...AGAIN, code: null, challengeId: null}}]);
+    for (const bad of [
+      {...AGAIN, currency: 'NOC'},
+      {...AGAIN, amount: '0'},
+      {...AGAIN, amount: '025'},
+      {...AGAIN, amount: '18446744073709551616'},
+      {...AGAIN, amount: 25_000_000},
+      {...AGAIN, code: 'reauth-required'},
+      {...AGAIN, challengeId: 'ab'},
+      {...AGAIN, extra: 1},
+      {currency: 'USDC', amount: '1', code: null},
+      null,
+    ]) {
+      expect(push({screen: 'presale', again: bad})).toBe(HOME);
+    }
+    expect(push({screen: 'presale', again: AGAIN, notice: null})).toBe(HOME);
+  });
+
+  it(off ? 'off: `presale-confirm` is refused like any unknown screen' : 'on: `presale-confirm` — a flow entry with its prepared id, or a resume; nothing else', () => {
+    const flow = {screen: 'presale-confirm', account: ADDR, entry: 'flow', preparedId: PREPARED};
+    const resume = {screen: 'presale-confirm', account: ADDR, entry: 'resume'};
+    expect(push(flow)).toEqual(off ? HOME : [...HOME, flow]);
+    expect(push(resume)).toEqual(off ? HOME : [...HOME, resume]);
+    for (const bad of [
+      {...flow, preparedId: 'x'},
+      {...flow, account: 'not-an-address'},
+      {...flow, extra: true},
+      {...resume, preparedId: PREPARED},
+      {...resume, entry: 'other'},
+      {screen: 'presale-confirm', entry: 'resume'},
+    ]) {
+      expect(push(bad)).toBe(HOME);
+    }
+    expect(SCREENS.has('presale-confirm')).toBe(false);
+  });
+
+  // B1d-1b Task 6: #50b, carrying nothing — pushed over #23 or #11, or in #23's place (a replace).
+  it(off ? 'off: `geo` is refused like any unknown screen, pushed or as a replacement' : 'on: exactly {screen: "geo"}, pushed or as a replacement; any other key refuses it', () => {
+    expect(push({screen: 'geo'})).toEqual(off ? HOME : [...HOME, {screen: 'geo'}]);
+    const onPresale: Route[] = [...HOME, {screen: 'presale'} as unknown as Route];
+    expect(routeReducer(onPresale, {type: 'replace', route: {screen: 'geo'} as unknown as Route})).toEqual(off ? onPresale : [...HOME, {screen: 'geo'}]);
+    for (const extra of [{account: ADDR}, {reason: 'sanctioned'}, {countryCode: 'SI'}, {geo: {open: false, reason: 'sanctioned', countryCode: 'KP'}}]) {
+      expect(push({screen: 'geo', ...extra})).toBe(HOME);
+      expect(routeReducer(onPresale, {type: 'replace', route: {screen: 'geo', ...extra} as unknown as Route})).toBe(onPresale);
+    }
+    expect(SCREENS.has('geo')).toBe(false);
+  });
+});
