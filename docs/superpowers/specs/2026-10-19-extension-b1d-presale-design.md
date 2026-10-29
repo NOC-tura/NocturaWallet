@@ -142,8 +142,8 @@ and is stated there; the passages marked "rev 3.4" below are edited to match. Ev
   worker asleep across slots POSTs once when it wakes; a failed attempt with no slot left → `given-up`.
 - §2.4 (Task 1): over 50 entries the oldest `done` goes first, then `given-up`, `refused`, `due` (an entry #27 says Q34
   for only when no `done` one is left; rev 3.5, review M8).
-- §2.4 (Task 1): a 403 or the cool-down sets `nextAt` to the latest of the claimed slot, the latch's persisted end and
-  `v1_forbidden_until`.
+- §2.4 (Task 1): a 403 or the cool-down sets `nextAt` to the later of the claimed slot and the latch's persisted end
+  (`v1_forbidden_until`, one value).
 - §2.4 (Task 1): the hook writes an entry only for an account of the wallet stored now.
 - §2.4 (Task 1, controller ruling): **reconcile** — at every start and on the `presale-record` alarm, each confirmed
   `presale-buy` record of the stored wallet in `v1_pending` without an entry gets one (`confirmedAt` = its `createdAt`;
@@ -217,7 +217,7 @@ and is stated there; the passages marked "rev 3.4" below are edited to match. Ev
 - §2.4, §7 P3 (D31): an unattended record-route 403 trips the wallet-wide 10-min cool-down like every 403 (a 403 is
   always a whole-IP CrowdSec ban); the premise, stated for ICO: the coordinator never 403s this route selectively.
 - §2.4 (review I2, Task 1): the worker POSTs only an entry of an account of the wallet stored now — another account's
-  (a replaced wallet's) is held, never dropped — and nothing while a transaction of the stored wallet is open, because
+  (one the stored wallet no longer has, e.g. dropped by `storeEnvelope`) is held, never dropped — and nothing while a transaction of the stored wallet is open, because
   the shared latch serialises every coordinator request (measured: a record POST that never answers holds the reads
   queued behind it for its whole 20 s).
 - §2.4 (review M3): the 403's `nextAt` is the later of the claimed slot and `v1_forbidden_until` (one value, the
@@ -699,7 +699,7 @@ when no `done` one is left, and a `due` one last — rev 3.5, review M8).
   slot left → `given-up`. One `alarms` alarm, `presale-record` (existing permission; dispatched by name, a shared
   alarm's name refused), wakes the worker at `min(nextAt)` — never sooner than 30 s ahead; no due entry, no alarm.
 - **When, and for whom (rev 3.5, review I2):** only an entry of an account of the wallet stored now is POSTed. Another
-  account's entry (a replaced wallet's — a restore keeps the records, like the rest of `WALLET_DATA_KEYS`) is **held**,
+  account's entry (one the stored wallet no longer has, e.g. dropped by `storeEnvelope` — the records are kept, like the rest of `WALLET_DATA_KEYS`) is **held**,
   not dropped: never POSTed, arming no alarm, kept as it was (it counts toward the 50 and goes by the same order), and
   sent at the first run after that wallet is stored again; a delete wipes it with the rest. Dropping it would make a
   restore a second, unlocked partial delete and lose a real purchase's record if the first wallet came back. And
