@@ -512,6 +512,17 @@ describe('presale.buy with a referral address: what the signature checks again (
     expect(await buy(w, view.id)).toMatchObject({ok: true, data: {state: 'pending'}});
     expect(w.deps.broadcasts).toHaveLength(1);
   });
+
+  it('a first USDC purchase that registers its referrer signs (positive control, review 1 Minor 1): register_referrer(R), account 3 its allocation, account 4 the paying holding', async () => {
+    const w = await world({chains: [NEVER_BOUGHT, NEVER_BOUGHT]});
+    const view = await provenPurchase(w, intent('USDC', '20000000', R));
+    expect(await buy(w, view.id)).toMatchObject({ok: true, data: {state: 'pending'}});
+    expect(w.deps.broadcasts).toHaveLength(1);
+    const m = VersionedTransaction.deserialize(w.deps.broadcasts[0] as Uint8Array).message as MessageV0;
+    expect(m.compiledInstructions).toHaveLength(4);
+    expect([...(m.compiledInstructions[2]?.data ?? [])]).toEqual([...(REGISTER?.discriminator ?? []), ...new PublicKey(R).toBytes()]);
+    expect([named(m, 3)[3], named(m, 3)[4]]).toEqual([R_ALLOCATION, HOLDING_LARGE]);
+  });
 });
 
 describe('the signature rests on the bytes the integrity binds, never on `shown` (C22, review 1 M1) — each forgery has its integrity recomputed', () => {
