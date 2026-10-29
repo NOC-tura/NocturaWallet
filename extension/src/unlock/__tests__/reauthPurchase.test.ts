@@ -89,6 +89,9 @@ describe('#10 for a purchase (§4.2)', () => {
     ]);
     const groups = [...el('ra-rows').querySelectorAll('.intent-row')][4]?.querySelectorAll('.addr-groups > span') ?? [];
     expect([...groups].map(g => g.textContent)).toEqual(referrer.match(/.{1,4}/g));
+    // B1d-2 Task 7 (visual pass): a row naming an address keeps its label on one line ("Referred by" wrapped beside the
+    // groups); the note row, label only, still wraps.
+    expect([...el('ra-rows').querySelectorAll('.intent-row .label')].slice(3, 6).map(l => l.classList.contains('vlt-keep'))).toEqual([true, true, false]);
     expect(unstyled('v-reauth')).toEqual([]);
   });
 

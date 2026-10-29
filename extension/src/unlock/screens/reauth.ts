@@ -133,9 +133,11 @@ export function mountReauth(deps: PageDeps): ReauthScreen {
     shown(el, help !== '');
   };
   const failed = () => (view === 'notice' ? noticeHelp(COMMON.failedTryAgain) : helper(COMMON.failedTryAgain, false));
-  const row = (label: string, value: Node | string | null) => {
+  const row = (label: string, value: Node | string | null, keep = false) => {
     const r = h('div', 'intent-row');
-    r.append(h('span', 'label noc-body-sm', label));
+    const l = h('span', 'label noc-body-sm', label);
+    if (keep) l.classList.add('vlt-keep');
+    r.append(l);
     if (value !== null) {
       const v = h('span', 'value noc-body-sm noc-numeral');
       v.append(value);
@@ -206,7 +208,7 @@ export function mountReauth(deps: PageDeps): ReauthScreen {
           const value = h('span');
           if (r.value !== null) value.append(r.value, ' · ');
           value.append(addressGroups(r.address));
-          return row(r.label, value);
+          return row(r.label, value, true);
         }),
       );
       byId('ra-reasons').replaceChildren(...d.reasons.map(r => h('p', 'noc-body-sm vlt-lede', r)));

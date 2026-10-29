@@ -2330,6 +2330,10 @@ body:has(.app-window) {
 .s-ref .stats .stat .val.app-ref-muted {
   color: var(--fg-tertiary);
 }
+/* A figure of eight characters or more ("$1,234.56") a size smaller: at 20 px it wrapped in its third (visual pass). */
+.s-ref .stats .stat .val.app-ref-long {
+  font-size: 16px;
+}
 /* 24a-bis's accent border (inline in the mockup) on a row that keeps its size: the idle row's border is transparent. */
 .s-ref .code-card .code-row {
   border: 1px solid transparent;

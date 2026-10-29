@@ -9,7 +9,8 @@ import {PRESALE_TEXT, REFER_TEXT, countText, earnedText, referredText} from './t
 
 /**
  * One of the three stat cards (the design's `.stat`): label, value ("—" when its source failed), sub. A figure wider
- * than its third of the row breaks only after a group separator ("123,456,<wbr>789.0").
+ * than its third of the row breaks only after a group separator ("123,456,<wbr>789.0"); one of eight characters or more
+ * is set a size smaller ("$1,234.56" holds its third on one line).
  */
 function Stat({label, value, sub, tone}: {label: string; value: string | null; sub: string; tone: 'acc' | 'muted' | null}) {
   return (
@@ -18,7 +19,7 @@ function Stat({label, value, sub, tone}: {label: string; value: string | null; s
       {value === null ? (
         <SkelLine width={48} height={26} />
       ) : (
-        <span className={`val noc-balance-md noc-numeral${tone === 'acc' ? ' acc' : tone === 'muted' ? ' app-ref-muted' : ''}`}>
+        <span className={`val noc-balance-md noc-numeral${tone === 'acc' ? ' acc' : tone === 'muted' ? ' app-ref-muted' : ''}${value.length >= 8 ? ' app-ref-long' : ''}`}>
           {value.split(',').map((part, i, all) => (
             <Fragment key={i}>
               {part}

@@ -177,6 +177,20 @@ export const MARKERS = [
   'Referral payouts are subject to program terms. Self-referrals are detected and rejected.',
   // B1d-2 Task 5: #27's Q34 (#26's badge is Q31, "Presale" — one bare word, already the record words').
   'Recorded on chain; presale service not yet updated',
+  // B1d-2 Task 7: B1d-1b's copy that carried no marker — #23's live eyebrow, "Next stage", the region link, 23b's
+  // "Estimated NOC", its Stage row and its explorer link, Q41b, and the region answer's reason (Q21's first sentence).
+  // Not markers: one word ("Minimum ", "Maximum ", "Currency: ", …), Q40b's tail " per transaction" (@solana/errors'
+  // "…the maximum allowed per transaction" is in the off build when it is built under NODE_ENV=test, as
+  // presaleBuilds.test.mjs builds it), and B1b's copy in both builds ("Available ", "Insufficient ", "Network fee",
+  // "Quote valid ", Q46a, Q38's "Copy failed").
+  ' of 10 · live',
+  'Next stage ',
+  'Not available in your region?',
+  'Estimated NOC',
+  ' of 10 · @ ',
+  'View on Solana explorer',
+  'Need a little SOL for the network fee',
+  "This wallet doesn't offer the presale in your region.",
 ];
 // Q42a (B1d-1a: the generic pending row, both builds); 1b adds F12's Q49–Q51. Q42b ("Transaction") is too short to
 // be a string search. The decoder's instruction names are read from its source (DECODER).

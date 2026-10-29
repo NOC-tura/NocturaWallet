@@ -23,6 +23,7 @@ import {
 import {PRESALE_ENTRIES} from '../presaleSwitch.mjs';
 import {PRESALE_INSTRUCTIONS} from '../../src/background/dapp/decode/presaleIdl';
 import {CONFIRM_PURCHASE_TEXT, RECORD_TEXT, REFERRAL_TEXT, REFERRER_LINE_TEXT, REFER_TEXT} from '../../src/app/presale/text';
+import ts from 'typescript';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const FIXTURE = JSON.parse(readFileSync(join(ROOT, 'scripts/__tests__/fixtures/app.modules.0b79442.json'), 'utf8'));
@@ -185,7 +186,7 @@ describe('app.features.json', () => {
 describe('strings', () => {
   const file = (path, text) => ({path, bytes: Buffer.from(text, 'utf8')});
 
-  it('armed by B1d-1b: Task 1 adds its three presale message types (§6.2: "every presale.* message type"), Task 2 its prepare and the intent kind, Task 3 its four sign and resume types, Task 4 #23’s copy, Task 5 #20’s, #10’s and the record words, Task 6 #11’s and #50b’s (Q44’s label "Programs" is one bare word: its value is the marker); B1d-2 Task 1 the record’s message type and alarm, Task 2 the referral address’s type and #10’s referrer row, Task 3 #23a’s referral address (Q45, Q46 b–c, Q48), Task 4 #24’s type, #31’s row and #24’s copy, Task 5 #27’s Q34', () => {
+  it('armed by B1d-1b: Task 1 adds its three presale message types (§6.2: "every presale.* message type"), Task 2 its prepare and the intent kind, Task 3 its four sign and resume types, Task 4 #23’s copy, Task 5 #20’s, #10’s and the record words, Task 6 #11’s and #50b’s (Q44’s label "Programs" is one bare word: its value is the marker); B1d-2 Task 1 the record’s message type and alarm, Task 2 the referral address’s type and #10’s referrer row, Task 3 #23a’s referral address (Q45, Q46 b–c, Q48), Task 4 #24’s type, #31’s row and #24’s copy, Task 5 #27’s Q34, Task 7 B1d-1b’s copy that had none', () => {
     expect(MARKERS.slice(0, 9)).toEqual(['presale.view', 'presale.banner', 'presale.quote', 'presale.prepareBuy', 'presale.pending', 'presale.preparedFor', 'presale.buy', 'presale.discardPrepared', 'presale-buy']);
     // §6.2's named strings #23 shows, then Q01, Q02, Q04–Q06, Q11–Q16, Q19, Q40c, Q41c, Q41d, Q43, Q52 (each literal part ≥ 8 characters).
     expect(MARKERS.slice(9)).toEqual([
@@ -283,6 +284,14 @@ describe('strings', () => {
       'Earn NOC when friends you invite buy in the presale.',
       'Referral payouts are subject to program terms. Self-referrals are detected and rejected.',
       'Recorded on chain; presale service not yet updated',
+      ' of 10 · live',
+      'Next stage ',
+      'Not available in your region?',
+      'Estimated NOC',
+      ' of 10 · @ ',
+      'View on Solana explorer',
+      'Need a little SOL for the network fee',
+      "This wallet doesn't offer the presale in your region.",
     ]);
   });
 
@@ -313,6 +322,26 @@ describe('strings', () => {
     expect(copy).toHaveLength(29);
     const unarmed = copy.filter(s => s.length >= 8 && !/^[A-Za-z]+$/.test(s) && !MARKERS.some(m => s.includes(m)));
     expect(unarmed).toEqual(['Not a valid Solana address', 'Copy failed']);
+  });
+
+  // B1d-2 Task 7: the whole of text.ts, read as source — every literal part of its copy (each string, and each part of a
+  // template between its placeholders) of at least 8 characters that is not one word (a space before or after it, or a
+  // colon and a space after, at most) contains a marker, or is text the build without presale carries too (a marker
+  // there would fail the off build): Q40b's tail (a library's error text there under NODE_ENV=test), Q46a (the start of
+  // B1b's #12 line), #20's "Network fee" and "Quote valid ", Q38's "Copy failed".
+  it('every literal part of the presale copy is armed by a marker, or is one word, or is copy both builds carry', () => {
+    const source = ts.createSourceFile('text.ts', readFileSync(join(ROOT, 'src/app/presale/text.ts'), 'utf8'), ts.ScriptTarget.Latest, true);
+    const parts = [];
+    const visit = n => {
+      if (ts.isImportDeclaration(n)) return;
+      if ((ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n)) && !(ts.isPropertyAssignment(n.parent) && n.parent.name === n)) parts.push(n.text);
+      if (ts.isTemplateExpression(n)) parts.push(n.head.text, ...n.templateSpans.map(s => s.literal.text));
+      ts.forEachChild(n, visit);
+    };
+    visit(source);
+    expect(parts.length).toBeGreaterThan(150);
+    const unarmed = parts.filter(s => s.length >= 8 && !/^ ?[A-Za-z]+:? ?$/.test(s) && !MARKERS.some(m => s.includes(m)));
+    expect(unarmed).toEqual([' per transaction', 'Not a valid Solana address', 'Network fee', 'Quote valid ', 'Copy failed']);
   });
 
   it('a marker in any off-build file is a violation; each marker must be found in the on build', () => {

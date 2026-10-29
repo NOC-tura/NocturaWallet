@@ -372,6 +372,10 @@
 .vlt-col .s-pin .intent-row .value .addr-groups {
   justify-content: flex-end;
 }
+/* A label beside an address in groups ("Referred by") on one line: the groups wrapped it (B1d-2 visual pass). */
+.vlt-col .s-pin .intent-row .label.vlt-keep {
+  flex: none;
+}
 
 /* #39: the done cards at the mockup's 0.55 opacity; the warning card's title in --warning (inline in the
    mockup), scoped by the design's own `.s8-step-card.warn` — (0,2,1) above its `.s8-step-card h3` colour. */

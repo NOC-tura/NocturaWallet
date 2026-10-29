@@ -116,6 +116,8 @@ describe('#24 referral (§4.4)', () => {
     ]);
     expect(value('EARNED')?.className).toBe('val noc-balance-md noc-numeral acc');
     expect(value('REFERRALS')?.className).toBe('val noc-balance-md noc-numeral');
+    // B1d-2 Task 7 (visual pass): a figure of eight characters or more is set a size smaller — "$1,234.56" in its third.
+    expect(value('REFERRED')?.className).toBe('val noc-balance-md noc-numeral app-ref-long');
     expect(document.querySelector('.s-ref .code-card .lbl-row .noc-overline')?.textContent).toBe('YOUR INVITE LINK');
     expect(uses()?.textContent).toBe('Used by 3 people');
     expect(uses()?.querySelector('.noc-numeral')?.textContent).toBe('3');
@@ -194,6 +196,7 @@ describe('#24 referral (§4.4)', () => {
     await show({chain: earned(123_456_789_000_000_000n), stats: async () => ({success: true, data: {totalReferrals: 12_345, totalReferredUsd: 1_234_567.89}})});
     expect(stats().map(s => s[1])).toEqual(['12,345', '123,456,789.0', '$1,234,567.89']);
     expect(['REFERRALS', 'EARNED', 'REFERRED'].map(l => value(l)?.innerHTML)).toEqual(['12,<wbr>345', '123,<wbr>456,<wbr>789.0', '$1,<wbr>234,<wbr>567.89']);
+    expect(['REFERRALS', 'EARNED', 'REFERRED'].map(l => value(l)?.classList.contains('app-ref-long'))).toEqual([false, true, true]);
   });
 
   it('a reply that failed: every figure "—", no link and no copy, Q11 said', async () => {
