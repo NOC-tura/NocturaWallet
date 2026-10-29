@@ -2,6 +2,16 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+**Revision 2 (2026-10-26):** Fable review 1 (`.superpowers/sdd/b1d2-plan-review-1.md`: approve after fixes — 0 Critical, 2 Important, 8 Minor, 2 owner questions) applied, with owner decision D31 (the review's Q1) and the controller's rulings for rev 2 (the ledger's last lines: I2 measured and acted on, M1 done, M2–M8 as notes and spec text). **Dry-run again in full** on `dry/b1d2-r2`, rebuilt from a1bda47 one commit per task — **4bf2499, 13b5f6c, a9e541d, 53b2bf7, aee57f6, cb88445, d28cc85** (Tasks 1–3 and 7 changed; Tasks 4–6 are rev 1's diffs cherry-picked unchanged — every hunk identical, one `index` line of Task 4's `deps.test.ts` moved). At every commit `tsc` 0 (its own exit code), both vitest runs green, both builds and every gate (`extension/node_modules` copied — see M6); each changed task red on its new predecessor with its Step 1 files; extension `npm run verify` exit 0 at Task 7; **the whole Playwright suite at Task 7, 105 passed normally and 105 under `unshare -rn`**. **189 named-mutation runs, every one compiling and red** (Task 1 57, Task 2 32, Task 3 34 — all three tasks' lists re-run on the new chain; Task 4's L1 re-run, its `deps.test.ts` grew one row; Tasks 4–7's other 65 stand as rev 1 ran them, their code and tests unchanged) — about **181 distinct** (review M2: Task 6 R12 ≈ Task 5 Q5 ≈ Task 1 M22 ≈ Task 7 V10, Task 6 R3 ≈ M2/M3, R9 ≈ M1, R10 = Task 4 R3, R8 = Task 4 P4 — each legitimate at its own layer, unit, E2E or visual, none vacuous). The disposition, finding by finding:
+- **I1** → Task 3's two `referral.test.tsx` rows ("Q48 from the check …" and "refused at prepare, never dropped …") wait on Q48's banner itself and then assert the field gone — not `findByText(Q48)`, which the line under the field also says first. A sweep of every wait this plan's tests add (17 in `referral.test.tsx`, `historyPresale` 1, `settingsPresale` 3, the E2E `expect.poll`s) found no other instance: each other wait is on the later of its two writes, or both come from one commit. Probe: with the notice set 30 ms later, rev 1's rows fail 2 of 21, rev 2's pass 21 of 21.
+- **I2** → measured (Task 1, `deps.test.ts`: a record POST that never answers holds the RPC read and the `/stats` read queued behind it for its whole 20 s), so the worker POSTs nothing while a transaction of the stored wallet is open, and only the stored wallet's entries — another account's held, not dropped, ruled against `WALLET_DATA_KEYS` (a restore keeps them, a delete wipes them); positive and negative rows, W1–W6 red; **Review Focus 2 replaced** by these modes, now tested.
+- **D31** → Global Constraints; spec §2.4 and §7 P3 (rev 3.5) — the premise for ICO Claude: the coordinator never 403s `POST /solana/purchase` selectively.
+- **M1** → Task 2's `shownOf` ties the referrer shown to `basis.referrer` both ways (a non-registering view names exactly the basis's on-chain referrer, or none when it read none; a registration only where it read none) — a row, R28 and R29 (the review's one-sided form, also red); B1d-1b's `buy.test.ts` forgery row now forges `shown.view` and `shown.basis` consistently so the bytes are still what refuses it.
+- **M2** → the count above: 189 runs, about 181 distinct. **M3** → spec §2.4 names `v1_forbidden_until` once; Task 1's ruling line too. **M4** → spec §6.2 item 4: presale copy lives in `text.ts` by rule. **M5** → spec §2.4's privacy note (timing, not data) — for the public-claims memory, the controller's. **M6** → the copy rule kept, now with its reason (Global Constraints). **M7** → spec §2.4 states the invariant; Task 1's ruling points to it. **M8** → spec §2.4 and rev 3.4's change list no longer say a Q34 entry goes "last"; the ledger's own line is the controller's.
+- Review notes → Task 4's coordinator notes gain `getReferralStats`' case-folded compare (display only).
+
+Consistency replay of this file onto `git archive a1bda47`: identical at every task (Self-review). Next: the owner.
+
 **Revision 1 (2026-10-26):** first issue, dry-run in full — every task implemented for real on a scratch clone of `main` a1bda47 (B1d-1b and the D27 copy calls merged), one commit per task (a532235, 14cb89b, 6c3ea11, 3efa30d, ceb648b, 2c6c023, ac27c49), each red on its predecessor and green on its own tree with `tsc` (its own exit code), both vitest runs, both builds and every gate; Task 1 also root `tsc` + `jest` and web `verify` (it changes `core/`). **181 named mutations**, every one compiling and red (Task 1 51, Task 2 30, Task 3 34, Task 4 29, Task 5 15, Task 6 12, Task 7 10). Playwright, each in a normal launch and under `unshare -rn`: the whole suite 96 at Task 1 (its first issue) and its three presale specs (12) on the final Task 1; the presale / vault specs at Tasks 2 (25), 3 (24), 4 (21) and 5 (41); the whole suite **101 at Task 6 and 105 at Task 7**; extension `npm run verify` exit 0 at Task 7. The Review Focus row added to Task 1 (`reconcileWindow.test.ts`, a test file only, with N8–N9) rebuilt the chain on `dry/b1d2-rf` as 65846e2, 1256554, 49cc8f0, f8db19e, 3a04191, 5b42436, 5c3bf42 — each tree identical to its first commit but for that one file; `tsc` 0 and the whole on-build vitest run green at every one of them, with the totals each task states (the off run at Tasks 1 and 7, unchanged; at Task 3 one run under heavy parallel load failed one row of `referral.test.tsx` and the quiet re-run was green — Task 3's notes). Replaying task-1 … task-7's blocks from this file onto `git archive a1bda47` reproduces each rebuilt commit at every prefix. Next: a Fable 5.1 review (owner rule), then the owner.
 
 **Goal:** Build B1d spec plan 2 (the header table's third row): referral and recording. The coordinator record of every confirmed purchase (`record.ts`, `v1_presale_records`: D28's whole payload, C24's slots from `confirmedAt`, one POST in flight, `done` on `200 {success: true}` (D30), `refused` on the route's own 400 (D29), a 403 waiting out the shared latch, the `presale-record` alarm, a reconcile at every wake, `presale.unrecorded`); the optional referral address (D8, §3.5) — `presale.checkReferrer`, `intent.referrer` in prepare, the `register_referrer` instruction and account 3 built, simulated (`referrer@84` after) and re-verified from the signed bytes, a registration always behind a proof; #23a's field and #20 / #10's "Referred by" with Q47; #24 and #31's "Refer a friend" (`presale.referral`: the link, EARNED from chain, REFERRALS and REFERRED from `/referral-stats`); #26's "Presale" badge and #27's Q34; the gates completed by construction; E2E 10–12; the visual pass; spec rev 3.4. With B1d-2 on `main`, a build with presale on may leave the repository (C26) — the store decision stays B1e's (D2).
@@ -10,7 +20,7 @@
 
 **Tech Stack:** TypeScript 5 strict, React 18, Vite 8.3.5, Vitest 5 + happy-dom 21, Playwright 1.63 (contained), `@solana/web3.js` 1.99. No new dependency.
 
-**Spec:** `docs/superpowers/specs/2026-10-19-extension-b1d-presale-design.md` **rev 3.4** (rev 3.3 + every departure of this plan in one change list, and owner decisions D28–D30 written into §2.4 — written by Task 7 Step 3b and committed with this plan). Parent: B1 §4. Owner decisions: `.superpowers/sdd/b1d-owner-decisions.md` (D1–D30). Foundations: `docs/superpowers/plans/2026-10-24-extension-b1d-plan1b.md` (merged, PR #114) and the D27 copy calls (PR #115). ICO facts: coordinator main 9e7d468 (`POST /api/v1/solana/purchase`, `GET /api/v1/referral-stats/:address`; P2a deployed, owner 2026-10-23). Design (binding, contains the TGE date — never copy it): `/home/user/Downloads/index.html` (#24 ix 10903-11233, #23 ix 10603-10902, #20, #26, #27, #31).
+**Spec:** `docs/superpowers/specs/2026-10-19-extension-b1d-presale-design.md` **rev 3.5** (rev 3.3 + every departure of this plan in one change list, and owner decisions D28–D30 written into §2.4 — rev 3.4, written by Task 7 Step 3b and committed with this plan; rev 3.5 adds D31 and the fixes of this plan's Fable review 1, in the same step). Parent: B1 §4. Owner decisions: `.superpowers/sdd/b1d-owner-decisions.md` (D1–D31). Foundations: `docs/superpowers/plans/2026-10-24-extension-b1d-plan1b.md` (merged, PR #114) and the D27 copy calls (PR #115). ICO facts: coordinator main 9e7d468 (`POST /api/v1/solana/purchase`, `GET /api/v1/referral-stats/:address`; P2a deployed, owner 2026-10-23). Design (binding, contains the TGE date — never copy it): `/home/user/Downloads/index.html` (#24 ix 10903-11233, #23 ix 10603-10902, #20, #26, #27, #31).
 
 ## Global Constraints
 
@@ -28,7 +38,7 @@ Every task's requirements include these. B1d-1b's, verbatim (its task numbers ar
 
 And, from B1c-1's plan (verbatim where it applies) and the lessons of executing it:
 
-- **Mutations:** `git archive HEAD | tar -x -C "$(mktemp -d <scratch>/mut.XXXXXX)"`, `node_modules` linked FROM the copy (`ln -s <repo>/extension/node_modules <copy>/extension/node_modules`, the same for `web/` and the root), every run under `timeout 300`. Linked is right for unit mutations and for the E2E ones (they need only the build); anything that runs `npm run gates` or reads the build's module maps needs `extension/node_modules` COPIED (`cp -a`). **A mutation is judged by `tsc`'s own exit code first** (`npx tsc --noEmit; echo $?` — never piped through `tail`, which reports `tail`'s): a mutant that does not compile is INVALID, not red. Never `git worktree`, never the repository's own files or its `node_modules`, never `pkill` with a pattern — kill by task id or exact PID only.
+- **Mutations:** `git archive HEAD | tar -x -C "$(mktemp -d <scratch>/mut.XXXXXX)"`, `node_modules` linked FROM the copy (`ln -s <repo>/extension/node_modules <copy>/extension/node_modules`, the same for `web/` and the root), every run under `timeout 300`. Linked is right for unit mutations and for the E2E ones (they need only the build); anything that runs `npm run gates` or reads the build's module maps needs `extension/node_modules` COPIED (`cp -a`) (B1d-2 rev 2, review 1 M6 — kept, now with its reason: with the link, `npm run gates`' `check-page-bundles.mjs` fails, because the content script's modules resolve outside the copy — `provider.js carries "../../../b1d2-dry/extension/node_modules/@wallet-standard/wallet/lib/esm/register.js" — a content script may carry only src/provider/ and @wallet-standard/wallet, @wallet-standard/base`, seen at Tasks 4–6 of the rev 2 dry run; `check-no-presale.mjs` alone, which the review ran, passes either way). **A mutation is judged by `tsc`'s own exit code first** (`npx tsc --noEmit; echo $?` — never piped through `tail`, which reports `tail`'s): a mutant that does not compile is INVALID, not red. Never `git worktree`, never the repository's own files or its `node_modules`, never `pkill` with a pattern — kill by task id or exact PID only.
 - **Rule 6:** every confirming, rejecting, revoking, blocking and opening control is a `LockedButton` (popup and approval window) — #48's Approve and its demoted form, Reject, Reject and report, the mismatch notice's [OK, return to dApp], the popup's re-authentication strip. Tests lift `disabled` before a second click where happy-dom drops it.
 - **C15 on top of rule 6 in the approval window:** no CTA focused at open; Approve (and "Approve anyway (not recommended)", "I understand the risk") held 500 ms after the window gains focus and after each state change — the request, **a new simulation (its id)**, the re-authentication's state, busy, the confirm — via `useArmed`, which compares its key in the same render (never a boolean an effect resets: a confirming CTA is never enabled for even one render before the hold); Reject never held; Enter never confirms.
 - **Effects happen once (C17), and only from `deciding`.** `deciding` is written in the section that passed every check; each effect section re-checks `state === 'deciding' && decidedBy === instance`, the session unlocked, the account still in it and the grant still held (`signTx.ts` `stillDeciding`). For `signAndSendTransaction` the signed bytes and the signature are recorded in the entry BEFORE the broadcast; a restart, a dead effect or a lock answers a recorded send `{signature}` (queue.ts `restartAnswer`) and never signs or broadcasts again; an unrecorded one is answered `rejected`. **Exactly-once first broadcast (review 1 M1):** a dApp record is written `held`; whatever answers a page `{signature}` from the entry's recorded bytes marks the record `due` inside the same section, before the answer is stored (`queueAccess`, the lock hook); the effect (`broadcastFirst`) and the poller's first round each claim the record `→ done` in one `updatePending` before handing the bytes to the route — whoever claims, sends; nobody else. A `held` record whose request ended otherwise is never sent.
@@ -76,11 +86,13 @@ And, for B1d-1b:
 - **Playwright runs at every task that registers a message or changes a screen** — Tasks 1 and 4–9 (lesson of rev 1's Task 8: a spec went red unnoticed across seven tasks; rev 2 moves that spec's change to Task 1, where it happens). **Budget (review 1 L5):** one whole-suite pass is ≈ 25 min per mode on the dry-run machine (rev 1: 896 s + 609 s normally, the same under `unshare -rn`), so each such task adds ≈ 50 min for both modes; the dry run ran the whole suite at Tasks 7, 8 and 9 and `presaleSwitch.spec.ts` at Task 1. The `timeout 300` of the mutation steps is for unit mutants; E2E mutants use `timeout 900`.
 - **The sign-time check rests on the signed bytes (rev 2, review 1 M1):** `shown` is not integrity-bound, so it is read as a claim; `beforeSign` checks the entry's integrity and its message against the fresh snapshot before the take (Task 3).
 
-And, for B1d-2 (owner decisions of 2026-10-25 and the containment rule — each holds in **both builds at every task**; Task 1 builds the record to them, and no later task may weaken one):
+And, for B1d-2 (owner decisions of 2026-10-25 and 2026-10-26, the containment rule and review 1's I2 ruling — each holds in **both builds at every task**; Task 1 builds the record to them, and no later task may weaken one):
 
 - **D28 — the record POST sends the whole §2.4 payload:** `txHash`, `buyerAddress`, `stage` (1-indexed, an integer — the route reads `Number.isInteger(body.stage)`), and our `paymentToken`, `paymentAmount` (a decimal string), `nocAmount`, `usdValue` (numbers, converted at this edge only), `referrerAddress` (or absent). The coordinator stores only what it derives from the chain; it logs a > 1 % disagreement with ours.
 - **D29 — a 400 is final:** no retry; the entry's state becomes **`refused`** (a fourth state beside `due`, `done`, `given-up`); #27 still shows Q34 for it; the purchase stands. (As built, Task 1: only the route's own refusal body `{success: false, error: <string>}` is final — any other 400 is retried.)
 - **D30 — `200 {success: true}` is `done`** whatever `verified` / `duplicate` say (a `verified: false` row is completed by the coordinator's own sweep).
+- **D31 — an unattended record-route 403 trips the wallet-wide 10-min cool-down**, like every 403 (a 403 is always a whole-IP CrowdSec ban). The premise is ICO's to keep, stated in spec §2.4 and §7 P3 (rev 3.5): the coordinator never answers 403 on `POST /api/v1/solana/purchase` selectively (a refusal is a 400 `{success: false, error}` or a 429). As built, Task 1: `createJsonPoster` goes through the one shared latch (M34, M35; `deps.test.ts` "postJson goes through the same latch: a 403 on the record route silences the RPC …").
+- **Review 1 I2 (controller's ruling) — the record never holds a transaction's reads, and goes only for the stored wallet:** the latch serialises every coordinator request and a record POST holds it until its answer or `REQUEST_TIMEOUT_MS` (measured, Task 1), so the worker POSTs nothing while a transaction of the stored wallet is open (`pending` / `stuck`: its sends, its purchases, a site's), and only an entry of an account of the wallet stored now — another account's is held, never dropped (Task 1, W1–W6).
 - **Tests never contact `*.noc-tura.io` or `solscan.io`** — the record route and `/referral-stats` are the fake coordinator's in E2E (counters asserted empty, `contained(h)`), `fakeDeps`' `postJson` / `getJson` throw `unexpected …` unless a test gives one, and nothing committed reaches a real host. (The dry run's unsigned mainnet simulation in Task 2's notes was a scratch file through the public Solana RPC, never committed, and made no `*.noc-tura.io` request.)
 
 ## Review Focus
@@ -88,7 +100,7 @@ And, for B1d-2 (owner decisions of 2026-10-25 and the containment rule — each 
 The five input classes or failure modes most likely to bite that no task's tests exercised in the dry run, one line each — with the row added to its owning task, or written as a known limitation with the reason:
 
 1. **A purchase whose hook never ran and that 20 newer records push out of `v1_pending` before the worker wakes** is never recorded — and #27 shows no Q34 for it, so the gap is silent (the controller's accepted gap: the hook is primary, the reconcile a backstop). **Tested:** Task 1, `reconcileWindow.test.ts` — 19 newer closed records → reconciled, POSTed once, `done` (positive control); 20 → nothing reconciled, nothing POSTed, no entry; N8 (`MAX_RECORDS = 21`) and N9 (reconcile a no-op) each red.
-2. **A DST change inside the last 12 days** can turn B1b's `src/app/__tests__/Send.test.tsx` row "sent before (E6) … last 12 days ago" red on a machine whose zone keeps DST (it assumes 12 × 24 h = 12 calendar days; this machine is Europe/Ljubljana, which changed on 2026-10-25 — the row passed when run at 04:51 CET on 2026-10-26, so it depends on the hour). **Known limitation, no test added:** B1b's code and test, not B1d-2's, and CI runs in UTC; if it is red during execution, run that file again under `TZ=UTC`, record both results, and never count it as this plan's failure — the fix is a separate change for the owner.
+2. **The record POST inside the one shared latch, and a replaced wallet's kept entries (rev 2, review 1 I2 — replaces rev 1's line on B1b's DST-dependent `Send.test.tsx` row, which is not a B1d-2 input and stays in Task 4's notes).** `createForbiddenLatch` runs one request at a time and a POST holds it until its answer or `REQUEST_TIMEOUT_MS` (20 s). **Measured** (Task 1, `deps.test.ts` "a record POST that never answers holds the reads queued behind it …"): the RPC read and the `/stats` read queued behind a silent record POST answer only after its 20 s. So the worker POSTs nothing while a transaction of the stored wallet is open, and only the stored wallet's entries — another account's, kept by a restore, is held. **Tested:** Task 1, `record.test.ts` "when, and for whom, the worker POSTs (review 1 I2)" — a send pending or stuck, another purchase pending and a site's transaction pending each defer the record, which stays due with the alarm at 30 s (positive control); once the transaction is confirmed, failed or expired the next run POSTs it once (negative control), and a settled transaction or another account's open one never defers it; a held entry is never POSTed and arms nothing, goes out once its wallet is stored again, and beside it the wallet's own entry is POSTed with the alarm at its own slot. W1–W6 each red. **Left, stated:** the check is made before each POST, so a transaction that opens while one POST is already in flight waits for that one POST (at most 20 s); and a held entry is sent only at the next wake after its wallet is stored again (a start or the alarm), not at the restore itself.
 3. **429 and 403 on the record route in a real browser** — no E2E scripts them (Task 6's fake route can). **Known limitation, no test added:** both are unit rows down to `createJsonPoster` (Task 1: record.test.ts "429 (the per-address limit) is the next slot" and the four 403 / cool-down rows; deps.test.ts's "POSTs the JSON body … answers each status with its body", 429 among them, and "postJson goes through the same latch: a 403 on the record route silences the RPC …"), and a 403 in E2E trips the browser-wide cool-down of every coordinator route, which would end the scene (Task 6's ruling).
 4. **The program's 10 % referral bonus, which the fake program does not pay** — **known limitation, no test added:** the bonus lands in the referrer's allocation (account 3), which is not among the accounts the wallet asks the simulation for (Task 2's `simulationAccounts`: payer, allocation, destination, paying token account, user account), so it can move no verdict; Task 2's unsigned mainnet simulation observed it with every check passing; #24's EARNED is read from chain and E2E 11 seeds it.
 5. **The two off-build scans disagreeing:** `npm run gates` reads the production builds, `scripts/__tests__/presaleBuilds.test.mjs` builds both under `NODE_ENV=test`, where @solana/errors keeps its message strings — a marker can pass one and fail the other (Task 7's `' per transaction'`). **Known limitation, no test added:** both run in `npm run verify`, so every marker must pass both; Task 7's V7 is the control that the test-mode scan catches what the production scan passes.
@@ -104,7 +116,7 @@ The five input classes or failure modes most likely to bite that no task's tests
 
 ## Tasks
 
-### Task 1: The record (background) — `presale/record.ts` (`v1_presale_records`, at most 50 entries, the purchase's §2.4 payload made from its `extra.data` at this edge only, C24's schedule anchored on `confirmedAt`, one POST in flight claimed before it is sent, D28–D30 with `refused` as the fourth state, a 403 waiting out the shared latch's cool-down, the `presale-record` alarm at the earliest due entry, a reconcile at every wake for a purchase whose entry a stopped worker never wrote, `presale.unrecorded`), the intent kind's `onConfirmed` called once by the poller, `createJsonPoster(fetch, latch)` and `WalletDeps.postJson` in `deps.ts` (both builds), the records' key and lock as shared code (`presaleRecordsKey.ts`: a delete wipes them in both builds), `PresaleHost.alarm` and its dispatch in `index.ts`; core's `PresalePurchaseRecord.paymentAmount` widened to `number | string`
+### Task 1: The record (background) — `presale/record.ts` (`v1_presale_records`, at most 50 entries, the purchase's §2.4 payload made from its `extra.data` at this edge only, C24's schedule anchored on `confirmedAt`, one POST in flight claimed before it is sent, D28–D30 with `refused` as the fourth state, a 403 waiting out the shared latch's cool-down, the `presale-record` alarm at the earliest due entry, a reconcile at every wake for a purchase whose entry a stopped worker never wrote, no POST while a transaction of the stored wallet is open and none for another account's entry — held, never dropped (rev 2, review 1 I2), `presale.unrecorded`), the intent kind's `onConfirmed` called once by the poller, `createJsonPoster(fetch, latch)` and `WalletDeps.postJson` in `deps.ts` (both builds), the records' key and lock as shared code (`presaleRecordsKey.ts`: a delete wipes them in both builds), `PresaleHost.alarm` and its dispatch in `index.ts`; core's `PresalePurchaseRecord.paymentAmount` widened to `number | string`
 
 **Spec:** B1d §1.2 (`record.ts` row), §1.3 (`onConfirmed`: "the poller calls the kind's hook once when a record first reaches `confirmed`"), §1.4 (`presale.unrecorded`), §1.2's last paragraph (`deps.ts` gains `createJsonPoster(fetch, latch)` — generic, beside `createJsonGetter`), §2.3 (`extra.data`; the recording sends stage + 1), §2.4 (all, as amended by D28–D30), §4.6 (#27's Q34 is Task 5's; this task answers the message it reads), §5 rows "the coordinator is unreachable" (a recorded purchase keeps retrying) and "the record POST keeps failing" (given up after 72 h), §6.1 "Recording (2)", §6.2 ("`v1_presale_records` in `BACKGROUND_OWNED_KEYS`"; the staged lists), §7 P2a; C24; owner D28, D29, D30 (brief); ICO facts (brief: coordinator main 9e7d468, `server.js:433-520`, read-only). Carried from B1d-1b: `ON_BUILD` / `MARKERS` for every new on-build module and `presale.*` type (MARKERS was 74 on main, now 76); both builds at every task; Playwright at a task that registers a message.
 
@@ -155,6 +167,9 @@ The five input classes or failure modes most likely to bite that no task's tests
 **How the record moves (C24, D28–D30, §2.4).** `onConfirmed` writes an entry `{state: 'due', nextAt: confirmedAt, attempts: 0}` once per signature and starts a run without awaiting it (the poller goes on). A run takes one due entry at a time: **it claims the entry first** — `attempts + 1` and `nextAt` = the first slot after now (or `given-up` when none is left) are written before the POST — so a worker stopped mid-request never POSTs it twice within a slot, and a second background over the same storage finds it not due. The answer then: `200` with `success: true` → `done` whatever `verified`, `duplicate` and `data` say (D30); `400` whose body is the route's own refusal (`success: false` and a string `error` — the four of `server.js`) → `refused`, final (D29); a 403 (`RpcForbidden`) or the cool-down (`RpcCoolingDown`, nothing sent) → `nextAt` = max(the claimed slot, the latch's stored end) — never sooner than the cool-down's end, and at the last slot it stays `given-up`; anything else (a 400 without that body, 429, 5xx, a 200 without `success: true`, a timeout, no answer) → the claimed slot. The slots are anchored on `confirmedAt`, so a worker asleep across several of them POSTs once when it wakes and then waits for the first slot after now; one asleep past 72 h makes one last attempt. After the run, the `presale-record` alarm is set at the earliest due `nextAt` (at least 0.5 min, the browsers' minimum) or cleared when nothing is due — and an empty store touches no alarm. A run asked for while one is going returns it and makes it look again, also while it is arming the alarm. The store keeps at most 50 entries, dropping first the oldest `done` (dropping it changes nothing anyone sees), then the oldest `given-up`, `refused`, `due`.
 
 **When the worker wakes (controller ruling on this task's dry run).** "Once" is per transition, so a worker stopped between the poller's `confirmed` write and the hook's entry would lose the record. At every start and on the `presale-record` alarm the background first reconciles, inside the records' section: every `confirmed` record in `v1_pending` of an account of the wallet stored now whose display data reads back as a purchase (`purchasePayload`) and that has no entry gets the hook's entry — `due`, `nextAt` now, `attempts` 0 — with `confirmedAt` = the record's `createdAt` (a pending record carries no confirmation time; its signed bytes can land only within their blockhash's life after `createdAt`, so this is early by at most that life, and the 72 h window is never stretched). A record confirmed more than 72 h before now (`now > createdAt + 72 h`) is written `given-up` and never POSTed. An entry already there, in any state, is left alone. A confirmed record stays in `v1_pending` until newer records push it out — `MAX_RECORDS` = 20 in all, every open record kept and the newest closed ones filling the rest, of any account and kind (sends and dApp records included); there is no time limit — or until a delete removes the closed records; past that, nothing is left to reconcile.
+
+**When, and for whom, it POSTs (rev 2, review 1 I2 — the controller's ruling).** Before each POST the run reads the stored wallet and `v1_pending`: if a transaction of an account of the stored wallet is open (`isOpen` — `pending` or `stuck`: a send, a purchase or a site's), it POSTs nothing and arms the alarm as it would (the entry is due, so 30 s); it claims only an entry of an account of the stored wallet, and the alarm counts only those. Why: `createForbiddenLatch` runs one request at a time and `createJsonPoster`'s request holds it until its answer's headers or `REQUEST_TIMEOUT_MS` — measured in `deps.test.ts`: a POST that never answers holds the RPC read and the `/stats` read queued behind it for the whole 20 s, i.e. #21's poller, #11's balances and #23's reads behind a record nobody is waiting for. **Ruling: another account's entry is held, not dropped** — `v1_presale_records` is one of `WALLET_DATA_KEYS`: a delete wipes it behind its lock, a restore keeps it (like the address book and the grants). A worker that dropped a replaced wallet's entries would turn a restore into a second, unlocked partial delete, and would lose a real purchase's record if the first wallet were stored again. Held, an entry is inert — never POSTed, no alarm, no Q34 (`presale.unrecorded` answers only for an account of the session) — counts toward the 50, goes by the same drop order, and is sent at the first run after its wallet is back — cost if wrong: up to 50 inert entries in `storage.local`.
+
 
 - [ ] **Step 1: Write the failing tests.**
 
@@ -220,9 +235,11 @@ interface Post {
   path: string;
   body: unknown;
 }
-/** A world: an ext, a clock at T0, and a POST that records each call and answers from `answers` (the last repeated). */
-function world(answers: (PostAnswer | Error)[] = [OK]) {
+/** A world: an ext with `wallet` stored (ACCOUNT's unless given), a clock at T0, and a POST that records each call and answers from `answers` (the last repeated). */
+function world(answers: (PostAnswer | Error)[] = [OK], wallet: unknown = ENVELOPE) {
   const ext = fakeExt();
+  // The wallet stored now: the worker POSTs only its accounts' entries (review 1 I2). memKV's set writes before it returns.
+  if (wallet !== null) void ext.local.set(VAULT_KEY, wallet);
   const posts: Post[] = [];
   const deps = fakeDeps({
     postJson: async (path, body) => {
@@ -613,8 +630,7 @@ describe('the alarm (presale-record): at the earliest due entry, through the hos
 describe('reconciled when the worker wakes: a confirmed purchase the hook never recorded', () => {
   const CREATED = T0 - 5 * MINUTE;
   async function woken(records: PendingRecord[], stored: PresaleRecordEntry[] | null = null, now = T0, envelope: unknown = ENVELOPE) {
-    const w = world();
-    if (envelope !== null) await w.ext.local.set(VAULT_KEY, envelope);
+    const w = world([OK], envelope);
     await w.ext.local.set(PENDING_KEY, records);
     if (stored !== null) await w.ext.local.set(PRESALE_RECORDS_KEY, stored);
     w.deps.clock.t = now;
@@ -757,7 +773,7 @@ describe('a delete wipes the records, a restore keeps them (§2.4: WALLET_DATA_K
   });
 
   it('a first write (a crashed delete left them) removes them too', async () => {
-    const w = world();
+    const w = world([OK], null);
     await w.ext.local.set(PRESALE_RECORDS_KEY, [entry()]);
     expect(await storeEnvelope(w.ext, null, STORED)).toBe('stored');
     expect(await w.ext.local.get(PRESALE_RECORDS_KEY)).toBeUndefined();
@@ -784,6 +800,79 @@ describe('a delete wipes the records, a restore keeps them (§2.4: WALLET_DATA_K
     expect(await forgetting).toBe('forgotten');
     await runPresaleRecords(w.ext, w.deps);
     expect([await w.ext.local.get(PRESALE_RECORDS_KEY), w.posts]).toEqual([undefined, []]);
+  });
+});
+
+// Review 1 I2 (rev 2): the shared latch serialises every coordinator request — a record POST the route holds until its
+// timeout holds every read behind it (measured: deps.test.ts) — so nothing is POSTed while a transaction of the stored
+// wallet is open; and only the stored wallet's entries are POSTed: another account's is held (a restore keeps the
+// records, WALLET_DATA_KEYS), never dropped.
+describe('when, and for whom, the worker POSTs (review 1 I2)', () => {
+  const SIG3 = firstSignature(signedWire(13n));
+  const tx = (state: PendingRecord['state'], over: Partial<PendingRecord> = {}): PendingRecord => pendingRecord({id: `tx-${state}`, account: ACCOUNT, signature: SIG3, state, ...over});
+  const OPEN: [string, PendingRecord][] = [
+    ['a send pending', tx('pending')],
+    ['a send stuck', tx('stuck')],
+    ['another purchase pending', purchase({id: 'buy3', signature: SIG3, state: 'pending'})],
+    ['a site’s transaction pending', tx('pending', {origin: 'https://jup.ag', intent: null})],
+  ];
+  const OTHER_WALLET = {...ENVELOPE, accounts: [{index: 0, name: 'Other', publicKey: RECIPIENT}]};
+  const theirs = (over: Partial<PresaleRecordEntry> = {}) => entry({signature: SIG2, account: RECIPIENT, payload: {...PAYLOAD, txHash: SIG2, buyerAddress: RECIPIENT}, ...over});
+
+  it.each(OPEN)('%s, of the stored wallet: the confirmed purchase is not POSTed — due, no attempt, the alarm looking again in 30 s (positive control)', async (_name, open) => {
+    const w = world();
+    await w.ext.local.set(PENDING_KEY, [open]);
+    expect(await readPending(w.ext)).toHaveLength(1);
+    await confirm(w);
+    expect([w.posts, await entries(w), w.ext.alarmsSet.get(PRESALE_RECORD_ALARM)]).toEqual([[], [entry()], 0.5]);
+  });
+
+  it('once it settles the next run POSTs the record, once, and it is done; the alarm cleared (negative control)', async () => {
+    for (const settled of ['confirmed', 'failed', 'expired'] as const) {
+      const w = world();
+      await w.ext.local.set(PENDING_KEY, [tx('pending')]);
+      await confirm(w);
+      expect(w.posts).toEqual([]);
+      await w.ext.local.set(PENDING_KEY, [tx(settled)]);
+      await at(w, T0 + 30_000);
+      expect([settled, w.posts, await entries(w), w.ext.alarmsSet.has(PRESALE_RECORD_ALARM)]).toEqual([settled, [{at: T0 + 30_000, path: PRESALE_RECORD_PATH, body: PAYLOAD}], [entry({attempts: 1, nextAt: T0 + MINUTE, state: 'done'})], false]);
+    }
+  });
+
+  it('settled from the start, or open but of an account not in the stored wallet: POSTed at once', async () => {
+    for (const other of [tx('confirmed'), tx('failed', {failure: 'landed'}), tx('pending', {account: RECIPIENT})]) {
+      const w = world();
+      await w.ext.local.set(PENDING_KEY, [other]);
+      await confirm(w);
+      expect([other.state, w.posts.length, (await entries(w))[0]?.state]).toEqual([other.state, 1, 'done']);
+    }
+  });
+
+  it('an entry of an account not in the stored wallet (a replaced wallet’s, or none stored) is held: never POSTed, no alarm, kept as it was', async () => {
+    for (const wallet of [OTHER_WALLET, null]) {
+      const w = world([OK], wallet);
+      await w.ext.local.set(PRESALE_RECORDS_KEY, [entry()]);
+      for (const t of [T0, T0 + HOUR, T0 + 73 * HOUR]) await at(w, t);
+      expect([w.posts, await entries(w), w.ext.alarmsSet.has(PRESALE_RECORD_ALARM)]).toEqual([[], [entry()], false]);
+    }
+  });
+
+  it('a held entry goes out when its wallet is stored again (a restore of the first): one POST at the next run, done', async () => {
+    const w = world([OK], OTHER_WALLET);
+    await w.ext.local.set(PRESALE_RECORDS_KEY, [entry()]);
+    await at(w, T0 + MINUTE);
+    expect(w.posts).toEqual([]);
+    await w.ext.local.set(VAULT_KEY, ENVELOPE);
+    await at(w, T0 + 2 * MINUTE);
+    expect([w.posts, await entries(w)]).toEqual([[{at: T0 + 2 * MINUTE, path: PRESALE_RECORD_PATH, body: PAYLOAD}], [entry({attempts: 1, nextAt: T0 + 5 * MINUTE, state: 'done'})]]);
+  });
+
+  it('beside a held entry the stored wallet’s own is POSTed, and the alarm is armed at its next slot, not at the held one’s', async () => {
+    const w = world([SERVER_ERROR]);
+    await w.ext.local.set(PRESALE_RECORDS_KEY, [theirs(), entry()]);
+    await runPresaleRecords(w.ext, w.deps);
+    expect(w.posts.map(p => (p.body as PresaleRecordPayload).txHash)).toEqual([SIG]);
+    expect([await entries(w), w.ext.alarmsSet.get(PRESALE_RECORD_ALARM)]).toEqual([[theirs(), entry({attempts: 1, nextAt: T0 + MINUTE})], 1]);
   });
 });
 
@@ -902,7 +991,7 @@ index 27255ca..f13d99e 100644
 
 ```diff
 diff --git a/extension/src/background/__tests__/deps.test.ts b/extension/src/background/__tests__/deps.test.ts
-index 93d08bc..62f6913 100644
+index 93d08bc..b4e8eb8 100644
 --- a/extension/src/background/__tests__/deps.test.ts
 +++ b/extension/src/background/__tests__/deps.test.ts
 @@ -1,8 +1,8 @@
@@ -983,7 +1072,7 @@ index 93d08bc..62f6913 100644
    it('reads the NOC stage price from /stats (owner decision B)', async () => {
      const urls: string[] = [];
      vi.stubGlobal('fetch', async (url: string) => (urls.push(url), {status: 200, json: async () => ({success: true, data: {currentStage: 1, totalNocSold: 0, isPaused: false}})}));
-@@ -169,6 +222,21 @@ describe('browserDeps request timeouts (CrowdSec answers some users with silence
+@@ -169,6 +222,42 @@ describe('browserDeps request timeouts (CrowdSec answers some users with silence
      expect(await settled).toBeInstanceOf(RequestTimedOut);
    });
  
@@ -1000,6 +1089,27 @@ index 93d08bc..62f6913 100644
 +    expect(await settled).toBeInstanceOf(RequestTimedOut);
 +    expect(f.signals[0]?.aborted).toBe(true);
 +    expect(f.bodies).toEqual(['{"txHash":"x"}']);
++  });
++
++  // Review 1 I2 (rev 2), measured: why the record worker POSTs nothing while a transaction of the wallet is open (record.ts).
++  it('a record POST that never answers holds the reads queued behind it — the RPC (#21’s poller, #11’s balances) and the JSON reads (#23’s /stats) — for its whole REQUEST_TIMEOUT_MS', async () => {
++    vi.useFakeTimers();
++    const f = silentThenAnswering();
++    const deps = browserDeps(fakeExt());
++    const posted = deps.postJson('/solana/purchase', {txHash: 'x'}).then(
++      () => 'resolved',
++      (e: unknown) => e,
++    );
++    const answered: string[] = [];
++    const read = deps.reader.getBlockHeight().then(h => (answered.push('rpc'), h));
++    const json = deps.stagePrice().then(() => void answered.push('json'));
++    await vi.advanceTimersByTimeAsync(REQUEST_TIMEOUT_MS - 1);
++    expect([f.calls(), answered]).toEqual([1, []]);
++    await vi.advanceTimersByTimeAsync(1);
++    expect(await posted).toBeInstanceOf(RequestTimedOut);
++    expect(await read).toBe(77);
++    await json;
++    expect([f.calls(), answered]).toEqual([3, ['rpc', 'json']]);
 +  });
 +
    it('a silent broadcast gets BROADCAST_TIMEOUT_MS, and a timed-out first broadcast leaves the record pending, not failed', async () => {
@@ -1194,10 +1304,10 @@ index a612023..5be858c 100644
 
 ```diff
 diff --git a/extension/src/background/__tests__/start.test.ts b/extension/src/background/__tests__/start.test.ts
-index 1f4946a..bff858e 100644
+index 1f4946a..7c374ce 100644
 --- a/extension/src/background/__tests__/start.test.ts
 +++ b/extension/src/background/__tests__/start.test.ts
-@@ -129,6 +129,129 @@ describe('background start', () => {
+@@ -129,6 +129,132 @@ describe('background start', () => {
      }
    });
  
@@ -1206,7 +1316,10 @@ index 1f4946a..bff858e 100644
 +    const SIG = '5'.repeat(88);
 +    const payload = {txHash: SIG, buyerAddress: '9Y7FtteLhCJABAQtkYEFZs46rJgy1ixMA1JFMUepTki4', paymentToken: 'SOL', paymentAmount: '2', nocAmount: 1998.5, usdValue: 300, stage: 1};
 +    const due = () => ({signature: SIG, account: payload.buyerAddress, payload, confirmedAt: Date.now(), attempts: 0, nextAt: 0, state: 'due'});
-+    const local = new Map<string, unknown>([['v1_presale_records', [due()]]]);
++    const local = new Map<string, unknown>([
++      ['v1_vault', {v: 1, scheme: 'slip10', accounts: [{index: 0, name: 'Main', publicKey: payload.buyerAddress}]}],
++      ['v1_presale_records', [due()]],
++    ]);
 +    const created: string[] = [];
 +    let onAlarm: ((a: {name: string}) => void) | undefined;
 +    const posts: string[] = [];
@@ -1681,9 +1794,9 @@ index 196f132..02c8aa6 100644
 
 - [ ] **Step 2: Run them on the previous task's tree — red.**
 
-In a `git archive` copy of a1bda47 (main, B1d-1b merged) with only the Step 1 files added (node_modules linked): `npx tsc --noEmit; echo $?` → `2`, 52 errors: `record.test.ts` 24 (`Cannot find module '../record'`, `'../../presaleRecordsKey'`, `no exported member named 'createJsonPoster'`, `'PostAnswer'`, and their consequences), `reconcileWindow.test.ts` 5 (`Cannot find module '../record'`, `'postJson' does not exist in type 'Partial<WalletDeps>'`, and their consequences), `deps.test.ts` 8 (`createJsonPoster`, `Property 'postJson' does not exist on type 'WalletDeps'`), `intents.test.ts` 4 (`'alarm' does not exist in type 'PresaleHost'`, `'onConfirmed' does not exist in type 'IntentKind<TestIntent>'`), `fakeDeps.ts` 2 (`'postJson' does not exist`), `pendingKinds.test.ts` 1 (`Cannot find module '../presaleRecordsKey'`), and 1 each in the eight popup / presale test files that pass `alarm` (`'alarm' does not exist in type 'PresaleHost'`).
+In a `git archive` copy of a1bda47 (main, B1d-1b merged) with only the Step 1 files added (node_modules linked): `npx tsc --noEmit; echo $?` → `2`, 53 errors: `record.test.ts` 24 (`Cannot find module '../record'`, `'../../presaleRecordsKey'`, `no exported member named 'createJsonPoster'`, `'PostAnswer'`, and their consequences), `reconcileWindow.test.ts` 5 (`Cannot find module '../record'`, `'postJson' does not exist in type 'Partial<WalletDeps>'`, and their consequences), `deps.test.ts` 9 (`createJsonPoster`, `Property 'postJson' does not exist on type 'WalletDeps'`), `intents.test.ts` 4 (`'alarm' does not exist in type 'PresaleHost'`, `'onConfirmed' does not exist in type 'IntentKind<TestIntent>'`), `fakeDeps.ts` 2 (`'postJson' does not exist`), `pendingKinds.test.ts` 1 (`Cannot find module '../presaleRecordsKey'`), and 1 each in the eight popup / presale test files that pass `alarm` (`'alarm' does not exist in type 'PresaleHost'`).
 
-`npx vitest run src/background/presale/__tests__/record.test.ts src/background/presale/__tests__/reconcileWindow.test.ts src/background/__tests__/deps.test.ts src/background/__tests__/intents.test.ts src/background/__tests__/pendingKinds.test.ts src/background/__tests__/start.test.ts src/background/__tests__/messages.test.ts src/background/presale/__tests__/api.test.ts src/__tests__/presaleSwitch.test.ts scripts/__tests__/check-no-presale.test.mjs scripts/__tests__/check-vault-isolation.test.mjs` — `Test Files  11 failed (11)` · `Tests  24 failed | 611 passed (635)`: `record.test.ts`, `reconcileWindow.test.ts` and `pendingKinds.test.ts` fail to load (`Cannot find module '../record'`, `'../presaleRecordsKey'`); `deps.test.ts` the six poster rows; `intents.test.ts` the five `onConfirmed` rows that expect a call (the two that expect none are green — negative controls); `start.test.ts` the three new rows (no POST at start, nothing reconciled; `host.alarm is not a function`); `messages.test.ts` “every privileged type is refused …” and “every presale type is privileged …”; `api.test.ts` the list row; `presaleSwitch.test.ts` “the entries export what B1d-1b has built so far …”; `check-no-presale.test.mjs` the `ON_BUILD`, `BOTH_BUILDS`, `MARKERS` (both), `MUST_STAY` rows; `check-vault-isolation.test.mjs` the new key row. The off run, `npx vitest run -c vitest.nopresale.config.ts src/background/__tests__/intents.test.ts src/background/__tests__/pendingKinds.test.ts src/background/__tests__/messages.test.ts src/__tests__/presaleSwitch.test.ts` — `Test Files  2 failed | 2 passed (4)` · `Tests  5 failed | 63 passed (68)` (`pendingKinds.test.ts` fails to load; the same five `onConfirmed` rows: the hook is shared code, both builds).
+`npx vitest run src/background/presale/__tests__/record.test.ts src/background/presale/__tests__/reconcileWindow.test.ts src/background/__tests__/deps.test.ts src/background/__tests__/intents.test.ts src/background/__tests__/pendingKinds.test.ts src/background/__tests__/start.test.ts src/background/__tests__/messages.test.ts src/background/presale/__tests__/api.test.ts src/__tests__/presaleSwitch.test.ts scripts/__tests__/check-no-presale.test.mjs scripts/__tests__/check-vault-isolation.test.mjs` — `Test Files  11 failed (11)` · `Tests  25 failed | 611 passed (636)`: `record.test.ts`, `reconcileWindow.test.ts` and `pendingKinds.test.ts` fail to load (`Cannot find module '../record'`, `'../presaleRecordsKey'`); `deps.test.ts` the six poster rows and rev 2's latch measurement (no `postJson` yet); `intents.test.ts` the five `onConfirmed` rows that expect a call (the two that expect none are green — negative controls); `start.test.ts` the three new rows (no POST at start, nothing reconciled; `host.alarm is not a function`); `messages.test.ts` “every privileged type is refused …” and “every presale type is privileged …”; `api.test.ts` the list row; `presaleSwitch.test.ts` “the entries export what B1d-1b has built so far …”; `check-no-presale.test.mjs` the `ON_BUILD`, `BOTH_BUILDS`, `MARKERS` (both), `MUST_STAY` rows; `check-vault-isolation.test.mjs` the new key row. The off run, `npx vitest run -c vitest.nopresale.config.ts src/background/__tests__/intents.test.ts src/background/__tests__/pendingKinds.test.ts src/background/__tests__/messages.test.ts src/__tests__/presaleSwitch.test.ts` — `Test Files  2 failed | 2 passed (4)` · `Tests  5 failed | 63 passed (68)` (`pendingKinds.test.ts` fails to load; the same five `onConfirmed` rows: the hook is shared code, both builds).
 
 - [ ] **Step 3: Implement.**
 
@@ -1993,7 +2106,7 @@ Create `extension/src/background/presale/record.ts`:
 import type {Ext} from '../../ext';
 import {latchStore, type PostAnswer, type WalletDeps} from '../deps';
 import type {KindHost} from '../intents';
-import {readPending, type PendingRecord} from '../pendingStore';
+import {isOpen, readPending, type PendingRecord} from '../pendingStore';
 import {readWalletView} from '../accountsStore';
 import {PENDING_ALARM_MINUTES} from '../pending';
 import {PRESALE_RECORDS_KEY, presaleRecordsSection} from '../presaleRecordsKey';
@@ -2195,6 +2308,18 @@ export async function wakePresaleRecords(ext: Ext, deps: WalletDeps): Promise<vo
   await runPresaleRecords(ext, deps);
 }
 
+/**
+ * Review 1 I2 (rev 2): whom the worker POSTs for, and when. Only an entry of an account of the wallet stored now: another
+ * account's entry (a replaced wallet's — a restore keeps the records, like the rest of WALLET_DATA_KEYS) is held, never
+ * dropped, and goes out when that wallet is stored again. And nothing while a send or purchase of the stored wallet is
+ * open (`pending` or `stuck`, a site's included): the shared latch serialises every coordinator request, so a POST the
+ * route holds until REQUEST_TIMEOUT_MS would hold that transaction's reads behind it.
+ */
+async function postable(ext: Ext): Promise<{own: ReadonlySet<string>; open: boolean}> {
+  const own = new Set((await readWalletView(ext))?.accounts.map(a => a.publicKey) ?? []);
+  return {own, open: (await readPending(ext)).some(r => isOpen(r) && own.has(r.account))};
+}
+
 type Outcome = 'done' | 'refused' | 'forbidden' | 'retry';
 
 /**
@@ -2213,10 +2338,12 @@ function outcomeOf(a: PostAnswer): Outcome {
  * stopped mid-request never POSTs it twice within a slot. Then its answer. False when nothing was due.
  */
 async function sendNext(ext: Ext, deps: WalletDeps): Promise<boolean> {
+  const {own, open} = await postable(ext);
+  if (open) return false;
   const now = deps.now();
   const out: {claimed: PresaleRecordEntry | null} = {claimed: null};
   await updateRecords(ext, entries => {
-    const i = entries.findIndex(e => e.state === 'due' && e.nextAt <= now);
+    const i = entries.findIndex(e => e.state === 'due' && e.nextAt <= now && own.has(e.account));
     const e = entries[i];
     if (e === undefined) return entries;
     const slot = slotAfter(e.confirmedAt, now);
@@ -2248,12 +2375,14 @@ async function sendNext(ext: Ext, deps: WalletDeps): Promise<boolean> {
 
 /**
  * The alarm at the earliest due entry's time (never sooner than the browsers' 30 s), or cleared when nothing is due. With
- * no entry at all there is nothing to arm or clear (a start with no purchase recorded touches no alarm).
+ * no entry at all there is nothing to arm or clear (a start with no purchase recorded touches no alarm). A held entry
+ * (another wallet's) arms nothing; one deferred behind an open send is already due, so the alarm looks again in 30 s.
  */
 async function armRecordAlarm(ext: Ext, now: number): Promise<void> {
   const stored = await readPresaleRecords(ext);
   if (stored.length === 0) return;
-  const due = stored.filter(e => e.state === 'due');
+  const {own} = await postable(ext);
+  const due = stored.filter(e => e.state === 'due' && own.has(e.account));
   if (due.length === 0) {
     await ext.alarms.clear(PRESALE_RECORD_ALARM);
     return;
@@ -2458,15 +2587,15 @@ index 5e61e05..2919494 100644
 
 - [ ] **Step 4: Run — green, the whole suite, both builds, the gates, the repository root and the web.**
 
-Run: the Step 2 commands — `Test Files  11 passed (11)` · `Tests  734 passed (734)` (record 70, reconcileWindow 2, deps 18, intents 36, pendingKinds 27, start 9, messages 29, api 67, presaleSwitch 3, check-no-presale 52, check-vault-isolation 421); off `Test Files  4 passed (4)` · `Tests  95 passed (95)`.
+Run: the Step 2 commands — `Test Files  11 passed (11)` · `Tests  744 passed (744)` (record 79, reconcileWindow 2, deps 19, intents 36, pendingKinds 27, start 9, messages 29, api 67, presaleSwitch 3, check-no-presale 52, check-vault-isolation 421); off `Test Files  4 passed (4)` · `Tests  95 passed (95)`.
 
-Run (in `extension/`): `npx tsc --noEmit; echo $?` — `0`. `npx vitest run` — `Test Files  215 passed (215)` · `Tests  4523 passed (4523)` (previous tree 213 / 4433: +2 files, +90 tests — record 70, reconcileWindow 2, deps +6, intents +7, start +3, pendingKinds +1, check-vault-isolation +1). `npx vitest run --config vitest.nopresale.config.ts` — `Test Files  16 passed (16)` · `Tests  430 passed | 15 skipped (445)` (previous 422 | 15 (437): intents +7, pendingKinds +1; no file joins `NOPRESALE_TESTS` — the hook's and the wipe's rows are in files it already runs).
+Run (in `extension/`): `npx tsc --noEmit; echo $?` — `0`. `npx vitest run` — `Test Files  215 passed (215)` · `Tests  4533 passed (4533)` (previous tree 213 / 4433: +2 files, +100 tests — record 79, reconcileWindow 2, deps +7, intents +7, start +3, pendingKinds +1, check-vault-isolation +1). `npx vitest run --config vitest.nopresale.config.ts` — `Test Files  16 passed (16)` · `Tests  430 passed | 15 skipped (445)` (previous 422 | 15 (437): intents +7, pendingKinds +1; no file joins `NOPRESALE_TESTS` — the hook's and the wipe's rows are in files it already runs).
 
 Run: `rm -rf dist dist-nopresale && node scripts/build.mjs && node scripts/build.mjs --no-presale`, then `npm run gates` — exit 0, every gate ok once per build (vault isolation with the new key; rpc methods unchanged — `createJsonPoster` calls its `fetch` parameter inside `deps.ts`, the one file allowed), the last line `no presale ok (dist-nopresale off, dist on): the off build's module maps carry no presale module and of core/presale/ only 3 allowed; the on build carries 23 required modules; 76 markers (none in the off build, each in the on build); 9 strings and the decoder's instruction names stay in the off build`. `npm run csp` — `CSP ok` for `dist/app` and `dist-nopresale/app`; `npm run secrets` — exit 0; `npm run reproducible` — exit 0, both variants (`presale chrome 26 files sha256:49f72244…`, `no-presale chrome 26 files sha256:45093f49…`). Permissions unchanged (`alarms` was already granted; no host; `connect-src` unchanged).
 
 Run (repository root — this task changes `core/`): `npx tsc --noEmit; echo $?` — `0`; `npx jest` — `Test Suites: 1 skipped, 180 passed, 180 of 181 total` · `Tests: 1 skipped, 1234 passed, 1235 total`; `cd web && npm run verify` — exit 0 (`Test Files  47 passed (47)` · `Tests  622 passed (622)`, then its 3-test file and both builds); `node scripts/check-no-tge-date.mjs` — `no TGE date in 1311 tracked text files`.
 
-Playwright (this task registers a message, and every confirmed purchase now POSTs its record): the whole suite on 5070c79 — `96 passed (28.5m)` normally and `96 passed (26.4m)` under `unshare -rn sh -c 'ip link set lo up && npx playwright test'`; on the final commit (after the loop's re-check and the reconcile at wake, both unit-tested) `npx playwright test e2e/presale.spec.ts e2e/presaleSwitch.spec.ts e2e/presaleOff.spec.ts` — `12 passed (2.7m)` normally and `12 passed (2.6m)` under `unshare -rn`.
+Playwright (this task registers a message, and every confirmed purchase now POSTs its record): the whole suite on 5070c79 — `96 passed (28.5m)` normally and `96 passed (26.4m)` under `unshare -rn sh -c 'ip link set lo up && npx playwright test'`; on the final commit (after the loop's re-check and the reconcile at wake, both unit-tested) `npx playwright test e2e/presale.spec.ts e2e/presaleSwitch.spec.ts e2e/presaleOff.spec.ts` — `12 passed (2.7m)` normally and `12 passed (2.6m)` under `unshare -rn`. (Rev 2: Task 1's Playwright was not re-run at this commit; the whole suite ran on the rebuilt chain's last commit, both modes — Task 7 Step 6.)
 
 - [ ] **Step 5: Commit.**
 
@@ -2475,63 +2604,69 @@ git add -A extension core
 git commit -m "feat(extension): B1d-2 the coordinator record — presale/record.ts (v1_presale_records, ≤ 50; the §2.4 payload from extra.data, D28; C24's slots from confirmedAt, claimed before each POST, one in flight; done on 200 success (D30), refused on the route's 400 (D29), a 403 waits out the latch; the presale-record alarm; a wake reconciles a confirmed purchase left without its entry), the kind's onConfirmed once from the poller, createJsonPoster + WalletDeps.postJson, presale.unrecorded; the records' key wiped by a delete in both builds; core paymentAmount number | string" -m "Co-Authored-By: <the executing model> <noreply@anthropic.com>"
 ```
 
-- [ ] **Step 6: The named mutations — each alone, in a fresh `git archive HEAD` copy (node_modules linked; G1–G2 with `extension/node_modules` copied, they build), `timeout 300`; `tsc`'s own exit code first (0 for every one), then the named test file.** `RT` = `record.test.ts` (70), `RW` = `reconcileWindow.test.ts` (2), `IT` = `intents.test.ts` (36, also in the off run), `DT` = `deps.test.ts` (18), `ST` = `start.test.ts` (9), `PK` = `pendingKinds.test.ts` (27, also in the off run), `NP` = `check-no-presale.test.mjs` (52), `VI` = `check-vault-isolation.test.mjs` (421).
+- [ ] **Step 6: The named mutations — each alone, in a fresh `git archive HEAD` copy (node_modules linked; G1–G2 with `extension/node_modules` copied, they build), `timeout 300`; `tsc`'s own exit code first (0 for every one), then the named test file.** `RT` = `record.test.ts` (79), `RW` = `reconcileWindow.test.ts` (2), `IT` = `intents.test.ts` (36, also in the off run), `DT` = `deps.test.ts` (19), `ST` = `start.test.ts` (9), `PK` = `pendingKinds.test.ts` (27, also in the off run), `NP` = `check-no-presale.test.mjs` (52), `VI` = `check-vault-isolation.test.mjs` (421).
 
 | id | the change | named test → observed |
 |---|---|---|
-| **M1 (D30)** | `outcomeOf`: `if (a.status === 200 && body !== null) return 'done';` (any 200 body accepted) | RT “200 with success false …”, “200 with success "true" …” — tsc 0 · RED `Tests  2 failed \| 68 passed (70)` |
-| **M2 (D29)** | `if (a.status === 400) return 'refused';` (any 400 final, a proxy's too) | RT the three “a 400 that is not the route’s …” rows — tsc 0 · RED `Tests  3 failed \| 67 passed (70)` |
-| **M3 (D29)** | `typeof body.error === 'number'` (the route's own 400 never final) | RT the four “the route’s 400 (…) is final …” rows and “a 400 whose error is not a string …” — tsc 0 · RED `Tests  5 failed \| 65 passed (70)` |
-| **M4 (one in flight)** | `const running = runs.get({...ext});` (the run guard never finds the run) | RT “a second purchase confirmed while the first POST is held waits for it …”, “… while the run is arming its alarm …”, “a 403 on the record …” — tsc 0 · RED `Tests  3 failed \| 67 passed (70)` |
-| M5 | `running.again = false;` (a call during a run does not make it look again) | RT “a purchase confirmed while the run is arming its alarm is still sent by that run …” — tsc 0 · RED `Tests  1 failed \| 69 passed (70)` |
-| M6 | the slots: `6 * MINUTE` for 5 min | RT “at once, 1 min, 5 min, … — never between — then given up”, the reconcile row “the hook was skipped …” (its claimed slot) — tsc 0 · RED `Tests  2 failed \| 68 passed (70)` |
-| M7 | the slots without `72 * HOUR` | RT the schedule row, “slotAfter: …”, the reconcile row “confirmed more than 72 h ago …” (its last slot) — tsc 0 · RED `Tests  3 failed \| 67 passed (70)` |
-| **M8 (403)** | `nextAt: e.nextAt + 0 * until` (a 403 waits only for the claimed slot) | RT “a 403 on the record …”, “another route’s 403 first …”, “a cool-down refusal …” — tsc 0 · RED `Tests  3 failed \| 67 passed (70)` (the negative-control row, a cool-down already over, stays green) |
-| M9 | `e instanceof RpcForbidden && e.name === 'RpcCoolingDown' ? 'forbidden'` (a fresh 403 retried at the next slot) | RT “a 403 on the record …” — tsc 0 · RED `Tests  1 failed \| 69 passed (70)` |
-| M10 | `stage: Number(stage),` (the 0-indexed stage sent) | RT 38 rows (the payload rows; a stored payload with stage 0 no longer reads back) — tsc 0 · RED `Tests  38 failed \| 32 passed (70)` |
-| M11 | `DECIMALS`: `USDC: 9` | RT “a stablecoin purchase with its referrer …” — tsc 0 · RED `Tests  1 failed \| 69 passed (70)` |
-| M12 | `usdValue: Number(spentCents),` (cents sent as dollars) | RT 29 rows — tsc 0 · RED `Tests  29 failed \| 41 passed (70)` |
-| M13 | `...(referrer === null ? {referrerAddress: record.account} : …)` (a referrer invented) | RT 28 rows (the payload rows; every stored entry reads back with it) — tsc 0 · RED `Tests  28 failed \| 42 passed (70)` |
-| M14 | the once-per-signature check compares `record.account` | RT “once per signature …” — tsc 0 · RED `Tests  1 failed \| 69 passed (70)` |
-| M15 | `!DATA_KEYS.every(k => Object.hasOwn(d, k))` (an extra key in the display data accepted) | RT “the display data as stored is a claim: an extra key → null …” — tsc 0 · RED `Tests  1 failed \| 69 passed (70)` |
-| M16 | `e.nextAt < now` (an entry not due at its own slot) | RT 30 rows — tsc 0 · RED `Tests  30 failed \| 40 passed (70)` |
-| M17 | `DROP_ORDER = ['given-up', 'done', …]` (§2.4's literal order) | RT “the 51st drops the oldest accepted entry first …” — tsc 0 · RED `Tests  1 failed \| 69 passed (70)` |
-| M18 | `MAX_PRESALE_RECORDS = 51` | RT the same row — tsc 0 · RED `Tests  1 failed \| 69 passed (70)` |
-| M19 | `entryOf` without `signature !== payload.txHash` | RT “what does not read back is dropped …” — tsc 0 · RED `Tests  1 failed \| 69 passed (70)` |
-| M20 | the alarm floor `PENDING_ALARM_MINUTES / 5` | RT “armed at min(nextAt) over the due entries, never sooner than 30 s …” — tsc 0 · RED `Tests  1 failed \| 69 passed (70)` |
-| M21 | the alarm over `e.state !== 'done'` (given-up and refused entries keep it armed) | RT the alarm row, the four “the route’s 400 …” rows, the schedule row, the reconcile row “confirmed more than 72 h ago …” (a given-up entry arms the alarm) — tsc 0 · RED `Tests  7 failed \| 63 passed (70)` |
-| **M22 (D29)** | `unrecordedFor`: `e.state === 'due'` (given-up and refused not listed) | RT “this account’s due, given-up and refused records …” — tsc 0 · RED `Tests  1 failed \| 69 passed (70)` |
-| M23 | `(e.account === account \|\| e.state === 'refused') && …` (another account's record listed) | RT the same row — tsc 0 · RED `Tests  1 failed \| 69 passed (70)` |
-| M24 | the claim: `attempts: e.attempts,` | RT 25 rows — tsc 0 · RED `Tests  25 failed \| 45 passed (70)` |
+| **M1 (D30)** | `outcomeOf`: `if (a.status === 200 && body !== null) return 'done';` (any 200 body accepted) | RT “200 with success false …”, “200 with success "true" …” — tsc 0 · RED `Tests  2 failed \| 77 passed (79)` |
+| **M2 (D29)** | `if (a.status === 400) return 'refused';` (any 400 final, a proxy's too) | RT the three “a 400 that is not the route’s …” rows — tsc 0 · RED `Tests  3 failed \| 76 passed (79)` |
+| **M3 (D29)** | `typeof body.error === 'number'` (the route's own 400 never final) | RT the four “the route’s 400 (…) is final …” rows and “a 400 whose error is not a string …” — tsc 0 · RED `Tests  5 failed \| 74 passed (79)` |
+| **M4 (one in flight)** | `const running = runs.get({...ext});` (the run guard never finds the run) | RT “a second purchase confirmed while the first POST is held waits for it …”, “… while the run is arming its alarm …”, “a 403 on the record …” — tsc 0 · RED `Tests  3 failed \| 76 passed (79)` |
+| M5 | `running.again = false;` (a call during a run does not make it look again) | RT “a purchase confirmed while the run is arming its alarm is still sent by that run …” — tsc 0 · RED `Tests  1 failed \| 78 passed (79)` |
+| M6 | the slots: `6 * MINUTE` for 5 min | RT “at once, 1 min, 5 min, … — never between — then given up”, the reconcile row “the hook was skipped …” (its claimed slot) — tsc 0 · RED `Tests  3 failed \| 76 passed (79)` |
+| M7 | the slots without `72 * HOUR` | RT the schedule row, “slotAfter: …”, the reconcile row “confirmed more than 72 h ago …” (its last slot) — tsc 0 · RED `Tests  3 failed \| 76 passed (79)` |
+| **M8 (403)** | `nextAt: e.nextAt + 0 * until` (a 403 waits only for the claimed slot) | RT “a 403 on the record …”, “another route’s 403 first …”, “a cool-down refusal …” — tsc 0 · RED `Tests  3 failed \| 76 passed (79)` (the negative-control row, a cool-down already over, stays green) |
+| M9 | `e instanceof RpcForbidden && e.name === 'RpcCoolingDown' ? 'forbidden'` (a fresh 403 retried at the next slot) | RT “a 403 on the record …” — tsc 0 · RED `Tests  1 failed \| 78 passed (79)` |
+| M10 | `stage: Number(stage),` (the 0-indexed stage sent) | RT 44 rows (the payload rows; a stored payload with stage 0 no longer reads back) — tsc 0 · RED `Tests  44 failed \| 35 passed (79)` |
+| M11 | `DECIMALS`: `USDC: 9` | RT “a stablecoin purchase with its referrer …” — tsc 0 · RED `Tests  1 failed \| 78 passed (79)` |
+| M12 | `usdValue: Number(spentCents),` (cents sent as dollars) | RT 34 rows — tsc 0 · RED `Tests  34 failed \| 45 passed (79)` |
+| M13 | `...(referrer === null ? {referrerAddress: record.account} : …)` (a referrer invented) | RT 33 rows (the payload rows; every stored entry reads back with it) — tsc 0 · RED `Tests  33 failed \| 46 passed (79)` |
+| M14 | the once-per-signature check compares `record.account` | RT “once per signature …” — tsc 0 · RED `Tests  1 failed \| 78 passed (79)` |
+| M15 | `!DATA_KEYS.every(k => Object.hasOwn(d, k))` (an extra key in the display data accepted) | RT “the display data as stored is a claim: an extra key → null …” — tsc 0 · RED `Tests  1 failed \| 78 passed (79)` |
+| M16 | `e.nextAt < now` (an entry not due at its own slot) | RT 32 rows — tsc 0 · RED `Tests  32 failed \| 47 passed (79)` |
+| M17 | `DROP_ORDER = ['given-up', 'done', …]` (§2.4's literal order) | RT “the 51st drops the oldest accepted entry first …” — tsc 0 · RED `Tests  1 failed \| 78 passed (79)` |
+| M18 | `MAX_PRESALE_RECORDS = 51` | RT the same row — tsc 0 · RED `Tests  1 failed \| 78 passed (79)` |
+| M19 | `entryOf` without `signature !== payload.txHash` | RT “what does not read back is dropped …” — tsc 0 · RED `Tests  1 failed \| 78 passed (79)` |
+| M20 | the alarm floor `PENDING_ALARM_MINUTES / 5` | RT “armed at min(nextAt) over the due entries, never sooner than 30 s …” — tsc 0 · RED `Tests  5 failed \| 74 passed (79)` |
+| M21 | the alarm over `e.state !== 'done'` (given-up and refused entries keep it armed) | RT the alarm row, the four “the route’s 400 …” rows, the schedule row, the reconcile row “confirmed more than 72 h ago …” (a given-up entry arms the alarm) — tsc 0 · RED `Tests  7 failed \| 72 passed (79)` |
+| **M22 (D29)** | `unrecordedFor`: `e.state === 'due'` (given-up and refused not listed) | RT “this account’s due, given-up and refused records …” — tsc 0 · RED `Tests  1 failed \| 78 passed (79)` |
+| M23 | `(e.account === account \|\| e.state === 'refused') && …` (another account's record listed) | RT the same row — tsc 0 · RED `Tests  1 failed \| 78 passed (79)` |
+| M24 | the claim: `attempts: e.attempts,` | RT 28 rows — tsc 0 · RED `Tests  28 failed \| 51 passed (79)` |
 | **M25 (once)** | `pending.ts`: the hooks over `confirmed` (the round's reading) instead of `reached` (its own write) | IT “two rounds racing … one call”, “confirmed: called once, with the confirmed record …”, “confirmed past its expiry …” — tsc 0 · RED `Tests  3 failed \| 33 passed (36)`; the off run the same rows RED `Tests  3 failed \| 33 passed (36)` |
 | **M26 (review M1)** | `for (const r of reached) if (r.extra !== null)` (no own-wallet check) | IT “only for an account of the wallet stored now …” — tsc 0 · RED `Tests  1 failed \| 35 passed (36)`, off the same |
 | M27 | `confirmedHook` without its `try`/`catch` | IT “a hook that throws changes nothing the poller does …” — tsc 0 · RED `Tests  1 failed \| 35 passed (36)`, off the same |
 | M28 | `index.ts`: `SHARED_ALARMS.includes(name.toUpperCase())` | ST “a presale alarm never takes a shared alarm’s name …” — tsc 0 · RED `Tests  1 failed \| 8 passed (9)` |
 | M29 | `index.ts`: ``presaleAlarms.get(`${a.name}-off`)`` (the alarm never dispatched) | ST “a start resumes a due presale record …, and the presale-record alarm runs the retry again” — tsc 0 · RED `Tests  1 failed \| 8 passed (9)` |
 | M30 | `registerPresale` without its `void wakePresaleRecords(…)` (no wake at start) | ST the resume row and “a start reconciles a confirmed purchase the hook never recorded …” — tsc 0 · RED `Tests  2 failed \| 7 passed (9)` |
-| **M31 (delete)** | `removeWalletData`: `wipePresaleRecords({...ext, local: {...ext.local, remove: async () => undefined}})` (the wipe does nothing) | RT the three delete rows, PK “v1_presale_records is one of WALLET_DATA_KEYS, and a first write … removes it” — tsc 0 · RED `Test Files  2 failed (2)` · `Tests  4 failed \| 93 passed (97)`; the off run PK RED `Tests  1 failed \| 26 passed (27)` |
-| **M32 (the lock)** | the key out of `LOCKED_DATA_KEYS` (a plain `remove`) and M31's no-op wipe | RT “a record write parked mid-write when the delete arrives …” — tsc 0 · RED `Tests  1 failed \| 69 passed (70)` (a plain delete still passes the other rows: only the race tells the lock) |
-| M33 | `createJsonPoster`: every body error answered as `null` (no rethrow of `RequestUnreachable`) | DT “a body that never arrives is no answer …” — tsc 0 · RED `Tests  1 failed \| 17 passed (18)` |
-| **M34 (latch)** | `createJsonPoster`: `createForbiddenLatch().request(…)` (a latch of its own) | DT “a 403 trips the one latch …”, “postJson goes through the same latch …” — tsc 0 · RED `Tests  2 failed \| 16 passed (18)` |
-| M35 | `browserDeps`: `createJsonPoster(fetch, createForbiddenLatch())` | DT “postJson goes through the same latch …” — tsc 0 · RED `Tests  1 failed \| 17 passed (18)` |
-| M36 | `buy.ts`: `onConfirmed` records only a `failed` record | RT “confirmed: the entry, POSTed at once with the whole payload …” — tsc 0 · RED `Tests  1 failed \| 69 passed (70)` |
+| **M31 (delete)** | `removeWalletData`: `wipePresaleRecords({...ext, local: {...ext.local, remove: async () => undefined}})` (the wipe does nothing) | RT the three delete rows, PK “v1_presale_records is one of WALLET_DATA_KEYS, and a first write … removes it” — tsc 0 · RED `Test Files  2 failed (2)` · `Tests  4 failed \| 102 passed (106)`; the off run PK RED `Tests  1 failed \| 26 passed (27)` |
+| **M32 (the lock)** | the key out of `LOCKED_DATA_KEYS` (a plain `remove`) and M31's no-op wipe | RT “a record write parked mid-write when the delete arrives …” — tsc 0 · RED `Tests  1 failed \| 78 passed (79)` (a plain delete still passes the other rows: only the race tells the lock) |
+| M33 | `createJsonPoster`: every body error answered as `null` (no rethrow of `RequestUnreachable`) | DT “a body that never arrives is no answer …” — tsc 0 · RED `Tests  1 failed \| 18 passed (19)` |
+| **M34 (latch)** | `createJsonPoster`: `createForbiddenLatch().request(…)` (a latch of its own) | DT “a 403 trips the one latch …”, “postJson goes through the same latch …” — tsc 0 · RED `Tests  3 failed \| 16 passed (19)` |
+| M35 | `browserDeps`: `createJsonPoster(fetch, createForbiddenLatch())` | DT “postJson goes through the same latch …” — tsc 0 · RED `Tests  2 failed \| 17 passed (19)` |
+| M36 | `buy.ts`: `onConfirmed` records only a `failed` record | RT “confirmed: the entry, POSTed at once with the whole payload …” — tsc 0 · RED `Tests  1 failed \| 78 passed (79)` |
 | M37 | `ON_BUILD` without `record.ts` | NP “the on build must carry …” — tsc 0 · RED `Tests  1 failed \| 51 passed (52)` |
 | M38 | `MUST_STAY` without `v1_presale_records` | NP “must stay: …” — tsc 0 · RED `Tests  1 failed \| 51 passed (52)` |
 | M39 | `MARKERS` without `presale.unrecorded` | NP “armed by B1d-1b: … B1d-2 Task 1 …”, “every presale.* message type of api.ts is a marker” — tsc 0 · RED `Tests  2 failed \| 50 passed (52)` |
 | M40 | `BACKGROUND_OWNED_KEYS` without `v1_presale_records` | VI “lets only the background name the presale records key …” — tsc 0 · RED `Tests  1 failed \| 420 passed (421)` |
-| **N1 (ruling: no duplicate)** | reconcile without `entries.some(e => e.signature === r.signature) \|\|` | RT “an entry already there, in any state: no second entry, no POST”, “two purchases, one recorded and one not …” — tsc 0 · RED `Tests  2 failed \| 68 passed (70)` |
-| **N2 (ruling: past 72 h)** | `const late = now > r.createdAt + 2 * LAST_SLOT_MS;` | RT “confirmed more than 72 h ago: written given-up, never POSTed …” — tsc 0 · RED `Tests  1 failed \| 69 passed (70)` |
-| N3 | `now >= r.createdAt + LAST_SLOT_MS` (the 72 h slot itself given up) | RT the same row (its boundary half) — tsc 0 · RED `Tests  1 failed \| 69 passed (70)` |
-| **N4 (ruling: confirmedAt)** | `confirmedAt: now` (the wake's time, not the record's `createdAt`) | RT “the hook was skipped: the wake writes its entry …”, “confirmed more than 72 h ago …” — tsc 0 · RED `Tests  2 failed \| 68 passed (70)` |
-| **N5 (review M1)** | reconcile's account check `(own.has(r.account) \|\| own.size === 0)` (no wallet stored → reconciled) | RT “nothing else is reconciled: … another wallet’s account …” — tsc 0 · RED `Tests  1 failed \| 69 passed (70)` |
-| N6 | `r.state !== 'pending'` (a stuck, failed or expired purchase reconciled) | RT the same row — tsc 0 · RED `Tests  1 failed \| 69 passed (70)` |
-| **N7 (ruling: at wake)** | `wakePresaleRecords` without `await reconcilePresaleRecords(ext, deps);` | ST “a start reconciles a confirmed purchase the hook never recorded: its entry written, then one POST”, RT “registerPresale registers the alarm’s run: it reconciles, …” — tsc 0 · RED `Test Files  2 failed (2)` · `Tests  2 failed \| 77 passed (79)` |
+| **N1 (ruling: no duplicate)** | reconcile without `entries.some(e => e.signature === r.signature) \|\|` | RT “an entry already there, in any state: no second entry, no POST”, “two purchases, one recorded and one not …” — tsc 0 · RED `Tests  2 failed \| 77 passed (79)` |
+| **N2 (ruling: past 72 h)** | `const late = now > r.createdAt + 2 * LAST_SLOT_MS;` | RT “confirmed more than 72 h ago: written given-up, never POSTed …” — tsc 0 · RED `Tests  1 failed \| 78 passed (79)` |
+| N3 | `now >= r.createdAt + LAST_SLOT_MS` (the 72 h slot itself given up) | RT the same row (its boundary half) — tsc 0 · RED `Tests  1 failed \| 78 passed (79)` |
+| **N4 (ruling: confirmedAt)** | `confirmedAt: now` (the wake's time, not the record's `createdAt`) | RT “the hook was skipped: the wake writes its entry …”, “confirmed more than 72 h ago …” — tsc 0 · RED `Tests  2 failed \| 77 passed (79)` |
+| **N5 (review M1)** | reconcile's account check `(own.has(r.account) \|\| own.size === 0)` (no wallet stored → reconciled) | RT “nothing else is reconciled: … another wallet’s account …” — tsc 0 · RED `Tests  1 failed \| 78 passed (79)` |
+| N6 | `r.state !== 'pending'` (a stuck, failed or expired purchase reconciled) | RT the same row — tsc 0 · RED `Tests  1 failed \| 78 passed (79)` |
+| **N7 (ruling: at wake)** | `wakePresaleRecords` without `await reconcilePresaleRecords(ext, deps);` | ST “a start reconciles a confirmed purchase the hook never recorded: its entry written, then one POST”, RT “registerPresale registers the alarm’s run: it reconciles, …” — tsc 0 · RED `Test Files  2 failed (2)` · `Tests  2 failed \| 86 passed (88)` |
 | **N8 (Review Focus 1: the window)** | `pendingStore.ts`: `export const MAX_RECORDS = 21;` (the window one record wider) | RW “20 newer closed records push it out …” — tsc 0 · RED `Tests  1 failed \| 1 passed (2)` (the 19-record row stays green) |
 | N9 | `record.ts` reconcile: `if (confirmed.length >= 0) return;` (it never writes an entry) | RW “19 newer closed records: the purchase is still held …” — tsc 0 · RED `Tests  1 failed \| 1 passed (2)` (the 20-record row stays green: the two rows are each other's controls) |
+| **W1 (I2: defer)** | `sendNext`: `if (open) return false;` → `if (open && own.size < 0) return false;` (an open transaction defers nothing) | RT the four “… of the stored wallet: the confirmed purchase is not POSTed …” rows, “once it settles the next run POSTs the record …” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  5 failed \| 74 passed (79)` |
+| W2 | `postable`: `isOpen(r)` → `isOpen(r) && r.state !== 'stuck'` (a stuck send defers nothing) | RT “a send stuck, of the stored wallet …” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  1 failed \| 78 passed (79)` |
+| W3 | `postable`: `some(r => isOpen(r) && own.has(r.account))` → `some(r => isOpen(r))` (another account's open transaction defers too) | RT “settled from the start, or open but of an account not in the stored wallet: POSTed at once” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  1 failed \| 78 passed (79)` |
+| **W4 (I2: held)** | `sendNext`: `e.nextAt <= now && own.has(e.account)` → `e.nextAt <= now && (own.has(e.account) \|\| own.size >= 0)` (another account's entry POSTed) | RT “an entry of an account not in the stored wallet … is held …”, “a held entry goes out when its wallet is stored again …”, “beside a held entry …” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  3 failed \| 76 passed (79)` |
+| W5 | `armRecordAlarm`: `own.has(e.account)` → `(own.has(e.account) \|\| own.size > 0)` (a held entry arms the alarm) | RT “an entry of an account not in the stored wallet … no alarm …”, “beside a held entry … the alarm is armed at its next slot, not at the held one’s” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  2 failed \| 77 passed (79)` |
+| W6 | `postable`: `isOpen(r) && own.has(r.account)` → `isOpen(r) && r.origin === null && own.has(r.account)` (a site's open transaction defers nothing) | RT “a site’s transaction pending, of the stored wallet …” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  1 failed \| 78 passed (79)` |
 | G1 | `messages.ts`: `'presale.unrecorded',` in the shared `WALLET_UI_ONLY` (a marker in shared code) | both builds, then `node scripts/check-no-presale.mjs dist-nopresale dist` — tsc 0 · exit 1: `off build: app/background.js contains the presale marker "presale.unrecorded"` (and `chrome/`, `firefox/`) |
 | G2 | `accountsStore.ts`: the key and the wipe defined locally (`'v1_records'`, a no-op) instead of imported from `presaleRecordsKey.ts` | both builds, then the gate — tsc 0 · exit 1: `off build does not carry src/background/presaleRecordsKey.ts — renamed or moved? …` and `off build: no file contains "v1_presale_records" — the switch stripped what both builds need` |
 
-51 mutations (the first issue's 42, re-run on the final commit — the counts above — N1–N7 for the controller's reconcile ruling, and N8–N9 for Review Focus 1, run on the rebuilt 65846e2), all red, every one compiling. **Three mutants of the first sweep were rewritten:** M15 (`Object.keys(d).length === 0`) did not compile (`DATA_KEYS` unused — `noUnusedLocals`); M8 (`Math.min(e.nextAt, until)`) and any mutant that leaves a claimed entry due at `now` turn the run into a loop of resolved promises that never yields to vitest's timer (a hang ended only by `timeout 300`, which proves nothing) — M8 is the form above, and the claim-before-send property is held by M4 / M24 and the restarted-worker row instead of by a mutant of the claim itself. An `origin` / kind pre-filter in reconcile was dropped rather than left as an equivalent mutant (`purchasePayload` reads back only a `presale-buy` record's data). An `origin` / kind pre-filter in reconcile was dropped rather than left as an equivalent mutant (`purchasePayload` reads back only a `presale-buy` record's data). **M5 was green on the first sweep** (the inner loop already sends an entry written during a POST): the `again` flag only matters for a call that lands while the run arms its alarm — the loop now re-checks after arming, and the row “… while the run is arming its alarm …” is what M5 turns red.
+57 mutations (the first issue's 42, N1–N7 for the controller's reconcile ruling, N8–N9 for Review Focus 1, and W1–W6 for review 1 I2 — **all 57 re-run in rev 2 on the rebuilt 4bf2499; the counts above are that run's**, G1–G2 with `extension/node_modules` copied), all red, every one compiling. Rev 2 re-formed two: M21's form follows the alarm's new filter (`e.state !== 'done' && own.has(e.account)`), and W4's first form (the `own.has` check removed whole) did not compile — `own` unread, `noUnusedLocals`; it keeps the binding and defeats the check (`|| own.size >= 0`). **Three mutants of the first sweep were rewritten:** M15 (`Object.keys(d).length === 0`) did not compile (`DATA_KEYS` unused — `noUnusedLocals`); M8 (`Math.min(e.nextAt, until)`) and any mutant that leaves a claimed entry due at `now` turn the run into a loop of resolved promises that never yields to vitest's timer (a hang ended only by `timeout 300`, which proves nothing) — M8 is the form above, and the claim-before-send property is held by M4 / M24 and the restarted-worker row instead of by a mutant of the claim itself. An `origin` / kind pre-filter in reconcile was dropped rather than left as an equivalent mutant (`purchasePayload` reads back only a `presale-buy` record's data). **M5 was green on the first sweep** (the inner loop already sends an entry written during a POST): the `again` flag only matters for a call that lands while the run arms its alarm — the loop now re-checks after arming, and the row “… while the run is arming its alarm …” is what M5 turns red.
 
 #### Notes for the executor (Task 1)
 
@@ -2541,13 +2676,13 @@ git commit -m "feat(extension): B1d-2 the coordinator record — presale/record.
 - **Ruling: C24's slots are offsets from `confirmedAt`** — 0, 1 min, 5 min, 30 min, 2 h, 12 h, 24 h, 48 h, 72 h ("every 24 h until 72 h" read as 24, 48 and 72 h after confirmation); an entry is given up after a failed attempt with no slot left. A worker asleep across slots POSTs once when it wakes (not once per missed slot) and then waits for the first slot after now; one asleep past 72 h makes one last attempt — why: the anchor keeps the schedule C24's whatever the worker does; one late attempt costs nothing under P2a — cost if wrong: one extra POST of a record more than 72 h old.
 - **Ruling: the store drops the oldest `done` entry first, then `given-up`, `refused`, `due`** — spec §2.4 says "the oldest given-up entry dropped first"; dropping a `done` one changes nothing anyone sees, while dropping a `given-up` one would silently take #27's Q34 away from a purchase the coordinator never accepted — cost if wrong: none in practice (50 records is one purchase a day for seven weeks). Rev 3.4 line.
 - **Ruling: `refused` is the fourth state (D29) and `presale.unrecorded` lists `due`, `given-up` and `refused`** — D29: "#27 still shows Q34 for it" — cost if wrong: none.
-- **Ruling: a 403 or the cool-down sets `nextAt` = max(the claimed slot, the latch's persisted end, `v1_forbidden_until`)** — the latch writes the end before it throws, so the record reads the same value every route obeys; a failed save of it leaves the slot, and the latch itself still refuses inside the window (RpcCoolingDown, nothing sent, the entry waits again) — cost if wrong: one refused attempt.
+- **Ruling: a 403 or the cool-down sets `nextAt` = max(the claimed slot, the latch's persisted end — `v1_forbidden_until`, one value: rev 1 named it twice, review 1 M3)** — the latch writes the end before it throws, so the record reads the same value every route obeys; a failed save of it leaves the slot, and the latch itself still refuses inside the window (RpcCoolingDown, nothing sent, the entry waits again) — cost if wrong: one refused attempt.
 - **Ruling: the hook runs only for an account of the wallet stored now** (the poller's existing `own` set, review M1 — as known recipients): a purchase that confirms after its wallet was deleted is not recorded by this wallet — cost if wrong: one record the coordinator gets only from its own sources.
 - **Controller ruling (on concern 1 of the first issue): reconcile when the worker wakes.** "Once" is per transition (the poller calls the hook after its own write moved the record to `confirmed`: M25), so a worker stopped between that write and the hook's entry would lose the record. At each start and on the `presale-record` alarm, `wakePresaleRecords` first reconciles (behind the records' section): every confirmed record of the stored wallet's accounts in `v1_pending` whose data reads back as a purchase and that has no entry gets the hook's entry, `confirmedAt` = its `createdAt`; past 72 h it is written `given-up` and never POSTed (N1–N7).
 - **Ruling: `confirmedAt` of a reconciled entry is the pending record's `createdAt`** — the ruling's "the pending record's own confirmation time" does not exist: `PendingRecord` stores none, and adding one would change every stored record's bytes (the 0b79442 capture rows pin them). The signed bytes can land only within their blockhash's life after `createdAt` (≈ 150 blocks), so `createdAt` is early by at most that — the 72 h window shrinks by about a minute, never grows — cost if wrong: a record about a minute short of its last slot.
 - **The window (asked by the ruling): a confirmed record stays in `v1_pending` with no time limit, until newer records push it out or a delete clears it** — `MAX_RECORDS` = 20 records in all (`pendingStore.ts` `trim`: every open record kept, the newest closed ones filling the rest), counted over every account and kind, sends and dApp records included; `vault.forgetWallet` removes the closed records. So a missed entry is recoverable until about twenty later transactions of this browser's wallet; past that, there is nothing to reconcile and the purchase stays unrecorded (no Q34 either — #27 lists only entries).
 - **Ruling: reconcile filters on `state === 'confirmed'` and the stored wallet only**; which records are purchases is `purchasePayload`'s to say (only a `presale-buy` record's display data reads back) — an `origin` / kind pre-filter would be an equivalent mutant, a check no test can prove — cost if wrong: none.
-- **Ruling: display data that does not read back records nothing** (`purchasePayload` null) — unreachable in practice: `pendingData` is null only when `shownOf` fails, and `beforeSign` refuses such an entry first — cost if wrong: none.
+- **Ruling: display data that does not read back records nothing** (`purchasePayload` null) — unreachable in practice: `pendingData` is null only when `shownOf` fails, and `beforeSign` refuses such an entry first — cost if wrong: none. (Rev 2, review 1 M7: the invariant is now spec §2.4's, rev 3.5, so a later change to either side sees it.)
 - **Ruling: `PresaleHost.alarm(name, run)`, dispatched by name in `index.ts`, a shared alarm's name refused at start** — index.ts names nothing of presale; the alarm's name lives only in `record.ts` (and joins `MARKERS` with `presale.unrecorded` — beyond the brief's rule, which asks only for message types and §10 strings; stricter) — cost if wrong: none.
 - **Ruling: the wake runs at every start** (`registerPresale` starts one, reconcile first) — an alarm does not survive every browser restart or update — and **an empty store touches no alarm** (start.test's existing rows count the alarms a start clears) — cost if wrong: none.
 - **Ruling: `WalletDeps.postJson` is required** (the fakes throw `unexpected POST` by default, as for the broadcast and the geo check) — cost if wrong: none.
@@ -2557,6 +2692,8 @@ git commit -m "feat(extension): B1d-2 the coordinator record — presale/record.
 - **Found while revising:** the 50-entry store row signed about 200 wires (1.1 s) and timed out at vitest's 5 s under the dry run's parallel load (a mutation sweep beside Playwright); its fixtures now use signature-shaped base58 strings (31 ms). The same load also times out B1b's two `start.test.ts` rows that import the whole background (`import('../index')`), unchanged by this task — totals here are from quiet runs.
 - **Dry run:** clone `dry/b1d2`, commit `a532235` on a1bda47 (after the controller's ruling; the first issue was 32ad708). Root `tsc` + `jest` and web `verify` ran on 5070c79 (no later change touches `core/` or the root). Replaying this part onto `git archive a1bda47` (3 new files, 30 diff blocks, each with `git apply --recount`) reproduces the commit byte for byte (all 33 files compared).
 - **Review Focus 1 (added at the plan's assembly, 2026-10-26):** `reconcileWindow.test.ts` pins the reconcile's window — the accepted gap above — from both sides (19 newer closed records: recorded; 20: nothing, and no Q34). Added on `dry/b1d2-rf`, rebuilt from a1bda47: Task 1 = 65846e2 (a532235 + this one file), Tasks 2–7 cherry-picked onto it (1256554, 49cc8f0, f8db19e, 3a04191, 5b42436, 5c3bf42 — each tree its first commit's + this file). Red on a1bda47 with Step 1's files (`tsc` 2, 52 errors; the file fails to load — the counts above), green on 65846e2 (`tsc` 0, the whole on-build run 215 / 4523, the off run unchanged at 16 / 430 + 15); N8 and N9 red. Every later task's whole-suite totals below are its first run's + 1 file and + 2 tests (each re-run on its rebuilt commit); the replay of this part now adds 4 new files and 30 diff blocks.
+- **Rev 2 (review 1 I2, the controller's ruling; ruled by the reviser):** the worker's `postable` (record.ts) — no POST while a transaction of the stored wallet is open, only the stored wallet's entries claimed and armed; another account's **held**, not dropped (above: `WALLET_DATA_KEYS` keeps the records on a restore). **Ruling: a site's open transaction counts** ("any send or purchase" read as any transaction the poller follows for the wallet — a site's is polled through the same latch) — cost if wrong: a record a little later while a site's transaction settles (W6). **Ruling: the check is per POST, not a lock across it** — a transaction that opens while one POST is in flight waits for that POST (≤ 20 s); a lock would make every send wait for the record route — cost if wrong: one ≤ 20 s wait, as rev 1. **Ruling: the deferred run re-arms the alarm the usual way** (the entry is due → 30 s), so it looks again every 30 s while the transaction is open (storage reads only, no network) — cost if wrong: one wake per 30 s for a minute or two. **Measured, not assumed:** `deps.test.ts` "a record POST that never answers holds the reads queued behind it …" — `REQUEST_TIMEOUT_MS − 1` ms in, one fetch made and nothing answered; at 20 s the POST times out and the RPC read, then the `/stats` read, answer (green on rev 1's tree too: it measures the latch, which this task does not change). Test fixture change: `record.test.ts`'s `world()` stores ACCOUNT's wallet (memKV writes before it returns) and takes `wallet` (null for none); `start.test.ts`'s resume row stores the buyer's wallet — rev 1's rows ran with no wallet stored, which the worker now (rightly) refuses to POST for.
+- **Rev 2 dry run:** `dry/b1d2-r2` commit `4bf2499` on a1bda47 (rev 1's 65846e2 + the above). Red with Step 1's files on a1bda47: `tsc` 2, 53 errors; vitest `Tests  25 failed | 611 passed (636)`, the off run `5 failed | 63 passed (68)` (the counts in Step 2). Rev 1's tree with rev 2's three test files: `tsc` 0, `Tests  8 failed | 99 passed (107)` — the eight I2 rows. Green: `tsc` 0; 215 / 4533; off 16 / 430 + 15; both builds; gates exit 0 (76 markers, 23 modules). Root `tsc` / `jest` and web `verify` not re-run: `core/`, the root and `web/` are byte-identical to rev 1's Task 1. All 57 mutations re-run on 4bf2499 (the table).
 
 ---
 
@@ -3246,6 +3383,29 @@ describe('presale.buy with a referral address: signed once, recorded with it (§
   });
 });
 
+describe('pendingData ties the shown referrer to the basis (review 1 M1)', () => {
+  it('an on-chain referrer: named as read (positive control); a stored view naming another, or none, and a basis naming one beside a registration, do not read back', async () => {
+    const w = await world({chain: {...EXISTING, allocation: program(allocationData({referrer: OTHER}))}});
+    await prepare(w, intent('SOL', SOL_2));
+    const [entry] = await stored(w);
+    if (entry === undefined || PRESALE_BUY_INTENT.pendingData === undefined) throw new Error('no entry');
+    expect([entry.shown.view.referrer, entry.shown.basis.referrer, PRESALE_BUY_INTENT.pendingData(entry, entry.intent)]).toEqual([{address: OTHER, registers: false}, OTHER, expect.objectContaining({referrer: OTHER})]);
+    for (const referrer of [{address: R, registers: false}, null]) {
+      const forged = {...entry, shown: {...entry.shown, view: {...entry.shown.view, referrer}}};
+      expect([referrer, PRESALE_BUY_INTENT.pendingData(forged, entry.intent)]).toEqual([referrer, null]);
+    }
+    const otherBasis = {...entry, shown: {...entry.shown, basis: {...entry.shown.basis, referrer: R}}};
+    expect(PRESALE_BUY_INTENT.pendingData(otherBasis, entry.intent)).toBeNull();
+    const fresh = await world();
+    await prepare(fresh, intent('SOL', SOL_2, R));
+    const [registering] = await stored(fresh);
+    if (registering === undefined) throw new Error('no entry');
+    expect([registering.shown.basis.referrer, PRESALE_BUY_INTENT.pendingData(registering, registering.intent)]).toEqual([null, expect.objectContaining({referrer: R})]);
+    const claimed = {...registering, shown: {...registering.shown, basis: {...registering.shown.basis, referrer: OTHER}}};
+    expect(PRESALE_BUY_INTENT.pendingData(claimed, registering.intent)).toBeNull();
+  });
+});
+
 describe('presale.buy with a referral address: what the signature checks again (C22, §3.5) — the entry and the proof stay', () => {
   type Row = {sign?: Partial<Chain>; referrers?: Map<string, AccountData | null>; refError?: Error; session?: SessionAccount[]};
   const rows: [string, string, Row][] = [
@@ -3505,7 +3665,7 @@ index 6b6c5b3..45c5617 100644
 
 ```diff
 diff --git a/extension/src/background/presale/__tests__/buy.test.ts b/extension/src/background/presale/__tests__/buy.test.ts
-index 091814e..7b60a9c 100644
+index 091814e..20d6101 100644
 --- a/extension/src/background/presale/__tests__/buy.test.ts
 +++ b/extension/src/background/presale/__tests__/buy.test.ts
 @@ -215,7 +215,7 @@ describe('the purchase intent (§1.4)', () => {
@@ -3540,6 +3700,21 @@ index 091814e..7b60a9c 100644
      const good = new TransactionMessage({payerKey: user, recentBlockhash: BLOCKHASH, instructions: buildBuyInstructions(user, 7n, 0, resolved, new PublicKey(TREASURY_ADDRESS))}).compileToV0Message();
      const variant = (o: Partial<Pick<MessageV0, 'header' | 'addressTableLookups'>>) =>
        new MessageV0({header: o.header ?? good.header, staticAccountKeys: good.staticAccountKeys, recentBlockhash: good.recentBlockhash, compiledInstructions: good.compiledInstructions, addressTableLookups: o.addressTableLookups ?? good.addressTableLookups});
+@@ -958,12 +958,12 @@ describe('presale.buy: the sign-time checks (C12, C22, C10) — a refusal burns
+   });
+ 
+   // Review 1 M1: the sign-time check rests on the bytes the integrity binds, not on the unbound `shown`.
+-  it('a referrer registered since prepare with `shown.basis` forged to name it: the signed bytes still credit the default allocation → state-changed; the entry and the proof stay (review 1 M1)', async () => {
++  it('a referrer registered since prepare with `shown.basis` and `shown.view` forged to name it (B1d-2 review 1 M1: the two agree, so `shown` reads back): the signed bytes still credit the default allocation → state-changed; the entry and the proof stay (review 1 M1)', async () => {
+     const w = await world({chains: [EXISTING, {...EXISTING, allocation: program(allocationData({referrer: REFERRER}))}]});
+     const view = await provenPurchase(w, SOL);
+     const [entry] = await stored(w);
+     if (entry === undefined) throw new Error('no entry');
+-    await w.ext.session.set(PREPARED_KEY, [{...entry, shown: {...entry.shown, basis: {...entry.shown.basis, referrer: REFERRER}}}]);
++    await w.ext.session.set(PREPARED_KEY, [{...entry, shown: {...entry.shown, view: {...entry.shown.view, referrer: {address: REFERRER, registers: false}}, basis: {...entry.shown.basis, referrer: REFERRER}}}]);
+     expect(await buy(w, view.id)).toEqual({ok: false, error: 'state-changed', data: {detail: 'the referrer allocation the purchase credits changed'}});
+     expect((await stored(w)).map(e => e.id)).toEqual([view.id]);
+     expect(await challengeSatisfied(w.ext, w.deps.now(), view.reauth?.challengeId ?? '', digestOf(SOL))).toBe(true);
 @@ -1474,7 +1474,8 @@ describe('presale.prepareBuy through the real message handler (§1.4)', () => {
    it.each([
      ['an extra key', msg({extra: 1})],
@@ -3690,7 +3865,7 @@ index 45c8d20..1c4527c 100644
 
 In a `git archive` copy of Task 1's commit with only the Step 1 files added (node_modules linked): `npx tsc --noEmit; echo $?` → `2`, 11 errors, all in `referrer.test.ts` (5 × `Property 'referrer' does not exist on type 'PurchaseIntent'`, 5 × `'registerReferrer' does not exist in type '{ account: string; …'`, 1 × `'referrer' does not exist in type 'PurchaseIntent'`).
 
-`npx vitest run src/background/presale/__tests__/referrer.test.ts src/background/presale/__tests__/captured.test.ts src/background/presale/__tests__/buy.test.ts src/background/presale/__tests__/api.test.ts src/background/__tests__/messages.test.ts src/__tests__/presaleSwitch.test.ts src/unlock/__tests__/reauthPurchase.test.ts scripts/__tests__/check-no-presale.test.mjs` — `Test Files  6 failed | 2 passed (8)` · `Tests  58 failed | 294 passed (352)`: `referrer.test.ts` `51 failed | 1 passed (52)` (the one green row is "the gate closed and a stage that moved decide first" — the old code refuses those before it looks at a referrer); `captured.test.ts` `2 passed` — **green on the old tree by design**: the capture is B1d-1b's own output, so it is the positive control that the fixture describes the code it was taken from (it stays green through Task 1, which changed neither); `buy.test.ts` `140 passed` (its two edited rows hold on both trees); `api.test.ts` the type-list row; `messages.test.ts` "every privileged type is refused …" and "every presale type is privileged …"; `presaleSwitch.test.ts` "the entries export …"; `reauthPurchase.test.ts` the "Referred by" row; `check-no-presale.test.mjs` the `MARKERS` row and "every presale.* message type of api.ts is a marker" (ten types). The off run is unchanged by this task (no new row runs there; `messages.test.ts` lists no presale type off).
+`npx vitest run src/background/presale/__tests__/referrer.test.ts src/background/presale/__tests__/captured.test.ts src/background/presale/__tests__/buy.test.ts src/background/presale/__tests__/api.test.ts src/background/__tests__/messages.test.ts src/__tests__/presaleSwitch.test.ts src/unlock/__tests__/reauthPurchase.test.ts scripts/__tests__/check-no-presale.test.mjs` — `Test Files  6 failed | 2 passed (8)` · `Tests  59 failed | 294 passed (353)`: `referrer.test.ts` `52 failed | 1 passed (53)` (the one green row is "the gate closed and a stage that moved decide first" — the old code refuses those before it looks at a referrer); `captured.test.ts` `2 passed` — **green on the old tree by design**: the capture is B1d-1b's own output, so it is the positive control that the fixture describes the code it was taken from (it stays green through Task 1, which changed neither); `buy.test.ts` `140 passed` (its three edited rows hold on both trees — rev 2's too: on Task 1's tree the forged `shown` reads back and the bytes refuse it); `api.test.ts` the type-list row; `messages.test.ts` "every privileged type is refused …" and "every presale type is privileged …"; `presaleSwitch.test.ts` "the entries export …"; `reauthPurchase.test.ts` the "Referred by" row; `check-no-presale.test.mjs` the `MARKERS` row and "every presale.* message type of api.ts is a marker" (ten types). The off run is unchanged by this task (no new row runs there; `messages.test.ts` lists no presale type off).
 
 - [ ] **Step 3: Implement.**
 
@@ -3781,7 +3956,7 @@ index 8e1bf02..1cf7fb5 100644
 
 ```diff
 diff --git a/extension/src/background/presale/buy.ts b/extension/src/background/presale/buy.ts
-index 8c62f07..618ac29 100644
+index 8c62f07..0b42984 100644
 --- a/extension/src/background/presale/buy.ts
 +++ b/extension/src/background/presale/buy.ts
 @@ -1,9 +1,10 @@
@@ -3945,7 +4120,7 @@ index 8c62f07..618ac29 100644
   */
  function shownOf(entry: PreparedEntry, intent: PurchaseIntent): PreparedPurchase['shown'] | null {
    const shown = record(entry.shown);
-@@ -240,12 +279,15 @@ function shownOf(entry: PreparedEntry, intent: PurchaseIntent): PreparedPurchase
+@@ -240,21 +279,26 @@ function shownOf(entry: PreparedEntry, intent: PurchaseIntent): PreparedPurchase
    if (shown === null || fees === null || sim === null || view === null || basis === null || !exactKeys(shown, ['fees', 'simulation', 'view', 'basis'])) return null;
    if (!exactKeys(fees, ['networkLamports', 'markupLamports']) || !digits(fees.networkLamports) || fees.markupLamports !== '0') return null;
    const programs = sim.programs;
@@ -3963,8 +4138,11 @@ index 8c62f07..618ac29 100644
    const vf = record(view.fees);
    if (vf === null || !exactKeys(vf, ['networkLamports', 'priorityLamports', 'rentLamports']) || vf.networkLamports !== fees.networkLamports || !digits(vf.priorityLamports) || !digits(vf.rentLamports)) return null;
    const reasons = view.reasons;
-@@ -254,7 +296,7 @@ function shownOf(entry: PreparedEntry, intent: PurchaseIntent): PreparedPurchase
+   if (!Array.isArray(reasons) || new Set(reasons).size !== reasons.length || !(reasons as unknown[]).every(r => typeof r === 'string' && (REASONS as readonly string[]).includes(r))) return null;
+   if (!exactKeys(basis, ['allocationExists', 'purchaseCount', 'referrer', 'userAccountExists']) || typeof basis.allocationExists !== 'boolean' || !count(basis.purchaseCount) || typeof basis.userAccountExists !== 'boolean') return null;
    if (basis.referrer !== null && (typeof basis.referrer !== 'string' || !ADDRESS.test(basis.referrer))) return null;
++  // Review 1 M1 (rev 2): the referrer shown without a registration is the one the basis read on chain; a registration only where none was.
++  if ((registers ? null : (referrer?.address ?? null)) !== basis.referrer) return null;
    return {
      fees: {networkLamports: fees.networkLamports, markupLamports: '0'},
 -    simulation: {slot: sim.slot, elapsedMs: sim.elapsedMs, programs: ['compute-budget', 'presale'], instructionCount: 3},
@@ -3972,7 +4150,7 @@ index 8c62f07..618ac29 100644
      view: {
        currency: intent.currency,
        amount: intent.amount,
-@@ -263,7 +305,7 @@ function shownOf(entry: PreparedEntry, intent: PurchaseIntent): PreparedPurchase
+@@ -263,7 +307,7 @@ function shownOf(entry: PreparedEntry, intent: PurchaseIntent): PreparedPurchase
        nocBase: view.nocBase,
        spentCents: view.spentCents,
        destination: view.destination,
@@ -3981,7 +4159,7 @@ index 8c62f07..618ac29 100644
        fees: {networkLamports: vf.networkLamports, priorityLamports: vf.priorityLamports, rentLamports: vf.rentLamports},
        reasons: [...(reasons as PresaleReauthReason[])],
      },
-@@ -278,14 +320,21 @@ function shownOf(entry: PreparedEntry, intent: PurchaseIntent): PreparedPurchase
+@@ -278,14 +322,21 @@ function shownOf(entry: PreparedEntry, intent: PurchaseIntent): PreparedPurchase
   * not open (`geo-closed`) — decided first, as at prepare; the state (one read of the whole §2.1 snapshot) unavailable,
   * refused, closed, blocked or at another stage; the signed bytes not this purchase to the pinned destination crediting
   * the referrer allocation the program would credit now (signedPurchase); the account's presale accounts not as prepared
@@ -4005,7 +4183,7 @@ index 8c62f07..618ac29 100644
    if (!geo.open) throw new PurchaseRefused('geo-closed', geo.reason ?? '');
    const snapshot = openSnapshot(read.state, intent);
    await signedPurchase(entry, intent, snapshot, shown.fees.networkLamports);
-@@ -293,6 +342,11 @@ async function purchaseBeforeSign({ext, deps}: KindHost, entry: PreparedEntry, i
+@@ -293,6 +344,11 @@ async function purchaseBeforeSign({ext, deps}: KindHost, entry: PreparedEntry, i
    if (snapshot.allocation.exists !== b.allocationExists || snapshot.allocation.purchaseCount !== b.purchaseCount || snapshot.allocation.referrer !== b.referrer || snapshot.userAccountExists !== b.userAccountExists) {
      throw new PurchaseRefused('state-changed', 'the account’s presale accounts are not as prepared');
    }
@@ -4017,7 +4195,7 @@ index 8c62f07..618ac29 100644
    const limit = checkLimits({cents: BigInt(shown.view.spentCents), ...snapshot.limits});
    if (limit !== null) throw new PurchaseRefused(limit);
  }
-@@ -301,9 +355,12 @@ async function purchaseBeforeSign({ext, deps}: KindHost, entry: PreparedEntry, i
+@@ -301,9 +357,12 @@ async function purchaseBeforeSign({ext, deps}: KindHost, entry: PreparedEntry, i
   * Review 1 M1: the sign-time check rests on the bytes that will be signed, not on `shown`. The entry must read back under
   * its integrity (so the message checked is the one sendPrepared signs after the take), and its message must be exactly
   * the purchase of this intent to the destination the state pins, crediting the referrer allocation the fresh snapshot
@@ -4033,7 +4211,7 @@ index 8c62f07..618ac29 100644
   */
  async function signedPurchase(entry: PreparedEntry, intent: PurchaseIntent, snapshot: PresaleSnapshot, shownFee: string): Promise<void> {
    const invalid = new SendRefused('prepared-invalid', 'the prepared purchase is not this purchase');
-@@ -318,25 +375,32 @@ async function signedPurchase(entry: PreparedEntry, intent: PurchaseIntent, snap
+@@ -318,25 +377,32 @@ async function signedPurchase(entry: PreparedEntry, intent: PurchaseIntent, snap
    }
    const fee = signedNetworkFee(message);
    if (fee === null || fee > PRESALE_FEE_BOUND_LAMPORTS || fee !== BigInt(shownFee)) throw invalid;
@@ -4072,7 +4250,7 @@ index 8c62f07..618ac29 100644
  /**
   * Review I1: the network fee the message's compute budget pays — ix 0 exactly `[2, u32 LE units]` with units ===
   * COMPUTE_UNIT_LIMIT, ix 1 exactly `[3, u64 LE µlamports per CU]`, neither naming an account (their program ids are
-@@ -414,6 +478,69 @@ const usable = (p: number | undefined): number | null => (typeof p === 'number'
+@@ -414,6 +480,69 @@ const usable = (p: number | undefined): number | null => (typeof p === 'number'
  const priceOf = (prices: Prices | null, currency: PresaleCurrency): number | null =>
    prices === null ? null : usable(currency === 'SOL' ? prices.solana : currency === 'USDC' ? prices.usdc : prices.usdt);
  
@@ -4142,7 +4320,7 @@ index 8c62f07..618ac29 100644
  /** A state read as a purchase needs it: open, at the stage the user saw — else the refusal its answer means (§5). */
  function openSnapshot(state: PresaleState, intent: PurchaseIntent): PresaleSnapshot {
    if (state.kind === 'unavailable') throw new PurchaseRefused(state.code === 'refused' ? 'coordinator-refused' : 'presale-unavailable', state.code);
-@@ -438,26 +565,44 @@ export function expectedPurchaseAccounts(i: {account: string; currency: PresaleC
+@@ -438,26 +567,44 @@ export function expectedPurchaseAccounts(i: {account: string; currency: PresaleC
    return [...head, i.source, i.destination, MINTS[i.currency], i.account, SPL_TOKEN_PROGRAM, SYSTEM_PROGRAM_ID];
  }
  
@@ -4195,7 +4373,7 @@ index 8c62f07..618ac29 100644
  }
  
  /** §3.3 step 5 (C23): the program's own refusal of the purchase instruction → its code. */
-@@ -493,6 +638,8 @@ interface Basis {
+@@ -493,6 +640,8 @@ interface Basis {
    account: string;
    currency: PresaleCurrency;
    amount: bigint;
@@ -4204,7 +4382,7 @@ index 8c62f07..618ac29 100644
    snapshot: PresaleSnapshot;
    solBefore: bigint;
    source: {address: string; before: bigint} | null;
-@@ -567,6 +714,9 @@ function judge(sim: SimulationOutcome, b: Basis): Verdict {
+@@ -567,6 +716,9 @@ function judge(sim: SimulationOutcome, b: Basis): Verdict {
    if (new PublicKey(d.subarray(A.user.offset, A.user.offset + 32)).toBase58() !== b.account || (claimed !== 0 && claimed !== 1)) {
      return refuse('simulation-mismatch', 'the allocation after is not this account’s');
    }
@@ -4214,7 +4392,7 @@ index 8c62f07..618ac29 100644
    const count = u32At(d, A.purchase_count.offset) - s.allocation.purchaseCount;
    const spentCents = readU64LE(d, A.total_spent_cents.offset) - s.allocation.spentCents;
    const nocBase = readU64LE(d, A.total_tokens.offset) - s.allocation.totalBase;
-@@ -651,11 +801,21 @@ export async function preparePurchase(ext: Ext, deps: WalletDeps, account: strin
+@@ -651,11 +803,21 @@ export async function preparePurchase(ext: Ext, deps: WalletDeps, account: strin
    if (!session.some(a => a.publicKey === account)) throw new PurchaseRefused('unknown-account');
    if (inFlightFor(await readPending(ext), account) !== undefined) throw new PurchaseRefused('in-flight');
  
@@ -4237,7 +4415,7 @@ index 8c62f07..618ac29 100644
  
    // 3. Limits and balances: the quote's lines with this prepare's own reads. A stablecoin pays from the account that
    // holds it (C2): the largest holding of that mint owned by the account.
-@@ -677,10 +837,12 @@ export async function preparePurchase(ext: Ext, deps: WalletDeps, account: strin
+@@ -677,10 +839,12 @@ export async function preparePurchase(ext: Ext, deps: WalletDeps, account: strin
    const source = sourceAddress === null ? null : {address: sourceAddress, before: own.find(h => h.pubkey === sourceAddress)?.amount ?? 0n};
  
    // 4. Build at the normal tier (its fee within PRESALE_FEE_BOUND_LAMPORTS, which the quote assumed). The destination is
@@ -4253,7 +4431,7 @@ index 8c62f07..618ac29 100644
    const [price, latest] = await Promise.all([read(estimatePriorityFee(deps.reader, 'normal')), read(deps.reader.getLatestBlockhash())]);
    const user = new PublicKey(account);
    const treasury = new PublicKey(MAINNET_SOL_TREASURY);
-@@ -690,7 +852,7 @@ export async function preparePurchase(ext: Ext, deps: WalletDeps, account: strin
+@@ -690,7 +854,7 @@ export async function preparePurchase(ext: Ext, deps: WalletDeps, account: strin
        : buildStablecoinBuyInstructions(user, currency, amount, price, resolved, treasury, new PublicKey((source as {address: string}).address));
    const message = new TransactionMessage({payerKey: user, recentBlockhash: latest.blockhash, instructions}).compileToV0Message();
    const referrerAllocation = resolved.referrerAllocation.toBase58();
@@ -4262,7 +4440,7 @@ index 8c62f07..618ac29 100644
    const networkLamports = networkFeeLamports(message.header.numRequiredSignatures, price, COMPUTE_UNIT_LIMIT);
    const priorityLamports = priorityFeeLamports(price, COMPUTE_UNIT_LIMIT);
    if (networkLamports > PRESALE_FEE_BOUND_LAMPORTS) throw new Error(`the purchase's network fee ${networkLamports} exceeds its bound`);
-@@ -698,7 +860,7 @@ export async function preparePurchase(ext: Ext, deps: WalletDeps, account: strin
+@@ -698,7 +862,7 @@ export async function preparePurchase(ext: Ext, deps: WalletDeps, account: strin
    // 5. Simulate the bytes, check everything; one retry, the same bytes, for a destination-only mismatch (C39).
    const wire = base64.encode(new VersionedTransaction(message).serialize());
    const keys = message.staticAccountKeys.map(k => k.toBase58());
@@ -4271,7 +4449,7 @@ index 8c62f07..618ac29 100644
    const simulate = async (s: PresaleSnapshot) => {
      const started = deps.now();
      const sim = await read(deps.reader.simulateTransaction(wire, {accounts: simulationAccounts(basisOf(s))}));
-@@ -713,7 +875,8 @@ export async function preparePurchase(ext: Ext, deps: WalletDeps, account: strin
+@@ -713,7 +877,8 @@ export async function preparePurchase(ext: Ext, deps: WalletDeps, account: strin
      const fresh = openSnapshot(again.state, intent);
      // The fresh snapshot replaces the first for everything; what the bytes were built from must not have moved.
      if (fresh.userAccountExists !== snapshot.userAccountExists || fresh.allocation.exists !== snapshot.allocation.exists) throw new PurchaseRefused('state-changed', 'the accounts this purchase creates changed');
@@ -4281,7 +4459,7 @@ index 8c62f07..618ac29 100644
      const freshLine = line(fresh);
      if (freshLine !== null) throw new PurchaseRefused(freshLine);
      snapshot = fresh;
-@@ -725,7 +888,8 @@ export async function preparePurchase(ext: Ext, deps: WalletDeps, account: strin
+@@ -725,7 +890,8 @@ export async function preparePurchase(ext: Ext, deps: WalletDeps, account: strin
    if (verdict.kind === 'refuse') throw new PurchaseRefused(verdict.code, verdict.detail);
    const measured = verdict;
  
@@ -4291,7 +4469,7 @@ index 8c62f07..618ac29 100644
    const settings = await readSettings(ext);
    const decimals = currency === 'SOL' ? 9 : 6;
    const reasons = presaleReauthReasons({
-@@ -744,7 +908,7 @@ export async function preparePurchase(ext: Ext, deps: WalletDeps, account: strin
+@@ -744,7 +910,7 @@ export async function preparePurchase(ext: Ext, deps: WalletDeps, account: strin
      nocBase: measured.nocBase.toString(),
      spentCents: measured.spentCents.toString(),
      destination,
@@ -4300,7 +4478,7 @@ index 8c62f07..618ac29 100644
      fees: {networkLamports: networkLamports.toString(), priorityLamports: priorityLamports.toString(), rentLamports: measured.rent.toString()},
    };
    let challengeId: string | null = null;
-@@ -764,6 +928,7 @@ export async function preparePurchase(ext: Ext, deps: WalletDeps, account: strin
+@@ -764,6 +930,7 @@ export async function preparePurchase(ext: Ext, deps: WalletDeps, account: strin
        rentLamports: view.fees.rentLamports,
        reasons,
        thresholdCents: settings.reauthUsdCents,
@@ -4475,9 +4653,9 @@ index a9e7531..3731a7d 100644
 
 - [ ] **Step 4: Run — green, the whole suite, both builds, the gates.**
 
-Run: the Step 2 commands — `Test Files  8 passed (8)` · `Tests  352 passed (352)` (referrer 52, captured 2, buy 140, api 67, messages 29, presaleSwitch 3, reauthPurchase 7, check-no-presale 52).
+Run: the Step 2 commands — `Test Files  8 passed (8)` · `Tests  353 passed (353)` (referrer 53, captured 2, buy 140, api 67, messages 29, presaleSwitch 3, reauthPurchase 7, check-no-presale 52).
 
-Run (in `extension/`): `npx tsc --noEmit; echo $?` — `0`. `npx vitest run` — `Test Files  217 passed (217)` · `Tests  4579 passed (4579)` (previous tree 215 / 4523: +2 files, +56 tests — referrer 52, captured 2, reauthPurchase +1, buy +1). `npx vitest run --config vitest.nopresale.config.ts` — `Test Files  16 passed (16)` · `Tests  430 passed | 15 skipped (445)` (unchanged: no row of this task runs off; `messages.test.ts` lists no presale type there).
+Run (in `extension/`): `npx tsc --noEmit; echo $?` — `0`. `npx vitest run` — `Test Files  217 passed (217)` · `Tests  4590 passed (4590)` (previous tree 215 / 4533: +2 files, +57 tests — referrer 53, captured 2, reauthPurchase +1, buy +1). `npx vitest run --config vitest.nopresale.config.ts` — `Test Files  16 passed (16)` · `Tests  430 passed | 15 skipped (445)` (unchanged: no row of this task runs off; `messages.test.ts` lists no presale type there).
 
 Run: `rm -rf dist dist-nopresale && node scripts/build.mjs && node scripts/build.mjs --no-presale`, then `npm run gates` — exit 0, every gate ok once per build (rpc methods unchanged — `getAccountsData` was already on the list; vault isolation unchanged), the last line `no presale ok (dist-nopresale off, dist on): the off build's module maps carry no presale module and of core/presale/ only 3 allowed; the on build carries 23 required modules; 79 markers (none in the off build, each in the on build); 9 strings and the decoder's instruction names stay in the off build`. `npm run csp` — `CSP ok` for `dist/app` and `dist-nopresale/app`; `npm run secrets` — exit 0. No root `src/`, no `core/` and no `web/` change: the root `tsc` / `jest` and web's `verify` are not this task's.
 
@@ -4490,42 +4668,44 @@ git add -A extension
 git commit -m "feat(extension): B1d-2 the referral address in prepare and sign — presale.checkReferrer (§3.5's order: invalid, self = any account of this wallet, not-applicable by resolveReferrerWith itself, no-allocation by §2.1 rule 6); intent.referrer bound by the digest (absent = B1d-1b's bytes, captured from a1bda47); prepare checks it again and registers it (register_referrer + account 3), refusing — never dropping — one that would not register; referrer@84 after checked for every purchase; the retry re-resolves it; the signature re-verifies the registration and account 3 from the integrity-bound bytes, signs a registration only behind its proof, and re-reads the referrer's allocation and the wallet's accounts; the record's referrerAddress; #10 Referred by + Q47" -m "Co-Authored-By: <the executing model> <noreply@anthropic.com>"
 ```
 
-- [ ] **Step 6: The named mutations — each alone, in a fresh `git archive HEAD` copy (node_modules linked), `timeout 300`; `tsc`'s own exit code first (0 for every one), then the named test file.** `RT` = `referrer.test.ts` (52), `CT` = `captured.test.ts` (2), `RP` = `reauthPurchase.test.ts` (7), `NP` = `check-no-presale.test.mjs` (52). Bold ids are the failure modes this task was asked to hunt.
+- [ ] **Step 6: The named mutations — each alone, in a fresh `git archive HEAD` copy (node_modules linked), `timeout 300`; `tsc`'s own exit code first (0 for every one), then the named test file.** `RT` = `referrer.test.ts` (53), `CT` = `captured.test.ts` (2), `RP` = `reauthPurchase.test.ts` (7), `NP` = `check-no-presale.test.mjs` (52). Bold ids are the failure modes this task was asked to hunt.
 
 | id | the change | named test → observed |
 |---|---|---|
-| R1 | **(sign from the bytes)** `signedPurchase` resolves the fresh snapshot without the intent’s referral address: `const now = await referrerAllocationOf(snapshot, entry.account, referrer);` → `const now = await referrerAllocationOf(snapshot, entry.account, null);` | RT 8 rows, among them “end to end: prepare → #10 proven → presale.buy → v1_pending names the referrer → confirmed → the record POSTs referrerAddress”; “every check passing at the signature (positive control): it signs the registration”; “its allocation gone → referrer-no-allocation; nothing signed” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  8 failed \| 44 passed (52)` |
-| R2 | **(the registration’s argument)** `register_referrer`’s data compared with its own bytes after the discriminator (any referrer accepted): `if (!sameBytes(register.data, [...REGISTER_REFERRER_DISCRIMINATOR, ...new PublicKey(i.registerReferrer).toBytes()]))` → `if (!sameBytes(register.data, [...REGISTER_REFERRER_DISCRIMINATOR, ...register.data.subarray(8)]))` | RT “assertPurchaseMessage: a registration where none is expected, none where one is → an engine bug, thrown”; “the registration names another referrer while account 3 stays this one’s allocation → prepared-invalid” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  2 failed \| 50 passed (52)` |
-| R3 | the registration’s first two accounts unchecked: `if (named.length !== expected.length \|\| named.some((k, n) => k !== expected[n])) throw new Error('register_referrer names` → `if (named.length !== expected.length \|\| named.some((k, n) => k !== expected[n] && n > 1)) throw new Error('register_referrer names` | RT “the registration’s accounts swapped (user_account and user_allocation) → prepared-invalid” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  1 failed \| 51 passed (52)` |
-| R4 | **(re-authentication)** an entry naming a referral address with `challengeId` null signs: `if (referrer !== null && entry.challengeId === null) throw invalid;` → (removed) | RT “a registration whose re-authentication was taken away (challengeId null, integrity recomputed) → prepared-invalid; nothing signed” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  1 failed \| 51 passed (52)` |
-| R5 | **(referrer@84)** `judge` without the referrer-after check: `if (!sameBytes(referrerAfter, b.referrer === null` → `if (b.account === '' && !sameBytes(referrerAfter, b.referrer === null` | RT “a purchase without a referral address: referrer@84 stays as it was — zero, or the on-chain referrer”; “referrer@84 after must be the registered referrer: left zero (the registration ignored), or another key → simulation-mismatch” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  2 failed \| 50 passed (52)` |
-| R6 | the simulation’s expected referrer = the snapshot’s (a registration expected to leave it zero): `({account, currency, amount, referrer: effectiveReferrer, snapshot: s,` → `({account, currency, amount, referrer: s.allocation.referrer, snapshot: s,` | RT 26 rows, among them “a first SOL purchase: register_referrer between the compute budget and the purchase, account 3 its allocation, the view and #10 say it registers”; “a first USDC purchase from an allocation that never bought: the same instruction, no rent (both PDAs exist), still re-authenticated”; “a prepare without the referral address after one with it replaces the entry: one per account (§1.3), the registration gone with it” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  26 failed \| 26 passed (52)` |
-| R7 | **(never dropped)** `referrerChainLine` never answers `referrer-not-applicable`: `.registerReferrer?.toBase58() !== referrer) return 'referrer-not-applicable';` → `.registerReferrer?.toBase58() !== referrer && account === '') return 'referrer-not-applicable';` | RT “no referral address: the on-chain referrer is credited, nothing registered, as B1d-1b; with one: refused, the input never ignored”; “referrer-not-applicable: an on-chain referrer, or not a first purchase (purchase_count 1) — an on-chain referrer always wins (D8)”; “refused, never dropped: an on-chain referrer, not a first purchase → referrer-not-applicable before anything is built or simulated”; “the order: invalid, self, not-applicable, no-allocation — each before the next” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  4 failed \| 48 passed (52)` |
-| R8 | **(self)** self = the buyer only: `return referrer === account \|\| own.has(referrer) ? 'referrer-self' : null;` → `return referrer === account ? 'referrer-self' : null;` | RT “each other line at prepare: invalid, self (the buyer, another account of the session), no allocation — nothing simulated”; “referrer-self: the buyer, another account of the session, an account of the stored wallet not in the session — nothing read”; “the address now an account of this wallet → referrer-self; nothing signed”; “the order: invalid, self, not-applicable, no-allocation — each before the next” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  4 failed \| 48 passed (52)` |
-| R9 | **(self)** the stored wallet’s accounts left out: `...(wallet?.accounts ?? []).map(a => a.publicKey)]);` → `...(wallet?.accounts ?? []).filter(() => false).map(a => a.publicKey)]);` | RT “referrer-self: the buyer, another account of the session, an account of the stored wallet not in the session — nothing read” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  1 failed \| 51 passed (52)` |
-| R10 | **(self)** the session’s accounts left out: `return new Set([...(session ?? []).map(a => a.publicKey),` → `return new Set([...(session ?? []).filter(() => false).map(a => a.publicKey),` | RT “each other line at prepare: invalid, self (the buyer, another account of the session), no allocation — nothing simulated”; “referrer-self: the buyer, another account of the session, an account of the stored wallet not in the session — nothing read”; “the address now an account of this wallet → referrer-self; nothing signed”; “the order: invalid, self, not-applicable, no-allocation — each before the next” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  4 failed \| 48 passed (52)` |
-| R11 | **(sign re-checks)** `beforeSign` without the referrer’s lines: `if (referrer !== null && referrerRead !== null) { ⏎     if ('e' in referrerRead)` → `if (referrer !== null && referrerRead !== null && deps.now() < 0) { ⏎     if ('e' in referrerRead)` | RT 5 rows, among them “its allocation gone → referrer-no-allocation; nothing signed”; “its allocation now another user’s → referrer-no-allocation; nothing signed”; “its allocation read answered 403 → coordinator-refused; nothing signed” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  5 failed \| 47 passed (52)` |
-| R12 | **(prepare re-checks)** prepare without the referrer’s lines: `if (referrer !== null) { ⏎     const own = await walletAccounts(ext);` → `if (referrer !== null && deps.now() < 0) { ⏎     const own = await walletAccounts(ext);` | RT 10 rows, among them “a first SOL purchase: register_referrer between the compute budget and the purchase, account 3 its allocation, the view and #10 say it registers”; “a referrer allocation read failing: 403 → coordinator-refused, unreachable → presale-unavailable; nothing simulated”; “each other line at prepare: invalid, self (the buyer, another account of the session), no allocation — nothing simulated” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  10 failed \| 42 passed (52)` |
-| R13 | `referrer-no-allocation` only for a malformed allocation (an absent one accepted): `return allocationFacts(referrerAllocation, referrer)?.exists === true ? null : 'referrer-no-allocation';` → `return allocationFacts(referrerAllocation, referrer) !== null ? null : 'referrer-no-allocation';` | RT “each other line at prepare: invalid, self (the buyer, another account of the session), no allocation — nothing simulated”; “its allocation gone → referrer-no-allocation; nothing signed”; “referrer-no-allocation: its allocation absent, another user’s at user@8, not the program’s, of another length — §2.1 rule 6” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  3 failed \| 49 passed (52)` |
-| R14 | **(digest)** the digest without the referrer: `return intent.referrer === undefined ? value : {...value, referrer: intent.referrer};` → `return value;` | RT “the digest binds the referral address: with one it differs from without and from another; without one it is B1d-1b’s (captured.test.ts)”; “the entry rewritten whole for another referrer (intent, digest, message, integrity) under the first one’s proof → reauth-required: the proof was for that referrer” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  2 failed \| 50 passed (52)` |
-| R15 | the retry compares only the referrer allocation, not whether it registers: `\|\| (freshReferrer.registerReferrer?.toBase58() ?? null) !== registerReferrer) throw` → `) throw` | RT “the busy-destination retry re-resolves the referrer (C39): the fresh snapshot finds a referrer registered — another, or this very one — → state-changed, no second simulation” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  1 failed \| 51 passed (52)` |
-| R16 | `referrer: null` malformed: `if (referrer === undefined \|\| referrer === null) return intent;` → `if (referrer === undefined) return intent;` | RT “absent or null is no referrer — the intent has no such key, as B1d-1b’s; a base58 string of 32–44 characters is kept; anything else is malformed” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  1 failed \| 51 passed (52)` |
-| R17 | the challenge’s description without `referrer`: `...(view.referrer === null ? {} : {referrer: view.referrer}), ⏎     }; ⏎     const fresh` → `}; ⏎     const fresh` | RT “a first SOL purchase: register_referrer between the compute budget and the purchase, account 3 its allocation, the view and #10 say it registers” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  1 failed \| 51 passed (52)` |
-| R18 | `isPurchaseAbout` accepts a registration without `first-purchase`: `if (r.registers && !(Array.isArray(a.reasons) && a.reasons.includes('first-purchase'))) return false;` → (removed) | RT “the challenge store keeps the background’s own shape only: a registration without first-purchase, or a malformed referrer, is not issued” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  1 failed \| 51 passed (52)` |
-| R19 | #10 without Q47’s note: `if (r.registers) rows.push({label: PURCHASE_TEXT.registers, value: null, address: null});` → (removed) | RT + RP “B1d-2 (Q47): a purchase that registers its referrer — "Referred by" with the whole address in groups of four after "To", then Q47’s note”; “a registration: "Referred by" with the whole address after "To", then Q47’s note; an on-chain referrer: the row without the note” — tsc 0 · RED `Test Files  2 failed (2)` · `Tests  2 failed \| 57 passed (59)` |
-| R20 | #10 describes a registration without `first-purchase`: `if (r.registers && !(Array.isArray(reasons) && reasons.includes('first-purchase'))) return null;` → (removed) | RT “a referrer that does not read back describes nothing: a bad address, an extra key, registers not a boolean, a registration without the first-purchase reason” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  1 failed \| 51 passed (52)` |
-| R21 | **(ledger MUST)** `shownOf` reads back only `registers: false` (B1d-1b’s): `\|\| referrer.registers !== registers)) return null;` → `\|\| referrer.registers !== false)) return null;` | RT 12 rows, among them “a purchase meanwhile (purchase_count 1) → state-changed; nothing signed”; “another referrer registered meanwhile → state-changed; nothing signed”; “end to end: prepare → #10 proven → presale.buy → v1_pending names the referrer → confirmed → the record POSTs referrerAddress” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  12 failed \| 40 passed (52)` |
-| R22 | `shownOf` does not compare the registered address with the intent’s: `if (registers && referrer?.address !== intent.referrer) return null;` → (removed) | RT “pendingData: the registered referrer; a stored view that names another, or says it registers nothing, does not read back” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  1 failed \| 51 passed (52)` |
-| R23 | `checkReferrer`: a malformed buyer allocation answered `referrer-no-allocation`: `if (facts === null) throw new PurchaseRefused('presale-unavailable', 'malformed');` → `if (facts === null) return 'referrer-no-allocation';` | RT “a failed read: 403 → coordinator-refused, unreachable → presale-unavailable; the buyer’s allocation malformed → presale-unavailable” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  1 failed \| 51 passed (52)` |
-| R24 | the signature: a failed referrer-allocation read taken as absent: `readReferrerAllocation(deps, referrer).then(a => ({a}), (e: unknown) => ({e})),` → `readReferrerAllocation(deps, referrer).then(a => ({a}), (e: unknown) => (e === e ? {a: null} : {e})),` | RT “its allocation read answered 403 → coordinator-refused; nothing signed”; “its allocation read unreachable → presale-unavailable; nothing signed” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  2 failed \| 50 passed (52)` |
-| R25 | **(on-chain wins)** `referrerAllocationOf` ignores the on-chain referrer: `return resolveReferrerWith(async () => allocationRefOf(snapshot), new PublicKey(account), captured);` → `return resolveReferrerWith(async () => ({...allocationRefOf(snapshot), referrer: null}), new PublicKey(account), captured);` | RT + CT 5 rows, among them “a purchase without a referral address: referrer@84 stays as it was — zero, or the on-chain referrer”; “every digest, every integrity, and the three purchases replayed — a first SOL purchase with its challenge, a USDC purchase, one credited to an on-chain referrer”; “no referral address: the on-chain referrer is credited, nothing registered, as B1d-1b; with one: refused, the input never ignored” — tsc 0 · RED `Test Files  2 failed (2)` · `Tests  5 failed \| 49 passed (54)` |
-| R26 | **(rent)** a created PDA’s rent accepted at its bound + 1: `a.lamports > 0n && a.lamports <= bound ?` → `a.lamports > 0n && a.lamports <= bound + 1n ?` | RT “register_referrer creates the two PDAs: their rent, from the simulation, is checked as without one — above its bound → mismatch, at it → accepted” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  1 failed \| 51 passed (52)` |
-| R27 | **(re-authentication)** a registration not counted as a first purchase: `firstPurchase: snapshot.limits.firstPurchase,` → `firstPurchase: snapshot.limits.firstPurchase && referrer === null,` | RT 26 rows, among them “a first SOL purchase: register_referrer between the compute budget and the purchase, account 3 its allocation, the view and #10 say it registers”; “a first USDC purchase from an allocation that never bought: the same instruction, no rent (both PDAs exist), still re-authenticated”; “a prepare without the referral address after one with it replaces the entry: one per account (§1.3), the registration gone with it” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  26 failed \| 26 passed (52)` |
+| R1 | **(sign from the bytes)** `signedPurchase` resolves the fresh snapshot without the intent’s referral address: `const now = await referrerAllocationOf(snapshot, entry.account, referrer);` → `const now = await referrerAllocationOf(snapshot, entry.account, null);` | RT 8 rows, among them “end to end: prepare → #10 proven → presale.buy → v1_pending names the referrer → confirmed → the record POSTs referrerAddress”; “every check passing at the signature (positive control): it signs the registration”; “its allocation gone → referrer-no-allocation; nothing signed” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  8 failed \| 45 passed (53)` |
+| R2 | **(the registration’s argument)** `register_referrer`’s data compared with its own bytes after the discriminator (any referrer accepted): `if (!sameBytes(register.data, [...REGISTER_REFERRER_DISCRIMINATOR, ...new PublicKey(i.registerReferrer).toBytes()]))` → `if (!sameBytes(register.data, [...REGISTER_REFERRER_DISCRIMINATOR, ...register.data.subarray(8)]))` | RT “assertPurchaseMessage: a registration where none is expected, none where one is → an engine bug, thrown”; “the registration names another referrer while account 3 stays this one’s allocation → prepared-invalid” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  2 failed \| 51 passed (53)` |
+| R3 | the registration’s first two accounts unchecked: `if (named.length !== expected.length \|\| named.some((k, n) => k !== expected[n])) throw new Error('register_referrer names` → `if (named.length !== expected.length \|\| named.some((k, n) => k !== expected[n] && n > 1)) throw new Error('register_referrer names` | RT “the registration’s accounts swapped (user_account and user_allocation) → prepared-invalid” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  1 failed \| 52 passed (53)` |
+| R4 | **(re-authentication)** an entry naming a referral address with `challengeId` null signs: `if (referrer !== null && entry.challengeId === null) throw invalid;` → (removed) | RT “a registration whose re-authentication was taken away (challengeId null, integrity recomputed) → prepared-invalid; nothing signed” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  1 failed \| 52 passed (53)` |
+| R5 | **(referrer@84)** `judge` without the referrer-after check: `if (!sameBytes(referrerAfter, b.referrer === null` → `if (b.account === '' && !sameBytes(referrerAfter, b.referrer === null` | RT “a purchase without a referral address: referrer@84 stays as it was — zero, or the on-chain referrer”; “referrer@84 after must be the registered referrer: left zero (the registration ignored), or another key → simulation-mismatch” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  2 failed \| 51 passed (53)` |
+| R6 | the simulation’s expected referrer = the snapshot’s (a registration expected to leave it zero): `({account, currency, amount, referrer: effectiveReferrer, snapshot: s,` → `({account, currency, amount, referrer: s.allocation.referrer, snapshot: s,` | RT 27 rows, among them “a first SOL purchase: register_referrer between the compute budget and the purchase, account 3 its allocation, the view and #10 say it registers”; “a first USDC purchase from an allocation that never bought: the same instruction, no rent (both PDAs exist), still re-authenticated”; “a prepare without the referral address after one with it replaces the entry: one per account (§1.3), the registration gone with it” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  27 failed \| 26 passed (53)` |
+| R7 | **(never dropped)** `referrerChainLine` never answers `referrer-not-applicable`: `.registerReferrer?.toBase58() !== referrer) return 'referrer-not-applicable';` → `.registerReferrer?.toBase58() !== referrer && account === '') return 'referrer-not-applicable';` | RT “no referral address: the on-chain referrer is credited, nothing registered, as B1d-1b; with one: refused, the input never ignored”; “referrer-not-applicable: an on-chain referrer, or not a first purchase (purchase_count 1) — an on-chain referrer always wins (D8)”; “refused, never dropped: an on-chain referrer, not a first purchase → referrer-not-applicable before anything is built or simulated”; “the order: invalid, self, not-applicable, no-allocation — each before the next” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  4 failed \| 49 passed (53)` |
+| R8 | **(self)** self = the buyer only: `return referrer === account \|\| own.has(referrer) ? 'referrer-self' : null;` → `return referrer === account ? 'referrer-self' : null;` | RT “each other line at prepare: invalid, self (the buyer, another account of the session), no allocation — nothing simulated”; “referrer-self: the buyer, another account of the session, an account of the stored wallet not in the session — nothing read”; “the address now an account of this wallet → referrer-self; nothing signed”; “the order: invalid, self, not-applicable, no-allocation — each before the next” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  4 failed \| 49 passed (53)` |
+| R9 | **(self)** the stored wallet’s accounts left out: `...(wallet?.accounts ?? []).map(a => a.publicKey)]);` → `...(wallet?.accounts ?? []).filter(() => false).map(a => a.publicKey)]);` | RT “referrer-self: the buyer, another account of the session, an account of the stored wallet not in the session — nothing read” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  1 failed \| 52 passed (53)` |
+| R10 | **(self)** the session’s accounts left out: `return new Set([...(session ?? []).map(a => a.publicKey),` → `return new Set([...(session ?? []).filter(() => false).map(a => a.publicKey),` | RT “each other line at prepare: invalid, self (the buyer, another account of the session), no allocation — nothing simulated”; “referrer-self: the buyer, another account of the session, an account of the stored wallet not in the session — nothing read”; “the address now an account of this wallet → referrer-self; nothing signed”; “the order: invalid, self, not-applicable, no-allocation — each before the next” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  4 failed \| 49 passed (53)` |
+| R11 | **(sign re-checks)** `beforeSign` without the referrer’s lines: `if (referrer !== null && referrerRead !== null) { ⏎     if ('e' in referrerRead)` → `if (referrer !== null && referrerRead !== null && deps.now() < 0) { ⏎     if ('e' in referrerRead)` | RT 5 rows, among them “its allocation gone → referrer-no-allocation; nothing signed”; “its allocation now another user’s → referrer-no-allocation; nothing signed”; “its allocation read answered 403 → coordinator-refused; nothing signed” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  5 failed \| 48 passed (53)` |
+| R12 | **(prepare re-checks)** prepare without the referrer’s lines: `if (referrer !== null) { ⏎     const own = await walletAccounts(ext);` → `if (referrer !== null && deps.now() < 0) { ⏎     const own = await walletAccounts(ext);` | RT 10 rows, among them “a first SOL purchase: register_referrer between the compute budget and the purchase, account 3 its allocation, the view and #10 say it registers”; “a referrer allocation read failing: 403 → coordinator-refused, unreachable → presale-unavailable; nothing simulated”; “each other line at prepare: invalid, self (the buyer, another account of the session), no allocation — nothing simulated” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  10 failed \| 43 passed (53)` |
+| R13 | `referrer-no-allocation` only for a malformed allocation (an absent one accepted): `return allocationFacts(referrerAllocation, referrer)?.exists === true ? null : 'referrer-no-allocation';` → `return allocationFacts(referrerAllocation, referrer) !== null ? null : 'referrer-no-allocation';` | RT “each other line at prepare: invalid, self (the buyer, another account of the session), no allocation — nothing simulated”; “its allocation gone → referrer-no-allocation; nothing signed”; “referrer-no-allocation: its allocation absent, another user’s at user@8, not the program’s, of another length — §2.1 rule 6” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  3 failed \| 50 passed (53)` |
+| R14 | **(digest)** the digest without the referrer: `return intent.referrer === undefined ? value : {...value, referrer: intent.referrer};` → `return value;` | RT “the digest binds the referral address: with one it differs from without and from another; without one it is B1d-1b’s (captured.test.ts)”; “the entry rewritten whole for another referrer (intent, digest, message, integrity) under the first one’s proof → reauth-required: the proof was for that referrer” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  2 failed \| 51 passed (53)` |
+| R15 | the retry compares only the referrer allocation, not whether it registers: `\|\| (freshReferrer.registerReferrer?.toBase58() ?? null) !== registerReferrer) throw` → `) throw` | RT “the busy-destination retry re-resolves the referrer (C39): the fresh snapshot finds a referrer registered — another, or this very one — → state-changed, no second simulation” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  1 failed \| 52 passed (53)` |
+| R16 | `referrer: null` malformed: `if (referrer === undefined \|\| referrer === null) return intent;` → `if (referrer === undefined) return intent;` | RT “absent or null is no referrer — the intent has no such key, as B1d-1b’s; a base58 string of 32–44 characters is kept; anything else is malformed” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  1 failed \| 52 passed (53)` |
+| R17 | the challenge’s description without `referrer`: `...(view.referrer === null ? {} : {referrer: view.referrer}), ⏎     }; ⏎     const fresh` → `}; ⏎     const fresh` | RT “a first SOL purchase: register_referrer between the compute budget and the purchase, account 3 its allocation, the view and #10 say it registers” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  1 failed \| 52 passed (53)` |
+| R18 | `isPurchaseAbout` accepts a registration without `first-purchase`: `if (r.registers && !(Array.isArray(a.reasons) && a.reasons.includes('first-purchase'))) return false;` → (removed) | RT “the challenge store keeps the background’s own shape only: a registration without first-purchase, or a malformed referrer, is not issued” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  1 failed \| 52 passed (53)` |
+| R19 | #10 without Q47’s note: `if (r.registers) rows.push({label: PURCHASE_TEXT.registers, value: null, address: null});` → (removed) | RT + RP “B1d-2 (Q47): a purchase that registers its referrer — "Referred by" with the whole address in groups of four after "To", then Q47’s note”; “a registration: "Referred by" with the whole address after "To", then Q47’s note; an on-chain referrer: the row without the note” — tsc 0 · RED `Test Files  2 failed (2)` · `Tests  2 failed \| 58 passed (60)` |
+| R20 | #10 describes a registration without `first-purchase`: `if (r.registers && !(Array.isArray(reasons) && reasons.includes('first-purchase'))) return null;` → (removed) | RT “a referrer that does not read back describes nothing: a bad address, an extra key, registers not a boolean, a registration without the first-purchase reason” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  1 failed \| 52 passed (53)` |
+| R21 | **(ledger MUST)** `shownOf` reads back only `registers: false` (B1d-1b’s): `\|\| referrer.registers !== registers)) return null;` → `\|\| referrer.registers !== false)) return null;` | RT 13 rows, among them “a purchase meanwhile (purchase_count 1) → state-changed; nothing signed”; “another referrer registered meanwhile → state-changed; nothing signed”; “end to end: prepare → #10 proven → presale.buy → v1_pending names the referrer → confirmed → the record POSTs referrerAddress” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  13 failed \| 40 passed (53)` |
+| R22 | `shownOf` does not compare the registered address with the intent’s: `if (registers && referrer?.address !== intent.referrer) return null;` → (removed) | RT “pendingData: the registered referrer; a stored view that names another, or says it registers nothing, does not read back” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  1 failed \| 52 passed (53)` |
+| R23 | `checkReferrer`: a malformed buyer allocation answered `referrer-no-allocation`: `if (facts === null) throw new PurchaseRefused('presale-unavailable', 'malformed');` → `if (facts === null) return 'referrer-no-allocation';` | RT “a failed read: 403 → coordinator-refused, unreachable → presale-unavailable; the buyer’s allocation malformed → presale-unavailable” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  1 failed \| 52 passed (53)` |
+| R24 | the signature: a failed referrer-allocation read taken as absent: `readReferrerAllocation(deps, referrer).then(a => ({a}), (e: unknown) => ({e})),` → `readReferrerAllocation(deps, referrer).then(a => ({a}), (e: unknown) => (e === e ? {a: null} : {e})),` | RT “its allocation read answered 403 → coordinator-refused; nothing signed”; “its allocation read unreachable → presale-unavailable; nothing signed” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  2 failed \| 51 passed (53)` |
+| R25 | **(on-chain wins)** `referrerAllocationOf` ignores the on-chain referrer: `return resolveReferrerWith(async () => allocationRefOf(snapshot), new PublicKey(account), captured);` → `return resolveReferrerWith(async () => ({...allocationRefOf(snapshot), referrer: null}), new PublicKey(account), captured);` | RT + CT 6 rows, among them “a purchase without a referral address: referrer@84 stays as it was — zero, or the on-chain referrer”; “every digest, every integrity, and the three purchases replayed — a first SOL purchase with its challenge, a USDC purchase, one credited to an on-chain referrer”; “no referral address: the on-chain referrer is credited, nothing registered, as B1d-1b; with one: refused, the input never ignored” — tsc 0 · RED `Test Files  2 failed (2)` · `Tests  6 failed \| 49 passed (55)` |
+| R26 | **(rent)** a created PDA’s rent accepted at its bound + 1: `a.lamports > 0n && a.lamports <= bound ?` → `a.lamports > 0n && a.lamports <= bound + 1n ?` | RT “register_referrer creates the two PDAs: their rent, from the simulation, is checked as without one — above its bound → mismatch, at it → accepted” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  1 failed \| 52 passed (53)` |
+| R27 | **(re-authentication)** a registration not counted as a first purchase: `firstPurchase: snapshot.limits.firstPurchase,` → `firstPurchase: snapshot.limits.firstPurchase && referrer === null,` | RT 27 rows, among them “a first SOL purchase: register_referrer between the compute budget and the purchase, account 3 its allocation, the view and #10 say it registers”; “a first USDC purchase from an allocation that never bought: the same instruction, no rent (both PDAs exist), still re-authenticated”; “a prepare without the referral address after one with it replaces the entry: one per account (§1.3), the registration gone with it” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  27 failed \| 26 passed (53)` |
+| **R28 (review 1 M1)** | `shownOf` without the tie: `if ((registers ? null : (referrer?.address ?? null)) !== basis.referrer) return null;` → (removed) | RT “an on-chain referrer: named as read (positive control); a stored view naming another, or none, and a basis naming one beside a registration, do not read back” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  1 failed \| 52 passed (53)` |
+| R29 | the review's one-sided form: `… !== basis.referrer) return null;` → `if (!registers && referrer !== null && referrer.address !== basis.referrer) return null;` (a view naming none while the basis read one, and a registration beside an on-chain referrer, read back) | RT the same row — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  1 failed \| 52 passed (53)` |
 | C1 | **(byte identity)** the digest always carries `referrer` (`''` when none): `return intent.referrer === undefined ? value : {...value, referrer: intent.referrer};` → `return {...value, referrer: intent.referrer ?? ''};` | CT “every digest, every integrity, and the three purchases replayed — a first SOL purchase with its challenge, a USDC purchase, one credited to an on-chain referrer” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  1 failed \| 1 passed (2)` |
 | G1 | `MARKERS` without `presale.checkReferrer`: `'presale.checkReferrer',` → (removed) | NP “armed by B1d-1b: Task 1 adds its three presale message types (§6.2: "every presale.* message type"), Task 2 its prepare and the intent kind, Task 3 its four sign and resume types, Task 4 #23’s copy, Task 5 #20’s, #10’s and the record words, Task 6 #11’s and #50b’s (Q44’s label "Programs" is one bare word: its value is the marker); B1d-2 Task 1 the record’s message type and alarm, Task 2 the referral address’s type and #10’s referrer row”; “every presale.* message type of api.ts is a marker” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  2 failed \| 50 passed (52)` |
 | G2 | `MARKERS` without `Referred by`: `'Referred by',` → (removed) | NP “armed by B1d-1b: Task 1 adds its three presale message types (§6.2: "every presale.* message type"), Task 2 its prepare and the intent kind, Task 3 its four sign and resume types, Task 4 #23’s copy, Task 5 #20’s, #10’s and the record words, Task 6 #11’s and #50b’s (Q44’s label "Programs" is one bare word: its value is the marker); B1d-2 Task 1 the record’s message type and alarm, Task 2 the referral address’s type and #10’s referrer row” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  1 failed \| 51 passed (52)` |
 
-30 mutations, all red, every one compiling (on the final commit; the same list ran on `6a7090b` before the signing-path row for R2 was added, every one red then too, R2 only through the unit row). **Two mutants of the first sweep did not compile** (judged INVALID, never counted): removing the registration's data check or its account check whole left `named` / `expected` unused (`noUnusedLocals`) — R2 and R3 now weaken the comparison instead. **Five more were rewritten before they ran, for the same reason:** removing R5's referrer-after check, R7's not-applicable line or R24's error branch whole would leave `referrerAfter`, `resolveReferrerWith` or the `'e' in` branch unused or `never` — each now keeps the binding and defeats the check with a condition that never holds (`b.account === ''`, `account === ''`, `e === e`); R9 / R10 filter the list empty rather than spread another type into the set.
+32 mutations, all red, every one compiling (rev 2: all 32 re-run on the rebuilt 13b5f6c — the counts above are that run's; R28–R29 for review 1 M1; rev 1 ran them on the final commit; the same list ran on `6a7090b` before the signing-path row for R2 was added, every one red then too, R2 only through the unit row). **Two mutants of the first sweep did not compile** (judged INVALID, never counted): removing the registration's data check or its account check whole left `named` / `expected` unused (`noUnusedLocals`) — R2 and R3 now weaken the comparison instead. **Five more were rewritten before they ran, for the same reason:** removing R5's referrer-after check, R7's not-applicable line or R24's error branch whole would leave `referrerAfter`, `resolveReferrerWith` or the `'e' in` branch unused or `never` — each now keeps the binding and defeats the check with a condition that never holds (`b.account === ''`, `account === ''`, `e === e`); R9 / R10 filter the list empty rather than spread another type into the set.
 
 #### Notes for the executor (Task 2)
 
@@ -4545,6 +4725,8 @@ git commit -m "feat(extension): B1d-2 the referral address in prepare and sign �
 - **For the next tasks:** Task 3 — the four refusal codes are not in the popup's `PrepareRefusal` list (they read `failed` until then); `presale.checkReferrer`'s answer is `{ok: true, data: {ok: true} | {ok: false, line}}`; send `intent.referrer` only when the field is non-empty (null is accepted too); #20's "Referred by" from `PurchaseView.referrer`, Q47's note when `registers`. Task 6 — the fake program must apply `register_referrer` (set `referrer@84`, create the two PDAs, refuse a second one with 6016) and hold a referrer's allocation; `honestSimulation` in `simulation.ts` is the model. Task 7 — rev 3.4's change list gains: "self" = session ∪ stored wallet; `referrer@84` checked for every purchase; the signature's re-run of §3.5's lines; a registration refused without a proof; #10's on-chain "Referred by"; `checkReferrer`'s 403 → `coordinator-refused`; AlreadyHasReferrer at prepare → Q16; `presale.view`'s `referral` landing in Task 3.
 - **Found while writing:** none of B1d-1b's rows needed more than the two whose "extra key" was `referrer: null` (now accepted) — their extra key is now `extra`, and a new row refuses a referral address outside base58.
 - **Dry run:** clone `dry/b1d2`, commit `14cb89b` on Task 1's `a532235`. The first issue `0f4669c` had a redundant second key-line check in prepare's step 2 (removed → `6a7090b`: suite, builds, gates and Playwright repeated); the first sweep then showed R2 red only through the unit row, so `14cb89b` adds the signing-path forgery "the registration names another referrer while account 3 stays this one's allocation" (a test only: the suite and the sweep re-run on it; the builds are `6a7090b`'s). The capture reproduced byte for byte from a second fresh copy of a1bda47.
+- **Rev 2 (review 1 M1):** `shownOf` ties the referrer `shown.view` names to `shown.basis.referrer` — without a registration it is exactly the on-chain referrer the basis read (or none when it read none), and a registering view needs a basis that read none. **Ruling: both ways, not only the review's "a shown referrer differs from the basis"** — a view that hides the basis's referrer would make #20 / #10 say no one is credited while the bytes credit someone — cost if wrong: none (prepare always writes the two from the same snapshot). R29 (the review's form) is red, so the stronger form is tested. **B1d-1b's row "a referrer registered since prepare with `shown.basis` forged to name it …" (`buy.test.ts`) changed:** with the tie, forging the basis alone is `prepared-invalid` at `shownOf`, before the bytes are looked at — the row now forges `shown.view` and `shown.basis` together, so `shown` reads back and the signed bytes are still what refuses it (`state-changed`), which is what the row is about. Display hardening only: what is credited was always decided from the bytes.
+- **Rev 2 dry run:** `dry/b1d2-r2` commit `13b5f6c` on 4bf2499 (rev 1's 1256554 cherry-picked clean + the above). Red with Step 1's files on 4bf2499: `tsc` 2, 11 errors (all `referrer.test.ts`); vitest `Tests  59 failed | 294 passed (353)`. Rev 1's tree with rev 2's `referrer.test.ts`: the new row red, `Tests  1 failed | 192 passed (193)` with `buy.test.ts`. Green: `tsc` 0; 217 / 4590; off unchanged; both builds; gates exit 0 (79 markers). The capture is byte-identical (the replay's sha256 `dbc8fa65…64be`). All 32 mutations re-run on 13b5f6c (the table). Playwright not re-run at this commit (Task 7 ran the whole suite).
 
 ---
 
@@ -4786,9 +4968,11 @@ describe('#23a: the line is the background’s answer on blur (§3.5, C3, Q46 a�
     x.w.chain.set(derivePresalePdas(new PublicKey(ACCOUNT)).userAccount.toBase58(), program(userData()));
     const views = sent(x.asked, 'presale.view').length;
     leave();
-    await waitFor(() => expect(field()).toBeNull());
+    // Q48 is said last (an effect after the re-read view removed the field), and the line under the field says it first:
+    // wait on the banner itself, then the field is already gone (review 1 I1).
+    await waitFor(() => expect(document.querySelector('.banner .banner-title')?.textContent).toBe(Q48));
+    expect(field()).toBeNull();
     expect(sent(x.asked, 'presale.view').length).toBe(views + 1);
-    expect(document.querySelector('.banner .banner-title')?.textContent).toBe(Q48);
   });
 
   it('an edit clears the line; Buy is back with it', async () => {
@@ -4881,11 +5065,12 @@ describe('#23a: what Buy sends (§3.5: refused, never dropped)', () => {
     x.w.chain.set(derivePresalePdas(new PublicKey(ACCOUNT)).userAccount.toBase58(), program(userData()));
     const views = sent(x.asked, 'presale.view').length;
     fireEvent.click(buyButton() as HTMLButtonElement);
-    await waitFor(() => expect(field()).toBeNull());
+    // As above: the banner is the last thing written (review 1 I1).
+    await waitFor(() => expect(document.querySelector('.banner .banner-title')?.textContent).toBe(Q48));
+    expect(field()).toBeNull();
     expect(sent(x.asked, 'presale.prepareBuy')).toEqual([{type: 'presale.prepareBuy', account: ACCOUNT, intent: {currency: 'SOL', amount: '2000000000', stage: 0, referrer: R}}]);
     expect(nav.onPrepared).not.toHaveBeenCalled();
     expect(sent(x.asked, 'presale.view').length).toBe(views + 1);
-    expect(document.querySelector('.banner .banner-title')?.textContent).toBe(Q48);
   });
 
   it('refused at prepare — its allocation gone since the check: Q46c under the field, nothing prepared, Buy disabled until edited', async () => {
@@ -5212,7 +5397,7 @@ index cf1ff33..f453653 100644
 
 ```diff
 diff --git a/extension/src/background/presale/__tests__/referrer.test.ts b/extension/src/background/presale/__tests__/referrer.test.ts
-index e3b7e87..a8c3567 100644
+index 6e183c6..a157572 100644
 --- a/extension/src/background/presale/__tests__/referrer.test.ts
 +++ b/extension/src/background/presale/__tests__/referrer.test.ts
 @@ -273,11 +273,23 @@ describe('presale.checkReferrer (§1.4, §3.5, C32): its order, each line at its
@@ -5277,7 +5462,7 @@ index 1c4527c..c3f9a6d 100644
 
 In a `git archive` copy of Task 2's commit with only the Step 1 files added (node_modules linked): `npx tsc --noEmit; echo $?` → `2`, 10 errors, all in `client.test.ts` (7 × `Property 'checkReferrer' does not exist on type 'PresaleClient'`, 1 × `Module '"../client"' has no exported member 'referrerCheckOf'`, 1 × `… 'REFERRER_LINES'`, 1 × `'referrer' does not exist in type '{ currency: PresaleCurrency; amount: bigint; stage: number; }'`).
 
-`npx vitest run src/app/presale/__tests__/referral.test.tsx src/app/presale/__tests__/client.test.ts src/background/presale/__tests__/api.test.ts src/background/presale/__tests__/referrer.test.ts scripts/__tests__/check-no-presale.test.mjs` — `Test Files  5 failed (5)` · `Tests  34 failed | 181 passed (215)`: `referral.test.tsx` `19 failed | 2 passed (21)` — the two green rows are **green on the old tree by design**: "not offered: an account that bought before; an allocation with a referrer on chain …" (the old #23 has no field at all — the negative half of "shown only while canRegister", whose positive half is red) and "a purchase without a referrer looks exactly as in B1d-1b" (the positive control that a purchase without one keeps B1d-1b's #20 rows); `client.test.ts` `6 failed` (the positive view row — no `referral` — and the five new rows); `api.test.ts` `7 failed` (`OPEN_VIEW` now carries `referral`: six B1d-1b rows, and the new referral row); `referrer.test.ts` `1 failed` (the non-base58 string is still `malformed`); `check-no-presale.test.mjs` `1 failed` (the `MARKERS` row). The off run is unchanged by this task (no row of it runs there).
+`npx vitest run src/app/presale/__tests__/referral.test.tsx src/app/presale/__tests__/client.test.ts src/background/presale/__tests__/api.test.ts src/background/presale/__tests__/referrer.test.ts scripts/__tests__/check-no-presale.test.mjs` — `Test Files  5 failed (5)` · `Tests  34 failed | 182 passed (216)`: `referral.test.tsx` `19 failed | 2 passed (21)` — the two green rows are **green on the old tree by design**: "not offered: an account that bought before; an allocation with a referrer on chain …" (the old #23 has no field at all — the negative half of "shown only while canRegister", whose positive half is red) and "a purchase without a referrer looks exactly as in B1d-1b" (the positive control that a purchase without one keeps B1d-1b's #20 rows); `client.test.ts` `6 failed` (the positive view row — no `referral` — and the five new rows); `api.test.ts` `7 failed` (`OPEN_VIEW` now carries `referral`: six B1d-1b rows, and the new referral row); `referrer.test.ts` `1 failed` (the non-base58 string is still `malformed`); `check-no-presale.test.mjs` `1 failed` (the `MARKERS` row). The off run is unchanged by this task (no row of it runs there).
 
 - [ ] **Step 3: Implement.**
 
@@ -5924,9 +6109,9 @@ index 3731a7d..2e5ad2e 100644
 
 - [ ] **Step 4: Run — green, the whole suite, both builds, the gates.**
 
-Run: the Step 2 commands — `Test Files  5 passed (5)` · `Tests  215 passed (215)` (referral 21, client 21, api 68, referrer 53, check-no-presale 52).
+Run: the Step 2 commands — `Test Files  5 passed (5)` · `Tests  216 passed (216)` (referral 21, client 21, api 68, referrer 54, check-no-presale 52).
 
-Run (in `extension/`): `npx tsc --noEmit; echo $?` — `0`. `npx vitest run` — `Test Files  218 passed (218)` · `Tests  4607 passed (4607)` (previous tree 217 / 4579: +1 file, +28 tests — referral 21, client +5, api +1, referrer +1). `npx vitest run --config vitest.nopresale.config.ts` — `Test Files  16 passed (16)` · `Tests  430 passed | 15 skipped (445)` (unchanged).
+Run (in `extension/`): `npx tsc --noEmit; echo $?` — `0`. `npx vitest run` — `Test Files  218 passed (218)` · `Tests  4618 passed (4618)` (previous tree 217 / 4590: +1 file, +28 tests — referral 21, client +5, api +1, referrer +1). `npx vitest run --config vitest.nopresale.config.ts` — `Test Files  16 passed (16)` · `Tests  430 passed | 15 skipped (445)` (unchanged).
 
 Run: `rm -rf dist dist-nopresale && node scripts/build.mjs && node scripts/build.mjs --no-presale`, then `npm run gates` — exit 0, every gate ok once per build (`classes ok`: every class the new markup uses — `app-pre-referral`, `app-pre-referral-label`, `app-input`, `is-error`, `helper`, `error`, `app-pre-note` — is defined), the last line `no presale ok (dist-nopresale off, dist on): the off build's module maps carry no presale module and of core/presale/ only 3 allowed; the on build carries 23 required modules; 84 markers (none in the off build, each in the on build); 9 strings and the decoder's instruction names stay in the off build`. `npm run csp` — `CSP ok` for `dist/app` and `dist-nopresale/app`; `npm run secrets` — exit 0. No root `src/`, no `core/` and no `web/` change: the root `tsc` / `jest` and web's `verify` are not this task's.
 
@@ -5941,7 +6126,7 @@ git add -A extension
 git commit -m "feat(extension): B1d-2 #23a's referral address and #20's Referred by — presale.view carries §2.5's referral {onChain, canRegister} (the popup parses it with exact keys and canRegister = firstPurchase and none on chain); the field (Q45, D8, undrawn: B1b's single-line input) only while canRegister; its line (Q46 a–c, Q48) only from presale.checkReferrer on blur — the newest check for the text as it still is — Buy disabled while a check is out or a line shows; an empty field is no referrer (B1d-1b's intent exactly); the text travels in intent.referrer and a refusal of it is its line, Q48 reading the view again and saying so as the field goes; checkReferrer answers referrer-invalid for any non-address string; #20 Referred by in groups of four with Q47's note only when this purchase registers it; the re-prepare and #23 again carry the registering address" -m "Co-Authored-By: <the executing model> <noreply@anthropic.com>"
 ```
 
-- [ ] **Step 6: The named mutations — each alone, in a fresh `git archive HEAD` copy (node_modules linked), `timeout 300`; `tsc`'s own exit code first (0 for every one), then the named test file(s).** `RF` = `referral.test.tsx` (21), `CT` = `client.test.ts` (21), `AT` = `api.test.ts` (68), `BT` = `referrer.test.ts` (53), `PT` = `Presale.test.tsx` (43), `NP` = `check-no-presale.test.mjs` (52). Bold ids are the brief's eight pins.
+- [ ] **Step 6: The named mutations — each alone, in a fresh `git archive HEAD` copy (node_modules linked), `timeout 300`; `tsc`'s own exit code first (0 for every one), then the named test file(s).** `RF` = `referral.test.tsx` (21), `CT` = `client.test.ts` (21), `AT` = `api.test.ts` (68), `BT` = `referrer.test.ts` (54), `PT` = `Presale.test.tsx` (43), `NP` = `check-no-presale.test.mjs` (52). Bold ids are the brief's eight pins.
 
 | id | the change | named test → observed |
 |---|---|---|
@@ -5952,7 +6137,7 @@ git commit -m "feat(extension): B1d-2 #23a's referral address and #20's Referred
 | L2 | **(on blur)** `Presale.tsx`: the check on every keystroke too: `onChange={e => editReferrer(e.target.value)}` → `onChange={e => { editReferrer(e.target.value); void checkReferrer(); }}` | RF “an edit clears the line; Buy is back with it”; “a stale answer never shows …” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  2 failed \| 19 passed (21)` |
 | L3 | **(Buy disabled while a line shows)** `Presale.tsx`: `&& referrerLine === null && !checking &&` → `&& !checking &&` | RF “typing asks nothing; blur asks …”; “each line from the background: Q46a, Q46b for this account and for another account of this wallet (only the background knows it), Q46c for an address with no allocation — Buy disabled while each shows”; “an edit clears the line; Buy is back with it”; “#23 again with the address and its refusal …” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  4 failed \| 17 passed (21)` |
 | L4b | Buy not waiting for an answer still out: `&& referrerLine === null && !checking &&` → `&& referrerLine === null && (!checking \|\| checking) &&` | RF “typing asks nothing; blur asks presale.checkReferrer once …; until it answers no line shows and Buy waits; …” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  1 failed \| 20 passed (21)` |
-| L5 | `api.ts`: Task 2's `malformed` for a non-address string: `if (!REFERRER.test(referrer)) return {ok: true, data: {ok: false, line: 'referrer-invalid'}};` → `if (!REFERRER.test(referrer)) return MALFORMED;` | BT “B1d-2 Task 3: whatever the field holds is the background’s to judge — not 32–44 base58 characters … → referrer-invalid, nothing read”; RF “typing asks nothing; blur asks …”; “an edit clears the line; Buy is back with it” (no Q46a) — tsc 0 · RED `Test Files  2 failed (2)` · `Tests  3 failed \| 71 passed (74)` |
+| L5 | `api.ts`: Task 2's `malformed` for a non-address string: `if (!REFERRER.test(referrer)) return {ok: true, data: {ok: false, line: 'referrer-invalid'}};` → `if (!REFERRER.test(referrer)) return MALFORMED;` | BT “B1d-2 Task 3: whatever the field holds is the background’s to judge — not 32–44 base58 characters … → referrer-invalid, nothing read”; RF “typing asks nothing; blur asks …”; “an edit clears the line; Buy is back with it” (no Q46a) — tsc 0 · RED `Test Files  2 failed (2)` · `Tests  3 failed \| 72 passed (75)` |
 | L6 | Q48 from the check without the view read again: `    if (r.data === 'referrer-not-applicable') void read();⏎  };` → `  };` | RF “Q48 from the check — a purchase landed on chain since the view: the line, the view read again, then the field gone and Q48 said (never dropped in silence)” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  1 failed \| 20 passed (21)` |
 | L7 | `client.ts` `referrerCheckOf` reads `{ok: true, …}` loosely: `if (exactly(o, ['ok'])) return o.ok === true ? null : undefined;` → `if (o.ok === true) return null;` | CT “referrerCheckOf: {ok: true} → null, {ok: false, line} → the line; anything else failed” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  1 failed \| 20 passed (21)` |
 | E1 | **(empty = no referrer)** a blur on an empty field asks: `if (account === null \|\| entered === '') {⏎      setChecking(false);` → `if (account === null) {⏎      setChecking(false);` | RF “an address the purchase would register: no line, Buy enabled (positive control); a blur on an empty field asks nothing”; “an empty field is no referrer: B1d-1b’s intent exactly (no referrer key), the purchase registers nothing; spaces alone are empty too” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  2 failed \| 19 passed (21)` |
@@ -5980,7 +6165,7 @@ git commit -m "feat(extension): B1d-2 #23a's referral address and #20's Referred
 | K6 | `routes.tsx` takes any string: `typeof o.referrer === 'string' && ADDRESS.test(o.referrer)` → `typeof o.referrer === 'string'` | RF the same row as K5 — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  1 failed \| 20 passed (21)` |
 | G1 | `MARKERS` without Q45's label: `  'Referral address (optional)',` → (removed) | NP “armed by B1d-1b: … B1d-2 Task 1 …, Task 2 …, Task 3 #23a’s referral address (Q45, Q46 b–c, Q48)” — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  1 failed \| 51 passed (52)` |
 
-34 mutations, all red, every one compiling. **Two mutants of the first sweep did not compile** (judged INVALID, never counted): removing `&& !checking` whole left `checking` unread, and removing the generation comparison whole left `mine` unread (`noUnusedLocals`) — L4b and S2b keep the binding and defeat the check with a condition that never holds (`!checking || checking`, `mine < 0`).
+34 mutations, all red, every one compiling (rev 2: all 34 re-run on the rebuilt a9e541d — the counts above are that run's; T3 now turns both of I1's rewritten rows red, L6 and T4 one each). **Two mutants of the first sweep did not compile** (judged INVALID, never counted): removing `&& !checking` whole left `checking` unread, and removing the generation comparison whole left `mine` unread (`noUnusedLocals`) — L4b and S2b keep the binding and defeat the check with a condition that never holds (`!checking || checking`, `mine < 0`).
 
 #### Notes for the executor (Task 3)
 
@@ -5997,7 +6182,9 @@ git commit -m "feat(extension): B1d-2 #23a's referral address and #20's Referred
 - **The ledger MUST is met:** `presale.view`'s open variant carries `referral: {onChain, canRegister}` (`canRegister = firstPurchase && onChain === null`, F2) and the popup's parser takes exactly that pairing (F3) — a view naming an on-chain referrer while offering the field, or offering it on a repeat purchase, is not the background's and fails closed.
 - **For the next tasks:** Task 6 — E2E 12 drives `#presale-referrer` (`fill`, `blur`), reads `.app-pre-referral .helper` and #20's `.detail-row` "Referred by" (`.addr-groups`, `.app-pre-note`); the fake program must apply `register_referrer` — the scratch patch that sufficed for the visual check: in `purchaseIn`, the presale-program instruction of 40 data bytes that is not a purchase is the registration (its bytes 8–40 the referrer, carried in the effect); in `purchaseAccounts`, the new allocation keeps `before`'s bytes 84–116 and takes the registered referrer there; plus the referrer's own allocation seeded in `fake.presale.accounts`. B1d-1b's first-purchase E2E rows already go through #23a with the field present and empty (24 passed, both modes). Task 7 — rev 3.4's lines from this task: `checkReferrer` judges any string; Buy waits while a check is out; the trim; a failed check's notice; `.app-input` at 13 px and the placeholder's face; Q47's note inside #20's value; Try again not restoring the address; Q46a not a marker. Shots for §6.4: the field with each line and #20 with "Referred by" (the scratch shots of this dry run show the layout fits 412 × 600 with no horizontal scroll).
 - **Dry run:** clone `dry/b1d2`, commit `6c3ea11` on Task 2's `14cb89b` (one commit; amended once in the dry run for the two visual findings above — the suite, builds, gates and both Playwright passes re-ran on the amended commit). The diffs above were re-applied with `git apply --recount` to a `git archive 14cb89b` copy, plus the new test file: the result is byte-identical to `6c3ea11`'s `extension/`. Every red/green total above is observed; `referral.test.tsx` ran 3 × green in a row before the commit (no flake; the stale-answer rows wait on the background's own in-flight calls, `drainInFlight`, not on the clock).
-- **Seen at the plan's assembly (2026-10-26), not fixed — for review:** on the rebuilt 49cc8f0, one whole-suite run made beside three other vitest runs failed one row of `referral.test.tsx`, "refused at prepare, never dropped — the purchase can no longer take it …": `.banner .banner-title` was `undefined`, not Q48, at the assertion after `waitFor(() => expect(field()).toBeNull())`. The same tree's quiet re-run was green (218 / 4607), and the file alone on 6c3ea11 passed 10 of 10. Likely an ordering race in the row itself — it waits for the field to go, then reads the banner synchronously, and the view re-read can remove the field before the Q48 notice renders. Under the standing rule a flake is a finding: if it recurs during execution, the fix is to wait on Q48's banner and then assert that the field is gone. Do not add a timeout.
+- **Seen at the plan's assembly (2026-10-26) — fixed in rev 2, below:** on the rebuilt 49cc8f0, one whole-suite run made beside three other vitest runs failed one row of `referral.test.tsx`, "refused at prepare, never dropped — the purchase can no longer take it …": `.banner .banner-title` was `undefined`, not Q48, at the assertion after `waitFor(() => expect(field()).toBeNull())`. The same tree's quiet re-run was green (218 / 4607), and the file alone on 6c3ea11 passed 10 of 10. Likely an ordering race in the row itself — it waits for the field to go, then reads the banner synchronously, and the view re-read can remove the field before the Q48 notice renders. Under the standing rule a flake is a finding: if it recurs during execution, the fix is to wait on Q48's banner and then assert that the field is gone. Do not add a timeout.
+- **Rev 2 (review 1 I1) — fixed, both rows:** "Q48 from the check …" and "refused at prepare, never dropped …" now `await waitFor(…'.banner .banner-title' is Q48)`, then assert the field gone and the view read once more. Why the banner and not `findByText(Q48)`: the line under the field says Q48 first (`REFERRER_LINE_TEXT['referrer-not-applicable']`, before the re-read), so a text wait could resolve on the line while the field is still there; the banner is set by the passive effect after the re-read view removed the field — the last write. **Sweep (the controller's ask):** every wait the plan's tests add was read for the same shape — a wait on one condition, then a synchronous read of state a later effect writes: `referral.test.tsx`'s 17 waits (the other 15 wait on a line, the notice or Buy's text, each written in the same commit as what follows them), `historyPresale.test.tsx`'s `detail()` (waits, then `settled()`), `settingsPresale.test.tsx`'s three (the heading and `.s-ref` change in one route commit), and the E2E `expect.poll`s of `presale.spec.ts`, `presaleRecord.spec.ts`, `presaleReferral.spec.ts` and `visual-presale.spec.ts` (each polls the later of two writes — the fake logs a POST before the answer that writes `done` — or is followed by an auto-retrying `expect`). **No other instance.** **Probe (not committed):** `Presale.tsx`'s Q48 notice set 30 ms later — rev 1's two rows fail (`Tests  2 failed | 19 passed (21)`), rev 2's pass 21 of 21.
+- **Rev 2 dry run:** `dry/b1d2-r2` commit `a9e541d` on 13b5f6c (rev 1's 49cc8f0 cherry-picked clean + the two rows). Red with Step 1's files on 13b5f6c: `tsc` 2, 10 errors (all `client.test.ts`); vitest `Tests  34 failed | 182 passed (216)` (`referrer.test.ts` now 54 rows: rev 2's M1 row is green on Task 2's tree). Green: `tsc` 0; 218 / 4618; off unchanged; both builds; gates exit 0 (84 markers). All 34 mutations re-run on a9e541d (the table). Playwright not re-run at this commit (Task 7 ran the whole suite).
 
 ---
 
@@ -6614,7 +6801,7 @@ Modify `extension/src/background/__tests__/deps.test.ts` (`getJson` on the share
 
 ```diff
 diff --git a/extension/src/background/__tests__/deps.test.ts b/extension/src/background/__tests__/deps.test.ts
-index 62f6913..49f8553 100644
+index b4e8eb8..add3658 100644
 --- a/extension/src/background/__tests__/deps.test.ts
 +++ b/extension/src/background/__tests__/deps.test.ts
 @@ -2,7 +2,7 @@ import {BROADCAST_TIMEOUT_MS, FORBIDDEN_UNTIL_KEY, REQUEST_TIMEOUT_MS, RequestTi
@@ -7877,7 +8064,7 @@ index 2e5ad2e..d1305e9 100644
 
 Run: the Step 2 vitest command — `Test Files  12 passed (12)` · `Tests  316 passed (316)` (check-no-presale 52, router 39, deps 20, designExt2b 9, messages 29, client 23, api 68, presaleSwitch 3, settingsPresale 1, Settings 32, ReferFriend 16, referral 24).
 
-Run (in `extension/`): `npx tsc --noEmit; echo $?` — `0`. `npx vitest run` — `Test Files  221 passed (221)` · `Tests  4655 passed (4655)` (previous tree 218 / 4607: +3 files, +48 tests — ReferFriend 16, referral 24, settingsPresale 1, client +2, deps +2, router +2, designExt2b +1). **Dry-run observation, not this task's:** on 2026-10-25 after 23:00 CET (an earlier run of this task; the final run is the green total above) the dry run saw `Send.test.tsx` "sent before (E6): … last 12 days ago" read "last 11 days ago" — red on Task 3's tree too, green under `TZ=UTC`: the test computes `Date.now() - 12 * DAY` while `sentBeforeText` counts local calendar days, which a DST change in those twelve days shifts by one in the last hour of a day (writer notes). `npx vitest run --config vitest.nopresale.config.ts` — `Test Files  17 passed (17)` · `Tests  433 passed | 15 skipped (448)` (previous 16 / 430: `settingsPresale` 1, `router` +2).
+Run (in `extension/`): `npx tsc --noEmit; echo $?` — `0`. `npx vitest run` — `Test Files  221 passed (221)` · `Tests  4666 passed (4666)` (previous tree 218 / 4618: +3 files, +48 tests — ReferFriend 16, referral 24, settingsPresale 1, client +2, deps +2, router +2, designExt2b +1). **Dry-run observation, not this task's:** on 2026-10-25 after 23:00 CET (an earlier run of this task; the final run is the green total above) the dry run saw `Send.test.tsx` "sent before (E6): … last 12 days ago" read "last 11 days ago" — red on Task 3's tree too, green under `TZ=UTC`: the test computes `Date.now() - 12 * DAY` while `sentBeforeText` counts local calendar days, which a DST change in those twelve days shifts by one in the last hour of a day (writer notes). `npx vitest run --config vitest.nopresale.config.ts` — `Test Files  17 passed (17)` · `Tests  433 passed | 15 skipped (448)` (previous 16 / 430: `settingsPresale` 1, `router` +2).
 
 Run: `rm -rf dist dist-nopresale && node scripts/build.mjs && node scripts/build.mjs --no-presale`, then `npm run gates` — exit 0, every gate ok once per build (`classes ok`: every class #24 uses — the design's `.s-ref` rules, `app-ref-muted`, `app-ref-copied`, `app-ref-check`, `app-ref-link`, `app-ref-banner`, `app-ref-failed` — is defined; `rpc methods ok`: no new method, and `deps.ts` stays the only caller of the global fetch; `no TGE date`: 656 files), the last line `no presale ok (dist-nopresale off, dist on): the off build's module maps carry no presale module and of core/presale/ only 3 allowed; the on build carries 26 required modules; 96 markers (none in the off build, each in the on build); 9 strings and the decoder's instruction names stay in the off build`. No root `src/`, no `core/` and no `web/` change: the root `tsc` / `jest` and web's `verify` are not this task's.
 
@@ -7892,7 +8079,7 @@ git add -A extension
 git commit -m "feat(extension): B1d-2 #24 referral and the #31 row Refer a friend — presale.referral answers §3.5's ReferralView: the account's invite link whole, EARNED from the chain allocation's referral_bonus_tokens (never the coordinator's bonus; no allocation = 0), REFERRALS and REFERRED from /referral-stats through the shared latch (WalletDeps.getJson; a 403 trips it), read strictly (a missing figure is no figure) with the dollars made cents in the background; each source failing nulls only its own fields (\"—\"); #24 as drawn and as the app corrected it — three stat cards, the code card with the link in mono, Used by N people / Not used yet (people, D27; hidden without a source), Copy and Share invite link both copying the link (24a-bis checkmark and accent border, no toast; Copy failed never the checkmark), Q39, the legalese; the route referral (never TAB_ONLY) from a Rewards › Refer a friend row on the build with presale only; design-ext.css re-extracted with .s-ref; ON_BUILD 26, MARKERS 96" -m "Co-Authored-By: <the executing model> <noreply@anthropic.com>"
 ```
 
-- [ ] **Step 6: The named mutations — each alone, in a fresh `git archive HEAD` copy (node_modules linked; G1 with `extension/node_modules` copied — it builds and runs the gate), `timeout 300`; `tsc`'s own exit code first (0 for every one), then the named test file(s).** `RT` = `referral.test.ts` (24), `RF` = `ReferFriend.test.tsx` (16), `CT` = `client.test.ts` (23), `DT` = `deps.test.ts` (20), `AT` = `api.test.ts` (68), `ST` = `Settings.test.tsx` (32), `SP` = `settingsPresale.test.tsx` (1), `RO` = `router.test.ts` (39), `NP` = `check-no-presale.test.mjs` (52). Bold: the brief's pins.
+- [ ] **Step 6: The named mutations — each alone, in a fresh `git archive HEAD` copy (node_modules linked; G1 with `extension/node_modules` copied — it builds and runs the gate), `timeout 300`; `tsc`'s own exit code first (0 for every one), then the named test file(s).** `RT` = `referral.test.ts` (24), `RF` = `ReferFriend.test.tsx` (16), `CT` = `client.test.ts` (23), `DT` = `deps.test.ts` (21), `AT` = `api.test.ts` (68), `ST` = `Settings.test.tsx` (32), `SP` = `settingsPresale.test.tsx` (1), `RO` = `router.test.ts` (39), `NP` = `check-no-presale.test.mjs` (52). Bold: the brief's pins.
 
 | id | the change | named test → observed |
 |---|---|---|
@@ -7907,7 +8094,7 @@ git commit -m "feat(extension): B1d-2 #24 referral and the #31 row Refer a frien
 | R9 | **(tests never contact *.noc-tura.io)** the stats past the shared getter: `return referralStatsFrom(await deps.getJson(\`/referral-stats/${account}\`));` → `const r = await globalThis.fetch(\`https://api.noc-tura.io/api/v1/referral-stats/${account}\`);⏎    return referralStatsFrom(await r.json());` (the tests' global fetch throws: nothing reaches the network, and the stats go null) | RT "populated …", "EARNED is …", "24b …", "the chain read failing alone …", the 403 row — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  5 failed \| 19 passed (24)` |
 | R10 | `api.ts`: the session dropped: `const a = await accountOnly(ext, msg);⏎  return 'answer' in a ? …` → `if (!onlyKeys(msg, ['type', 'account']) \|\| !isAddress(msg.account)) return MALFORMED;⏎  return {ok: true, data: await referralView(deps, msg.account)};` | RT "strict payload: {account} only, an address in the unlocked session" — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  1 failed \| 23 passed (24)` |
 | R11 | `'presale.referral'` removed from `PRESALE_MESSAGE_TYPES` (the handler still registered) | AT and RT fail to load (`registerPresaleHandler: presale.referral is not a presale message type`); NP "every presale.* message type of api.ts is a marker" (10, not 11) — tsc 0 · RED `Test Files  3 failed (3)` · `Tests  1 failed \| 51 passed (52)` |
-| L1 | **(a 403 trips the shared latch)** `deps.ts`: `getJson: path => get.get<unknown>(path),` → `getJson: path => createJsonGetter(fetch, createForbiddenLatch()).get<unknown>(path),` | DT "getJson (B1d-2, #24) goes through the same latch: a 403 on /referral-stats silences the RPC; the RPC's 403 silences /referral-stats" — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  1 failed \| 19 passed (20)` |
+| L1 | **(a 403 trips the shared latch)** `deps.ts`: `getJson: path => get.get<unknown>(path),` → `getJson: path => createJsonGetter(fetch, createForbiddenLatch()).get<unknown>(path),` | DT "getJson (B1d-2, #24) goes through the same latch: a 403 on /referral-stats silences the RPC; the RPC's 403 silences /referral-stats" — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  1 failed \| 20 passed (21)` |
 | P1 | **(never a float in the popup)** `text.ts`: `referredText = (cents: bigint): string => \`$${formatAmount(cents, 2, {min: 2, max: 2})}\`` → `` `$${(Number(cents) / 100).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}` `` | RF "the figures are formatted from bigints, never through a float …" ("$9,007,199,254,740,993.12") — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  1 failed \| 15 passed (16)` |
 | P2 | **(the link whole)** `ReferFriend.tsx`: `{data.link}` → `` {`${data.link.slice(0, 32)}…`} `` | RF "24a populated …", "24b empty …", "/referral-stats failing …", "Copy: …" — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  4 failed \| 12 passed (16)` |
 | P3 | `client.ts`: any link accepted: `\|\| o.link !== buildReferralLink(account)) return undefined;` → `\|\| typeof o.link !== 'string' \|\| buildReferralLink(account).length === 0) return undefined;` | CT "referralDataOf: exactly four keys; the link this account's, whole; …" — tsc 0 · RED `Test Files  1 failed (1)` · `Tests  1 failed \| 22 passed (23)` |
@@ -7944,6 +8131,8 @@ git commit -m "feat(extension): B1d-2 #24 referral and the #31 row Refer a frien
 - **For Task 7:** the shots §6.4 asks (#24 populated, empty, a null stat, copied) — the scratch shots fit 412 × 600 with no sticky bar; #24 is taller than the frame only with large figures (the legalese then ends at ~530 px); the departures above.
 - **Pre-existing, not this task's (reported):** `src/app/__tests__/Send.test.tsx` "sent before (E6) … last 12 days ago" fails in the last hour of a local day when a DST change lies in the twelve days before (seen 2026-10-25 23:47 CET: "last 11 days ago"; red on Task 3's tree too; green with `TZ=UTC`) — the test subtracts 12 × 24 h from `Date.now()` while `sentBeforeText` counts local calendar days (cardinal rule 3, correct). A date-dependent test, i.e. a flake by the standing rule: the fix belongs to a B1b follow-up (anchor the test's clock at local noon).
 - **Dry run:** clone `dry/b1d2`, commit `3efa30d` on Task 3's `6c3ea11` (one commit; amended three times — the visual fix above, one test title that claimed a glyph check no row makes, then the controller's D27 ruling). On `3efa30d`: `tsc` 0, both vitest runs, both builds, `npm run gates` (96 markers) and `settingsPresale` in both modes, all green (totals above), and U1, U2, P10, G2. The Playwright passes and the other 25 mutations ran on `2854eb0` (before the title and D27 changes; no E2E reads the usage line). Every red/green total above is observed. The blocks above are `git diff 6c3ea11 3efa30d` per file and the new files in full; replayed with `git apply --recount` onto a `git archive 6c3ea11` copy plus the new files and the extraction, the result is byte-identical to `3efa30d`'s `extension/`.
+- **Coordinator note (review 1, no decision needed):** `getReferralStats` compares `LOWER(referrer_address) = LOWER($1)` — case-folded on base58, so two addresses differing only in case would share a count. Display only (#24's REFERRALS / REFERRED), and such a pair is not a realistic collision; beside the other coordinator observations above.
+- **Rev 2 dry run:** `dry/b1d2-r2` commit `53b2bf7` — rev 1's f8db19e cherry-picked onto a9e541d unchanged (its `deps.test.ts` diff differs only in the `index` line: the file now holds Task 1's latch measurement). `tsc` 0; 221 / 4666; off 17 / 433 + 15; both builds; gates exit 0 with `extension/node_modules` copied (96 markers, 26 modules — with it linked, `check-page-bundles.mjs` fails: Global Constraints, M6). L1 re-run (DT is 21 rows): red, `Tests  1 failed | 20 passed (21)`; the other 28 mutations not re-run — this task's code and tests are rev 1's.
 
 ---
 
@@ -8698,7 +8887,7 @@ index 9c00f5f..821026f 100644
 
 Run: the Step 2 vitest command — `Test Files  3 passed (3)` · `Tests  89 passed (89)` (check-no-presale 52, client 25, historyPresale 12).
 
-Run (in `extension/`): `npx tsc --noEmit; echo $?` — `0`. `npx vitest run` — `Test Files  222 passed (222)` · `Tests  4669 passed (4669)` (previous tree 221 / 4655: +1 file, +14 tests — historyPresale 12, client +2). `npx vitest run --config vitest.nopresale.config.ts` — `Test Files  18 passed (18)` · `Tests  435 passed | 25 skipped (460)` (previous 17 / 433 + 15: historyPresale's #26 and #27 off rows run, its ten on-only rows skip).
+Run (in `extension/`): `npx tsc --noEmit; echo $?` — `0`. `npx vitest run` — `Test Files  222 passed (222)` · `Tests  4680 passed (4680)` (previous tree 221 / 4666: +1 file, +14 tests — historyPresale 12, client +2). `npx vitest run --config vitest.nopresale.config.ts` — `Test Files  18 passed (18)` · `Tests  435 passed | 25 skipped (460)` (previous 17 / 433 + 15: historyPresale's #26 and #27 off rows run, its ten on-only rows skip).
 
 Run: `rm -rf dist dist-nopresale && node scripts/build.mjs && node scripts/build.mjs --no-presale`, then `npm run gates` — exit 0, every gate ok once per build (`classes ok`: `app-tx-badged` and the row's `status-pill app-badge` are defined in `app.css`; `no TGE date`: 657 files), the last line `no presale ok (dist-nopresale off, dist on): the off build's module maps carry no presale module and of core/presale/ only 3 allowed; the on build carries 26 required modules; 97 markers (none in the off build, each in the on build); 9 strings and the decoder's instruction names stay in the off build`. No root `src/`, no `core/` and no `web/` change: the root `tsc` / `jest` and web's `verify` are not this task's.
 
@@ -8750,6 +8939,7 @@ git commit -m "feat(extension): B1d-2 #26's Presale badge and #27's Q34 — the 
 - **For Task 7:** the shots `26-loaded-mixed` (committed `visual.spec.ts`) now show the badge; §6.4's "#26 badge, #27 line" need a site's purchase row (two badges, wrapped) and #27 with Q34 — the scratch scene above (history + `v1_dapp_txs` + a `given-up` entry) gives both without a POST. Departures for rev 3.4: the badge's placement and wrap, Q34 as an info banner (both undrawn).
 - **Dry-run observation (unexplained, recorded):** one whole-suite on-build vitest run in the dry run (`33529e3`, run alongside nothing else) ended its log after the `RUN` header with no summary and no recorded exit code; the next runs of the same tree were green (`4667 passed`, exit 0). Not reproduced; noted under the standing "a flake is a finding" rule.
 - **Dry run:** clone `dry/b1d2`, commit `ceb648b` on Task 4's `3efa30d` (one commit, amended three times: the two `visual.spec.ts` lookups and HP's `WhenSelected`, each found by a run above). On `ceb648b`: `tsc` 0, both vitest runs green (totals above), `visual.spec.ts` ×2; the builds and `npm run gates` (97 markers) ran on `33529e3` (identical `src/`), the 40 other Playwright tests ×2 on `e92586b` (identical `src/`). The blocks above are `git diff 3efa30d ceb648b` per file and the new file in full; replayed with `git apply --recount` onto a `git archive 3efa30d` copy plus the new file, the result is byte-identical to `ceb648b`'s `extension/`.
+- **Rev 2 dry run:** `dry/b1d2-r2` commit `aee57f6` — rev 1's 3a04191 cherry-picked unchanged onto 53b2bf7 (every hunk identical). `tsc` 0; 222 / 4680; off 18 / 435 + 25; both builds; gates exit 0 with `extension/node_modules` copied (97 markers, 26 modules). The mutations are rev 1's, not re-run: this task's code and tests are unchanged.
 
 ---
 
@@ -9777,7 +9967,7 @@ index 0a9728f..9e2122d 100644
 
 Run: `npx vitest run scripts/__tests__/check-no-presale.test.mjs` — `Tests  55 passed (55)`.
 
-Run (in `extension/`): `npx tsc --noEmit; echo $?` — `0`. `npx vitest run` — `Test Files  222 passed (222)` · `Tests  4672 passed (4672)` (previous tree 222 / 4669: +3 rows in `check-no-presale.test.mjs`). `npx vitest run --config vitest.nopresale.config.ts` — `Test Files  18 passed (18)` · `Tests  435 passed | 25 skipped (460)` (unchanged).
+Run (in `extension/`): `npx tsc --noEmit; echo $?` — `0`. `npx vitest run` — `Test Files  222 passed (222)` · `Tests  4683 passed (4683)` (previous tree 222 / 4680: +3 rows in `check-no-presale.test.mjs`). `npx vitest run --config vitest.nopresale.config.ts` — `Test Files  18 passed (18)` · `Tests  435 passed | 25 skipped (460)` (unchanged).
 
 Run: `rm -rf dist dist-nopresale && node scripts/build.mjs && node scripts/build.mjs --no-presale`, then `npm run gates` — exit 0, every gate ok once per build, the last line `no presale ok (dist-nopresale off, dist on): the off build's module maps carry no presale module and of core/presale/ only 3 allowed; the on build carries 26 required modules and no presale module outside ON_BUILD; 97 markers (none in the off build, each in the on build); 9 strings and the decoder's instruction names stay in the off build`. (The on build's presale-path modules are exactly `ON_BUILD`'s 21 plus the three shared `core/presale` modules — read from `dist/*.modules.json` before the rule was written.)
 
@@ -9826,10 +10016,11 @@ git commit -m "test(extension): B1d-2 gates and E2E 10–12 — the off-build ga
 - **For Task 7:** the shots §6.4 asks of B1d-2 can reuse these scenes — #24 populated (E2E 11 before Copy; `referralStats` 3 / $1,234.56, bonus 16.12…), copied (after Copy, the clock held), a null stat (`referralStats` 500), 24b empty (the default `referralStats`, no allocation); the field with Q46b (E2E 12 after the self blur); #20 with "Referred by" and Q47 (E2E 12) and without the note (the on-chain test); #27 with Q34 (E2E 10 after `heldRecord(…, 1)`: due, no alarm armed). `installReferrer`, `REFERRER`, `heldRecord`, `slotComes` are exported for that.
 - **Rev 3.4's list gains (for Task 7):** the gate's completeness rule (`unlistedModules`) and the B1d-2 copy row; the E2E's slot mechanism (no fake clock in the worker); D29 / D30's in-wake control.
 - **Dry run:** clone `dry/b1d2`, commit `2c6c023` on Task 5's `ceb648b` (one commit, amended once: a helper comment that claimed "the earliest an armed alarm fires is 30 s after it was armed" — true of record.ts's own arming, not of Chrome for an unpacked extension (this test fires one at once) — reworded to what record.ts does). The whole Playwright suite ran on that tree: `101 passed (26.1m)` normally (started on `beddc41`, the comment-only predecessor) and `101 passed (26.3m)` under `unshare -rn`; the 12 mutations on `2c6c023`. `tsc` 0, both vitest runs, both builds and `npm run gates` on `beddc41` (identical but for that comment). The blocks above are `git diff ceb648b 2c6c023` per file and the new files in full; replayed with `git apply --recount` onto a `git archive ceb648b` copy plus the new files, the result is byte-identical to `2c6c023`'s `extension/`.
+- **Rev 2 dry run:** `dry/b1d2-r2` commit `cb88445` — rev 1's 5b42436 cherry-picked unchanged onto aee57f6 (every hunk identical). `tsc` 0; its first whole on-build run here, made beside two mutation sweeps and three builds, timed out eleven `src/unlock/` rows (Argon2-bound, untouched by B1d-2); the quiet re-run was green, 222 / 4683; off 18 / 435 + 25; both builds; gates exit 0 with `extension/node_modules` copied (97 markers, 26 modules, none outside `ON_BUILD`). E2E 10–12 ran in the whole suite at Task 7 on the rebuilt chain, which carries the I2 rule (Task 7 Step 6). The mutations are rev 1's, not re-run: this task's code and tests are unchanged.
 
 ---
 
-### Task 7: The visual pass and spec rev 3.4 — `visual-presale.spec.ts` shoots every state B1d-2 built through the real extension (#31's row; #24 populated, copied, a null stat, empty; #23a's referral address with Q46a, Q46b, Q46c, a valid address and Q48; #20 and #10 with "Referred by", with and without Q47; #26's badge on a site's purchase with two badges; #27 with Q34 — copy asserted, the sticky bar wholly in the 412 × 600 frame, after the holds); each shot compared with `index.html`; found and fixed: #24's REFERRED wrapping after its comma, #10's "Referred by" label wrapping; B1d-1b's unarmed copy armed and the whole of `text.ts` held to the marker rule; the spec to rev 3.4
+### Task 7: The visual pass and spec rev 3.4 (rev 3.5 in this plan's rev 2) — `visual-presale.spec.ts` shoots every state B1d-2 built through the real extension (#31's row; #24 populated, copied, a null stat, empty; #23a's referral address with Q46a, Q46b, Q46c, a valid address and Q48; #20 and #10 with "Referred by", with and without Q47; #26's badge on a site's purchase with two badges; #27 with Q34 — copy asserted, the sticky bar wholly in the 412 × 600 frame, after the holds); each shot compared with `index.html`; found and fixed: #24's REFERRED wrapping after its comma, #10's "Referred by" label wrapping; B1d-1b's unarmed copy armed and the whole of `text.ts` held to the marker rule; the spec to rev 3.4
 
 **Spec:** B1d §6.4 (B1d-2's rows: "#24 (populated, empty, a null stat, copied), the referral field with a line, #20 with 'Referred by', #26 badge, #27 line"; the opus-tier review against `index.html`, every departure checked against §9), §4 (the popup 412 × 600, the sticky bar stays), §4.1 (the referral address), §4.2 (#20 / #10 "Referred by", Q47), §4.4 (#24), §4.6 (#26, #27), §6.2 item 2 (every on-build §10 string's literal parts ≥ 8 characters a marker; no marker one bare word), §2.4 as amended by D28–D30. Brief item 7 ("the spec's rev 3.4 change list of every departure this plan makes (one line each) + D28–D30 written into §2.4"); ledger: every "→ rev 3.4" line and ruling, and Task 6's ruling "the ~8 B1d-1b strings in text.ts of ≥ 8 chars without a marker are armed in Task 7 where not shared with B1b". Design `/home/user/Downloads/index.html` — BINDING: #24 ix 10903-11233 (`#screen-24`, phones 0–2: 24a, 24a-bis, 24b), #23 ix 10603-10902 (`#screen-23`), #20 (`#s20`), #10 (`#s10`), #26 (`#s26`), #27 (`#s27`), #31 (`#s31`). It contains the TGE date: nothing was copied from it — the comparison was made on rendered images kept in the scratchpad (`scratchpad/b1d2-t7/design/`, `cmp/`), and no design text enters this task's files (`check-no-tge-date.mjs` green, both the extension's and the repository's).
 
@@ -9838,7 +10029,7 @@ git commit -m "test(extension): B1d-2 gates and E2E 10–12 — the off-build ga
 - Modify (product, the findings): `extension/src/app/presale/ReferFriend.tsx` (a figure of ≥ 8 characters gets `app-ref-long`), `extension/src/app/app.css` (`.s-ref .stats .stat .val.app-ref-long`), `extension/src/unlock/screens/reauth.ts` (`row`'s `keep`: an address row's label `vlt-keep`), `extension/src/unlock/unlock.css` (`.vlt-col .s-pin .intent-row .label.vlt-keep`)
 - Modify (tests of the findings): `extension/src/app/presale/__tests__/ReferFriend.test.tsx`, `extension/src/unlock/__tests__/reauthPurchase.test.ts`
 - Modify (gate): `extension/scripts/check-no-presale.mjs` (`MARKERS` 97 → 105: B1d-1b's eight unarmed strings), `extension/scripts/__tests__/check-no-presale.test.mjs` (the exact list; a new row reading the whole of `text.ts` as source)
-- Modify (spec): `docs/superpowers/specs/2026-10-19-extension-b1d-presale-design.md` → rev 3.4, text only (Step 3b)
+- Modify (spec): `docs/superpowers/specs/2026-10-19-extension-b1d-presale-design.md` → rev 3.4, and rev 3.5 (plan rev 2: D31 and review 1's fixes), text only (Step 3b)
 
 No `core/`, root `src/` or `web/` change: the root `tsc` / `jest` and web's `verify` are not this task's.
 
@@ -10383,24 +10574,25 @@ index b676213..a09ed70 100644
  // be a string search. The decoder's instruction names are read from its source (DECODER).
 ```
 
-- [ ] **Step 3b: Spec rev 3.4, text only** (owner D28–D30; the brief's item 7). The status line names rev 3.4; a "Rev 3.4" change list under rev 3.3's carries every departure this plan makes, one line each — from the ledger and every task's Writer notes, D28–D30, the "Used by N people" ruling and this task's two findings; §2.4 is rewritten to D28–D30 and to what Task 1 built (the four states, the slots as offsets, drop-oldest-`done`, the reconcile and its accepted gap, the 403's `nextAt`, the key as must-stay); §1.4 (`presale.unrecorded`, `intent.referrer`, `checkReferrer`'s `referrer-invalid`), §3.5, §4.1, §4.4, §4.6, §5 (D29's row), §6.1, §6.2 (the key must-stay, the alarm a marker, item 4 — complete by construction), §6.3 (E2E 10 without a fake clock), §6.4 (B1d-2's shots) and §9 (#24 "Used 12 times") are edited to match. `node scripts/check-no-tge-date.mjs` (repository) — "no TGE date in 1324 tracked text files". Apply with `git apply --recount`:
+- [ ] **Step 3b: Spec rev 3.4 and rev 3.5, text only** (owner D28–D30; the brief's item 7; rev 3.5 — plan rev 2 — owner D31 and the fixes of the plan's Fable review 1: §2.4's 403 line with D31's premise, the worker's "when, and for whom", M3's one `nextAt` value, M7's invariant, M5's privacy note, M8's drop-order wording; §3.3's M1 line; §6.2 item 4's M4 rule; §7 P3's D31 premise; the status line and a "Rev 3.5" change list). The status line names rev 3.4; a "Rev 3.4" change list under rev 3.3's carries every departure this plan makes, one line each — from the ledger and every task's Writer notes, D28–D30, the "Used by N people" ruling and this task's two findings; §2.4 is rewritten to D28–D30 and to what Task 1 built (the four states, the slots as offsets, drop-oldest-`done`, the reconcile and its accepted gap, the 403's `nextAt`, the key as must-stay); §1.4 (`presale.unrecorded`, `intent.referrer`, `checkReferrer`'s `referrer-invalid`), §3.5, §4.1, §4.4, §4.6, §5 (D29's row), §6.1, §6.2 (the key must-stay, the alarm a marker, item 4 — complete by construction), §6.3 (E2E 10 without a fake clock), §6.4 (B1d-2's shots) and §9 (#24 "Used 12 times") are edited to match. `node scripts/check-no-tge-date.mjs` (repository) — "no TGE date in 1324 tracked text files". Apply with `git apply --recount`:
 
 ```diff
 diff --git a/docs/superpowers/specs/2026-10-19-extension-b1d-presale-design.md b/docs/superpowers/specs/2026-10-19-extension-b1d-presale-design.md
-index 3a90da8..3dd40eb 100644
+index 3a90da8..766fe1d 100644
 --- a/docs/superpowers/specs/2026-10-19-extension-b1d-presale-design.md
 +++ b/docs/superpowers/specs/2026-10-19-extension-b1d-presale-design.md
-@@ -2,7 +2,8 @@
+@@ -2,7 +2,9 @@
  
  **Status:** **approved rev 3**, 2026-10-19 (owner: "ok je") — Fable reviews 1–2 applied with owner decisions D7–D15; **rev 3.1**
  (D16): rev 3 plus plan B1d-1a's spec edits, listed below; **rev 3.2** (D23): rev 3.1 plus every departure plan B1d-1b
 -makes, listed below; **rev 3.3** (D27): the copy calls rev 3.2 left open, decided. The owner approved
 +makes, listed below; **rev 3.3** (D27): the copy calls rev 3.2 left open, decided; **rev 3.4** (D28–D30): rev 3.3
-+plus every departure plan B1d-2 makes, listed below. The owner approved
++plus every departure plan B1d-2 makes, listed below; **rev 3.5** (D31): rev 3.4 plus the fixes of plan B1d-2's Fable
++review 1, listed below. The owner approved
  the design in conversation section by section (`.superpowers/sdd/b1d-approved-design.md`, approach A) and took
  decisions D1–D6, then D7–D14 on Fable's review 1 and D15 on review 2 (`.superpowers/sdd/b1d-owner-decisions.md`,
  `.superpowers/sdd/b1d-spec-review-1.md`, `.superpowers/sdd/b1d-spec-review-2.md`).
-@@ -127,6 +128,89 @@ open, decided by the controller under the owner's delegation.**
+@@ -127,6 +129,107 @@ open, decided by the controller under the owner's delegation.**
    gave; drawing the routed (older) answer first could show "open" for a frame and then flip to closed. No departure.
  - §10 Q53, Q54a/b, Q56, Q57, Q58: confirmed as built (they mirror B1b's send strings). Q55 as above.
  
@@ -10415,8 +10607,8 @@ index 3a90da8..3dd40eb 100644
 +- §2.4 (D30, Task 1): `200 {success: true}` is `done` whatever `verified` / `duplicate` say.
 +- §2.4 (Task 1): C24's slots are offsets from `confirmedAt` — 0, 1 min, 5 min, 30 min, 2 h, 12 h, 24 h, 48 h, 72 h; a
 +  worker asleep across slots POSTs once when it wakes; a failed attempt with no slot left → `given-up`.
-+- §2.4 (Task 1): over 50 entries the oldest `done` goes first, then `given-up`, `refused`, `due` (a Q34-bearing entry
-+  last).
++- §2.4 (Task 1): over 50 entries the oldest `done` goes first, then `given-up`, `refused`, `due` (an entry #27 says Q34
++  for only when no `done` one is left; rev 3.5, review M8).
 +- §2.4 (Task 1): a 403 or the cool-down sets `nextAt` to the latest of the claimed slot, the latch's persisted end and
 +  `v1_forbidden_until`.
 +- §2.4 (Task 1): the hook writes an entry only for an account of the wallet stored now.
@@ -10487,10 +10679,28 @@ index 3a90da8..3dd40eb 100644
 +  unreachable (the wallet refuses first).
 +- §6.4 (Task 7): B1d-2's shots as listed in §6.4.
 +
++**Rev 3.5 (2026-10-26, owner decision D31): rev 3.4 plus the fixes of plan B1d-2's Fable review 1
++(`.superpowers/sdd/b1d2-plan-review-1.md`), made by plan B1d-2 rev 2 — no separate pass:**
++- §2.4, §7 P3 (D31): an unattended record-route 403 trips the wallet-wide 10-min cool-down like every 403 (a 403 is
++  always a whole-IP CrowdSec ban); the premise, stated for ICO: the coordinator never 403s this route selectively.
++- §2.4 (review I2, Task 1): the worker POSTs only an entry of an account of the wallet stored now — another account's
++  (a replaced wallet's) is held, never dropped — and nothing while a transaction of the stored wallet is open, because
++  the shared latch serialises every coordinator request (measured: a record POST that never answers holds the reads
++  queued behind it for its whole 20 s).
++- §2.4 (review M3): the 403's `nextAt` is the later of the claimed slot and `v1_forbidden_until` (one value, the
++  latch's persisted end, named twice in rev 3.4).
++- §2.4 (review M7): a `presale-buy` record's display data always reads back — the invariant, and where it is held.
++- §2.4 (review M5): what the unattended retry adds to the privacy picture (timing, not data).
++- §3.3 (review M1, Task 2): a stored purchase's `shown` reads back only if the referrer it shows without a registration
++  is the one its `basis` read on chain, and a registering one only where the basis read none.
++- §6.2 item 4 (review M4): presale copy lives in `text.ts` by rule; the completeness row's scope is that rule.
++- §2.4 and rev 3.4's change list (review M8): over 50, a Q34 entry goes once no `done` one is left (not "last": `given-up`
++  and `refused` go before `due`).
++
  **Ledger (review L12).** The order, so nobody has to guess it: the facts were re-read from the code on 2026-10-18 (§8.2)
  and rev 1 was written from them; the owner's decisions D1–D6 and D7–D14 carry the date the decisions file records,
  2026-10-19, which is also the date in this file's name; rev 2 was written after both sets of decisions, and every
-@@ -384,11 +468,12 @@ existing `vault.challengeInfo`).
+@@ -384,11 +487,12 @@ existing `vault.challengeInfo`).
  | `presale.discardPrepared` | `{account}` | B1b's `discardPrepared` (all of the account's entries and their challenges) |
  | `presale.checkReferrer` (B1d-2) | `{account, referrer}` | `{ok: true}` or `{ok: false, line: 'referrer-invalid' \| 'referrer-self' \| 'referrer-no-allocation' \| 'referrer-not-applicable'}` (§3.5); a read failure → `presale-unavailable` |
  | `presale.referral` (B1d-2) | `{account}` | `ReferralView` (§3.5) |
@@ -10505,7 +10715,7 @@ index 3a90da8..3dd40eb 100644
  
  ---
  
-@@ -554,28 +639,43 @@ and the effective referrer (or null). All strings (decimal strings for numbers);
+@@ -554,28 +658,66 @@ and the effective referrer (or null). All strings (decimal strings for numbers);
  `current_stage` (rev 3.2 — the renderer adds 1, and the §2.4 recording sends stage + 1). Readable in both builds (§1.3).
  Shown by #23b, #11, #21, #26, #27, #44 and #54; never used to decide anything.
  
@@ -10531,13 +10741,18 @@ index 3a90da8..3dd40eb 100644
 +wiped by a wallet delete — behind the records' own lock — kept by a restore; the key is shared code and a must-stay
 +string of the off build, §6.2), at most 50 entries:
 +`{signature, account, payload, confirmedAt, attempts, nextAt, state: 'due' | 'done' | 'given-up' | 'refused'}`.
-+Over 50, the oldest `done` entry is dropped first, then `given-up`, `refused`, `due` (an entry #27 says Q34 for goes last).
++Over 50, the oldest `done` entry is dropped first, then `given-up`, `refused`, `due` (an entry #27 says Q34 for goes only
++when no `done` one is left, and a `due` one last — rev 3.5, review M8).
 +
 +- **Written** when the poller sees a `presale-buy` record reach `confirmed` (the kind's `onConfirmed`, §1.3), for an
 +  account of the wallet stored now only. **Reconciled** at every start and on the alarm: a confirmed `presale-buy`
 +  record of the stored wallet in `v1_pending` that has no entry gets one (`confirmedAt` = the record's `createdAt`;
 +  past 72 h it is written `given-up` and never POSTed) — the worker may stop between the poller's write and the hook.
 +  A purchase pushed out of `v1_pending` by 20 newer records before the worker wakes is not recorded (accepted).
++  **Its display data always reads back (rev 3.5, review M7):** `purchaseBeforeSign` refuses `prepared-invalid` when
++  `shownOf` is null, before `purchasePendingData` runs, so no `presale-buy` record whose `extra.data` does not read back
++  is ever written — the hook and the reconcile skip such a record (no entry, no Q34); a change to either side keeps the
++  invariant.
 +- **`payload` (D28)** — the whole route payload: `txHash` = the signature, `buyerAddress` = the account,
 +  `paymentToken`, **`paymentAmount` as a decimal string in display units** (no float leaves the background for it;
 +  review L4 — core's `PresalePurchaseRecord.paymentAmount` widens to `number | string`, so web and the app keep passing
@@ -10551,23 +10766,41 @@ index 3a90da8..3dd40eb 100644
 +  every answer). **The answers:** `200` with `success: true` → `done`, whatever `verified` / `duplicate` say (D30 — a
 +  `verified: false` row is completed by the coordinator's own sweep); a **400 whose body is the route's own refusal**
 +  (`{success: false, error: <string>}`) → **`refused`**, final: never POSTed again, the purchase stands (D29); a 403
-+  trips the latch and the entry waits for the cool-down (`nextAt` = the latest of the claimed slot, the latch's
-+  persisted end and `v1_forbidden_until` — never retried inside it); anything else (429, 500, a timeout, a 400 without
++  trips the latch — the wallet-wide 10-min cool-down, like every 403 (D31: a 403 is always a whole-IP CrowdSec ban; the
++  premise is §7 P3's, that the coordinator never 403s this route selectively) — and the entry waits for it (`nextAt` =
++  the later of the claimed slot and the latch's persisted end, `v1_forbidden_until`; never retried inside it, rev 3.5);
++  anything else (429, 500, a timeout, a 400 without
 +  the route's body) → the next slot.
 +- **The schedule (C24):** slots at offsets from `confirmedAt` — 0, 1 min, 5 min, 30 min, 2 h, 12 h, 24 h, 48 h, 72 h. A
 +  worker asleep across slots POSTs once when it wakes, then waits for the first slot after now; a failed attempt with no
 +  slot left → `given-up`. One `alarms` alarm, `presale-record` (existing permission; dispatched by name, a shared
 +  alarm's name refused), wakes the worker at `min(nextAt)` — never sooner than 30 s ahead; no due entry, no alarm.
++- **When, and for whom (rev 3.5, review I2):** only an entry of an account of the wallet stored now is POSTed. Another
++  account's entry (a replaced wallet's — a restore keeps the records, like the rest of `WALLET_DATA_KEYS`) is **held**,
++  not dropped: never POSTed, arming no alarm, kept as it was (it counts toward the 50 and goes by the same order), and
++  sent at the first run after that wallet is stored again; a delete wipes it with the rest. Dropping it would make a
++  restore a second, unlocked partial delete and lose a real purchase's record if the first wallet came back. And
++  nothing is POSTed while a transaction of the stored wallet is open (`pending` or `stuck` — its sends, its purchases
++  and a site's): the shared latch serialises every coordinator request, so a POST the route holds until
++  `REQUEST_TIMEOUT_MS` holds that transaction's reads (#21's poller, #11's balances, #23's reads) for up to 20 s
++  (measured, `deps.test.ts`). A deferred entry stays due, the alarm looks again in 30 s, and it goes at the first run
++  after the transaction settles. Checked before each POST: a transaction that opens while one POST is in flight waits
++  for that POST only.
  - Never more than one POST in flight; never two POSTs for one signature within a slot. **The retry is correct only
 -  against a coordinator that makes every side effect idempotent by signature — P2a (§7), a B1d-2 blocker (D11).**
 +  against a coordinator that makes every side effect idempotent by signature — P2a (§7), deployed (8f43f49).**
  - The purchase stands on chain whatever the record's state; nothing in the popup says it failed. #27 says Q34 while the
 -  record is `due` or `given-up`.
 +  entry is `due`, `given-up` or `refused` (`presale.unrecorded` lists those three).
++- **Privacy (rev 3.5, review M5):** the body is public on-chain data (the signature, the buyer, amounts derivable from
++  the receipt, the referrer once the transaction lands). What the retry adds is timing: it runs unattended for up to
++  72 h, so the buyer address is tied to the user's IP at up to nine moments, on whatever network the browser is on,
++  with the popup closed. The coordinator can already link the account to the IP — the proxy's reads of its PDAs while
++  the popup is open, `/referral-stats/<address>` at each #24 open — so nothing beyond that.
  
  ### 2.5 What the popup receives (`PresaleView`)
  
-@@ -726,8 +826,10 @@ its row (Q47).
+@@ -726,8 +868,10 @@ its row (Q47).
  `buildReferralLink(account)` (`https://noc-tura.io?ref=<address>`, `core/referral/index.ts`); `earnedBase` = the
  allocation's `referral_bonus_tokens` from chain (the coordinator reports 0 for a chain-credited bonus — memory
  "referral and backend contract"); `referrals` and `referredCents` from `GET /referral-stats/<address>`
@@ -10580,7 +10813,7 @@ index 3a90da8..3dd40eb 100644
  
  **The referral address (D8; an undrawn element, §9).** How a referrer enters a purchase, from the IDL and the program:
  the purchase instructions take **no** referrer argument. The referrer is the buyer's `user_allocation.referrer`, which
-@@ -745,16 +847,23 @@ the first purchase, and `referrerAllocation` for the *effective* referrer; `buil
+@@ -745,16 +889,23 @@ the first purchase, and `referrerAllocation` for the *effective* referrer; `buil
    always wins: the field is then absent and #20 shows the existing referrer (Q47, without the note).
  - **Validated by the background only** (C3): on blur the popup asks `presale.checkReferrer`, which answers, in this
    order: `referrer-invalid` (not 32 bytes of base58, or the default key — `captureIsValid`), `referrer-self` (the buyer
@@ -10610,7 +10843,7 @@ index 3a90da8..3dd40eb 100644
  - **The record** carries the effective referrer as `referrerAddress` (§2.4).
  
  ### 3.6 Website purchases through #48 — F12, the presale region block (D9, D15, C31; B1d-1b)
-@@ -838,8 +947,10 @@ B1d-2). #21 is the existing `status` route. Every CTA follows rule 6 (`LockedBut
+@@ -838,8 +989,10 @@ B1d-2). #21 is the existing `status` route. Every CTA follows rule 6 (`LockedBut
      "≈"; for a stablecoin "@ $ 0.1501" alone, Q03); the estimate **"15,873.60 NOC"** (`.noc-balance-md` +
      `.noc-numeral`, from `Quote.nocBase`, formatted by B1b's amount formatter to 2 decimals, floored).
    - **Referral address** (B1d-2, D8, undrawn — §9): shown only while `referral.canRegister`; B1b's single-line input
@@ -10623,7 +10856,7 @@ index 3a90da8..3dd40eb 100644
    - **Your allocation** row (approved; no drawn state), in the receipt-row style (`.noc-body-sm`, `.noc-numeral` on
      the value): label Q04, value "<total> NOC", sub **"Claimable after TGE"** (D5). Shown only when
      `allocation.exists` and `totalBase > 0`.
-@@ -925,14 +1036,19 @@ Route `referral` from the #31 row **"Refer a friend"** (C16); on mount `presale.
+@@ -925,14 +1078,19 @@ Route `referral` from the #31 row **"Refer a friend"** (C16); on mount `presale.
  (`.noc-h3`); three stat cards (`.noc-overline` label, `.noc-balance-md` + `.noc-numeral` value, `.noc-caption` sub):
  **REFERRALS** / Q35 (`referrals`), **EARNED** / **"NOC lifetime"** (`earnedBase`, from chain), **REFERRED** / Q36
  (`referredCents`) — the app's three (the design's ACTIVE "staking now" has no source, §9); "—" for a null. Code card:
@@ -10646,7 +10879,7 @@ index 3a90da8..3dd40eb 100644
  
  ### 4.5 #11 banner, Buy and the pending row
  
-@@ -948,9 +1064,13 @@ drawn and as the app; "program terms" unlinked until the terms page exists, B1e)
+@@ -948,9 +1106,13 @@ drawn and as the app; "program terms" unlinked until the terms page exists, B1e)
  ### 4.6 #26 and #27 (B1d-2)
  
  - **#26**: a `purchase` history row (B1b's "Presale purchase" / "NOC") gains the **"Presale"** badge (Q31) — on every
@@ -10663,7 +10896,7 @@ index 3a90da8..3dd40eb 100644
  
  ---
  
-@@ -986,6 +1106,7 @@ translates; nothing internal is shown.
+@@ -986,6 +1148,7 @@ translates; nothing internal is shown.
  | Pyth older than 120 s at simulation | prepare | the simulation fails → Q16 |
  | the coordinator is unreachable | — | presale closed (§3.1); F12 on #48; the wallet keeps working; a recorded purchase keeps retrying (§2.4) |
  | the record POST keeps failing | B1d-2 | the purchase stands; Q34 on #27; given up after 72 h |
@@ -10671,7 +10904,7 @@ index 3a90da8..3dd40eb 100644
  | an update turns the switch off with a purchase pending | off build | C19: the record is read, counted by `inFlightFor`, polled and shown generically (Q42); nothing is lost, nothing re-signed |
  | geo `no_check` or a stale list while a purchase is pending | view | 23b stays, the closed line beneath (C30) |
  | a sanctioned country behind a VPN | geo | closed (`sanctionedWinsOverVpn`); `isVpn` is never read as evidence |
-@@ -1078,7 +1199,8 @@ does), and a positive control wherever a negative is asserted. The plan that bui
+@@ -1078,7 +1241,8 @@ does), and a positive control wherever a negative is asserted. The plan that bui
    non-dependent failed simulation is still `simulation-failed`. **The same tests run in `vitest.nopresale`** with the same
    answers (D15: the off build blocks exactly when the on build does; mutation: stub the gate in the off build → red).
  - **Recording (2):** written on `confirmed` only; the payload's fields, `paymentAmount` a string; the schedule's slots
@@ -10681,7 +10914,7 @@ index 3a90da8..3dd40eb 100644
  - **Referral address (2, §3.5, C32):** each `checkReferrer` code with its boundary (a 31-byte key, the default key, the
    buyer, another session account, an absent referrer allocation, a foreign `user@8`, an on-chain referrer present,
    `purchase_count` 1); a valid one → `register_referrer` built between the compute-budget instructions and the purchase,
-@@ -1123,7 +1245,7 @@ does), and a positive control wherever a negative is asserted. The plan that bui
+@@ -1123,7 +1287,7 @@ does), and a positive control wherever a negative is asserted. The plan that bui
       is untracked — review 2 L5) and naming that commit in its first key, fails the gate naming exactly
       `core/presale/buyInstructions.ts`, and passes with that one entry removed.
    2. **Strings:** no file under the off build's `app/`, `chrome/`, `firefox/` contains a **marker** — every `presale.*`
@@ -10690,7 +10923,7 @@ index 3a90da8..3dd40eb 100644
       strings "NOC presale", "YOU RECEIVE (EST.)", "Claimable after TGE", "Refer a friend", "Not available here",
       "Order pending", and every §10 string whose source is "new", "approved" or "app" and whose build is "on" — each
       literal part of at least 8 characters between placeholders. The list is explicit in the gate file and staged like
-@@ -1131,8 +1253,13 @@ does), and a positive control wherever a negative is asserted. The plan that bui
+@@ -1131,8 +1295,17 @@ does), and a positive control wherever a negative is asserted. The plan that bui
       control:** each marker is found in the on build. A marker that also lives in a shared module shows up in the off
       build and fails the scan itself — the author renames it; no separate self-test of sources is needed (review 2 L5).
    3. **Must stay:** the B1b/B1c presale strings ("Presale purchase", "PRESALE PURCHASE", the decoder's instruction
@@ -10703,10 +10936,14 @@ index 3a90da8..3dd40eb 100644
 +     marker, except text both builds carry (Q40b's " per transaction" — @solana/errors' text is in the off build under
 +     `NODE_ENV=test` —, Q46a, "Network fee", "Quote valid ", "Copy failed"). One word with a space or a colon
 +     ("Minimum ", "Maximum ", "Currency: ") is not a marker — "Minimum " and "Maximum " are library text there too.
++     **Presale copy lives in `text.ts` by rule (rev 3.5, review M4):** a presale string written inline in a shared
++     screen would be in both builds and escape both the marker scan and this row, so the row's scope is the rule. None
++     exists (B1d-2's diffs of `Settings.tsx`, `TxDetail.tsx` and `Activity.tsx` add no literal of ≥ 8 characters outside
++     comments; "Rewards" is one word, from `REFER_TEXT.group`).
  - **No-TGE-date gates:** `extension/scripts/check-no-tge-date.mjs` (src + dist) and the repo's
    `scripts/check-no-tge-date.mjs` (every tracked file) cover the new sources and both builds.
  - **RPC methods gate:** no new method (`getAccountsData` → `getMultipleAccounts`, `getTokenAccountsByOwner`,
-@@ -1174,8 +1301,10 @@ review 2 L10). B1d-1b: the rest of 1–9.
+@@ -1174,8 +1347,10 @@ review 2 L10). B1d-1b: the rest of 1–9.
  
  B1d-2:
  
@@ -10719,7 +10956,7 @@ index 3a90da8..3dd40eb 100644
  11. **Referral:** #31 → #24 with stats; `/referral-stats` failing → "—" for its two stats, EARNED still shown;
      Copy → the clipboard holds the link, the checkmark shows.
  12. **Referral address:** a first purchase with a valid referrer → #20 "Referred by" with Q47's note → the transaction
-@@ -1188,7 +1317,12 @@ B1d-2:
+@@ -1188,7 +1363,12 @@ B1d-2:
  beneath), the allocation row, each #23 closed answer (Q12 as §5's prepare refusal — rev 3.2), #20 purchase (with and without account setup), #21 with the badge,
  #44 and #54 for a purchase, #50b × 6, #11 with the banner and Buy, #48 with F12 (B1d-1b); #24 (populated, empty, a null
  stat, copied), the referral field with a line, #20 with "Referred by", #26 badge, #27 line (B1d-2); the opus-tier review
@@ -10733,7 +10970,23 @@ index 3a90da8..3dd40eb 100644
  
  ### 6.5 Release gates (B1e)
  
-@@ -1356,6 +1490,7 @@ and `RegisterReferrer`, `calculate_tokens_for_usd`, `SPACE`s, stablecoin constra
+@@ -1250,6 +1430,15 @@ answer 2, measured for GETs only). Why: the extension shows "refused" (403 → Q
+ from one IP before it answers 403 or silence, so 1b can size #23's 25 s re-read (C35) and the poller against a number.
+ Done when: one written answer per route.
+ 
++**D31's premise (rev 3.5, 2026-10-26) — the coordinator never answers 403 on `POST /api/v1/solana/purchase`
++selectively.** What: an unattended record POST answered 403 trips the extension's wallet-wide 10-minute cool-down — the
++RPC, the broadcast route and every `/wallet/*` read go quiet — because the extension reads every 403 as a whole-IP
++CrowdSec ban (owner decision D31). Why: the retry runs up to nine times over 72 h with the popup closed, so a 403 that
++only this route gives (a WAF rule on POST bodies, or the route joining the Bearer-protected routes) would silence the
++wallet with no visible cause. Ask: refuse on this route with 400 `{success: false, error: <string>}` (final, D29) or
++429 (retried), never 403; tell the wallet side before any change that could make it answer 403. Done when: a written
++confirmation, and a route test that a malformed body is answered 400, not 403.
++
+ Also asked, not blocking: whether `/referral-stats` counts referrals made through the extension's purchases (they carry
+ `referrerAddress` whenever a referrer is effective, §2.4), and whether the stablecoin purchase path writes the same
+ `Allocation recorded` log line as the SOL path (P2b depends on it).
+@@ -1356,6 +1545,7 @@ and `RegisterReferrer`, `calculate_tokens_for_usd`, `SPACE`s, stablecoin constra
  | #23 "Your allocation" (no drawn state) | built in the receipt-row style (approved), Q04 |
  | #23 (F)/(G) Android and iOS notes (decimal-pad IME, predictive back, haptics, Liquid Glass) | `inputmode="decimal"`; the rest mobile-only |
  | #24 code "NOCT-7F3C-2D1A" (HMAC-derived) | **the address is the code** (C1); the link is shown whole, as the app |
@@ -10743,7 +10996,7 @@ index 3a90da8..3dd40eb 100644
  | #24 "Recent rewards", "View all", reward rows and their long-press menu, 24b's rewards empty state | **omitted:** the coordinator has aggregates only; no per-referral source |
 ```
 
-- [ ] **Step 4: Green, both builds, the gates.** In `extension/`: `npx tsc --noEmit; echo $?` — **0**. `npx vitest run` — `Test Files  222 passed (222)` · `Tests  4673 passed (4673)` (Task 6: 4672 + the text.ts row). `npx vitest run -c vitest.nopresale.config.ts` — `Test Files  18 passed (18)` · `Tests  435 passed | 25 skipped (460)` (unchanged). `rm -rf dist dist-nopresale && node scripts/build.mjs && node scripts/build.mjs --no-presale` — both build. `npm run gates` — exit 0: … no TGE date (659 files each build), classes (`app-ref-long` by `app.css`, `vlt-keep` by `unlock.css`), and "no presale ok (dist-nopresale off, dist on): … the on build carries 26 required modules and no presale module outside ON_BUILD; 105 markers (none in the off build, each in the on build); 9 strings and the decoder's instruction names stay in the off build" — the **positive control** (each of the eight new markers found in the on build) and the **negative** (none in the off build) are this line. `node scripts/extract-design-css.mjs --check` — "design-ext.css is the extraction output" (unchanged).
+- [ ] **Step 4: Green, both builds, the gates.** In `extension/`: `npx tsc --noEmit; echo $?` — **0**. `npx vitest run` — `Test Files  222 passed (222)` · `Tests  4684 passed (4684)` (Task 6: 4683 + the text.ts row). `npx vitest run -c vitest.nopresale.config.ts` — `Test Files  18 passed (18)` · `Tests  435 passed | 25 skipped (460)` (unchanged). `rm -rf dist dist-nopresale && node scripts/build.mjs && node scripts/build.mjs --no-presale` — both build. `npm run gates` — exit 0: … no TGE date (659 files each build), classes (`app-ref-long` by `app.css`, `vlt-keep` by `unlock.css`), and "no presale ok (dist-nopresale off, dist on): … the on build carries 26 required modules and no presale module outside ON_BUILD; 105 markers (none in the off build, each in the on build); 9 strings and the decoder's instruction names stay in the off build" — the **positive control** (each of the eight new markers found in the on build) and the **negative** (none in the off build) are this line. `node scripts/extract-design-css.mjs --check` — "design-ext.css is the extraction output" (unchanged).
 
   **A ninth candidate was dropped by the gate's own build row:** with `' per transaction'` (Q40b's tail) armed, `npm run gates` on `dist/` passed, but `scripts/__tests__/presaleBuilds.test.mjs` (which builds both under vitest, `NODE_ENV=test`) failed: `off build: app/background.js contains the presale marker " per transaction"` — @solana/errors keeps its messages in a test-mode build ("Accounts data allocations exceeded the maximum allowed per transaction"). "Minimum " and "Maximum " (Q40a/b's heads) are in that build too — one-word markers would collide exactly so. Q40b is source "core" (§6.2 requires markers of new / approved / app copy only), so it stays unarmed and is named in the text.ts row (V7 below re-arms it: red).
 
@@ -10779,9 +11032,9 @@ rm -rf test-results && unshare -rn sh -c "ip link set lo up && npx playwright te
 rm -rf test-results && unshare -rn sh -c "ip link set lo up && npx playwright test $VIS --reporter=line"    # 35 passed (10.5 m)
 ```
 
-  **105 passed** each way (Task 6's 101 + this task's 4), no retry, no flake. Under `unshare -rn` the spec lists must be one line (`tr '\n' ' '`): the first unshare attempt passed `$(ls …)`'s newlines into `sh -c` and every spec name ran as a command (exit 126, nothing tested) — re-run as above; not a product finding. The final shots: `scratchpad/b1d2-t7/shots-final/` (the normal visual phase).
+  **105 passed** each way (Task 6's 101 + this task's 4), no retry, no flake. **Rev 2, on the rebuilt `d28cc85`:** the whole suite in the four phases above — normally 70 passed (17.3 m) + 35 passed (10.9 m), under `unshare -rn` 70 passed (17.2 m) + 35 passed (10.4 m): **105 passed each way**, no retry, no flake (the spec lists joined to one line). Under `unshare -rn` the spec lists must be one line (`tr '\n' ' '`): the first unshare attempt passed `$(ls …)`'s newlines into `sh -c` and every spec name ran as a command (exit 126, nothing tested) — re-run as above; not a product finding. The final shots: `scratchpad/b1d2-t7/shots-final/` (the normal visual phase).
 
-- [ ] **Step 7: The whole verification.** `cd extension && npm run verify` — exit 0: both builds (`tsc` 0); `Test Files  222 passed (222)` · `Tests  4673 passed (4673)` and `Test Files  18 passed (18)` · `Tests  435 passed | 25 skipped (460)`; "CSP ok: dist/app needs no unsafe-inline or unsafe-eval" (and `dist-nopresale/app`); secrets (exit 0, all six bundle dirs); gates ("… 105 markers (none in the off build, each in the on build) …"); reproducible — `presale chrome 26 files sha256:fbfad1d9…`, `presale firefox 26 files sha256:717bbbb4…`, `no-presale chrome 26 files sha256:5fc9fa69…`, `no-presale firefox 26 files sha256:49133b0c…`, identical on rebuild. From the repository root: `node scripts/check-no-tge-date.mjs` — "no TGE date in 1324 tracked text files". (`core/`, the root `src/` and `web/` are untouched: no root `tsc` / `jest`, no web `verify`.)
+- [ ] **Step 7: The whole verification.** `cd extension && npm run verify` — exit 0: both builds (`tsc` 0); `Test Files  222 passed (222)` · `Tests  4684 passed (4684)` and `Test Files  18 passed (18)` · `Tests  435 passed | 25 skipped (460)`; "CSP ok: dist/app needs no unsafe-inline or unsafe-eval" (and `dist-nopresale/app`); secrets (exit 0, all six bundle dirs); gates ("… 105 markers (none in the off build, each in the on build) …"); reproducible — `presale chrome 26 files sha256:fbfad1d9…`, `presale firefox 26 files sha256:717bbbb4…`, `no-presale chrome 26 files sha256:5fc9fa69…`, `no-presale firefox 26 files sha256:49133b0c…`, identical on rebuild. From the repository root: `node scripts/check-no-tge-date.mjs` — "no TGE date in 1324 tracked text files". (`core/`, the root `src/` and `web/` are untouched: no root `tsc` / `jest`, no web `verify`.)
 
 - [ ] **Step 8: Commit.**
 
@@ -10822,6 +11075,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - **Pre-existing, seen again (not this task's):** `npx eslint` reports errors in untouched files (`PresaleConfirm.tsx` exhaustive-deps, unused vars in `records.test.tsx`, `challenge.test.ts`, `passkeyFlow.test.ts`) — eslint is not in the extension's `verify`; none is on a line this task changed.
 - **For the plan's execution:** run the visual spec after any change to #24, #10, #26 or #27 (F1/F2's checks live only there and in V1/V3's unit rows); run Playwright under `unshare -rn` with the spec list on one line (the `tr '\n' ' '` in Step 6), else `sh -c` runs nothing and exits 126.
 - **Dry run:** clone `dry/b1d2`, commit `ac27c49` on Task 6's `2c6c023` (one commit, not amended). Red runs on a `git archive 2c6c023` copy with Step 1's four files (unit: `Tests  5 failed | 74 passed (79)` together; visual: 2 failed). On `ac27c49`: `npm run verify` exit 0; Playwright 105 ×2; 10 mutations red. The blocks above are `git diff 2c6c023 ac27c49` per file; replayed with `git apply --recount` onto `git archive 2c6c023` (10 of 10 applied), the tree is identical to `git archive ac27c49` (`diff -rq`). Design renders, shots, comparison sheets, logs and runners under `scratchpad/b1d2-t7/` only; the red copy and every mutation copy removed by exact path.
+- **Rev 2:** `dry/b1d2-r2` commit `d28cc85` — rev 1's 5c3bf42 cherry-picked onto cb88445, plus spec rev 3.5 in Step 3b (the spec diff above, text only; `check-no-tge-date.mjs` clean). `tsc` 0; `npm run verify` exit 0 — `Test Files  222 passed (222)` · `Tests  4684 passed (4684)`, off `Test Files  18 passed (18)` · `Tests  435 passed | 25 skipped (460)`, CSP, secrets, every gate (105 markers, 26 modules, none outside `ON_BUILD`) and both builds reproducible (presale chrome `7a27aaa3…`, no-presale chrome `5fc9fa69…`). The whole Playwright suite: the whole suite in the four phases above — normally 70 passed (17.3 m) + 35 passed (10.9 m), under `unshare -rn` 70 passed (17.2 m) + 35 passed (10.4 m): **105 passed each way**, no retry, no flake (the spec lists joined to one line). The visual pass was not redone: no screen changed in rev 2 (I1 is a test fix, I2 a background rule, M1 a read-back check whose display is unchanged for every entry prepare writes).
 
 ---
 
@@ -10830,5 +11084,5 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - **Spec coverage — the header table's B1d-2 row, item by item:** #24 and its #31 row → Task 4 (`presale.referral`, `ReferFriend.tsx`, `PresaleSlots.settings`), shot in Task 7; the optional referral address on #23 (D8, §3.5) → Task 2 (`presale.checkReferrer`, `intent.referrer`, `register_referrer` + account 3 built, simulated and re-verified from the bytes, a registration behind a proof, #10's "Referred by") and Task 3 (the field, Q45–Q48, `presale.view`'s `referral`, #20's "Referred by"); `POST /solana/purchase` after confirmation with background retry (`v1_presale_records`, §2.4, D28–D30; P2a deployed) → Task 1; the "Presale" badge on #26 and the unrecorded line on #27 → Task 5; E2E 10–12 → Task 6; the remaining visual pass → Task 7 (Steps 1–9) and spec rev 3.4 → Task 7 Step 3b. **§6.3 E2E 10–12:** 10 → Task 6 `presaleRecord.spec.ts` "10 · recording: … 500, then … the timeout, then accepted …" and "10 · D29 and D30: …" (one wake with a due control entry); 11 → Task 6 `presaleReferral.spec.ts` "11 · referral: #31 → #24 …" (stats, `/referral-stats` failing → "—", EARNED from chain, Copy → the clipboard spy and the checkmark); 12 → the same file's "12 · referral address: …" (the buyer's own address → Q46b, Buy disabled; a valid referrer → #20 "Referred by" with Q47 → #10 → `register_referrer` and account 3 on the posted wire, the record carrying the referrer) and "12 · an account with a referrer on chain …" (no field; #20 / #10 name it without Q47; nothing registered). E2E 1's deferred #26 badge assertion (§6.3, B1d-1b's record) → Task 5.
 - **Placeholder scan:** no `TODO`, `TBD`, `FIXME`, "fill in", "similar to Task N" or elided code in any step; every new file is in full and every changed file a diff as committed in the dry run. The one deliberate template is the commit trailer `Co-Authored-By: <the executing model> <noreply@anthropic.com>` in each task's commit step, which the executor fills with its own model (the Global Constraints' "commit trailers name the executing model truthfully").
 - **Type consistency across the tasks' Interfaces:** Task 1's `WalletDeps.postJson` / `PostAnswer`, `PresaleRecordEntry` (`{signature, account, payload, confirmedAt, attempts, nextAt, state}`), `PresaleRecordState` and `presale.unrecorded → string[]` are what Tasks 4 (`getJson` beside `postJson`, the one latch), 5 (Q34 from `presale.unrecorded`, `refused` included) and 6 (`recordEntries`, `heldRecord`, `slotComes` over the stored entry) consume; Task 2's `presale.checkReferrer` answer (`{ok: true, data: {ok: true} | {ok: false, line: ReferrerLine}}`, `presale-unavailable` / `coordinator-refused`) and `PurchaseView.referrer` (`{address, registers}`) are Task 3's inputs; Task 3's interim `ReferralView {onChain, canRegister}` (the view's `referral`) is renamed `ReferralState` by Task 4, whose `ReferralView {link, earnedBase, referrals, referredCents}` is §3.5's — no task after Task 4 names the old meaning; `PresaleSlots` gains `settings` (Task 4) and `historyBadge` / `unrecorded` (Task 5) without changing B1d-1b's slots; Task 6's `AllocationReferral` (bonus @76, referrer @84) matches `PRESALE_ALLOCATION_LAYOUT` as Task 2's `allocationFacts` reads it. Mechanically: the consistency replay below compiles nothing itself, but every tree it reproduces is a dry-run commit on which `tsc` exited 0.
-- **Consistency replay (2026-10-26):** `git archive a1bda47`, then task-1 … task-7's new files and diff blocks taken from THIS file, in order, each block alone with `git apply --recount` (Task 2's fixture by its capture step, Task 4's `design-ext.css` by the extractor), compared with `diff -rq` against `git archive` of each rebuilt commit — IDENTICAL for every task: Task 1 (65846e2; 4 new files, 30 diff blocks), Task 2 (1256554; 3 + 12, the capture's sha256 `dbc8fa65…64be` as pinned), Task 3 (49cc8f0; 1 + 12), Task 4 (f8db19e; 5 + 26, the extractor's `ab642e2a…fb3d` as pinned), Task 5 (3a04191; 1 + 13), Task 6 (5b42436; 2 + 7), Task 7 (5c3bf42; 0 + 10). Negative control: the final tree against the first issue's ac27c49 reports exactly `reconcileWindow.test.ts`.
-- **Review Focus:** five lines; one has its rows (Task 1, `reconcileWindow.test.ts`, N8–N9 red), four are known limitations with their reasons.
+- **Consistency replay (rev 2, 2026-10-26):** `git archive a1bda47`, then task-1 … task-7's new files and diff blocks taken from THIS file, in order, each block alone with `git apply --recount` (Task 2's fixture by its capture step — sha256 `dbc8fa65…64be` as pinned — and Task 4's `design-ext.css` by the extractor — `ab642e2a…fb3d` as pinned), compared with `diff -rq` against `git archive` of each commit of `dry/b1d2-r2` — **IDENTICAL for every task:** Task 1 (4bf2499; 4 new files, 30 diff blocks), Task 2 (13b5f6c; 3 + 12), Task 3 (a9e541d; 1 + 12), Task 4 (53b2bf7; 5 + 26), Task 5 (aee57f6; 1 + 13), Task 6 (cb88445; 2 + 7), Task 7 (d28cc85; 0 + 10). Negative control: the final tree against rev 1's 5c3bf42 differs in exactly rev 2's nine files (the spec, `record.ts`, `buy.ts`, and `record.test.ts`, `deps.test.ts`, `start.test.ts`, `referrer.test.ts`, `buy.test.ts`, `referral.test.tsx`). The replay directory was removed by its exact path. (Rev 1's replay, onto `dry/b1d2-rf`, was identical too.)
+- **Review Focus:** five lines; two have their rows (1: Task 1's `reconcileWindow.test.ts`, N8–N9 red; 2: Task 1's I2 rows in `record.test.ts` and the latch measurement in `deps.test.ts`, W1–W6 red), three are known limitations with their reasons.

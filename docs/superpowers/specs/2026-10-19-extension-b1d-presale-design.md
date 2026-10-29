@@ -3,7 +3,8 @@
 **Status:** **approved rev 3**, 2026-10-19 (owner: "ok je") — Fable reviews 1–2 applied with owner decisions D7–D15; **rev 3.1**
 (D16): rev 3 plus plan B1d-1a's spec edits, listed below; **rev 3.2** (D23): rev 3.1 plus every departure plan B1d-1b
 makes, listed below; **rev 3.3** (D27): the copy calls rev 3.2 left open, decided; **rev 3.4** (D28–D30): rev 3.3
-plus every departure plan B1d-2 makes, listed below. The owner approved
+plus every departure plan B1d-2 makes, listed below; **rev 3.5** (D31): rev 3.4 plus the fixes of plan B1d-2's Fable
+review 1, listed below. The owner approved
 the design in conversation section by section (`.superpowers/sdd/b1d-approved-design.md`, approach A) and took
 decisions D1–D6, then D7–D14 on Fable's review 1 and D15 on review 2 (`.superpowers/sdd/b1d-owner-decisions.md`,
 `.superpowers/sdd/b1d-spec-review-1.md`, `.superpowers/sdd/b1d-spec-review-2.md`).
@@ -139,8 +140,8 @@ and is stated there; the passages marked "rev 3.4" below are edited to match. Ev
 - §2.4 (D30, Task 1): `200 {success: true}` is `done` whatever `verified` / `duplicate` say.
 - §2.4 (Task 1): C24's slots are offsets from `confirmedAt` — 0, 1 min, 5 min, 30 min, 2 h, 12 h, 24 h, 48 h, 72 h; a
   worker asleep across slots POSTs once when it wakes; a failed attempt with no slot left → `given-up`.
-- §2.4 (Task 1): over 50 entries the oldest `done` goes first, then `given-up`, `refused`, `due` (a Q34-bearing entry
-  last).
+- §2.4 (Task 1): over 50 entries the oldest `done` goes first, then `given-up`, `refused`, `due` (an entry #27 says Q34
+  for only when no `done` one is left; rev 3.5, review M8).
 - §2.4 (Task 1): a 403 or the cool-down sets `nextAt` to the latest of the claimed slot, the latch's persisted end and
   `v1_forbidden_until`.
 - §2.4 (Task 1): the hook writes an entry only for an account of the wallet stored now.
@@ -210,6 +211,24 @@ and is stated there; the passages marked "rev 3.4" below are edited to match. Ev
   message types; the fake models `register_referrer` but not the referral bonus (E2E 11 seeds it); 6016 is modelled but
   unreachable (the wallet refuses first).
 - §6.4 (Task 7): B1d-2's shots as listed in §6.4.
+
+**Rev 3.5 (2026-10-26, owner decision D31): rev 3.4 plus the fixes of plan B1d-2's Fable review 1
+(`.superpowers/sdd/b1d2-plan-review-1.md`), made by plan B1d-2 rev 2 — no separate pass:**
+- §2.4, §7 P3 (D31): an unattended record-route 403 trips the wallet-wide 10-min cool-down like every 403 (a 403 is
+  always a whole-IP CrowdSec ban); the premise, stated for ICO: the coordinator never 403s this route selectively.
+- §2.4 (review I2, Task 1): the worker POSTs only an entry of an account of the wallet stored now — another account's
+  (a replaced wallet's) is held, never dropped — and nothing while a transaction of the stored wallet is open, because
+  the shared latch serialises every coordinator request (measured: a record POST that never answers holds the reads
+  queued behind it for its whole 20 s).
+- §2.4 (review M3): the 403's `nextAt` is the later of the claimed slot and `v1_forbidden_until` (one value, the
+  latch's persisted end, named twice in rev 3.4).
+- §2.4 (review M7): a `presale-buy` record's display data always reads back — the invariant, and where it is held.
+- §2.4 (review M5): what the unattended retry adds to the privacy picture (timing, not data).
+- §3.3 (review M1, Task 2): a stored purchase's `shown` reads back only if the referrer it shows without a registration
+  is the one its `basis` read on chain, and a registering one only where the basis read none.
+- §6.2 item 4 (review M4): presale copy lives in `text.ts` by rule; the completeness row's scope is that rule.
+- §2.4 and rev 3.4's change list (review M8): over 50, a Q34 entry goes once no `done` one is left (not "last": `given-up`
+  and `refused` go before `due`).
 
 **Ledger (review L12).** The order, so nobody has to guess it: the facts were re-read from the code on 2026-10-18 (§8.2)
 and rev 1 was written from them; the owner's decisions D1–D6 and D7–D14 carry the date the decisions file records,
@@ -645,13 +664,18 @@ Shown by #23b, #11, #21, #26, #27, #44 and #54; never used to decide anything.
 wiped by a wallet delete — behind the records' own lock — kept by a restore; the key is shared code and a must-stay
 string of the off build, §6.2), at most 50 entries:
 `{signature, account, payload, confirmedAt, attempts, nextAt, state: 'due' | 'done' | 'given-up' | 'refused'}`.
-Over 50, the oldest `done` entry is dropped first, then `given-up`, `refused`, `due` (an entry #27 says Q34 for goes last).
+Over 50, the oldest `done` entry is dropped first, then `given-up`, `refused`, `due` (an entry #27 says Q34 for goes only
+when no `done` one is left, and a `due` one last — rev 3.5, review M8).
 
 - **Written** when the poller sees a `presale-buy` record reach `confirmed` (the kind's `onConfirmed`, §1.3), for an
   account of the wallet stored now only. **Reconciled** at every start and on the alarm: a confirmed `presale-buy`
   record of the stored wallet in `v1_pending` that has no entry gets one (`confirmedAt` = the record's `createdAt`;
   past 72 h it is written `given-up` and never POSTed) — the worker may stop between the poller's write and the hook.
   A purchase pushed out of `v1_pending` by 20 newer records before the worker wakes is not recorded (accepted).
+  **Its display data always reads back (rev 3.5, review M7):** `purchaseBeforeSign` refuses `prepared-invalid` when
+  `shownOf` is null, before `purchasePendingData` runs, so no `presale-buy` record whose `extra.data` does not read back
+  is ever written — the hook and the reconcile skip such a record (no entry, no Q34); a change to either side keeps the
+  invariant.
 - **`payload` (D28)** — the whole route payload: `txHash` = the signature, `buyerAddress` = the account,
   `paymentToken`, **`paymentAmount` as a decimal string in display units** (no float leaves the background for it;
   review L4 — core's `PresalePurchaseRecord.paymentAmount` widens to `number | string`, so web and the app keep passing
@@ -665,17 +689,35 @@ Over 50, the oldest `done` entry is dropped first, then `given-up`, `refused`, `
   every answer). **The answers:** `200` with `success: true` → `done`, whatever `verified` / `duplicate` say (D30 — a
   `verified: false` row is completed by the coordinator's own sweep); a **400 whose body is the route's own refusal**
   (`{success: false, error: <string>}`) → **`refused`**, final: never POSTed again, the purchase stands (D29); a 403
-  trips the latch and the entry waits for the cool-down (`nextAt` = the latest of the claimed slot, the latch's
-  persisted end and `v1_forbidden_until` — never retried inside it); anything else (429, 500, a timeout, a 400 without
+  trips the latch — the wallet-wide 10-min cool-down, like every 403 (D31: a 403 is always a whole-IP CrowdSec ban; the
+  premise is §7 P3's, that the coordinator never 403s this route selectively) — and the entry waits for it (`nextAt` =
+  the later of the claimed slot and the latch's persisted end, `v1_forbidden_until`; never retried inside it, rev 3.5);
+  anything else (429, 500, a timeout, a 400 without
   the route's body) → the next slot.
 - **The schedule (C24):** slots at offsets from `confirmedAt` — 0, 1 min, 5 min, 30 min, 2 h, 12 h, 24 h, 48 h, 72 h. A
   worker asleep across slots POSTs once when it wakes, then waits for the first slot after now; a failed attempt with no
   slot left → `given-up`. One `alarms` alarm, `presale-record` (existing permission; dispatched by name, a shared
   alarm's name refused), wakes the worker at `min(nextAt)` — never sooner than 30 s ahead; no due entry, no alarm.
+- **When, and for whom (rev 3.5, review I2):** only an entry of an account of the wallet stored now is POSTed. Another
+  account's entry (a replaced wallet's — a restore keeps the records, like the rest of `WALLET_DATA_KEYS`) is **held**,
+  not dropped: never POSTed, arming no alarm, kept as it was (it counts toward the 50 and goes by the same order), and
+  sent at the first run after that wallet is stored again; a delete wipes it with the rest. Dropping it would make a
+  restore a second, unlocked partial delete and lose a real purchase's record if the first wallet came back. And
+  nothing is POSTed while a transaction of the stored wallet is open (`pending` or `stuck` — its sends, its purchases
+  and a site's): the shared latch serialises every coordinator request, so a POST the route holds until
+  `REQUEST_TIMEOUT_MS` holds that transaction's reads (#21's poller, #11's balances, #23's reads) for up to 20 s
+  (measured, `deps.test.ts`). A deferred entry stays due, the alarm looks again in 30 s, and it goes at the first run
+  after the transaction settles. Checked before each POST: a transaction that opens while one POST is in flight waits
+  for that POST only.
 - Never more than one POST in flight; never two POSTs for one signature within a slot. **The retry is correct only
   against a coordinator that makes every side effect idempotent by signature — P2a (§7), deployed (8f43f49).**
 - The purchase stands on chain whatever the record's state; nothing in the popup says it failed. #27 says Q34 while the
   entry is `due`, `given-up` or `refused` (`presale.unrecorded` lists those three).
+- **Privacy (rev 3.5, review M5):** the body is public on-chain data (the signature, the buyer, amounts derivable from
+  the receipt, the referrer once the transaction lands). What the retry adds is timing: it runs unattended for up to
+  72 h, so the buyer address is tied to the user's IP at up to nine moments, on whatever network the browser is on,
+  with the popup closed. The coordinator can already link the account to the IP — the proxy's reads of its PDAs while
+  the popup is open, `/referral-stats/<address>` at each #24 open — so nothing beyond that.
 
 ### 2.5 What the popup receives (`PresaleView`)
 
@@ -1260,6 +1302,10 @@ does), and a positive control wherever a negative is asserted. The plan that bui
      marker, except text both builds carry (Q40b's " per transaction" — @solana/errors' text is in the off build under
      `NODE_ENV=test` —, Q46a, "Network fee", "Quote valid ", "Copy failed"). One word with a space or a colon
      ("Minimum ", "Maximum ", "Currency: ") is not a marker — "Minimum " and "Maximum " are library text there too.
+     **Presale copy lives in `text.ts` by rule (rev 3.5, review M4):** a presale string written inline in a shared
+     screen would be in both builds and escape both the marker scan and this row, so the row's scope is the rule. None
+     exists (B1d-2's diffs of `Settings.tsx`, `TxDetail.tsx` and `Activity.tsx` add no literal of ≥ 8 characters outside
+     comments; "Rewards" is one word, from `REFER_TEXT.group`).
 - **No-TGE-date gates:** `extension/scripts/check-no-tge-date.mjs` (src + dist) and the repo's
   `scripts/check-no-tge-date.mjs` (every tracked file) cover the new sources and both builds.
 - **RPC methods gate:** no new method (`getAccountsData` → `getMultipleAccounts`, `getTokenAccountsByOwner`,
@@ -1383,6 +1429,15 @@ answer 2, measured for GETs only). Why: the extension shows "refused" (403 → Q
 (silence / timeout). **And the per-IP rate budget per route** (review 2 M3): how many requests a minute CrowdSec allows
 from one IP before it answers 403 or silence, so 1b can size #23's 25 s re-read (C35) and the poller against a number.
 Done when: one written answer per route.
+
+**D31's premise (rev 3.5, 2026-10-26) — the coordinator never answers 403 on `POST /api/v1/solana/purchase`
+selectively.** What: an unattended record POST answered 403 trips the extension's wallet-wide 10-minute cool-down — the
+RPC, the broadcast route and every `/wallet/*` read go quiet — because the extension reads every 403 as a whole-IP
+CrowdSec ban (owner decision D31). Why: the retry runs up to nine times over 72 h with the popup closed, so a 403 that
+only this route gives (a WAF rule on POST bodies, or the route joining the Bearer-protected routes) would silence the
+wallet with no visible cause. Ask: refuse on this route with 400 `{success: false, error: <string>}` (final, D29) or
+429 (retried), never 403; tell the wallet side before any change that could make it answer 403. Done when: a written
+confirmation, and a route test that a malformed body is answered 400, not 403.
 
 Also asked, not blocking: whether `/referral-stats` counts referrals made through the extension's purchases (they carry
 `referrerAddress` whenever a referrer is effective, §2.4), and whether the stablecoin purchase path writes the same
