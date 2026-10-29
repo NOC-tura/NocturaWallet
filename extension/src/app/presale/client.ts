@@ -1,4 +1,5 @@
 import {pendingOf, type Engine, type Pending, type Reply} from '../engine';
+import {buildReferralLink} from '../../../../core/referral/index';
 
 /**
  * B1d §1.4, §2.5, §3.2, §3.3: the popup's client for the presale messages #23 asks — through the shared engine's
@@ -90,6 +91,17 @@ export interface BannerData {
   stage: number;
   priceTicks: bigint;
   stagePercent: number;
+}
+
+/**
+ * §3.5, §4.4 (B1d-2): #24's data — the account's invite link, and each figure (base units, a count, cents) or null when
+ * its source failed (shown "—").
+ */
+export interface ReferralData {
+  link: string;
+  earnedBase: bigint | null;
+  referrals: bigint | null;
+  referredCents: bigint | null;
 }
 
 /** §3.5 (B1d-2): the lines under #23's referral address — presale.checkReferrer's answers, and prepare's refusals of the address. */
@@ -185,6 +197,8 @@ export interface PresaleClient {
   /** §3.5 (B1d-2): the line for this referral address, or null when the purchase would register it — the background's answer. */
   checkReferrer(account: string, referrer: string): Promise<Reply<ReferrerLine | null, CheckRefusal>>;
   preparedFor(account: string): Promise<Reply<ResumablePurchase | null, SessionRefusal>>;
+  /** §3.5, §4.4 (B1d-2): #24's data for the account — its own link, each figure as the background read it or null. */
+  referral(account: string): Promise<Reply<ReferralData, SessionRefusal>>;
   buy(id: string): Promise<Reply<Pending, BuyRefusal>>;
   discardPrepared(account: string): Promise<Reply<null, SessionRefusal>>;
 }
@@ -390,6 +404,19 @@ export function referrerCheckOf(x: unknown): ReferrerLine | null | undefined {
   return exactly(o, ['ok', 'line']) && o.ok === false ? oneOf(o.line, REFERRER_LINES) : undefined;
 }
 
+/**
+ * presale.referral's answer (§3.5) for `account`: exactly its four keys; the link is this account's invite link, whole
+ * (never another address's, never shortened); each figure a decimal string of a bigint, or null.
+ */
+export function referralDataOf(x: unknown, account: string): ReferralData | undefined {
+  const o = obj(x);
+  if (o === undefined || !exactly(o, ['link', 'earnedBase', 'referrals', 'referredCents']) || o.link !== buildReferralLink(account)) return undefined;
+  const figure = (v: unknown): bigint | null | undefined => (v === null ? null : units(v));
+  const [earnedBase, referrals, referredCents] = [figure(o.earnedBase), figure(o.referrals), figure(o.referredCents)];
+  if (earnedBase === undefined || referrals === undefined || referredCents === undefined) return undefined;
+  return {link: o.link, earnedBase, referrals, referredCents};
+}
+
 /** The pending record presale.buy answers: the wallet's own purchase (`intent: null`, this kind), nothing else. */
 const purchaseRecordOf = (x: unknown): Pending | undefined => {
   const p = pendingIn(x);
@@ -415,6 +442,7 @@ export function presaleClient(engine: Engine): PresaleClient {
       ),
     checkReferrer: (account, referrer) => engine.request({type: 'presale.checkReferrer', account, referrer}, CHECK_REFUSALS, referrerCheckOf),
     preparedFor: account => engine.request({type: 'presale.preparedFor', account}, SESSION, x => (x === null ? null : resumableOf(x))),
+    referral: account => engine.request({type: 'presale.referral', account}, SESSION, x => referralDataOf(x, account)),
     buy: id => engine.request({type: 'presale.buy', id}, BUY_REFUSALS, purchaseRecordOf),
     discardPrepared: account => engine.request({type: 'presale.discardPrepared', account}, SESSION, x => (x === undefined ? null : undefined)),
   };

@@ -2,7 +2,7 @@ import {showExact} from '../send/rules';
 import {showUsd} from '../format';
 import type {KindRecord, PresaleSlots} from '../router';
 import {PURCHASE_KIND, presaleClient, purchaseDataOf} from './client';
-import {BANNER_TEXT, CONFIRM_PURCHASE_TEXT, RECORD_TEXT, priceText} from './text';
+import {BANNER_TEXT, CONFIRM_PURCHASE_TEXT, RECORD_TEXT, REFER_TEXT, priceText} from './text';
 import {againRoute} from './routes';
 
 /**
@@ -13,7 +13,7 @@ import {againRoute} from './routes';
  * `resume` is §4.2's resume paths: `presale.preparedFor` for the account, and #20's purchase variant (`resume`) for a
  * prepared purchase. `banner` and `buy` are #11's (§4.5): the banner as `presale.banner` answered it (no geo check;
  * null for any failure or an inactive sale), and Buy's routing from a fresh `presale.view` — an open purchase or an open
- * sale → #23, the gate closed → #50b, anything else → no route.
+ * sale → #23, the gate closed → #50b, anything else → no route. `settings` is #31's row into #24 (B1d-2, C16).
  */
 export const PRESALE_SLOTS: PresaleSlots = {
   record(extra): KindRecord | null {
@@ -56,4 +56,5 @@ export const PRESALE_SLOTS: PresaleSlots = {
     if (v.pending !== null || v.open) return {screen: 'presale'};
     return v.why === 'geo' ? {screen: 'geo'} : null;
   },
+  settings: {group: REFER_TEXT.group, title: REFER_TEXT.title, route: {screen: 'referral'}},
 };

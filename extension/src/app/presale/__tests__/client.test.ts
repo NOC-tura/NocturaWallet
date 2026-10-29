@@ -1,5 +1,5 @@
 import {createEngine, type Transport} from '../../engine';
-import {BUY_REFUSALS, PREPARE_REFUSALS, REFERRER_LINES, bannerOf, presaleClient, presaleViewOf, purchaseDataOf, purchaseViewOf, quoteOf, referrerCheckOf, resumableOf} from '../client';
+import {BUY_REFUSALS, PREPARE_REFUSALS, REFERRER_LINES, bannerOf, presaleClient, presaleViewOf, purchaseDataOf, purchaseViewOf, quoteOf, referralDataOf, referrerCheckOf, resumableOf} from '../client';
 import {registerPresale} from '../../../background/presale/api';
 import {handleMessage, registerPresaleHandler} from '../../../background/messages';
 import {PENDING_KEY} from '../../../background/pendingStore';
@@ -404,5 +404,40 @@ describe('the client for #11’s banner', () => {
     ]) {
       expect([bad, bannerOf(bad)]).toEqual([bad, undefined]);
     }
+  });
+});
+
+// B1d-2 Task 4 (§3.5, §4.4): #24's data.
+describe('the client for #24 (presale.referral)', () => {
+  const LINK = `https://noc-tura.io?ref=${ACCOUNT}`;
+  it('referral against the real background: {type, account}; the link whole, EARNED as bigint from the chain, the stats null when their source failed (positive control)', async () => {
+    const {client, sent} = await wired({chain: {allocation: program(allocationData({bonus: 16_142_571_618n}))}});
+    expect(await client.referral(ACCOUNT)).toEqual({ok: true, data: {link: LINK, earnedBase: 16_142_571_618n, referrals: null, referredCents: null}});
+    expect(sent).toEqual([{type: 'presale.referral', account: ACCOUNT}]);
+  });
+
+  it('referralDataOf: exactly four keys; the link this account’s, whole; each figure a decimal string or null — anything else failed', () => {
+    const good = {link: LINK, earnedBase: '7', referrals: '3', referredCents: '123456'};
+    expect(referralDataOf(good, ACCOUNT)).toEqual({link: LINK, earnedBase: 7n, referrals: 3n, referredCents: 123_456n});
+    expect(referralDataOf({...good, earnedBase: null, referrals: null, referredCents: null}, ACCOUNT)).toEqual({link: LINK, earnedBase: null, referrals: null, referredCents: null});
+    // Beyond a double: the cents stay exact (bigint, never a float).
+    expect(referralDataOf({...good, referredCents: '900719925474099312'}, ACCOUNT)?.referredCents).toBe(900_719_925_474_099_312n);
+    for (const bad of [
+      {...good, extra: 1},
+      {link: LINK, earnedBase: '7', referrals: '3'},
+      {...good, link: `https://noc-tura.io?ref=${OTHER}`},
+      {...good, link: `https://noc-tura.io?ref=${ACCOUNT.slice(0, 8)}…`},
+      {...good, link: `https://evil.example?ref=${ACCOUNT}`},
+      {...good, link: `${LINK} `},
+      {...good, earnedBase: 7},
+      {...good, referrals: '-1'},
+      {...good, referredCents: '12.5'},
+      {...good, referrals: ''},
+      null,
+      'referral',
+    ]) {
+      expect([bad, referralDataOf(bad, ACCOUNT)]).toEqual([bad, undefined]);
+    }
+    expect(referralDataOf(good, OTHER)).toBeUndefined();
   });
 });

@@ -124,6 +124,8 @@ export interface PresaleSlots {
   banner(engine: Engine): Promise<HomeBanner | null>;
   /** §4.5: where #11's Buy (and its banner) goes for this account — #23, #50b, or null: no route, the action hides. */
   buy(engine: Engine, account: string): Promise<PresaleRouteValue | null>;
+  /** B1d-2 (C16, §4.4): #31's row into the entry's own screen — its group label, its title, and the route it pushes. */
+  settings: {group: string; title: string; route: PresaleRouteValue};
 }
 export type RouteAction = {type: 'push'; route: Route} | {type: 'pop'} | {type: 'tab'; tab: Tab} | {type: 'replace'; route: Route} | {type: 'reset'; routes: Route[]};
 

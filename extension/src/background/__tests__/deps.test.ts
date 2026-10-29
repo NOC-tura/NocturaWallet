@@ -2,7 +2,7 @@ import {BROADCAST_TIMEOUT_MS, FORBIDDEN_UNTIL_KEY, REQUEST_TIMEOUT_MS, RequestTi
 import {submitSigned} from '../pending';
 import {PENDING_KEY} from '../pendingStore';
 import {fakeDeps} from './fakeDeps';
-import {FORBIDDEN_COOLDOWN_MS, RequestUnreachable, RpcCoolingDown, RpcForbidden, createForbiddenLatch, createRpc, type FetchInit} from '../../../../core/solana/rpc';
+import {FORBIDDEN_COOLDOWN_MS, RequestUnreachable, RpcCoolingDown, RpcForbidden, RpcHttpError, createForbiddenLatch, createRpc, type FetchInit} from '../../../../core/solana/rpc';
 import {fakeExt} from './fakeExt';
 import {ACCOUNT, RECIPIENT, signedWire} from './fixtures';
 
@@ -105,6 +105,31 @@ describe('browserDeps (review M3: the cool-down survives a restarted worker)', (
     await expect(other.reader.getBlockHeight()).rejects.toBeInstanceOf(RpcForbidden);
     await expect(other.postJson('/solana/purchase', {})).rejects.toBeInstanceOf(RpcCoolingDown);
     expect(urls).toEqual(['https://api.noc-tura.io/api/v1/solana/purchase', 'https://api.noc-tura.io/api/v1/rpc']);
+  });
+
+  it('getJson (B1d-2, #24) goes through the same latch: a 403 on /referral-stats silences the RPC; the RPC’s 403 silences /referral-stats', async () => {
+    const urls: string[] = [];
+    vi.stubGlobal('fetch', async (url: string) => (urls.push(url), {status: 403, json: async () => null}));
+    const deps = browserDeps(fakeExt());
+    await expect(deps.getJson(`/referral-stats/${ACCOUNT.publicKey}`)).rejects.toBeInstanceOf(RpcForbidden);
+    await expect(deps.reader.getBlockHeight()).rejects.toBeInstanceOf(RpcCoolingDown);
+    const other = browserDeps(fakeExt());
+    await expect(other.reader.getBlockHeight()).rejects.toBeInstanceOf(RpcForbidden);
+    await expect(other.getJson(`/referral-stats/${ACCOUNT.publicKey}`)).rejects.toBeInstanceOf(RpcCoolingDown);
+    expect(urls).toEqual([`https://api.noc-tura.io/api/v1/referral-stats/${ACCOUNT.publicKey}`, 'https://api.noc-tura.io/api/v1/rpc']);
+  });
+
+  it('getJson answers a 200’s body as it is, and throws on any other status (positive and negative control)', async () => {
+    const answers = [{status: 200, body: {success: true, data: {totalReferrals: 1}}}, {status: 500, body: {success: false}}, {status: 429, body: null}];
+    vi.stubGlobal('fetch', async () => {
+      const a = answers.shift();
+      if (a === undefined) throw new Error('no more answers');
+      return {status: a.status, json: async () => a.body};
+    });
+    const deps = browserDeps(fakeExt());
+    expect(await deps.getJson('/referral-stats/x')).toEqual({success: true, data: {totalReferrals: 1}});
+    await expect(deps.getJson('/referral-stats/x')).rejects.toBeInstanceOf(RpcHttpError);
+    await expect(deps.getJson('/referral-stats/x')).rejects.toBeInstanceOf(RpcHttpError);
   });
 
   it('reads the NOC stage price from /stats (owner decision B)', async () => {

@@ -254,6 +254,8 @@ function Shell({first, onLeaveHandOver}: {first: Route[]; onLeaveHandOver: () =>
           onAbout={() => go({type: 'push', route: {screen: 'about'}})}
           onContacts={() => go({type: 'push', route: {screen: 'contacts', pick: false}})}
           onConnected={() => go({type: 'push', route: {screen: 'connected'}})}
+          // B1d-2 (C16): #31's presale row → #24 (none in the build without presale).
+          onRoute={next => presaleNavigation.push(next)}
         />
       );
     }

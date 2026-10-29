@@ -31,7 +31,7 @@ export const WEB_ALLOWED = ['../web/src/ui/', '../web/src/styles/'];
 // (§2.1); 1b adds presale/quote.ts (Task 1), presale/buy.ts (Task 2), #23's popup modules (Task 4), #20's purchase
 // variant with the record slot (Task 5), #50b (Task 6) and core/presale/{buyInstructions,referrer}.ts — the purchase's
 // builder and its referrer allocation, in the on build's module map since Tasks 1–2 (Task 8); B1d-2 adds
-// presale/record.ts (Task 1), presale/referral.ts and core/referral/index.ts.
+// presale/record.ts (Task 1), and #24's background presale/referral.ts with core/referral/index.ts and its screen (Task 4).
 export const ON_BUILD = [
   'src/background/presale/api.ts',
   'src/app/presale/index.ts',
@@ -51,6 +51,9 @@ export const ON_BUILD = [
   'core/presale/buyInstructions.ts',
   'core/presale/referrer.ts',
   'src/background/presale/record.ts',
+  'src/background/presale/referral.ts',
+  'core/referral/index.ts',
+  'src/app/presale/ReferFriend.tsx',
 ];
 // The intent-kind registry (C19 — both builds sign and read through it); the jurisdiction gate and its fetcher (D15:
 // the off build did not lose the gate); the country's name #48's F12 banner shows (B1d-1b Task 7, §3.6); the presale
@@ -156,6 +159,21 @@ export const MARKERS = [
   "You can't refer yourself or another account in this wallet",
   "This address has no presale allocation, so it can't receive a referral bonus",
   'This account can no longer take a referrer — review again',
+  // B1d-2 Task 4: #24's message type, then #31's row and #24's title (§6.2's "Refer a friend"), Q35, the EARNED sub, Q36,
+  // Q37, "Not used yet", "Used by " (D27: the count is people), the copy icon's name, "Share invite link", Q39 and the legalese (the route name `referral` is one
+  // bare word: these arm it; REFERRALS / EARNED / REFERRED, "Rewards" and Q38 — B1b's, both builds — are not markers).
+  'presale.referral',
+  'Refer a friend',
+  'total joined',
+  'NOC lifetime',
+  'from your invites',
+  'YOUR INVITE LINK',
+  'Not used yet',
+  'Used by ',
+  'Copy invite link',
+  'Share invite link',
+  'Earn NOC when friends you invite buy in the presale.',
+  'Referral payouts are subject to program terms. Self-referrals are detected and rejected.',
 ];
 // Q42a (B1d-1a: the generic pending row, both builds); 1b adds F12's Q49–Q51. Q42b ("Transaction") is too short to
 // be a string search. The decoder's instruction names are read from its source (DECODER).

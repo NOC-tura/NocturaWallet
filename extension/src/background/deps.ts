@@ -24,6 +24,8 @@ export interface WalletDeps {
   geo(): Promise<GeoAnswer>;
   /** B1d §2.4: POST JSON to a bare path under API_BASE through the shared latch — every status answered (createJsonPoster). */
   postJson(path: string, body: unknown): Promise<PostAnswer>;
+  /** B1d §3.5: GET JSON from a bare path under API_BASE through the shared latch (createJsonGetter) — a non-200 throws. */
+  getJson(path: string): Promise<unknown>;
   now(): number;
   randomBytes(n: number): Uint8Array;
   sleep(ms: number): Promise<void>;
@@ -193,6 +195,7 @@ export function browserDeps(ext: Ext): WalletDeps {
     },
     geo: () => gate.check(),
     postJson: (path, body) => poster.post(path, body),
+    getJson: path => get.get<unknown>(path),
     now: () => Date.now(),
     // A CSPRNG: ids for prepared sends, pending records and re-auth challenges.
     randomBytes: n => globalThis.crypto.getRandomValues(new Uint8Array(n)),

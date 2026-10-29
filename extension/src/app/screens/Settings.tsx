@@ -8,6 +8,8 @@ import {ExtIcon, type ExtIconName} from '../ui/ExtIcon';
 import {securityTasks} from './Security';
 import {contactsCount} from '../addressBook';
 import type {Settings as StoredSettings} from '../engine';
+import type {PresaleRouteValue} from '../router';
+import {presaleSlots} from '../presale';
 
 /** #31's copy (B1b-2b §4.1): the design's strings adapted where marked, 2a's, and O42–O46. */
 export const SETTINGS_TEXT = {
@@ -57,7 +59,9 @@ export const PASSWORD_TOAST_WINDOW_MS = 10 * 60_000;
  * the timestamp shown; a future stamp shows nothing). The tab reads the facts again when shown again. Every row that opens a page is a LockedButton (rule 6). The rows #31 draws and the extension does
  * not have are omitted (D22; the spec's Differs list). Plan 2: Connections › Address book (ix:13552), meta "N contacts"
  * from contacts.list — a refusal leaves the meta empty; the row still opens #15. B1c §4.1: Connections › Connected dApps
- * above it (#i-plug), meta "<n> connected" (Q07) from dapp.grants.list — empty when none or refused; → #49.
+ * above it (#i-plug), meta "<n> connected" (Q07) from dapp.grants.list — empty when none or refused; → #49. B1d-2
+ * (C16): the presale entry's row (#24, "Refer a friend" in its own group) after Connections — only where the entry has
+ * slots; the build without presale has none, and shared code names neither its words nor its route.
  */
 export function Settings({
   onProfile,
@@ -67,6 +71,7 @@ export function Settings({
   onAbout,
   onContacts,
   onConnected,
+  onRoute,
   toastMs = 1_800,
   decorateMs = 5_000,
 }: {
@@ -79,6 +84,8 @@ export function Settings({
   onContacts: () => void;
   /** B1c §4.1: Connections › Connected dApps → #49. */
   onConnected: () => void;
+  /** B1d-2 (C16): the presale entry's row → its route (#24), pushed as the reducer decides. */
+  onRoute: (route: PresaleRouteValue) => void;
   toastMs?: number;
   decorateMs?: number;
 }) {
@@ -156,6 +163,7 @@ export function Settings({
     m.platform.openPage(page);
     if (m.surface === 'popup') m.platform.closeWindow();
   };
+  const entry = presaleSlots === null ? null : presaleSlots.settings;
   const tasks = stored === null ? null : securityTasks(passkey, stored.phraseVerifiedAt).length;
   const pageRow = (icon: ExtIconName, title: string, page: ExtensionPage, meta: {text: string; tone: 'warning' | 'success' | null} | null, justUpdated = false) => (
     <LockedButton className={justUpdated ? 's7-row app-just-updated' : 's7-row'} onPress={() => open(page)}>
@@ -238,6 +246,14 @@ export function Settings({
           <ListRow icon="plug" title={SETTINGS_TEXT.connectedDapps} meta={grants === null || grants === 0 ? '' : SETTINGS_TEXT.connectedCount(grants)} onPress={onConnected} />
           <ListRow icon="link" title={SETTINGS_TEXT.addressBook} meta={contacts === null ? '' : contactsCount(contacts)} onPress={onContacts} />
         </div>
+        {entry === null ? null : (
+          <>
+            <div className="s7-group-label">{entry.group}</div>
+            <div className="s7-list">
+              <ListRow icon="users" title={entry.title} onPress={() => onRoute(entry.route)} />
+            </div>
+          </>
+        )}
         <div className="s7-group-label">{SETTINGS_TEXT.advanced}</div>
         <div className="s7-list">
           <ListRow icon="trash" title={SETTINGS_TEXT.deleteTitle} onPress={onDelete} danger />

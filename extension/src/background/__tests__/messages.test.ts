@@ -194,7 +194,7 @@ describe('message partitions', () => {
 
 // This file runs in both vitest runs (vitest.nopresale.config.ts marks the off one).
 const off = process.env.NOCTURA_PRESALE === '0';
-const PRESALE = off ? [] : ['presale.view', 'presale.banner', 'presale.quote', 'presale.prepareBuy', 'presale.pending', 'presale.preparedFor', 'presale.buy', 'presale.discardPrepared', 'presale.unrecorded', 'presale.checkReferrer'];
+const PRESALE = off ? [] : ['presale.view', 'presale.banner', 'presale.quote', 'presale.prepareBuy', 'presale.pending', 'presale.preparedFor', 'presale.buy', 'presale.discardPrepared', 'presale.unrecorded', 'presale.checkReferrer', 'presale.referral'];
 
 describe('message partitions (B1b-1 types)', () => {
   // Listed literally, not read from PRIVILEGED: dropping a type from the list must make it
@@ -291,7 +291,7 @@ describe('message partitions (B1b-1 types)', () => {
 });
 
 describe(`presale.* in the build ${off ? 'without' : 'with'} presale (B1d §1.1, §1.4)`, () => {
-  const TYPES = ['presale.view', 'presale.banner', 'presale.quote', 'presale.prepareBuy', 'presale.pending', 'presale.preparedFor', 'presale.buy', 'presale.discardPrepared', 'presale.unrecorded', 'presale.checkReferrer'];
+  const TYPES = ['presale.view', 'presale.banner', 'presale.quote', 'presale.prepareBuy', 'presale.pending', 'presale.preparedFor', 'presale.buy', 'presale.discardPrepared', 'presale.unrecorded', 'presale.checkReferrer', 'presale.referral'];
 
   it(off ? 'every presale type is refused as an unknown type, from the popup too' : 'every presale type is privileged: past the partition from the popup (positive control — no handler is registered in this file, so unavailable)', async () => {
     const ext = vaultExt();

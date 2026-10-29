@@ -97,7 +97,7 @@ describe('the off-build module rule', () => {
 
 // §6.2 item 1's positive control, staged per plan (review 2 M2): the lists only grow, and each plan's modules are named.
 describe('the positive-control lists (staged: B1d-1a Task 2)', () => {
-  it('the on build must carry the three on-path entries — the plugin maps something real — the program state (Task 5), the quote (B1d-1b Task 1), the purchase (Task 2), #23 (Task 4), #20’s purchase variant with the record slot (Task 5), #50b (Task 6) and the purchase’s builder and referrer resolution from core/presale (Task 8)', () => {
+  it('the on build must carry the three on-path entries — the plugin maps something real — the program state (Task 5), the quote (B1d-1b Task 1), the purchase (Task 2), #23 (Task 4), #20’s purchase variant with the record slot (Task 5), #50b (Task 6), the purchase’s builder and referrer resolution from core/presale (Task 8), B1d-2’s record (Task 1) and #24’s background, core/referral and screen (Task 4)', () => {
     expect(ON_BUILD).toEqual([
       ...PRESALE_ENTRIES.map(e => e.entry),
       'src/background/presale/layouts.ts',
@@ -115,6 +115,9 @@ describe('the positive-control lists (staged: B1d-1a Task 2)', () => {
       'core/presale/buyInstructions.ts',
       'core/presale/referrer.ts',
       'src/background/presale/record.ts',
+      'src/background/presale/referral.ts',
+      'core/referral/index.ts',
+      'src/app/presale/ReferFriend.tsx',
     ]);
   });
 
@@ -164,7 +167,7 @@ describe('app.features.json', () => {
 describe('strings', () => {
   const file = (path, text) => ({path, bytes: Buffer.from(text, 'utf8')});
 
-  it('armed by B1d-1b: Task 1 adds its three presale message types (§6.2: "every presale.* message type"), Task 2 its prepare and the intent kind, Task 3 its four sign and resume types, Task 4 #23’s copy, Task 5 #20’s, #10’s and the record words, Task 6 #11’s and #50b’s (Q44’s label "Programs" is one bare word: its value is the marker); B1d-2 Task 1 the record’s message type and alarm, Task 2 the referral address’s type and #10’s referrer row, Task 3 #23a’s referral address (Q45, Q46 b–c, Q48)', () => {
+  it('armed by B1d-1b: Task 1 adds its three presale message types (§6.2: "every presale.* message type"), Task 2 its prepare and the intent kind, Task 3 its four sign and resume types, Task 4 #23’s copy, Task 5 #20’s, #10’s and the record words, Task 6 #11’s and #50b’s (Q44’s label "Programs" is one bare word: its value is the marker); B1d-2 Task 1 the record’s message type and alarm, Task 2 the referral address’s type and #10’s referrer row, Task 3 #23a’s referral address (Q45, Q46 b–c, Q48), Task 4 #24’s type, #31’s row and #24’s copy', () => {
     expect(MARKERS.slice(0, 9)).toEqual(['presale.view', 'presale.banner', 'presale.quote', 'presale.prepareBuy', 'presale.pending', 'presale.preparedFor', 'presale.buy', 'presale.discardPrepared', 'presale-buy']);
     // §6.2's named strings #23 shows, then Q01, Q02, Q04–Q06, Q11–Q16, Q19, Q40c, Q41c, Q41d, Q43, Q52 (each literal part ≥ 8 characters).
     expect(MARKERS.slice(9)).toEqual([
@@ -249,6 +252,18 @@ describe('strings', () => {
       "You can't refer yourself or another account in this wallet",
       "This address has no presale allocation, so it can't receive a referral bonus",
       'This account can no longer take a referrer — review again',
+      'presale.referral',
+      'Refer a friend',
+      'total joined',
+      'NOC lifetime',
+      'from your invites',
+      'YOUR INVITE LINK',
+      'Not used yet',
+      'Used by ',
+      'Copy invite link',
+      'Share invite link',
+      'Earn NOC when friends you invite buy in the presale.',
+      'Referral payouts are subject to program terms. Self-referrals are detected and rejected.',
     ]);
   });
 
@@ -257,7 +272,7 @@ describe('strings', () => {
   it('every presale.* message type of api.ts is a marker', () => {
     const api = readFileSync(join(ROOT, 'src/background/presale/api.ts'), 'utf8');
     const types = [...(/PRESALE_MESSAGE_TYPES: readonly string\[\] = \[([^\]]*)\]/.exec(api)?.[1] ?? '').matchAll(/'([^']+)'/g)].map(m => m[1]);
-    expect(types).toHaveLength(10);
+    expect(types).toHaveLength(11);
     for (const t of types) expect([t, MARKERS.includes(t)]).toEqual([t, true]);
   });
 

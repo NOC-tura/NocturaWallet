@@ -2,6 +2,7 @@ import type {PresaleRoute, PresaleRouteValue} from '../router';
 import {Presale} from './Presale';
 import {PresaleConfirm} from './PresaleConfirm';
 import {Geo} from './Geo';
+import {ReferFriend} from './ReferFriend';
 import {PREPARE_REFUSALS, PRESALE_CURRENCIES, REFERRER_LINES, type PrepareRefusal, type PresaleCurrency} from './client';
 
 /**
@@ -71,6 +72,16 @@ export const GEO_ROUTE: PresaleRoute = {
   screen: 'geo',
   isRoute: o => o.screen === 'geo' && Object.keys(o).length === 1,
   render: (_route, nav) => <Geo onBack={nav.pop} onClose={nav.home} onDone={nav.pop} />,
+};
+
+/**
+ * B1d §4.4 (B1d-2): #24 — the route `referral`, carrying nothing (it reads `presale.referral` itself), pushed by #31's
+ * "Refer a friend" row (C16). Back returns to #31.
+ */
+export const REFERRAL_ROUTE: PresaleRoute = {
+  screen: 'referral',
+  isRoute: o => o.screen === 'referral' && Object.keys(o).length === 1,
+  render: (_route, nav) => <ReferFriend onBack={nav.pop} />,
 };
 
 /**
