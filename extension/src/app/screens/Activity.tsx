@@ -9,6 +9,8 @@ import {ChipRow} from '../ui/Chip';
 import {ExtIcon} from '../ui/ExtIcon';
 import {Banner, RefusedBanner} from '../ui/Banner';
 import {OriginBadge} from '../ui/OriginBadge';
+import {StatusPill} from '../ui/StatusPill';
+import {presaleSlots} from '../presale';
 import type {HistoryItem, Pending} from '../engine';
 import {kindPendingLine} from '../generic';
 
@@ -76,7 +78,8 @@ function Empty({refreshing, onReceive}: {refreshing: boolean; onReceive: () => v
  * #26 activity (spec §6.2) and #41 when there is nothing. Rows from wallet.history (10 a page, paced by
  * the background), open sends on top. No fiat per row (it would need historical prices); the origin badge only on a
  * site's transaction (B1c-2: "Dapp · simulated" — the "Wallet" pill is not drawn, Scope); counterparties short at equal
- * weight (a list is a scanning aid; #27 shows the whole address).
+ * weight (a list is a scanning aid; #27 shows the whole address). B1d-2 (§4.6): every purchase row — the history's
+ * kind, a site's purchase included — carries the presale entry's badge (Q31); the build without presale has none.
  */
 export function Activity({onTx, onReceive, onPending}: {onTx: (item: HistoryItem) => void; onReceive: () => void; onPending: (p: Pending) => void}) {
   const m = useWallet();
@@ -251,14 +254,16 @@ export function Activity({onTx, onReceive, onPending}: {onTx: (item: HistoryItem
               // 26b: today's and yesterday's rows end in the time ("· 9:14 AM"), older ones in the day ("· May 6").
               const recent = s.title.startsWith('TODAY') || s.title.startsWith('YESTERDAY');
               const time = item.blockTime === null ? '' : ` · ${recent ? timeOfDay(item.blockTime * 1000) : shortDay(item.blockTime * 1000)}`;
+              const badge = item.kind === 'purchase' && presaleSlots !== null ? presaleSlots.historyBadge : null;
               return (
                 <button type="button" className="tx-row" key={item.signature} onClick={() => onTx(item)}>
                   <span className={t.tone === 'plain' ? 'ic' : `ic ${t.tone}`}>
                     <ExtIcon name={t.tone === 'fail' ? 'close' : t.tone === 'plain' ? 'doc' : t.tone === 'swap' ? 'swap' : 'arrow-up-right'} size={20} />
                   </span>
                   <span className="meta">
-                    <span className="pri noc-body-lg">
+                    <span className={badge === null ? 'pri noc-body-lg' : 'pri noc-body-lg app-tx-badged'}>
                       {t.title}
+                      {badge === null ? null : <StatusPill text={badge} badge />}
                       {item.origin === 'dapp' ? <OriginBadge /> : null}
                     </span>
                     <span className={`sec noc-body-sm${t.mono ? ' noc-mono' : ''}`}>

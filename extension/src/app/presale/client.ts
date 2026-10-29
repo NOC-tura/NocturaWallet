@@ -199,6 +199,8 @@ export interface PresaleClient {
   preparedFor(account: string): Promise<Reply<ResumablePurchase | null, SessionRefusal>>;
   /** §3.5, §4.4 (B1d-2): #24's data for the account — its own link, each figure as the background read it or null. */
   referral(account: string): Promise<Reply<ReferralData, SessionRefusal>>;
+  /** §1.4, §4.6 (B1d-2): the signatures of this account's purchases the coordinator has not accepted — #27's Q34. */
+  unrecorded(account: string): Promise<Reply<readonly string[], SessionRefusal>>;
   buy(id: string): Promise<Reply<Pending, BuyRefusal>>;
   discardPrepared(account: string): Promise<Reply<null, SessionRefusal>>;
 }
@@ -208,6 +210,7 @@ const obj = (x: unknown): J | undefined => (typeof x === 'object' && x !== null 
 const UNITS = /^\d{1,20}$/;
 const ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 const HEX32 = /^[0-9a-f]{32}$/;
+const SIGNATURE = /^[1-9A-HJ-NP-Za-km-z]{64,88}$/;
 const units = (x: unknown): bigint | undefined => (typeof x === 'string' && UNITS.test(x) ? BigInt(x) : undefined);
 const isInt = (x: unknown): x is number => typeof x === 'number' && Number.isSafeInteger(x) && x >= 0;
 const isStage = (x: unknown): x is number => isInt(x) && x <= 9;
@@ -417,6 +420,17 @@ export function referralDataOf(x: unknown, account: string): ReferralData | unde
   return {link: o.link, earnedBase, referrals, referredCents};
 }
 
+/** presale.unrecorded's answer (§1.4): an array of transaction signatures, possibly empty. */
+export function unrecordedOf(x: unknown): readonly string[] | undefined {
+  if (!Array.isArray(x)) return undefined;
+  const out: string[] = [];
+  for (const s of x as unknown[]) {
+    if (typeof s !== 'string' || !SIGNATURE.test(s)) return undefined;
+    out.push(s);
+  }
+  return out;
+}
+
 /** The pending record presale.buy answers: the wallet's own purchase (`intent: null`, this kind), nothing else. */
 const purchaseRecordOf = (x: unknown): Pending | undefined => {
   const p = pendingIn(x);
@@ -443,6 +457,7 @@ export function presaleClient(engine: Engine): PresaleClient {
     checkReferrer: (account, referrer) => engine.request({type: 'presale.checkReferrer', account, referrer}, CHECK_REFUSALS, referrerCheckOf),
     preparedFor: account => engine.request({type: 'presale.preparedFor', account}, SESSION, x => (x === null ? null : resumableOf(x))),
     referral: account => engine.request({type: 'presale.referral', account}, SESSION, x => referralDataOf(x, account)),
+    unrecorded: account => engine.request({type: 'presale.unrecorded', account}, SESSION, unrecordedOf),
     buy: id => engine.request({type: 'presale.buy', id}, BUY_REFUSALS, purchaseRecordOf),
     discardPrepared: account => engine.request({type: 'presale.discardPrepared', account}, SESSION, x => (x === undefined ? null : undefined)),
   };

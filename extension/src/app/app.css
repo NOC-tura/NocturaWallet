@@ -749,8 +749,10 @@ a.btn {
   margin: 0;
 }
 /* B1d-1b Task 5: #21's kind badge (Q31 "Presale", StatusPill `badge`; approved, undrawn) — #27's status pill shape at
-   the top bar's size, in the accent: it names the kind, not the outcome. */
-.s-stat .top-bar .status-pill.app-badge {
+   the top bar's size, in the accent: it names the kind, not the outcome. B1d-2 Task 5: the same badge on #26's
+   purchase rows, beside the title. */
+.s-stat .top-bar .status-pill.app-badge,
+.tx-row .meta .pri .status-pill.app-badge {
   display: inline-flex;
   align-items: center;
   padding: 2px 10px;
@@ -758,6 +760,12 @@ a.btn {
   font: 600 12px/16px var(--font-body);
   background: color-mix(in oklab, var(--accent) 14%, transparent);
   color: var(--accent);
+}
+/* A badged #26 row (B1d-2 Task 5): its badges wrap under the title rather than squeeze it — a site's purchase carries
+   two ("Presale" and B1c's "Dapp · simulated"), wider than the meta column at 412 px. */
+.tx-row .meta .pri.app-tx-badged {
+  flex-wrap: wrap;
+  row-gap: 2px;
 }
 .s-stat .stage-label.app-warning,
 .s-stat .top-bar .step.app-warning,

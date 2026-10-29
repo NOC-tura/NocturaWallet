@@ -61,8 +61,11 @@ test('visual: the plan-1 screens and states at 412 × 600', async () => {
     await p.getByRole('button', {name: 'Back'}).click();
 
     await p.getByRole('button', {name: 'Activity'}).click();
+    // B1d-2 Task 5: the purchase row's title shares its element with the "Presale" badge (§4.6), so that row is found by
+    // its title and its badge; every other row by its exact title.
+    const titled = (t: string) => (t === 'Presale purchase' ? p.locator('.tx-row .pri', {hasText: t}).filter({has: p.locator('.app-badge', {hasText: 'Presale'})}) : p.getByText(t, {exact: true}));
     // All five rows, the slowest (~5 s a page at 2 getTransaction/s) last.
-    for (const t of ['Sent SOL', 'Received USDC', 'Presale purchase', 'Other transaction', 'Failed · sent SOL']) await expect(p.getByText(t, {exact: true})).toBeVisible({timeout: 30_000});
+    for (const t of ['Sent SOL', 'Received USDC', 'Presale purchase', 'Other transaction', 'Failed · sent SOL']) await expect(titled(t)).toBeVisible({timeout: 30_000});
     await shot(p, '26-loaded-mixed');
     await p.locator('main.app-content').evaluate(e => e.scrollTo(0, e.scrollHeight));
     await expect(p.getByText('Failed · sent SOL')).toBeInViewport();
@@ -80,7 +83,7 @@ test('visual: the plan-1 screens and states at 412 × 600', async () => {
       ['Presale purchase', 'PRESALE PURCHASE', '27-purchase'],
     ] as const;
     for (const [title, eyebrow, name] of details) {
-      await p.getByText(title, {exact: true}).click();
+      await titled(title).click();
       await expect(p.locator('.amount-card .eyebrow')).toHaveText(eyebrow);
       // Opened at the top (fix round 1, A1): the top bar is in view, not scrolled past.
       await expect(p.getByText('Transaction', {exact: true})).toBeInViewport();

@@ -15,6 +15,7 @@ import {ContactSheet, type ContactSheetMode} from '../ui/ContactSheet';
 import {fromBook} from '../addressBook';
 import type {Contact, HistoryItem, Intent} from '../engine';
 import {MAINNET_FEE_TREASURY} from '../../../../core/fees/transferMarkup';
+import {presaleSlots} from '../presale';
 
 /** At most this many history pages are read to find a signature the list has not loaded. */
 export const FIND_PAGES = 3;
@@ -81,6 +82,9 @@ export function ExplorerLink({signature, label = 'Explorer', icon = true, classN
  * "Save anyway" below C18's floor (review H3). The To / From label is own > treasury > contact. Purchase, other and
  * failed rows get no button; nor does any row while the book is unread (a refused read hides it) or is being re-read
  * after the sheet closed (Task 7 fix round 1, I1): Save opens "add" or "edit" from a fresh read, never a stale one.
+ *
+ * B1d-2 (§4.6): a purchase also reads Q34 while the presale entry says the coordinator has not accepted its record —
+ * asked for the route's account; nothing on a failed read, and nothing asked in the build without presale.
  */
 export function TxDetail({
   signature,
@@ -187,6 +191,21 @@ export function TxDetail({
       alive = false;
     };
   }, [given, ready, owner, signature, m.engine]);
+
+  /** B1d-2 (§4.6, Q34): the presale entry's line for this purchase, or null — until it answers, and on any failure. */
+  const [unrecorded, setUnrecorded] = useState<string | null>(null);
+  const purchase = item !== null && item !== undefined && item.kind === 'purchase' && !item.failed ? item.signature : null;
+  useEffect(() => {
+    setUnrecorded(null);
+    if (presaleSlots === null || purchase === null) return;
+    let alive = true;
+    void presaleSlots.unrecorded(engine, owner, purchase).then(line => {
+      if (alive) setUnrecorded(line);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [engine, owner, purchase]);
 
   const top = <TopBar title="Transaction" onBack={onBack} titleClass="noc-h3" badge={item !== null && item !== undefined && item.origin === 'dapp' ? <OriginBadge /> : undefined} />;
   if (item === undefined) {
@@ -315,6 +334,7 @@ export function TxDetail({
             ) : null}
             <StatusPill text="Confirmed" />
           </div>
+          {item.kind === 'purchase' && unrecorded !== null ? <Banner tone="info" title={unrecorded} /> : null}
           <div className="detail-card">
             <Row label="Hash">{hash}</Row>
             <Row label="Network fee">

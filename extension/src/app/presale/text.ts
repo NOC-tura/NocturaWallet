@@ -142,6 +142,8 @@ export const RECORD_TEXT = {
   /** Q33 (#11's and #26's pending row, B1d-1b Task 6). */
   pending: 'Buying NOC · pending',
   slow: 'Buying NOC · taking longer than usual',
+  /** Q34 (B1d-2, #27): the coordinator has not accepted the purchase's record — `due`, `given-up` or `refused` (D29). */
+  unrecorded: 'Recorded on chain; presale service not yet updated',
 } as const;
 
 /** #11's presale banner (§4.5, index.html #11 ix:6371-6373): "NOC Presale · Stage N" / "$ 0.1501 · P% to next stage". */

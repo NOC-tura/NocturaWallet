@@ -174,6 +174,8 @@ export const MARKERS = [
   'Share invite link',
   'Earn NOC when friends you invite buy in the presale.',
   'Referral payouts are subject to program terms. Self-referrals are detected and rejected.',
+  // B1d-2 Task 5: #27's Q34 (#26's badge is Q31, "Presale" — one bare word, already the record words').
+  'Recorded on chain; presale service not yet updated',
 ];
 // Q42a (B1d-1a: the generic pending row, both builds); 1b adds F12's Q49–Q51. Q42b ("Transaction") is too short to
 // be a string search. The decoder's instruction names are read from its source (DECODER).

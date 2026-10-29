@@ -18,6 +18,7 @@ export const NOPRESALE_TESTS = [
   'src/app/__tests__/genericRecord.test.tsx',
   'src/app/__tests__/homePresale.test.tsx',
   'src/app/__tests__/settingsPresale.test.tsx',
+  'src/app/__tests__/historyPresale.test.tsx',
   'src/app/__tests__/engine.test.ts',
   'src/background/geo/__tests__/gate.test.ts',
   'src/background/dapp/__tests__/presaleRegion.test.ts',

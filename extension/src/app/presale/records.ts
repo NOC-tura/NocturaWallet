@@ -14,6 +14,8 @@ import {againRoute} from './routes';
  * prepared purchase. `banner` and `buy` are #11's (§4.5): the banner as `presale.banner` answered it (no geo check;
  * null for any failure or an inactive sale), and Buy's routing from a fresh `presale.view` — an open purchase or an open
  * sale → #23, the gate closed → #50b, anything else → no route. `settings` is #31's row into #24 (B1d-2, C16).
+ * `historyBadge` is #26's Q31 on every purchase row, and `unrecorded` #27's Q34 (B1d-2, §4.6): shown only while
+ * `presale.unrecorded` lists the signature for that account — a failed read shows nothing (a display only).
  */
 export const PRESALE_SLOTS: PresaleSlots = {
   record(extra): KindRecord | null {
@@ -57,4 +59,9 @@ export const PRESALE_SLOTS: PresaleSlots = {
     return v.why === 'geo' ? {screen: 'geo'} : null;
   },
   settings: {group: REFER_TEXT.group, title: REFER_TEXT.title, route: {screen: 'referral'}},
+  historyBadge: RECORD_TEXT.badge,
+  async unrecorded(engine, account, signature) {
+    const r = await presaleClient(engine).unrecorded(account);
+    return r.ok && r.data.includes(signature) ? RECORD_TEXT.unrecorded : null;
+  },
 };

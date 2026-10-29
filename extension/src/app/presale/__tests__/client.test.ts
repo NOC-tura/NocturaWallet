@@ -1,5 +1,5 @@
 import {createEngine, type Transport} from '../../engine';
-import {BUY_REFUSALS, PREPARE_REFUSALS, REFERRER_LINES, bannerOf, presaleClient, presaleViewOf, purchaseDataOf, purchaseViewOf, quoteOf, referralDataOf, referrerCheckOf, resumableOf} from '../client';
+import {BUY_REFUSALS, PREPARE_REFUSALS, REFERRER_LINES, bannerOf, presaleClient, presaleViewOf, purchaseDataOf, purchaseViewOf, quoteOf, referralDataOf, referrerCheckOf, resumableOf, unrecordedOf} from '../client';
 import {registerPresale} from '../../../background/presale/api';
 import {handleMessage, registerPresaleHandler} from '../../../background/messages';
 import {PENDING_KEY} from '../../../background/pendingStore';
@@ -8,6 +8,7 @@ import {fakeDeps} from '../../../background/__tests__/fakeDeps';
 import {fakeExt} from '../../../background/__tests__/fakeExt';
 import {HOLDING_LARGE, pendingRecord, signedWire, unlocked} from '../../../background/__tests__/fixtures';
 import {viewOf} from '../../../background/pendingStore';
+import {PRESALE_RECORDS_KEY} from '../../../background/presaleRecordsKey';
 import {firstSignature} from '../../../../../core/solana/broadcast';
 import {base64} from '@scure/base';
 import {ACCOUNT, NOW_MS, OTHER, TREASURY_ADDRESS, allocationData, chainMap, chainReader, configData, program, userData, type Chain} from '../../../background/presale/__tests__/chain';
@@ -439,5 +440,33 @@ describe('the client for #24 (presale.referral)', () => {
       expect([bad, referralDataOf(bad, ACCOUNT)]).toEqual([bad, undefined]);
     }
     expect(referralDataOf(good, OTHER)).toBeUndefined();
+  });
+});
+
+// B1d-2 Task 5 (§1.4, §4.6, D29): #27's Q34 — the signatures presale.unrecorded lists for the account.
+describe('the client for #27’s Q34 (presale.unrecorded)', () => {
+  const SIG_B = '4'.repeat(88);
+  const stored = (signature: string, state: string) => ({
+    signature,
+    account: ACCOUNT,
+    payload: {txHash: signature, buyerAddress: ACCOUNT, paymentToken: 'SOL', paymentAmount: '1', nocAmount: 1, usdValue: 1, stage: 1},
+    confirmedAt: 0,
+    attempts: 1,
+    nextAt: 0,
+    state,
+  });
+  it('unrecorded against the real background: {type, account}; the due and refused signatures in order, not the accepted one (positive control)', async () => {
+    const {ext, client, sent} = await wired();
+    await ext.local.set(PRESALE_RECORDS_KEY, [stored(SIGNATURE, 'due'), stored('3'.repeat(88), 'done'), stored(SIG_B, 'refused')]);
+    expect(await client.unrecorded(ACCOUNT)).toEqual({ok: true, data: [SIGNATURE, SIG_B]});
+    expect(sent).toEqual([{type: 'presale.unrecorded', account: ACCOUNT}]);
+  });
+
+  it('unrecordedOf: an array of signatures, possibly empty — anything else failed', () => {
+    expect(unrecordedOf([])).toEqual([]);
+    expect(unrecordedOf([SIGNATURE, SIG_B])).toEqual([SIGNATURE, SIG_B]);
+    for (const bad of [null, SIGNATURE, {0: SIGNATURE}, [SIGNATURE, 7], [SIGNATURE, null], ['x'], [`${SIGNATURE} `], ['0'.repeat(88)], ['5'.repeat(63)], ['5'.repeat(89)]]) {
+      expect([bad, unrecordedOf(bad)]).toEqual([bad, undefined]);
+    }
   });
 });
