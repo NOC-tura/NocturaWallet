@@ -567,6 +567,25 @@ describe('the store (§2.4): at most 50, read strictly', () => {
     ]);
   });
 
+  // Re-review residual 1 (D29): the guard is not `done`'s only. An own `refused` entry whose purchase is still in
+  // v1_pending, dropped for the 51st, would come back `due` at the next wake and be POSTed again — a refusal is final.
+  it('a refused entry whose purchase is still in v1_pending is never dropped for the 51st: never re-created, never POSTed again (D29); a held due one goes', async () => {
+    const w = world();
+    const refused = entry({attempts: 1, nextAt: T0 + MINUTE, state: 'refused'});
+    const held = Array.from({length: 49}, (_, n) => entry({signature: sig(n), account: RECIPIENT, payload: {...PAYLOAD, txHash: sig(n), buyerAddress: RECIPIENT}}));
+    await w.ext.local.set(PRESALE_RECORDS_KEY, [refused, ...held]);
+    const second = purchase({id: 'buy2', signature: SIG2, createdAt: T0});
+    await w.ext.local.set(PENDING_KEY, [purchase({createdAt: T0}), second]);
+    await confirm(w, second);
+    for (let i = 1; i <= 5; i++) {
+      w.deps.clock.t = T0 + i * HOUR;
+      await wakePresaleRecords(w.ext, w.deps);
+    }
+    expect(w.posts.map(p => (p.body as PresaleRecordPayload).txHash)).toEqual([SIG2]);
+    const after = await entries(w);
+    expect([after.length, after[0], after.slice(1, 49).map(e => e.signature), after.at(-1)?.state]).toEqual([MAX_PRESALE_RECORDS, refused, held.slice(1).map(e => e.signature), 'done']);
+  });
+
   it('what does not read back is dropped; the rest is kept, as fresh objects', async () => {
     const w = world();
     const good = entry({nextAt: T0 + HOUR});

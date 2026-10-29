@@ -683,8 +683,9 @@ string of the off build, §6.2), at most 50 entries:
 Over 50, the oldest `done` entry is dropped first, then `given-up`, `refused`, `due` (an entry #27 has a line for goes only
 when no `done` one is left, and a `due` one last — rev 3.5, review M8) — but never an entry whose signature is still in
 `v1_pending`, whatever its state: the reconcile would write it again at the next wake and POST a settled purchase once
-more (rev 3.6, final review Minor 1); the next entry in the order goes instead. `v1_pending` keeps at most 20 records,
-so there is always one to drop.
+more (rev 3.6, final review Minor 1); the next entry in the order goes instead. `v1_pending` keeps at most 20 closed
+records (open ones are never trimmed and can take it past 20), and an entry is only ever a confirmed — closed —
+purchase's, so at most 20 entries are kept and there is always one to drop.
 
 - **Written** when the poller sees a `presale-buy` record reach `confirmed` (the kind's `onConfirmed`, §1.3), for an
   account of the wallet stored now only. **Reconciled** at every start and on the alarm: a confirmed `presale-buy`

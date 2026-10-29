@@ -135,7 +135,9 @@ const DROP_ORDER: readonly PresaleRecordState[] = ['done', 'given-up', 'refused'
  * the reconcile would write it again at the next wake (a confirmed purchase of the stored wallet with no entry) and POST
  * a purchase already settled: a `done` entry dropped for the next purchase's came back `due` and was POSTed at every
  * wake, the two dropping each other in turn. The next entry in the order goes instead (a held `due` one, as §2.4 lets
- * go). v1_pending keeps at most 20 records (MAX_RECORDS), so over 50 entries there is always one to drop.
+ * go). v1_pending keeps at most 20 closed records (MAX_RECORDS; open ones, never trimmed, can take it past 20), and an
+ * entry is only ever a confirmed — closed — purchase's, so at most 20 entries are kept and over 50 there is always one to
+ * drop.
  */
 function trim(entries: PresaleRecordEntry[], kept: ReadonlySet<string>): PresaleRecordEntry[] {
   const out = [...entries];
