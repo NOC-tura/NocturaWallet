@@ -145,6 +145,10 @@ export const MARKERS = [
   // B1d-2 Task 1: the record's message type and its alarm's name.
   'presale.unrecorded',
   'presale-record',
+  // B1d-2 Task 2: the referral address's message type, then #10's referrer row (Q47: the label and its note).
+  'presale.checkReferrer',
+  'Referred by',
+  "Saved to your presale account with this purchase. It can't be changed later.",
 ];
 // Q42a (B1d-1a: the generic pending row, both builds); 1b adds F12's Q49–Q51. Q42b ("Transaction") is too short to
 // be a string search. The decoder's instruction names are read from its source (DECODER).

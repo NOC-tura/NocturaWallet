@@ -113,8 +113,8 @@ const PURCHASE: PendingRecord = pendingRecord({
 const {wire: _wire, firstBroadcast: _firstBroadcast, ...PURCHASE_VIEW} = PURCHASE;
 
 describe('the partition (§1.4): the popup and the full tab only', () => {
-  it('the three types of B1d-1b Task 1, Task 2’s prepare, Task 3’s four and B1d-2’s presale.unrecorded, all privileged', () => {
-    expect(PRESALE_MESSAGE_TYPES).toEqual(['presale.view', 'presale.banner', 'presale.quote', 'presale.prepareBuy', 'presale.pending', 'presale.preparedFor', 'presale.buy', 'presale.discardPrepared', 'presale.unrecorded']);
+  it('the three types of B1d-1b Task 1, Task 2’s prepare, Task 3’s four and B1d-2’s presale.unrecorded and presale.checkReferrer, all privileged', () => {
+    expect(PRESALE_MESSAGE_TYPES).toEqual(['presale.view', 'presale.banner', 'presale.quote', 'presale.prepareBuy', 'presale.pending', 'presale.preparedFor', 'presale.buy', 'presale.discardPrepared', 'presale.unrecorded', 'presale.checkReferrer']);
   });
 
   it('answered from the popup and from the full tab (positive control)', async () => {

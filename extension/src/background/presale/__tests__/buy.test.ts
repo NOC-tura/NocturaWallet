@@ -215,7 +215,7 @@ describe('the purchase intent (§1.4)', () => {
       {currency: 'SOL', amount: '1', stage: 1.5},
       {currency: 'SOL', amount: '1', stage: '0'},
       {currency: 'SOL', amount: '1'},
-      {currency: 'SOL', amount: '1', stage: 0, referrer: null},
+      {currency: 'SOL', amount: '1', stage: 0, extra: null},
     ]) {
       expect([bad, parsePurchaseIntent(bad)]).toEqual([bad, null]);
     }
@@ -430,11 +430,11 @@ describe('prepare: the build (§3.3 step 4, C2, C5)', () => {
     const user = new PublicKey(ACCOUNT);
     const resolved = {referrerAllocation: new PublicKey(DEFAULT_REFERRER_ALLOCATION), registerReferrer: null};
     const compile = (ixs: TransactionInstruction[]) => new TransactionMessage({payerKey: user, recentBlockhash: BLOCKHASH, instructions: ixs}).compileToV0Message();
-    const sol = {account: ACCOUNT, currency: 'SOL' as const, referrerAllocation: DEFAULT_REFERRER_ALLOCATION, destination: TREASURY_ADDRESS, source: null, amount: 7n};
+    const sol = {account: ACCOUNT, currency: 'SOL' as const, referrerAllocation: DEFAULT_REFERRER_ALLOCATION, registerReferrer: null, destination: TREASURY_ADDRESS, source: null, amount: 7n};
     expect(assertPurchaseMessage(compile(buildBuyInstructions(user, 7n, 0, resolved, new PublicKey(TREASURY_ADDRESS))), sol)).toBe(2);
     expect(() => assertPurchaseMessage(compile(buildBuyInstructions(user, 7n, 0, resolved, new PublicKey(LOOKALIKE_TREASURY))), sol)).toThrow('expected');
     expect(() => assertPurchaseMessage(compile(buildBuyInstructions(user, 8n, 0, resolved, new PublicKey(TREASURY_ADDRESS))), sol)).toThrow('data');
-    const usdc = {account: ACCOUNT, currency: 'USDC' as const, referrerAllocation: DEFAULT_REFERRER_ALLOCATION, destination: USDC_VAULT, source: HOLDING_LARGE, amount: 7n};
+    const usdc = {account: ACCOUNT, currency: 'USDC' as const, referrerAllocation: DEFAULT_REFERRER_ALLOCATION, registerReferrer: null, destination: USDC_VAULT, source: HOLDING_LARGE, amount: 7n};
     const source = new PublicKey(HOLDING_LARGE);
     expect(assertPurchaseMessage(compile(buildStablecoinBuyInstructions(user, 'USDC', 7n, 0, resolved, new PublicKey(TREASURY_ADDRESS), source)), usdc)).toBe(2);
     expect(() => assertPurchaseMessage(compile(buildStablecoinBuyInstructions(user, 'USDC', 7n, 0, resolved, new PublicKey(LOOKALIKE_TREASURY), source)), usdc)).toThrow('expected');
@@ -445,7 +445,7 @@ describe('prepare: the build (§3.3 step 4, C2, C5)', () => {
   it('assertPurchaseMessage: a second required signer or an address-lookup table is an engine bug, thrown (the positive control passes)', () => {
     const user = new PublicKey(ACCOUNT);
     const resolved = {referrerAllocation: new PublicKey(DEFAULT_REFERRER_ALLOCATION), registerReferrer: null};
-    const sol = {account: ACCOUNT, currency: 'SOL' as const, referrerAllocation: DEFAULT_REFERRER_ALLOCATION, destination: TREASURY_ADDRESS, source: null, amount: 7n};
+    const sol = {account: ACCOUNT, currency: 'SOL' as const, referrerAllocation: DEFAULT_REFERRER_ALLOCATION, registerReferrer: null, destination: TREASURY_ADDRESS, source: null, amount: 7n};
     const good = new TransactionMessage({payerKey: user, recentBlockhash: BLOCKHASH, instructions: buildBuyInstructions(user, 7n, 0, resolved, new PublicKey(TREASURY_ADDRESS))}).compileToV0Message();
     const variant = (o: Partial<Pick<MessageV0, 'header' | 'addressTableLookups'>>) =>
       new MessageV0({header: o.header ?? good.header, staticAccountKeys: good.staticAccountKeys, recentBlockhash: good.recentBlockhash, compiledInstructions: good.compiledInstructions, addressTableLookups: o.addressTableLookups ?? good.addressTableLookups});
@@ -958,12 +958,12 @@ describe('presale.buy: the sign-time checks (C12, C22, C10) — a refusal burns 
   });
 
   // Review 1 M1: the sign-time check rests on the bytes the integrity binds, not on the unbound `shown`.
-  it('a referrer registered since prepare with `shown.basis` forged to name it: the signed bytes still credit the default allocation → state-changed; the entry and the proof stay (review 1 M1)', async () => {
+  it('a referrer registered since prepare with `shown.basis` and `shown.view` forged to name it (B1d-2 review 1 M1: the two agree, so `shown` reads back): the signed bytes still credit the default allocation → state-changed; the entry and the proof stay (review 1 M1)', async () => {
     const w = await world({chains: [EXISTING, {...EXISTING, allocation: program(allocationData({referrer: REFERRER}))}]});
     const view = await provenPurchase(w, SOL);
     const [entry] = await stored(w);
     if (entry === undefined) throw new Error('no entry');
-    await w.ext.session.set(PREPARED_KEY, [{...entry, shown: {...entry.shown, basis: {...entry.shown.basis, referrer: REFERRER}}}]);
+    await w.ext.session.set(PREPARED_KEY, [{...entry, shown: {...entry.shown, view: {...entry.shown.view, referrer: {address: REFERRER, registers: false}}, basis: {...entry.shown.basis, referrer: REFERRER}}}]);
     expect(await buy(w, view.id)).toEqual({ok: false, error: 'state-changed', data: {detail: 'the referrer allocation the purchase credits changed'}});
     expect((await stored(w)).map(e => e.id)).toEqual([view.id]);
     expect(await challengeSatisfied(w.ext, w.deps.now(), view.reauth?.challengeId ?? '', digestOf(SOL))).toBe(true);
@@ -1474,7 +1474,8 @@ describe('presale.prepareBuy through the real message handler (§1.4)', () => {
   it.each([
     ['an extra key', msg({extra: 1})],
     ['no intent', {type: 'presale.prepareBuy', account: ACCOUNT}],
-    ['an intent with an extra key', msg({intent: {...intent('SOL', SOL_2), referrer: null}})],
+    ['an intent with an extra key', msg({intent: {...intent('SOL', SOL_2), extra: null}})],
+    ['a referral address outside base58', msg({intent: {...intent('SOL', SOL_2), referrer: '0'.repeat(32)}})],
     ['a stage of 10', msg({intent: intent('SOL', SOL_2, 10)})],
     ['an amount of 0', msg({intent: intent('SOL', '0')})],
     ['NOC', msg({intent: {currency: 'NOC', amount: '1', stage: 0}})],

@@ -12,13 +12,16 @@ import type {OtherDescription} from './challenge';
  * fee it is part of, the threshold an integer in range, and the reasons a non-empty list of known codes, each once.
  * Anything else is null: #10 then offers only Cancel. Header Q18 (as #10's eyebrow and its headline amount), the rows
  * of #20's purchase variant, reason lines Q17 and B1b's (controller copy, owner-delegated 2026-10-19); Q56 — new in
- * B1d-1b Task 5, flagged to the owner — the line once Cancel discarded the purchase (B1b's names a send).
+ * B1d-1b Task 5, flagged to the owner — the line once Cancel discarded the purchase (B1b's names a send). B1d-2 (§4.2,
+ * Q47): a purchase that credits a referrer carries `referrer` {address, registers} — "Referred by" with the whole
+ * address, and Q47's note when this purchase registers it (only ever on a first purchase, so only with Q17's reason).
  */
 const CURRENCIES = {SOL: 9, USDC: 6, USDT: 6} as const;
 const DIGITS = /^\d{1,20}$/;
 const AMOUNT = /^[1-9]\d{0,19}$/;
 const ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 const KEYS = ['account', 'amount', 'currency', 'destination', 'kind', 'networkLamports', 'nocBase', 'priceTicks', 'priorityLamports', 'reasons', 'rentLamports', 'spentCents', 'stage', 'thresholdCents'];
+const KEYS_REFERRED = [...KEYS, 'referrer'].sort();
 const own = (o: object, k: string): boolean => Object.prototype.hasOwnProperty.call(o, k);
 
 const PURCHASE_TEXT = {
@@ -37,14 +40,26 @@ const PURCHASE_TEXT = {
   firstPurchase: 'Re-auth required for your first presale purchase from this account.',
   /** Q56 (new, flagged). */
   cancelled: 'Purchase cancelled. Nothing was sent.',
+  /** Q47. */
+  referredBy: 'Referred by',
+  registers: "Saved to your presale account with this purchase. It can't be changed later.",
 } as const;
 
 const sol = (lamports: bigint): string => `${formatAmount(lamports, 9, {min: 0, max: 9})} SOL`;
 const dollars = (cents: number): string => formatAmount(BigInt(cents), 2, cents % 100 === 0 ? {min: 0, max: 0} : {min: 2, max: 2});
 
 export function describePresale(about: Readonly<Record<string, unknown>>): OtherDescription | null {
-  if (about.kind !== 'presale-buy' || Object.keys(about).sort().join(',') !== KEYS.join(',') || !KEYS.every(k => own(about, k))) return null;
+  const keys = own(about, 'referrer') ? KEYS_REFERRED : KEYS;
+  if (about.kind !== 'presale-buy' || Object.keys(about).sort().join(',') !== keys.join(',') || !keys.every(k => own(about, k))) return null;
   const {account, destination, currency, amount, stage, priceTicks, nocBase, spentCents, networkLamports, priorityLamports, rentLamports, reasons, thresholdCents} = about;
+  const referrer = own(about, 'referrer') ? about.referrer : undefined;
+  if (referrer !== undefined) {
+    if (typeof referrer !== 'object' || referrer === null || Array.isArray(referrer) || Object.keys(referrer).sort().join(',') !== 'address,registers') return null;
+    const r = referrer as Record<string, unknown>;
+    if (typeof r.address !== 'string' || !ADDRESS.test(r.address) || typeof r.registers !== 'boolean') return null;
+    // A registration is only ever a first purchase (the background's rule): described with any other reasons, nothing is.
+    if (r.registers && !(Array.isArray(reasons) && reasons.includes('first-purchase'))) return null;
+  }
   if (typeof account !== 'string' || !ADDRESS.test(account) || typeof destination !== 'string' || !ADDRESS.test(destination)) return null;
   if (typeof currency !== 'string' || !own(CURRENCIES, currency)) return null;
   if (typeof amount !== 'string' || !AMOUNT.test(amount)) return null;
@@ -72,9 +87,16 @@ export function describePresale(about: Readonly<Record<string, unknown>>): Other
     {label: PURCHASE_TEXT.stage, value: PURCHASE_TEXT.stageOf(stage + 1), address: null},
     {label: PURCHASE_TEXT.price, value: PURCHASE_TEXT.perNoc(BigInt(priceTicks as string)), address: null},
     {label: REAUTH.to, value: PURCHASE_TEXT.presale, address: destination},
+  ];
+  if (referrer !== undefined) {
+    const r = referrer as {address: string; registers: boolean};
+    rows.push({label: PURCHASE_TEXT.referredBy, value: null, address: r.address});
+    if (r.registers) rows.push({label: PURCHASE_TEXT.registers, value: null, address: null});
+  }
+  rows.push(
     {label: REAUTH.networkFee, value: sol(network - priority), address: null},
     {label: REAUTH.priority, value: sol(priority), address: null},
-  ];
+  );
   if (rent > 0n) rows.push({label: PURCHASE_TEXT.setup, value: sol(rent), address: null});
   return {
     kind: 'other',

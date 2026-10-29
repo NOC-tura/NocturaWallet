@@ -164,7 +164,7 @@ describe('app.features.json', () => {
 describe('strings', () => {
   const file = (path, text) => ({path, bytes: Buffer.from(text, 'utf8')});
 
-  it('armed by B1d-1b: Task 1 adds its three presale message types (§6.2: "every presale.* message type"), Task 2 its prepare and the intent kind, Task 3 its four sign and resume types, Task 4 #23’s copy, Task 5 #20’s, #10’s and the record words, Task 6 #11’s and #50b’s (Q44’s label "Programs" is one bare word: its value is the marker); B1d-2 Task 1 the record’s message type and alarm', () => {
+  it('armed by B1d-1b: Task 1 adds its three presale message types (§6.2: "every presale.* message type"), Task 2 its prepare and the intent kind, Task 3 its four sign and resume types, Task 4 #23’s copy, Task 5 #20’s, #10’s and the record words, Task 6 #11’s and #50b’s (Q44’s label "Programs" is one bare word: its value is the marker); B1d-2 Task 1 the record’s message type and alarm, Task 2 the referral address’s type and #10’s referrer row', () => {
     expect(MARKERS.slice(0, 9)).toEqual(['presale.view', 'presale.banner', 'presale.quote', 'presale.prepareBuy', 'presale.pending', 'presale.preparedFor', 'presale.buy', 'presale.discardPrepared', 'presale-buy']);
     // §6.2's named strings #23 shows, then Q01, Q02, Q04–Q06, Q11–Q16, Q19, Q40c, Q41c, Q41d, Q43, Q52 (each literal part ≥ 8 characters).
     expect(MARKERS.slice(9)).toEqual([
@@ -240,6 +240,10 @@ describe('strings', () => {
       // B1d-2 Task 1: the record's message type and its alarm's name.
       'presale.unrecorded',
       'presale-record',
+      // B1d-2 Task 2: the referral address's message type, then #10's referrer row (Q47: the label and its note).
+      'presale.checkReferrer',
+      'Referred by',
+      "Saved to your presale account with this purchase. It can't be changed later.",
     ]);
   });
 
@@ -248,7 +252,7 @@ describe('strings', () => {
   it('every presale.* message type of api.ts is a marker', () => {
     const api = readFileSync(join(ROOT, 'src/background/presale/api.ts'), 'utf8');
     const types = [...(/PRESALE_MESSAGE_TYPES: readonly string\[\] = \[([^\]]*)\]/.exec(api)?.[1] ?? '').matchAll(/'([^']+)'/g)].map(m => m[1]);
-    expect(types).toHaveLength(9);
+    expect(types).toHaveLength(10);
     for (const t of types) expect([t, MARKERS.includes(t)]).toEqual([t, true]);
   });
 

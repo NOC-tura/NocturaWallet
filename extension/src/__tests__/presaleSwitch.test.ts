@@ -26,8 +26,8 @@ describe(`the build-time switch in this run (${off ? 'off' : 'on'})`, () => {
 
   it(off ? 'the stubs export empty values: no message type, no route, no slot, no description' : 'the entries export what B1d-1b has built so far, the stubs empty values', () => {
     // B1d-1b: the background entry's message types (§1.4) — Task 1's three, Task 2's prepare, Task 3's four; B1d-2's
-    // presale.unrecorded; the stub adds none.
-    expect(bgEntry.PRESALE_MESSAGE_TYPES).toEqual(off ? [] : ['presale.view', 'presale.banner', 'presale.quote', 'presale.prepareBuy', 'presale.pending', 'presale.preparedFor', 'presale.buy', 'presale.discardPrepared', 'presale.unrecorded']);
+    // presale.unrecorded (Task 1) and presale.checkReferrer (Task 2); the stub adds none.
+    expect(bgEntry.PRESALE_MESSAGE_TYPES).toEqual(off ? [] : ['presale.view', 'presale.banner', 'presale.quote', 'presale.prepareBuy', 'presale.pending', 'presale.preparedFor', 'presale.buy', 'presale.discardPrepared', 'presale.unrecorded', 'presale.checkReferrer']);
     expect(bgStub.PRESALE_MESSAGE_TYPES).toEqual([]);
     // B1d-1b Tasks 4–6: the popup entry's routes — #23 (`presale`), #20's purchase variant (`presale-confirm`) and #50b
     // (`geo`) — and its slots (the record words, the resume, #11's banner and Buy); the stub adds none.

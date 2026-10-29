@@ -10,7 +10,7 @@ import {isOpen, readPending, viewOf, type PendingView} from '../pendingStore';
 import {usdMicros} from '../reauthPolicy';
 import {readPresaleConfig, readPresaleState, type PresaleSnapshot, type PresaleState, type StageFacts, type UnavailableCode} from './state';
 import {PRESALE_CURRENCIES, quote, type PresaleBalances, type PresaleCurrency, type QuoteLine} from './quote';
-import {PRESALE_BUY_KIND, PurchaseRefused, gateAnswer, parsePurchaseIntent, preparePurchase, purchasePreparedFor} from './buy';
+import {PRESALE_BUY_KIND, PurchaseRefused, checkReferrer, gateAnswer, parsePurchaseIntent, preparePurchase, purchasePreparedFor} from './buy';
 import {PRESALE_RECORD_ALARM, unrecordedFor, wakePresaleRecords} from './record';
 import {CHALLENGE_ID} from '../reauthChallenges';
 import {SendRefused} from '../sendTypes';
@@ -34,6 +34,7 @@ export const PRESALE_MESSAGE_TYPES: readonly string[] = [
   'presale.buy',
   'presale.discardPrepared',
   'presale.unrecorded',
+  'presale.checkReferrer',
 ];
 
 /** `presale.quote` answers from the last view's snapshot of the account at most this old (§1.4). */
@@ -91,6 +92,7 @@ export interface BannerView {
 
 const MALFORMED: Result = {ok: false, error: 'malformed'};
 const AMOUNT = /^[1-9]\d{0,19}$/;
+const REFERRER = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 /** A prepared entry's id: 16 random bytes as 32 hex characters (digest.ts randomId). */
 const PREPARED_ID = /^[0-9a-f]{32}$/;
 const MAX_U64 = 2n ** 64n - 1n;
@@ -356,6 +358,27 @@ async function discardMessage(ext: Ext, _deps: WalletDeps, msg: Readonly<Record<
   return {ok: true};
 }
 
+/**
+ * presale.checkReferrer {account, referrer} (§1.4, §3.5, B1d-2): `{ok: true}` when the purchase would register the
+ * address, `{ok: false, line}` with the line #23's field shows; a read failure is the purchase's refusal. The field's
+ * answer only — the prepare and the signature decide again. `referrer` is a string of 32–44 base58 characters (§1.4);
+ * whether it is a key is the line's to say.
+ */
+async function checkReferrerMessage(ext: Ext, deps: WalletDeps, msg: Readonly<Record<string, unknown>>): Promise<Result> {
+  if (!onlyKeys(msg, ['type', 'account', 'referrer'])) return MALFORMED;
+  const {account, referrer} = msg;
+  if (!isAddress(account) || typeof referrer !== 'string' || !REFERRER.test(referrer)) return MALFORMED;
+  const refused = await sessionRefusal(ext, account);
+  if (refused !== null) return refused;
+  try {
+    const line = await checkReferrer(ext, deps, account, referrer);
+    return {ok: true, data: line === null ? {ok: true} : {ok: false, line}};
+  } catch (e) {
+    if (e instanceof PurchaseRefused) return e.detail === '' ? {ok: false, error: e.code} : {ok: false, error: e.code, data: {detail: e.detail}};
+    throw e;
+  }
+}
+
 /** presale.unrecorded {account} (§1.4, §4.6, D29): the signatures #27 shows Q34 for — this account's records not accepted; no network. */
 async function unrecordedMessage(ext: Ext, _deps: WalletDeps, msg: Readonly<Record<string, unknown>>): Promise<Result> {
   const a = await accountOnly(ext, msg);
@@ -383,6 +406,7 @@ export function registerPresale(host: PresaleHost): void {
   host.handle('presale.buy', guarded(buyMessage));
   host.handle('presale.discardPrepared', guarded(discardMessage));
   host.handle('presale.unrecorded', guarded(unrecordedMessage));
+  host.handle('presale.checkReferrer', guarded(checkReferrerMessage));
   // §2.4: the record's retry wakes on its alarm, and resumes at every start (a worker stopped between two slots, or
   // between a purchase's confirmation and its entry — reconciled first).
   host.alarm(PRESALE_RECORD_ALARM, () => wakePresaleRecords(host.ext, host.deps));

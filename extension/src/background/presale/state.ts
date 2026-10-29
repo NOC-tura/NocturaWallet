@@ -207,24 +207,9 @@ function stateFrom(accounts: readonly (AccountData | null)[], me: PublicKey, now
     blocked = b;
   }
 
-  // 6. The allocation: absent, or the program's PresaleAllocation of this very account (user@8) with a Borsh bool claimed.
-  const A = PRESALE_ALLOCATION_LAYOUT.fields;
-  let facts: AllocationFacts = {exists: false, totalBase: 0n, bonusBase: 0n, spentCents: 0n, purchaseCount: 0, referrer: null};
-  if (allocation !== null && allocation !== undefined) {
-    const d = allocation.data;
-    if (!isProgramAccount(allocation, PRESALE_ALLOCATION_LAYOUT) || pubkeyAt(d, A.user) !== me.toBase58() || boolAt(d, A.claimed) === null) {
-      return unavailable('malformed');
-    }
-    const referrer = d.subarray(A.referrer.offset, A.referrer.offset + 32);
-    facts = {
-      exists: true,
-      totalBase: u64At(d, A.total_tokens),
-      bonusBase: u64At(d, A.referral_bonus_tokens),
-      spentCents: u64At(d, A.total_spent_cents),
-      purchaseCount: u32At(d, A.purchase_count),
-      referrer: isZero(referrer) ? null : base58.encode(referrer),
-    };
-  }
+  // 6. The allocation: absent, or the program's PresaleAllocation of this very account.
+  const facts = allocationFacts(allocation, me.toBase58());
+  if (facts === null) return unavailable('malformed');
 
   // 7. The treasury: a plain System account with no data.
   if (treasury === null || treasury === undefined || treasury.owner !== SYSTEM_PROGRAM_ID || treasury.data.length !== 0) return unavailable('malformed');
@@ -255,6 +240,27 @@ function stateFrom(accounts: readonly (AccountData | null)[], me: PublicKey, now
   };
 }
 
+/**
+ * Rule 6 on an allocation account read for `owner` (a base58 key): absent (`exists: false`, totals 0, no referrer), or the
+ * program's PresaleAllocation of this very account (user@8 = owner) with a Borsh bool claimed — its facts; anything else
+ * null (malformed). The snapshot reads the buyer's this way, and B1d-2's referral address a referrer's (§3.5).
+ */
+export function allocationFacts(allocation: AccountData | null | undefined, owner: string): AllocationFacts | null {
+  if (allocation === null || allocation === undefined) return {exists: false, totalBase: 0n, bonusBase: 0n, spentCents: 0n, purchaseCount: 0, referrer: null};
+  const A = PRESALE_ALLOCATION_LAYOUT.fields;
+  const d = allocation.data;
+  if (!isProgramAccount(allocation, PRESALE_ALLOCATION_LAYOUT) || pubkeyAt(d, A.user) !== owner || boolAt(d, A.claimed) === null) return null;
+  const referrer = d.subarray(A.referrer.offset, A.referrer.offset + 32);
+  return {
+    exists: true,
+    totalBase: u64At(d, A.total_tokens),
+    bonusBase: u64At(d, A.referral_bonus_tokens),
+    spentCents: u64At(d, A.total_spent_cents),
+    purchaseCount: u32At(d, A.purchase_count),
+    referrer: isZero(referrer) ? null : base58.encode(referrer),
+  };
+}
+
 /** The allocation as `resolveReferrerWith` takes it, from the snapshot (no second read). */
 export function allocationRefOf(snapshot: PresaleSnapshot): AllocationRef {
   const a = snapshot.allocation;
@@ -262,11 +268,13 @@ export function allocationRefOf(snapshot: PresaleSnapshot): AllocationRef {
 }
 
 /**
- * The referrer allocation a purchase by `account` passes (C7): the on-chain referrer's `["allocation", referrer]` PDA,
- * or the default key's when there is none. No captured referrer before B1d-2.
+ * How a purchase by `account` applies a referrer (C7, §3.5): an on-chain referrer always wins — its `["allocation",
+ * referrer]` PDA, nothing registered; else `captured` (B1d-2's referral address) is registered when it can take effect —
+ * a first purchase — and its allocation passed; else the default key's allocation. core's resolveReferrerWith decides,
+ * from this snapshot (no second read).
  */
-export function referrerAllocationOf(snapshot: PresaleSnapshot, account: string): Promise<ResolvedReferrer> {
-  return resolveReferrerWith(async () => allocationRefOf(snapshot), new PublicKey(account), null);
+export function referrerAllocationOf(snapshot: PresaleSnapshot, account: string, captured: string | null = null): Promise<ResolvedReferrer> {
+  return resolveReferrerWith(async () => allocationRefOf(snapshot), new PublicKey(account), captured);
 }
 
 /** The config alone (presale.banner, §1.4): rules 1–4 decide, as in readPresaleState. */
