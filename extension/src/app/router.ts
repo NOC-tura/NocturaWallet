@@ -128,7 +128,7 @@ export interface PresaleSlots {
   settings: {group: string; title: string; route: PresaleRouteValue};
   /** B1d-2 (§4.6, Q31): the badge on every `purchase` row of #26 — the history's kind, a site's purchase included. */
   historyBadge: string;
-  /** §4.6 (Q34, D29): #27's line for this account's purchase while presale.unrecorded lists its signature; null otherwise and on any failure. */
+  /** §4.6 (Q34, Q60 — D29, rev 3.6): #27's line for this account's purchase while presale.unrecorded lists its signature; null otherwise and on any failure. */
   unrecorded(engine: Engine, account: string, signature: string): Promise<string | null>;
 }
 export type RouteAction = {type: 'push'; route: Route} | {type: 'pop'} | {type: 'tab'; tab: Tab} | {type: 'replace'; route: Route} | {type: 'reset'; routes: Route[]};

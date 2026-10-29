@@ -186,7 +186,7 @@ describe('app.features.json', () => {
 describe('strings', () => {
   const file = (path, text) => ({path, bytes: Buffer.from(text, 'utf8')});
 
-  it('armed by B1d-1b: Task 1 adds its three presale message types (§6.2: "every presale.* message type"), Task 2 its prepare and the intent kind, Task 3 its four sign and resume types, Task 4 #23’s copy, Task 5 #20’s, #10’s and the record words, Task 6 #11’s and #50b’s (Q44’s label "Programs" is one bare word: its value is the marker); B1d-2 Task 1 the record’s message type and alarm, Task 2 the referral address’s type and #10’s referrer row, Task 3 #23a’s referral address (Q45, Q46 b–c, Q48), Task 4 #24’s type, #31’s row and #24’s copy, Task 5 #27’s Q34, Task 7 B1d-1b’s copy that had none', () => {
+  it('armed by B1d-1b: Task 1 adds its three presale message types (§6.2: "every presale.* message type"), Task 2 its prepare and the intent kind, Task 3 its four sign and resume types, Task 4 #23’s copy, Task 5 #20’s, #10’s and the record words, Task 6 #11’s and #50b’s (Q44’s label "Programs" is one bare word: its value is the marker); B1d-2 Task 1 the record’s message type and alarm, Task 2 the referral address’s type and #10’s referrer row, Task 3 #23a’s referral address (Q45, Q46 b–c, Q48), Task 4 #24’s type, #31’s row and #24’s copy, Task 5 #27’s Q34, Task 7 B1d-1b’s copy that had none; the final review #24’s accent words and #27’s Q60', () => {
     expect(MARKERS.slice(0, 9)).toEqual(['presale.view', 'presale.banner', 'presale.quote', 'presale.prepareBuy', 'presale.pending', 'presale.preparedFor', 'presale.buy', 'presale.discardPrepared', 'presale-buy']);
     // §6.2's named strings #23 shows, then Q01, Q02, Q04–Q06, Q11–Q16, Q19, Q40c, Q41c, Q41d, Q43, Q52 (each literal part ≥ 8 characters).
     expect(MARKERS.slice(9)).toEqual([
@@ -292,6 +292,8 @@ describe('strings', () => {
       'View on Solana explorer',
       'Need a little SOL for the network fee',
       "This wallet doesn't offer the presale in your region.",
+      'program terms',
+      'Recorded on chain; the presale service declined to record it',
     ]);
   });
 
@@ -315,11 +317,12 @@ describe('strings', () => {
       CONFIRM_PURCHASE_TEXT.referredBy,
       CONFIRM_PURCHASE_TEXT.registers,
       RECORD_TEXT.unrecorded,
+      RECORD_TEXT.declined,
       ...Object.values(REFER_TEXT).filter(v => typeof v === 'string'),
       `${REFER_TEXT.usedLead}2${REFER_TEXT.usedTail(2n)}`,
       `${REFER_TEXT.usedLead}1${REFER_TEXT.usedTail(1n)}`,
     ];
-    expect(copy).toHaveLength(29);
+    expect(copy).toHaveLength(31);
     const unarmed = copy.filter(s => s.length >= 8 && !/^[A-Za-z]+$/.test(s) && !MARKERS.some(m => s.includes(m)));
     expect(unarmed).toEqual(['Not a valid Solana address', 'Copy failed']);
   });

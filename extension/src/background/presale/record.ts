@@ -123,14 +123,25 @@ export async function readPresaleRecords(ext: Ext): Promise<PresaleRecordEntry[]
   return out;
 }
 
-/** What goes first when there are more than MAX_PRESALE_RECORDS: an accepted record (dropping it changes nothing shown), then the oldest of the others. */
+/**
+ * What goes first when there are more than MAX_PRESALE_RECORDS: an accepted record (dropping it changes nothing shown),
+ * then the oldest of the others in this order. A held entry (another wallet's) is no exception: it counts toward the 50
+ * and goes by the same order.
+ */
 const DROP_ORDER: readonly PresaleRecordState[] = ['done', 'given-up', 'refused', 'due'];
 
-function trim(entries: PresaleRecordEntry[]): PresaleRecordEntry[] {
+/**
+ * Final review Minor 1: an entry whose signature is still in v1_pending (`kept`) is never dropped, whatever its state —
+ * the reconcile would write it again at the next wake (a confirmed purchase of the stored wallet with no entry) and POST
+ * a purchase already settled: a `done` entry dropped for the next purchase's came back `due` and was POSTed at every
+ * wake, the two dropping each other in turn. The next entry in the order goes instead (a held `due` one, as §2.4 lets
+ * go). v1_pending keeps at most 20 records (MAX_RECORDS), so over 50 entries there is always one to drop.
+ */
+function trim(entries: PresaleRecordEntry[], kept: ReadonlySet<string>): PresaleRecordEntry[] {
   const out = [...entries];
   for (const state of DROP_ORDER) {
     while (out.length > MAX_PRESALE_RECORDS) {
-      const i = out.findIndex(e => e.state === state);
+      const i = out.findIndex(e => e.state === state && !kept.has(e.signature));
       if (i < 0) break;
       out.splice(i, 1);
     }
@@ -146,7 +157,9 @@ async function updateRecords(ext: Ext, change: (entries: PresaleRecordEntry[]) =
   await presaleRecordsSection(async () => {
     const entries = await readPresaleRecords(ext);
     const changed = change(entries);
-    if (changed !== entries) await ext.local.set(PRESALE_RECORDS_KEY, trim(changed));
+    if (changed === entries) return;
+    const kept = changed.length > MAX_PRESALE_RECORDS ? new Set((await readPending(ext)).map(r => r.signature)) : new Set<string>();
+    await ext.local.set(PRESALE_RECORDS_KEY, trim(changed, kept));
   });
 }
 
@@ -205,8 +218,9 @@ export async function wakePresaleRecords(ext: Ext, deps: WalletDeps): Promise<vo
 
 /**
  * Review 1 I2 (rev 2): whom the worker POSTs for, and when. Only an entry of an account of the wallet stored now: another
- * account's entry (a replaced wallet's — a restore keeps the records, like the rest of WALLET_DATA_KEYS) is held, never
- * dropped, and goes out when that wallet is stored again. And nothing while a send or purchase of the stored wallet is
+ * account's entry (a replaced wallet's — a restore keeps the records, like the rest of WALLET_DATA_KEYS) is held — never
+ * dropped for being another wallet's, but it counts toward the 50 and goes by trim's order like any other — and goes out
+ * when that wallet is stored again. And nothing while a send or purchase of the stored wallet is
  * open (`pending` or `stuck`, a site's included): the shared latch serialises every coordinator request, so a POST the
  * route holds until REQUEST_TIMEOUT_MS would hold that transaction's reads behind it.
  */
@@ -258,13 +272,15 @@ async function sendNext(ext: Ext, deps: WalletDeps): Promise<boolean> {
   const outcome = answered;
   if (outcome === 'retry') return true;
   const until = outcome === 'forbidden' ? await latchStore(ext).load() : 0;
-  await updateRecords(ext, entries =>
-    entries.map(e => {
-      if (e.signature !== claimed.signature) return e;
-      if (outcome === 'done' || outcome === 'refused') return {...e, state: outcome};
-      return e.state === 'due' ? {...e, nextAt: Math.max(e.nextAt, until)} : e;
-    }),
-  );
+  // Final review Minor 2: an answer for an entry no longer there (a delete wiped the records while the POST was out)
+  // writes nothing — the key stays gone.
+  await updateRecords(ext, entries => {
+    const i = entries.findIndex(e => e.signature === claimed.signature);
+    const e = entries[i];
+    if (e === undefined) return entries;
+    const next: PresaleRecordEntry = outcome === 'done' || outcome === 'refused' ? {...e, state: outcome} : e.state === 'due' ? {...e, nextAt: Math.max(e.nextAt, until)} : e;
+    return next === e ? entries : entries.map((x, j) => (j === i ? next : x));
+  });
   return true;
 }
 
@@ -318,7 +334,18 @@ export function runPresaleRecords(ext: Ext, deps: WalletDeps): Promise<void> {
   return me.run;
 }
 
-/** `presale.unrecorded` (§1.4): the signatures of this account's confirmed purchases the coordinator has not accepted (#27's Q34, D29). */
-export async function unrecordedFor(ext: Ext, account: string): Promise<string[]> {
-  return (await readPresaleRecords(ext)).filter(e => e.account === account && e.state !== 'done').map(e => e.signature);
+/** A purchase the coordinator has not accepted, and why: still owed attempts, out of them, or refused by the route (D29). */
+export interface UnrecordedPurchase {
+  signature: string;
+  state: Exclude<PresaleRecordState, 'done'>;
+}
+
+/**
+ * `presale.unrecorded` (§1.4): this account's confirmed purchases the coordinator has not accepted, each with its state —
+ * #27 says Q34 for `due` and `given-up`, Q60 for `refused` (D29, rev 3.6).
+ */
+export async function unrecordedFor(ext: Ext, account: string): Promise<UnrecordedPurchase[]> {
+  const out: UnrecordedPurchase[] = [];
+  for (const e of await readPresaleRecords(ext)) if (e.account === account && e.state !== 'done') out.push({signature: e.signature, state: e.state});
+  return out;
 }

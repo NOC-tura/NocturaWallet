@@ -9,7 +9,13 @@ import {createMutex} from './mutex';
  */
 export const PRESALE_RECORDS_KEY = 'v1_presale_records';
 
-/** Every write of PRESALE_RECORDS_KEY runs inside this section, so a wipe is never undone by a write-back in flight. */
+/**
+ * Every write of PRESALE_RECORDS_KEY runs inside this section, so a wipe never interleaves with a write: a write already
+ * in the section lands before it. It does not stop a write queued after it, and one can be: the poller reads the stored
+ * wallet once per round, so when two purchases confirm in one round and a delete runs between their hooks, the second
+ * hook's entry is written after the wipe and stays — held (its wallet is gone, so it is never POSTed) — until the next
+ * first write wipes it. A record POST's answer that lands after the wipe writes nothing (record.ts, final review Minor 2).
+ */
 export const presaleRecordsSection = createMutex();
 
 /** A delete's (and a first write's) removal of the records, behind any write in flight. */

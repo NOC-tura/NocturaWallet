@@ -1,4 +1,6 @@
 // @vitest-environment happy-dom
+import {readFileSync} from 'node:fs';
+import {join} from 'node:path';
 import {act, fireEvent, render, screen} from '@testing-library/react';
 import {drainInFlight, renderInWallet} from '../../__tests__/harness';
 import {ReferFriend} from '../ReferFriend';
@@ -26,6 +28,24 @@ const STATS = {totalReferrals: 3, totalReferredPurchases: 5, totalBaseBonusNoc: 
 const Q39 = 'Earn NOC when friends you invite buy in the presale.';
 const LEGALESE = 'Referral payouts are subject to program terms. Self-referrals are detected and rejected.';
 const earned = (bonus: bigint): Partial<Chain> => ({allocation: program(allocationData({bonus}))});
+
+/**
+ * Final review T4 M1: the legalese as #24 draws it on 24a, 24a-bis and 24b — "program terms" set apart in `--accent`, a
+ * span and not a link (unlinked until B1e), the sentence around it whole; app.css colours it (the real browser's colour
+ * is visual-presale.spec.ts's).
+ */
+function expectTermsInAccent() {
+  const p = document.querySelector('.s-ref p.legalese');
+  expect([...(p?.childNodes ?? [])].map(n => [n.nodeName, n.textContent])).toEqual([
+    ['#text', 'Referral payouts are subject to '],
+    ['SPAN', 'program terms'],
+    ['#text', '. Self-referrals are detected and rejected.'],
+  ]);
+  expect(p?.querySelector('span')?.className).toBe('app-ref-terms');
+  expect(p?.querySelector('a')).toBeNull();
+  const css = readFileSync(join(__dirname, '..', '..', 'app.css'), 'utf8');
+  expect(/\.s-ref p\.legalese \.app-ref-terms \{\s*color: var\(--accent\);\s*\}/.test(css)).toBe(true);
+}
 
 /** The three stat cards: label, value, sub. */
 const stats = () => [...document.querySelectorAll('.s-ref .stats .stat')].map(s => [...s.children].map(c => c.textContent));
@@ -129,6 +149,7 @@ describe('#24 referral (§4.4)', () => {
     expect(shareButton()?.textContent).toBe('Share invite link');
     expect(document.querySelector('.s-ref .banner.shield')?.textContent).toBe(Q39);
     expect(document.querySelector('.s-ref .legalese')?.textContent).toBe(LEGALESE);
+    expectTermsInAccent();
     // No sticky bar on this screen (the design: no primary terminal action).
     expect(document.querySelector('.sticky-bar')).toBeNull();
     expectNothingOmitted();

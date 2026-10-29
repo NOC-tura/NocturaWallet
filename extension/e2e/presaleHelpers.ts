@@ -188,5 +188,19 @@ export async function slotComes(h: Harness, signature: string): Promise<void> {
   );
 }
 
+/** The record's alarm as the background holds it (undefined: none). */
+export const recordAlarm = (h: Harness) => h.sw.evaluate(name => chrome.alarms.get(name), RECORD_ALARM);
+
+/**
+ * Final review T6 M2: makes the END of the next record run observable. A run's last step arms the record's alarm, or
+ * clears it when nothing is due — and clearing an alarm that is not there leaves no trace. So the alarm is armed here an
+ * hour ahead (it never fires within a test): it is gone again only once a run that found nothing due has finished. Arm
+ * it while no run is going and before the act that starts the next one.
+ */
+export async function armRecordAlarmAhead(h: Harness): Promise<void> {
+  await h.sw.evaluate(name => chrome.alarms.create(name, {when: Date.now() + 3_600_000}), RECORD_ALARM);
+  expect(await recordAlarm(h)).toBeDefined();
+}
+
 /** The background's own answer: what is prepared for the account (null: nothing). */
 export const preparedPurchase = async (p: Page) => (await msg(p, {type: 'presale.preparedFor', account: ACCOUNT})).data ?? null;

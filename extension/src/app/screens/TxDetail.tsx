@@ -83,8 +83,9 @@ export function ExplorerLink({signature, label = 'Explorer', icon = true, classN
  * failed rows get no button; nor does any row while the book is unread (a refused read hides it) or is being re-read
  * after the sheet closed (Task 7 fix round 1, I1): Save opens "add" or "edit" from a fresh read, never a stale one.
  *
- * B1d-2 (§4.6): a purchase also reads Q34 while the presale entry says the coordinator has not accepted its record —
- * asked for the route's account; nothing on a failed read, and nothing asked in the build without presale.
+ * B1d-2 (§4.6): a purchase also reads Q34 (Q60 when the route refused it) while the presale entry says the coordinator
+ * has not accepted its record — asked for the route's account; nothing on a failed read, and nothing asked in the build
+ * without presale.
  */
 export function TxDetail({
   signature,
@@ -192,7 +193,7 @@ export function TxDetail({
     };
   }, [given, ready, owner, signature, m.engine]);
 
-  /** B1d-2 (§4.6, Q34): the presale entry's line for this purchase, or null — until it answers, and on any failure. */
+  /** B1d-2 (§4.6, Q34 / Q60): the presale entry's line for this purchase, or null — until it answers, and on any failure. */
   const [unrecorded, setUnrecorded] = useState<string | null>(null);
   const purchase = item !== null && item !== undefined && item.kind === 'purchase' && !item.failed ? item.signature : null;
   useEffect(() => {

@@ -2358,6 +2358,10 @@ body:has(.app-window) {
 .s-ref p.app-ref-failed {
   margin: 0;
 }
+/* The legalese's "program terms" in the accent, as #24 draws it on all three phones (unlinked until B1e). */
+.s-ref p.legalese .app-ref-terms {
+  color: var(--accent);
+}
 .s-ref p.app-ref-failed {
   color: var(--fg-secondary);
 }

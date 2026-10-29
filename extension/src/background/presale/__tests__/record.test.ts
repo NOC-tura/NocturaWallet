@@ -11,6 +11,7 @@ import {
   recordConfirmedPurchase,
   runPresaleRecords,
   slotAfter,
+  wakePresaleRecords,
   type PresaleRecordEntry,
   type PresaleRecordPayload,
 } from '../record';
@@ -537,6 +538,35 @@ describe('the store (§2.4): at most 50, read strictly', () => {
     }
   });
 
+  // Final review Minor 1 (its probe P4): 49 held entries (a replaced wallet's, due) and two purchases of the stored wallet
+  // still in v1_pending. The second purchase's write takes the store to 51; trim may not drop the first one's `done`
+  // entry, which the reconcile would write again at the next wake and POST once more — then drop the second's for it, and
+  // so on at every wake (P1, P2, P1, P2, P1). The oldest held entry goes instead.
+  it('an entry whose purchase is still in v1_pending is never dropped: 49 held and two own purchases — each POSTed once, never again at five wakes; the oldest held one goes', async () => {
+    const w = world();
+    const held = Array.from({length: 49}, (_, n) => entry({signature: sig(n), account: RECIPIENT, payload: {...PAYLOAD, txHash: sig(n), buyerAddress: RECIPIENT}}));
+    await w.ext.local.set(PRESALE_RECORDS_KEY, held);
+    const first = purchase({createdAt: T0});
+    const second = purchase({id: 'buy2', signature: SIG2, createdAt: T0});
+    await w.ext.local.set(PENDING_KEY, [first, second]);
+    await confirm(w, first);
+    await confirm(w, second);
+    for (let i = 1; i <= 5; i++) {
+      w.deps.clock.t = T0 + i * HOUR;
+      await wakePresaleRecords(w.ext, w.deps);
+    }
+    expect(w.posts.map(p => (p.body as PresaleRecordPayload).txHash)).toEqual([SIG, SIG2]);
+    const after = await entries(w);
+    expect([after.length, after.slice(0, 48).map(e => e.signature), after.slice(48).map(e => [e.signature, e.state])]).toEqual([
+      MAX_PRESALE_RECORDS,
+      held.slice(1).map(e => e.signature),
+      [
+        [SIG, 'done'],
+        [SIG2, 'done'],
+      ],
+    ]);
+  });
+
   it('what does not read back is dropped; the rest is kept, as fresh objects', async () => {
     const w = world();
     const good = entry({nextAt: T0 + HOUR});
@@ -599,6 +629,31 @@ describe('a delete wipes the records, a restore keeps them (§2.4: WALLET_DATA_K
     await w.ext.local.set(PRESALE_RECORDS_KEY, [entry()]);
     expect(await storeEnvelope(w.ext, null, STORED)).toBe('stored');
     expect(await w.ext.local.get(PRESALE_RECORDS_KEY)).toBeUndefined();
+  });
+
+  // Final review Minor 2 (its probe P5): the POST is outside the records' section, so a delete can wipe the key while it
+  // is out; its answer — accepted or refused — finds no entry and writes nothing (before the fix it wrote `[]` back).
+  it.each([
+    ['accepted', OK],
+    ['refused', {status: 400, body: {success: false, error: 'not_a_presale_purchase'}}],
+  ] as const)('a record POST answered (%s) after a delete wiped the records writes nothing back: the key stays gone', async (_name, answer) => {
+    const w = world();
+    await stored(w);
+    let release = (_a: PostAnswer): void => undefined;
+    w.deps.postJson = async (path, body) => {
+      w.posts.push({at: w.deps.clock.t, path, body});
+      return new Promise<PostAnswer>(resolve => {
+        release = resolve;
+      });
+    };
+    const sending = confirm(w, purchase({signature: SIG2}));
+    for (let i = 0; i < 20 && w.posts.length === 0; i++) await new Promise(r => setTimeout(r, 0));
+    expect(w.posts.map(p => (p.body as PresaleRecordPayload).txHash)).toEqual([SIG2]);
+    expect(await forgetWallet(w.ext, w.deps, {expectedRevision: REV})).toBe('forgotten');
+    expect(await w.ext.local.get(PRESALE_RECORDS_KEY)).toBeUndefined();
+    release(answer);
+    await sending;
+    expect([await w.ext.local.get(PRESALE_RECORDS_KEY), w.posts.length]).toEqual([undefined, 1]);
   });
 
   it('a record write parked mid-write when the delete arrives: the delete waits, and nothing of it is left after forgotten', async () => {
@@ -698,19 +753,26 @@ describe('when, and for whom, the worker POSTs (review 1 I2)', () => {
   });
 });
 
-describe('presale.unrecorded {account} (§1.4, §4.6, D29): what #27 shows Q34 for — no network', () => {
+describe('presale.unrecorded {account} (§1.4, §4.6, D29, rev 3.6): what #27 shows Q34 or Q60 for — no network', () => {
   const ORIGIN = 'chrome-extension://abcdefghijklmnopabcdefghijklmnop';
   const POPUP = {id: 'abcdefghijklmnopabcdefghijklmnop', origin: ORIGIN, url: `${ORIGIN}/popup.html`};
   const sig = (n: number) => fakeSig(2000 + n);
   const of = (n: number, state: PresaleRecordEntry['state'], account = ACCOUNT) => entry({signature: sig(n), account, payload: {...PAYLOAD, txHash: sig(n), buyerAddress: account}, state});
   const ask = (w: World, msg: Record<string, unknown>) => handleMessage(w.ext, msg, POPUP, w.deps);
 
-  it('this account’s due, given-up and refused records, in order; not an accepted one, not another account’s', async () => {
+  it('this account’s due, given-up and refused records with their states, in order; not an accepted one, not another account’s', async () => {
     const w = world([new Error('no POST from a read')]);
     w.deps.reader = fakeReader();
     await unlocked(w.ext);
     await w.ext.local.set(PRESALE_RECORDS_KEY, [of(0, 'due'), of(1, 'done'), of(2, 'given-up'), of(3, 'refused', RECIPIENT), of(4, 'refused')]);
-    expect(await ask(w, {type: 'presale.unrecorded', account: ACCOUNT})).toEqual({ok: true, data: [sig(0), sig(2), sig(4)]});
+    expect(await ask(w, {type: 'presale.unrecorded', account: ACCOUNT})).toEqual({
+      ok: true,
+      data: [
+        {signature: sig(0), state: 'due'},
+        {signature: sig(2), state: 'given-up'},
+        {signature: sig(4), state: 'refused'},
+      ],
+    });
     await w.ext.local.set(PRESALE_RECORDS_KEY, [of(1, 'done')]);
     expect(await ask(w, {type: 'presale.unrecorded', account: ACCOUNT})).toEqual({ok: true, data: []});
     expect(w.posts).toEqual([]);

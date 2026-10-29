@@ -393,7 +393,7 @@ async function checkReferrerMessage(ext: Ext, deps: WalletDeps, msg: Readonly<Re
   }
 }
 
-/** presale.unrecorded {account} (§1.4, §4.6, D29): the signatures #27 shows Q34 for — this account's records not accepted; no network. */
+/** presale.unrecorded {account} (§1.4, §4.6, D29): this account's records not accepted, each with its state — #27's Q34 or Q60 (rev 3.6); no network. */
 async function unrecordedMessage(ext: Ext, _deps: WalletDeps, msg: Readonly<Record<string, unknown>>): Promise<Result> {
   const a = await accountOnly(ext, msg);
   return 'answer' in a ? a.answer : {ok: true, data: await unrecordedFor(ext, a.account)};

@@ -24,6 +24,7 @@ registerPresale({ext: fakeExt(), deps: fakeDeps(), handle: registerPresaleHandle
 // rows and B1b's #27, with no badge, no Q34 and no presale message.
 const off = process.env.NOCTURA_PRESALE === '0';
 const Q34 = 'Recorded on chain; presale service not yet updated';
+const Q60 = 'Recorded on chain; the presale service declined to record it';
 const NOW = Math.floor(Date.now() / 1000);
 /** The wallet's own purchase (sig 3, recorded) and a site's (sig 4, no record of ours — the chain's kind only). */
 const OURS = sig(3);
@@ -180,15 +181,17 @@ describe(`#27 in this build (${off ? 'off' : 'on'}): Q34`, () => {
   });
 });
 
-describe.skipIf(off)('#27’s Q34 (§4.6, D29): exactly while presale.unrecorded lists the signature', () => {
-  it.each<[State, boolean]>([
-    ['due', true],
-    ['given-up', true],
-    ['refused', true],
-    ['done', false],
-  ])('a record %s → Q34 %s', async (state, shown) => {
+describe.skipIf(off)('#27’s Q34 and Q60 (§4.6, D29, rev 3.6): exactly while presale.unrecorded lists the signature', () => {
+  it.each<[State, string | null]>([
+    ['due', Q34],
+    ['given-up', Q34],
+    ['refused', Q60],
+    ['done', null],
+  ])('a record %s → %s', async (state, line) => {
     const sent = await detail(purchaseItem(OURS), {records: [entry(OURS, state)]});
-    expect(screen.queryByText(Q34) !== null).toBe(shown);
+    // One info line at most, and it is this state's: Q34 while the service may still be updated or ran out of tries,
+    // Q60 once the route refused the record (it never will be), none once it is accepted.
+    expect([...document.querySelectorAll('.s-txd .banner')].map(b => [b.className, b.textContent])).toEqual(line === null ? [] : [['banner info', line]]);
     expectB1bPurchase();
     // The read happened either way: an absent line is the answer's, not a request never made.
     expect(asked(sent)).toHaveLength(1);

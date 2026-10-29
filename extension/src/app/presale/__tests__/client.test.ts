@@ -443,7 +443,7 @@ describe('the client for #24 (presale.referral)', () => {
   });
 });
 
-// B1d-2 Task 5 (§1.4, §4.6, D29): #27's Q34 — the signatures presale.unrecorded lists for the account.
+// B1d-2 Task 5 (§1.4, §4.6, D29; rev 3.6): #27's Q34 or Q60 — the purchases presale.unrecorded lists for the account, each with its state.
 describe('the client for #27’s Q34 (presale.unrecorded)', () => {
   const SIG_B = '4'.repeat(88);
   const stored = (signature: string, state: string) => ({
@@ -455,17 +455,42 @@ describe('the client for #27’s Q34 (presale.unrecorded)', () => {
     nextAt: 0,
     state,
   });
-  it('unrecorded against the real background: {type, account}; the due and refused signatures in order, not the accepted one (positive control)', async () => {
+  it('unrecorded against the real background: {type, account}; the due and refused purchases with their states in order, not the accepted one (positive control)', async () => {
     const {ext, client, sent} = await wired();
     await ext.local.set(PRESALE_RECORDS_KEY, [stored(SIGNATURE, 'due'), stored('3'.repeat(88), 'done'), stored(SIG_B, 'refused')]);
-    expect(await client.unrecorded(ACCOUNT)).toEqual({ok: true, data: [SIGNATURE, SIG_B]});
+    expect(await client.unrecorded(ACCOUNT)).toEqual({
+      ok: true,
+      data: [
+        {signature: SIGNATURE, state: 'due'},
+        {signature: SIG_B, state: 'refused'},
+      ],
+    });
     expect(sent).toEqual([{type: 'presale.unrecorded', account: ACCOUNT}]);
   });
 
-  it('unrecordedOf: an array of signatures, possibly empty — anything else failed', () => {
+  it('unrecordedOf: an array of {signature, state} (due, given-up, refused), possibly empty — anything else failed', () => {
+    const u = (signature: string, state: string) => ({signature, state});
     expect(unrecordedOf([])).toEqual([]);
-    expect(unrecordedOf([SIGNATURE, SIG_B])).toEqual([SIGNATURE, SIG_B]);
-    for (const bad of [null, SIGNATURE, {0: SIGNATURE}, [SIGNATURE, 7], [SIGNATURE, null], ['x'], [`${SIGNATURE} `], ['0'.repeat(88)], ['5'.repeat(63)], ['5'.repeat(89)]]) {
+    const good = [u(SIGNATURE, 'due'), u(SIG_B, 'given-up'), u(SIGNATURE, 'refused')];
+    expect(unrecordedOf(good)).toEqual(good);
+    for (const bad of [
+      null,
+      SIGNATURE,
+      {0: u(SIGNATURE, 'due')},
+      [SIGNATURE],
+      [u(SIGNATURE, 'due'), 7],
+      [u(SIGNATURE, 'due'), null],
+      [u(SIGNATURE, 'done')],
+      [u(SIGNATURE, 'pending')],
+      [u(SIGNATURE, 'Refused')],
+      [{signature: SIGNATURE}],
+      [{...u(SIGNATURE, 'due'), extra: 1}],
+      [u('x', 'due')],
+      [u(`${SIGNATURE} `, 'due')],
+      [u('0'.repeat(88), 'due')],
+      [u('5'.repeat(63), 'due')],
+      [u('5'.repeat(89), 'due')],
+    ]) {
       expect([bad, unrecordedOf(bad)]).toEqual([bad, undefined]);
     }
   });

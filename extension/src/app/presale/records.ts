@@ -14,8 +14,9 @@ import {againRoute} from './routes';
  * prepared purchase. `banner` and `buy` are #11's (§4.5): the banner as `presale.banner` answered it (no geo check;
  * null for any failure or an inactive sale), and Buy's routing from a fresh `presale.view` — an open purchase or an open
  * sale → #23, the gate closed → #50b, anything else → no route. `settings` is #31's row into #24 (B1d-2, C16).
- * `historyBadge` is #26's Q31 on every purchase row, and `unrecorded` #27's Q34 (B1d-2, §4.6): shown only while
- * `presale.unrecorded` lists the signature for that account — a failed read shows nothing (a display only).
+ * `historyBadge` is #26's Q31 on every purchase row, and `unrecorded` #27's Q34 — Q60 for a record the route refused
+ * (B1d-2, §4.6, rev 3.6) — shown only while `presale.unrecorded` lists the signature for that account; a failed read
+ * shows nothing (a display only).
  */
 export const PRESALE_SLOTS: PresaleSlots = {
   record(extra): KindRecord | null {
@@ -62,6 +63,9 @@ export const PRESALE_SLOTS: PresaleSlots = {
   historyBadge: RECORD_TEXT.badge,
   async unrecorded(engine, account, signature) {
     const r = await presaleClient(engine).unrecorded(account);
-    return r.ok && r.data.includes(signature) ? RECORD_TEXT.unrecorded : null;
+    const listed = r.ok ? r.data.find(u => u.signature === signature) : undefined;
+    if (listed === undefined) return null;
+    // Q60 (rev 3.6, D29): the route refused the record — it never will be updated; Q34 while it still may be, or ran out of tries.
+    return listed.state === 'refused' ? RECORD_TEXT.declined : RECORD_TEXT.unrecorded;
   },
 };

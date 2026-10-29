@@ -142,8 +142,10 @@ export const RECORD_TEXT = {
   /** Q33 (#11's and #26's pending row, B1d-1b Task 6). */
   pending: 'Buying NOC · pending',
   slow: 'Buying NOC · taking longer than usual',
-  /** Q34 (B1d-2, #27): the coordinator has not accepted the purchase's record — `due`, `given-up` or `refused` (D29). */
+  /** Q34 (B1d-2, #27): the coordinator has not accepted the purchase's record yet — `due` or `given-up`. */
   unrecorded: 'Recorded on chain; presale service not yet updated',
+  /** Q60 (rev 3.6, controller copy, owner-delegated D27): the route refused the purchase's record — `refused` (D29), final. */
+  declined: 'Recorded on chain; the presale service declined to record it',
 } as const;
 
 /** #11's presale banner (§4.5, index.html #11 ix:6371-6373): "NOC Presale · Stage N" / "$ 0.1501 · P% to next stage". */
@@ -187,6 +189,8 @@ export const REFER_TEXT = {
   /** Q39 (D13: no numbers until the coordinator's tier rule is confirmed). */
   banner: 'Earn NOC when friends you invite buy in the presale.',
   legalese: 'Referral payouts are subject to program terms. Self-referrals are detected and rejected.',
+  /** The legalese's words the design sets in `--accent` on all three #24 phones (unlinked until B1e). */
+  legaleseTerms: 'program terms',
   none: '—',
 } as const;
 

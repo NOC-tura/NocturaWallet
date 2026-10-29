@@ -199,8 +199,8 @@ export interface PresaleClient {
   preparedFor(account: string): Promise<Reply<ResumablePurchase | null, SessionRefusal>>;
   /** §3.5, §4.4 (B1d-2): #24's data for the account — its own link, each figure as the background read it or null. */
   referral(account: string): Promise<Reply<ReferralData, SessionRefusal>>;
-  /** §1.4, §4.6 (B1d-2): the signatures of this account's purchases the coordinator has not accepted — #27's Q34. */
-  unrecorded(account: string): Promise<Reply<readonly string[], SessionRefusal>>;
+  /** §1.4, §4.6 (B1d-2): this account's purchases the coordinator has not accepted, each with its state — #27's Q34 or Q60. */
+  unrecorded(account: string): Promise<Reply<readonly UnrecordedPurchase[], SessionRefusal>>;
   buy(id: string): Promise<Reply<Pending, BuyRefusal>>;
   discardPrepared(account: string): Promise<Reply<null, SessionRefusal>>;
 }
@@ -420,13 +420,23 @@ export function referralDataOf(x: unknown, account: string): ReferralData | unde
   return {link: o.link, earnedBase, referrals, referredCents};
 }
 
-/** presale.unrecorded's answer (§1.4): an array of transaction signatures, possibly empty. */
-export function unrecordedOf(x: unknown): readonly string[] | undefined {
+/** A purchase presale.unrecorded lists: its signature and why it is not recorded (§2.4 — `refused` is the route's D29). */
+export interface UnrecordedPurchase {
+  signature: string;
+  state: 'due' | 'given-up' | 'refused';
+}
+const UNRECORDED_STATES: readonly string[] = ['due', 'given-up', 'refused'];
+
+/** presale.unrecorded's answer (§1.4, rev 3.6): an array of `{signature, state}`, possibly empty — anything else failed. */
+export function unrecordedOf(x: unknown): readonly UnrecordedPurchase[] | undefined {
   if (!Array.isArray(x)) return undefined;
-  const out: string[] = [];
-  for (const s of x as unknown[]) {
-    if (typeof s !== 'string' || !SIGNATURE.test(s)) return undefined;
-    out.push(s);
+  const out: UnrecordedPurchase[] = [];
+  for (const item of x as unknown[]) {
+    const o = obj(item);
+    if (o === undefined || !exactly(o, ['signature', 'state'])) return undefined;
+    const {signature, state} = o;
+    if (typeof signature !== 'string' || !SIGNATURE.test(signature) || typeof state !== 'string' || !UNRECORDED_STATES.includes(state)) return undefined;
+    out.push({signature, state: state as UnrecordedPurchase['state']});
   }
   return out;
 }

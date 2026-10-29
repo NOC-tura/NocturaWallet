@@ -4,7 +4,8 @@
 (D16): rev 3 plus plan B1d-1a's spec edits, listed below; **rev 3.2** (D23): rev 3.1 plus every departure plan B1d-1b
 makes, listed below; **rev 3.3** (D27): the copy calls rev 3.2 left open, decided; **rev 3.4** (D28–D30): rev 3.3
 plus every departure plan B1d-2 makes, listed below; **rev 3.5** (D31): rev 3.4 plus the fixes of plan B1d-2's Fable
-review 1, listed below. The owner approved
+review 1, listed below; **rev 3.6** (D27's delegation): rev 3.5 plus the fixes of B1d-2's final whole-branch review,
+listed below. The owner approved
 the design in conversation section by section (`.superpowers/sdd/b1d-approved-design.md`, approach A) and took
 decisions D1–D6, then D7–D14 on Fable's review 1 and D15 on review 2 (`.superpowers/sdd/b1d-owner-decisions.md`,
 `.superpowers/sdd/b1d-spec-review-1.md`, `.superpowers/sdd/b1d-spec-review-2.md`).
@@ -229,6 +230,21 @@ and is stated there; the passages marked "rev 3.4" below are edited to match. Ev
 - §6.2 item 4 (review M4): presale copy lives in `text.ts` by rule; the completeness row's scope is that rule.
 - §2.4 and rev 3.4's change list (review M8): over 50, a Q34 entry goes once no `done` one is left (not "last": `given-up`
   and `refused` go before `due`).
+
+**Rev 3.6 (2026-10-29, controller copy ruling under the owner's delegation D27): rev 3.5 plus the fixes of B1d-2's final
+whole-branch review (`.superpowers/sdd/2026-10-26-extension-b1d-plan2/final-review.md`), one fix wave:**
+- §10 Q60, §1.4, §2.4, §4.6, §5 (final review Minor 3): #27 says a new string, Q60, for a `refused` record — the route
+  declined it and it will never be updated — and keeps Q34 for `due` and `given-up`; `presale.unrecorded` answers each
+  purchase with its state so #27 can tell them apart. Q60 is controller copy, owner-delegated (D27).
+- §2.4 (final review Minor 1): over 50, an entry whose signature is still in `v1_pending` is never dropped, in any
+  state — the reconcile would write it again at the next wake and POST a settled purchase once more; the next entry in
+  the order goes instead.
+- §2.4 (final review Minor 2): a record POST's answer that finds its entry gone (a delete wiped the records while the
+  POST was out) writes nothing.
+- §4.4 (task 4 review M1): the legalese's "program terms" is set in `--accent` as drawn on 24a, 24a-bis and 24b, still
+  unlinked.
+- §6.4 (task 7 review M2): `23a-referrer-empty` and `23a-referrer-invalid` lose their `-end` shot (it was the same
+  image); `23a-referrer-top` shows #23a's top with the field; `27-declined` shows Q60.
 
 **Ledger (review L12).** The order, so nobody has to guess it: the facts were re-read from the code on 2026-10-18 (§8.2)
 and rev 1 was written from them; the owner's decisions D1–D6 and D7–D14 carry the date the decisions file records,
@@ -487,7 +503,7 @@ existing `vault.challengeInfo`).
 | `presale.discardPrepared` | `{account}` | B1b's `discardPrepared` (all of the account's entries and their challenges) |
 | `presale.checkReferrer` (B1d-2) | `{account, referrer}` | `{ok: true}` or `{ok: false, line: 'referrer-invalid' \| 'referrer-self' \| 'referrer-no-allocation' \| 'referrer-not-applicable'}` (§3.5); a read failure → `presale-unavailable` |
 | `presale.referral` (B1d-2) | `{account}` | `ReferralView` (§3.5) |
-| `presale.unrecorded` (B1d-2) | `{account}` | the signatures of this account's entries `due`, `given-up` or `refused` (§2.4, rev 3.4) |
+| `presale.unrecorded` (B1d-2) | `{account}` | this account's entries `due`, `given-up` or `refused`, each as `{signature, state}` (§2.4, rev 3.4; the state rev 3.6) |
 
 Every payload is parsed strictly (extra keys, a non-address `account`, an amount not `^[1-9]\d{0,19}$` or above u64,
 a currency not in `{SOL, USDC, USDT}`, a stage not an integer 0–9, a `referrer` neither null nor a string of 32–44
@@ -664,8 +680,11 @@ Shown by #23b, #11, #21, #26, #27, #44 and #54; never used to decide anything.
 wiped by a wallet delete — behind the records' own lock — kept by a restore; the key is shared code and a must-stay
 string of the off build, §6.2), at most 50 entries:
 `{signature, account, payload, confirmedAt, attempts, nextAt, state: 'due' | 'done' | 'given-up' | 'refused'}`.
-Over 50, the oldest `done` entry is dropped first, then `given-up`, `refused`, `due` (an entry #27 says Q34 for goes only
-when no `done` one is left, and a `due` one last — rev 3.5, review M8).
+Over 50, the oldest `done` entry is dropped first, then `given-up`, `refused`, `due` (an entry #27 has a line for goes only
+when no `done` one is left, and a `due` one last — rev 3.5, review M8) — but never an entry whose signature is still in
+`v1_pending`, whatever its state: the reconcile would write it again at the next wake and POST a settled purchase once
+more (rev 3.6, final review Minor 1); the next entry in the order goes instead. `v1_pending` keeps at most 20 records,
+so there is always one to drop.
 
 - **Written** when the poller sees a `presale-buy` record reach `confirmed` (the kind's `onConfirmed`, §1.3), for an
   account of the wallet stored now only. **Reconciled** at every start and on the alarm: a confirmed `presale-buy`
@@ -693,7 +712,8 @@ when no `done` one is left, and a `due` one last — rev 3.5, review M8).
   premise is §7 P3's, that the coordinator never 403s this route selectively) — and the entry waits for it (`nextAt` =
   the later of the claimed slot and the latch's persisted end, `v1_forbidden_until`; never retried inside it, rev 3.5);
   anything else (429, 500, a timeout, a 400 without
-  the route's body) → the next slot.
+  the route's body) → the next slot. An answer whose entry is gone (a delete wiped the records while the POST was out)
+  writes nothing (rev 3.6, final review Minor 2).
 - **The schedule (C24):** slots at offsets from `confirmedAt` — 0, 1 min, 5 min, 30 min, 2 h, 12 h, 24 h, 48 h, 72 h. A
   worker asleep across slots POSTs once when it wakes, then waits for the first slot after now; a failed attempt with no
   slot left → `given-up`. One `alarms` alarm, `presale-record` (existing permission; dispatched by name, a shared
@@ -712,7 +732,8 @@ when no `done` one is left, and a `due` one last — rev 3.5, review M8).
 - Never more than one POST in flight; never two POSTs for one signature within a slot. **The retry is correct only
   against a coordinator that makes every side effect idempotent by signature — P2a (§7), deployed (8f43f49).**
 - The purchase stands on chain whatever the record's state; nothing in the popup says it failed. #27 says Q34 while the
-  entry is `due`, `given-up` or `refused` (`presale.unrecorded` lists those three).
+  entry is `due` or `given-up`, and Q60 when it is `refused` (rev 3.6: the route declined it, so "not yet updated" would
+  promise an update that never comes); `presale.unrecorded` lists those three, each with its state.
 - **Privacy (rev 3.5, review M5):** the body is public on-chain data (the signature, the buyer, amounts derivable from
   the receipt, the referrer once the transaction lands). What the retry adds is timing: it runs unattended for up to
   72 h, so the buyer address is tied to the user's IP at up to nine moments, on whatever network the browser is on,
@@ -1085,7 +1106,8 @@ auto-clear and no countdown toast — the extension has no `clipboardWrite`, B1 
 the link). **24a-bis kept as drawn, minus the toast (review L8):** while `useCopy` says `copied` (its 2 s), the Copy
 icon is the checkmark and the code row carries the `--accent` border; "Copy failed" shows no checkmark. Info banner
 Q39 (D13). Legalese **"Referral payouts are subject to program terms. Self-referrals are detected and rejected."** (as
-drawn and as the app; "program terms" unlinked until the terms page exists, B1e). Empty (24b): zeros as returned; the
+drawn and as the app; "program terms" in `--accent` as drawn on all three #24 phones — rev 3.6 — and unlinked until the
+terms page exists, B1e). Empty (24b): zeros as returned; the
 "Recent rewards" empty state is omitted with the list (§9). **As built (rev 3.4):** the stats in equal thirds, a figure
 breakable only after a group separator and set at 16 px from eight characters on; EARNED to one place, floored,
 `--accent` above 0 and `--fg-tertiary` for 0 or "—"; REFERRED "$1,234.56"; Copy and "Share invite link" share one
@@ -1110,9 +1132,9 @@ app's "Rewards" group; one read per mount.
   and has none); the badge is on the on build only, the row itself is B1b's and stays in the off build. A badged row
   wraps its badges under the title (a site's purchase carries two — rev 3.4). An open purchase's pending row on #26
   reads Q33.
-- **#27**: the `purchase` variant (B1b) gains Q34 while `presale.unrecorded` lists its signature — an info banner between
-  the amount card and the detail card, asked once per open for the route's account; a failed read shows nothing
-  (rev 3.4).
+- **#27**: the `purchase` variant (B1b) gains a line while `presale.unrecorded` lists its signature — Q34 for a `due` or
+  `given-up` record, Q60 for a `refused` one (rev 3.6) — an info banner between the amount card and the detail card,
+  asked once per open for the route's account; a failed read shows nothing (rev 3.4).
 
 ---
 
@@ -1148,7 +1170,7 @@ translates; nothing internal is shown.
 | Pyth older than 120 s at simulation | prepare | the simulation fails → Q16 |
 | the coordinator is unreachable | — | presale closed (§3.1); F12 on #48; the wallet keeps working; a recorded purchase keeps retrying (§2.4) |
 | the record POST keeps failing | B1d-2 | the purchase stands; Q34 on #27; given up after 72 h |
-| the record POST is refused by the route (its own 400, D29) | B1d-2 | `refused`, never POSTed again; the purchase stands; Q34 on #27 (rev 3.4) |
+| the record POST is refused by the route (its own 400, D29) | B1d-2 | `refused`, never POSTed again; the purchase stands; Q60 on #27 (rev 3.4; Q60 rev 3.6) |
 | an update turns the switch off with a purchase pending | off build | C19: the record is read, counted by `inFlightFor`, polled and shown generically (Q42); nothing is lost, nothing re-signed |
 | geo `no_check` or a stale list while a purchase is pending | view | 23b stays, the closed line beneath (C30) |
 | a sanctioned country behind a VPN | geo | closed (`sanctionedWinsOverVpn`); `isVpn` is never read as evidence |
@@ -1349,7 +1371,7 @@ B1d-2:
 
 10. **Recording:** the POST fails twice (500, then timeout) and succeeds on the third slot; #27's Q34 disappears. No fake
     clock in the worker (rev 3.4): a slot comes by moving the entry's schedule back and firing the record's own alarm.
-    D29 (the route's 400 → `refused`, Q34 kept) and D30 (`200 {verified: false, duplicate: true}` → `done`) in one wake
+    D29 (the route's 400 → `refused`; #27 says Q60 — rev 3.6) and D30 (`200 {verified: false, duplicate: true}` → `done`) in one wake
     with a due control entry.
 11. **Referral:** #31 → #24 with stats; `/referral-stats` failing → "—" for its two stats, EARNED still shown;
     Copy → the clipboard holds the link, the checkmark shows.
@@ -1364,11 +1386,11 @@ beneath), the allocation row, each #23 closed answer (Q12 as §5's prepare refus
 #44 and #54 for a purchase, #50b × 6, #11 with the banner and Buy, #48 with F12 (B1d-1b); #24 (populated, empty, a null
 stat, copied), the referral field with a line, #20 with "Referred by", #26 badge, #27 line (B1d-2); the opus-tier review
 against `index.html` as in B1b and B1c, every departure checked against §9. **B1d-2 as built (rev 3.4):** `31-refer-row`;
-`24-referral`, `24-referral-copied`, `24-referral-null-stat`, `24-referral-empty`; `23a-referrer-empty` (+`-end`),
-`23a-referrer-invalid` (+`-end`, Q46a), `23a-referrer-self` (Q46b), `23a-referrer-no-allocation` (Q46c),
+`24-referral`, `24-referral-copied`, `24-referral-null-stat`, `24-referral-empty`; `23a-referrer-top` (rev 3.6),
+`23a-referrer-empty`, `23a-referrer-invalid` (Q46a; no `-end` shot since rev 3.6 — it was the same image), `23a-referrer-self` (Q46b), `23a-referrer-no-allocation` (Q46c),
 `23a-referrer-valid`, `23a-referrer-not-applicable` (Q48); `20-referred-by` (+`-end`, Q47), `20-referred-onchain`
 (+`-end`); `10-referred-by`, `10-referred-onchain` (the vault page, 412 × 916); `26-presale-badges` (a site's purchase,
-two badges); `27-unrecorded` (+`-end`, Q34).
+two badges); `27-unrecorded` (+`-end`, Q34); `27-declined` (Q60, rev 3.6).
 
 ### 6.5 Release gates (B1e)
 
@@ -1616,7 +1638,7 @@ carry it (§6.2's markers are the "on" rows of source new / approved / app). Non
 | Q31 | #21 / #26 badge | "Presale" | approved | on | controller copy, owner-delegated 2026-10-19 |
 | Q32 | #21 / #44 / #54 amount line, purchase | "Buying NOC with <amount> <CUR>" | new | on | controller copy, owner-delegated 2026-10-19 |
 | Q33 | #11 / #26 pending row, purchase | "Buying NOC · pending" / "Buying NOC · taking longer than usual" | new | on | controller copy, owner-delegated 2026-10-19 |
-| Q34 | #27 purchase, not recorded | "Recorded on chain; presale service not yet updated" | approved | on | controller copy, owner-delegated 2026-10-19 |
+| Q34 | #27 purchase, not recorded yet (`due`, `given-up`; rev 3.6) | "Recorded on chain; presale service not yet updated" | approved | on | controller copy, owner-delegated 2026-10-19 |
 | Q35 | #24 REFERRALS sub | "total joined" | app | on | controller copy, owner-delegated 2026-10-19 |
 | Q36 | #24 third stat | "REFERRED" / "from your invites" | app | on | controller copy, owner-delegated 2026-10-19 |
 | Q37 | #24 code eyebrow | "YOUR INVITE LINK" | app | on | controller copy, owner-delegated 2026-10-19 |
@@ -1642,6 +1664,7 @@ carry it (§6.2's markers are the "on" rows of source new / approved / app). Non
 | Q57 | #20, the resume of a prepared purchase | "You have a purchase waiting." | new | on | controller copy, delegated (D20, rev 3.2) |
 | Q58 | #20, a purchase proven on #10 | "Confirmed. Review the fresh quote and buy." | new | on | controller copy, delegated (D20, rev 3.2) |
 | Q59 | #23, the closed line of a region answer | "Not available here — " + #50b's sub for the reason (Q21's first sentence for `sanctioned`) | new | on | controller copy, delegated (D20, rev 3.2) |
+| Q60 | #27 purchase, its record refused by the route (D29) | "Recorded on chain; the presale service declined to record it" | new | on | controller copy, owner-delegated (D27, rev 3.6) |
 
 ---
 

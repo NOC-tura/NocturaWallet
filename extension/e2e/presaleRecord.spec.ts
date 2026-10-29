@@ -3,7 +3,7 @@ import {base58} from '@scure/base';
 import type {Harness} from './popupHarness';
 import {ACCOUNT, msg} from './sendHelpers';
 import {nocText, solCents, tokensFor} from './presaleChain';
-import {amount, buyAction, cspControl, done, heldRecord, home, presaleWallet, recordEntries, scene, slotComes} from './presaleHelpers';
+import {amount, armRecordAlarmAhead, buyAction, cspControl, done, heldRecord, home, presaleWallet, recordAlarm, recordEntries, scene, slotComes} from './presaleHelpers';
 
 declare const chrome: {storage: {local: {get(k: string): Promise<Record<string, unknown>>; set(o: object): Promise<void>}}};
 
@@ -14,6 +14,8 @@ declare const chrome: {storage: {local: {get(k: string): Promise<Record<string, 
 
 const SOL = 1_000_000_000n;
 const Q34 = 'Recorded on chain; presale service not yet updated';
+/** Q60 (rev 3.6): #27's line for a record the route refused (D29) — it will never be updated. */
+const Q60 = 'Recorded on chain; the presale service declined to record it';
 /** A returning buyer (no re-authentication for a small purchase): two purchases on chain. */
 const RETURNING = {totalBase: 1_998_667_554_963n, spentCents: 30_000n, count: 2};
 /** 0.1 SOL at the fake's $150: $15 — above the $10 minimum, 1 % of the balance. */
@@ -36,17 +38,17 @@ async function buy(h: Harness, popup: Page): Promise<string> {
   return h.fake.broadcasts[before] as string;
 }
 
-/** #26 → the purchase's row (`index`, newest first) → #27, read once (§4.6: one `presale.unrecorded` per open). Q34's banners. */
-async function openPurchase(h: Harness, index: number): Promise<{p: Page; q34: ReturnType<Page['locator']>}> {
+/** #26 → the purchase's row (`index`, newest first) → #27, read once (§4.6: one `presale.unrecorded` per open). Q34's and Q60's banners. */
+async function openPurchase(h: Harness, index: number): Promise<{p: Page; q34: ReturnType<Page['locator']>; q60: ReturnType<Page['locator']>}> {
   const p = await h.openPopup();
   await p.getByRole('button', {name: 'Activity'}).click();
   const rows = p.locator('.tx-row', {hasText: 'Presale purchase'});
   await expect(rows.nth(index)).toBeVisible({timeout: 30_000});
   await rows.nth(index).click();
   await expect(p.locator('.s-txd .amount-card .eyebrow')).toHaveText('PRESALE PURCHASE', {timeout: 30_000});
-  return {p, q34: p.locator('.s-txd .banner.info', {hasText: Q34})};
+  return {p, q34: p.locator('.s-txd .banner.info', {hasText: Q34}), q60: p.locator('.s-txd .banner.info', {hasText: Q60})};
 }
-/** The background's own answer for #27 (§1.4 `presale.unrecorded`): the signatures it says Q34 for. */
+/** The background's own answer for #27 (§1.4 `presale.unrecorded`, rev 3.6): the purchases it says Q34 or Q60 for, with their states. */
 const unrecorded = async (p: Page) => (await msg(p, {type: 'presale.unrecorded', account: ACCOUNT})).data;
 
 test('10 · recording: the record POST answered 500, then never answered (the timeout), then accepted at the third slot — each attempt the whole D28 payload; #27 says Q34 until it is accepted, and reopened it is gone', async () => {
@@ -67,7 +69,7 @@ test('10 · recording: the record POST answered 500, then never answered (the ti
     expect(first.nextAt - first.confirmedAt).toBe(60_000);
     const due = await openPurchase(h, 0);
     await expect(due.q34).toBeVisible({timeout: 30_000});
-    expect(await unrecorded(due.p)).toEqual([signature]);
+    expect(await unrecorded(due.p)).toEqual([{signature, state: 'due'}]);
     await due.p.close();
 
     // Slot 1: the POST gets no answer — the extension's request times out (20 s); the next slot is 5 min.
@@ -97,7 +99,7 @@ test('10 · recording: the record POST answered 500, then never answered (the ti
 /** A well-formed signature for a seeded entry (64 bytes). */
 const seededSignature = base58.encode(Uint8Array.from({length: 64}, (_, i) => (i * 7 + 3) % 251 || 1));
 
-test('10 · D29 and D30: a 400 that is the route’s own refusal is final (refused — never POSTed again, #27 keeps Q34); a 200 that says verified: false (duplicate) is done (no Q34); a wake POSTs only what is due', async () => {
+test('10 · D29 and D30: a 400 that is the route’s own refusal is final (refused — never POSTed again, #27 says Q60); a 200 that says verified: false (duplicate) is done (no line); a wake POSTs only what is due', async () => {
   test.setTimeout(300_000);
   const {h, csp} = await scene('noctura-e2e-presale-refused-');
   try {
@@ -109,38 +111,52 @@ test('10 · D29 and D30: a 400 that is the route’s own refusal is final (refus
     const popup = await home(h);
     await buyAction(popup).click();
     await expect(popup.locator('.stage-card .eyebrow')).toHaveText('Stage 1 of 10 · live', {timeout: 30_000});
+    // Final review T6 M2: each purchase's record run is seen to END (presaleHelpers.ts armRecordAlarmAhead: the alarm
+    // armed an hour ahead is cleared only by a run's last step), never only its entry's state — so the control below is
+    // seeded with no run going, and only the alarm's wake can POST it.
+    await armRecordAlarmAhead(h);
     const refused = await buy(h, popup);
-    await expect.poll(async () => (await recordEntries(h)).find(e => e.signature === refused)?.state, {timeout: 30_000}).toBe('refused');
+    await expect.poll(async () => [(await recordEntries(h)).find(e => e.signature === refused)?.state, h.fake.purchaseRecords.length, await recordAlarm(h)], {timeout: 30_000}).toEqual(['refused', 1, undefined]);
     // Done → #23 (C17), the second purchase.
     await popup.getByRole('button', {name: 'Done'}).click();
     await expect(popup.locator('.stage-card .eyebrow')).toHaveText('Stage 1 of 10 · live', {timeout: 30_000});
+    await armRecordAlarmAhead(h);
     const accepted = await buy(h, popup);
-    await expect.poll(async () => (await recordEntries(h)).find(e => e.signature === accepted)?.state, {timeout: 30_000}).toBe('done');
+    await expect.poll(async () => [(await recordEntries(h)).find(e => e.signature === accepted)?.state, h.fake.purchaseRecords.length, await recordAlarm(h)], {timeout: 30_000}).toEqual(['done', 2, undefined]);
     expect(h.fake.purchaseRecords).toEqual([payloadOf(refused), payloadOf(accepted)]);
 
-    // The control in the same wake: an entry due now (seeded) is POSTed; the refused and the done ones are not.
+    // The control in the same wake: an entry due now (seeded, no run going) is POSTed; the refused and the done ones are
+    // not. Read from the poll that waits for it: the whole record list and the entries at once, the fired alarm gone and
+    // none armed again (nothing due). sendNext takes due entries in stored order, so a re-POST of either earlier entry
+    // would come before the control's and never match.
     const control = {signature: seededSignature, account: ACCOUNT, payload: payloadOf(seededSignature), confirmedAt: Date.now(), attempts: 0, nextAt: Date.now(), state: 'due'};
     await h.sw.evaluate(async c => {
       const key = 'v1_presale_records';
       await chrome.storage.local.set({[key]: [...((await chrome.storage.local.get(key))[key] as unknown[]), c]});
     }, control);
     await slotComes(h, refused);
-    await expect.poll(async () => (await recordEntries(h)).find(e => e.signature === seededSignature)?.state, {timeout: 30_000}).toBe('done');
-    expect(h.fake.purchaseRecords).toEqual([payloadOf(refused), payloadOf(accepted), payloadOf(seededSignature)]);
-    expect((await recordEntries(h)).map(e => [e.signature, e.state, e.attempts])).toEqual([
-      [refused, 'refused', 1],
-      [accepted, 'done', 1],
-      [seededSignature, 'done', 1],
-    ]);
+    await expect
+      .poll(async () => [h.fake.purchaseRecords, (await recordEntries(h)).map(e => [e.signature, e.state, e.attempts]), await recordAlarm(h)], {timeout: 30_000})
+      .toEqual([
+        [payloadOf(refused), payloadOf(accepted), payloadOf(seededSignature)],
+        [
+          [refused, 'refused', 1],
+          [accepted, 'done', 1],
+          [seededSignature, 'done', 1],
+        ],
+        undefined,
+      ]);
 
-    // #27: Q34 for the refused purchase (D29: the purchase stands, the service was not updated), none for the done one.
+    // #27: Q60 for the refused purchase (D29: the purchase stands; the service declined it and never will record it), no
+    // Q34 there, and no line for the done one.
     const kept = await openPurchase(h, 1);
-    await expect(kept.q34).toBeVisible({timeout: 30_000});
-    expect(await unrecorded(kept.p)).toEqual([refused]);
+    await expect(kept.q60).toBeVisible({timeout: 30_000});
+    await expect(kept.q34).toHaveCount(0);
+    expect(await unrecorded(kept.p)).toEqual([{signature: refused, state: 'refused'}]);
     await kept.p.close();
     const fine = await openPurchase(h, 0);
     await expect(fine.p.locator('.s-txd .detail-card')).toBeVisible();
-    await expect(fine.q34).toHaveCount(0);
+    await expect(fine.p.locator('.s-txd .banner.info')).toHaveCount(0);
     done(h, csp);
   } finally {
     await h.close();

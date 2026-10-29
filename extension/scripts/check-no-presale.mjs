@@ -191,6 +191,9 @@ export const MARKERS = [
   'View on Solana explorer',
   'Need a little SOL for the network fee',
   "This wallet doesn't offer the presale in your region.",
+  // B1d-2 final review: #24's legalese words in the accent (T4 M1, set apart at render), then #27's Q60 (rev 3.6).
+  'program terms',
+  'Recorded on chain; the presale service declined to record it',
 ];
 // Q42a (B1d-1a: the generic pending row, both builds); 1b adds F12's Q49–Q51. Q42b ("Transaction") is too short to
 // be a string search. The decoder's instruction names are read from its source (DECODER).

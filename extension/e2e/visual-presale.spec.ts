@@ -13,7 +13,7 @@ import {REFERRER, USDC_HOLDING, amount, buyAction, home, installPresale, install
 import {presalePurchase, sentSol, sig} from './historyFixtures';
 import {DIR} from './visualTab';
 
-declare const chrome: {storage: {local: {set(o: object): Promise<void>}}};
+declare const chrome: {storage: {local: {get(k: string): Promise<Record<string, unknown>>; set(o: object): Promise<void>}}};
 
 // B1d §6.4 (B1d-1b Task 9): every state B1d-1b built, driven through the real extension against the contained fake
 // coordinator (the presale program on its chain, /geo/check and /geo/restricted-list scripted) and saved for the
@@ -626,6 +626,14 @@ test('visual · #31 with "Refer a friend"; #24 populated, copied (24a-bis withou
     await expect(p.locator('.s-ref .code-card .code-row .code')).toHaveText(`https://noc-tura.io?ref=${ACCOUNT}`);
     await expect(p.locator('.s-ref .banner')).toHaveText('Earn NOC when friends you invite buy in the presale.');
     await expect(p.locator('.s-ref .legalese')).toHaveText('Referral payouts are subject to program terms. Self-referrals are detected and rejected.');
+    // Final review T4 M1: "program terms" in the accent as #24 draws it on all three phones — a span, not a link — the
+    // colour the browser computes for it that of EARNED's accent figure, and not the legalese's own tertiary grey.
+    const terms = p.locator('.s-ref .legalese .app-ref-terms');
+    await expect(terms).toHaveText('program terms');
+    await expect(p.locator('.s-ref .legalese a')).toHaveCount(0);
+    const colorOf = (l: Locator) => l.evaluate(e => getComputedStyle(e).color);
+    const [termsColor, accentColor, legaleseColor] = [await colorOf(terms), await colorOf(p.locator('.s-ref .stats .stat .val.acc')), await colorOf(p.locator('.s-ref .legalese'))];
+    expect([termsColor === accentColor, termsColor === legaleseColor]).toEqual([true, false]);
     const copy = p.locator('.s-ref .code-card .actions button');
     await frame(p, '24-referral', p.locator('.s-ref .code-card'), {ready: copy, bars: 0});
 
@@ -699,9 +707,13 @@ test('visual · #23a’s referral address: Q46a, Q46b, Q46c and a valid address;
     await amount(p, '0.5', nocText(tokensFor(solCents(SOL / 2n, 150), 0)));
     const field = p.getByLabel('Referral address (optional)');
     await expect(field).toHaveAttribute('placeholder', 'Solana address of the person who invited you');
-    await frame(p, '23a-referrer-empty', field, {ready: buyButton(p), end: true});
+    // Final review T7 M2: #23a's top with the field — the stage card framed, the screen at its top, the field in it.
+    await frame(p, '23a-referrer-top', p.locator('.stage-card'), {ready: buyButton(p)});
+    await expect(field).toBeInViewport();
+    // Centring the field reaches the screen's end, so its -end shot was the same image: one shot each.
+    await frame(p, '23a-referrer-empty', field, {ready: buyButton(p)});
     await referrerTyped(p, 'not-an-address', 'Not a valid Solana address');
-    await frame(p, '23a-referrer-invalid', p.locator('.app-pre-referral'), {end: true});
+    await frame(p, '23a-referrer-invalid', p.locator('.app-pre-referral'));
     await referrerTyped(p, ACCOUNT, "You can't refer yourself or another account in this wallet");
     await frame(p, '23a-referrer-self', p.locator('.app-pre-referral'));
     await referrerTyped(p, base58.encode(new Uint8Array(32).fill(55)), "This address has no presale allocation, so it can't receive a referral bonus");
@@ -782,7 +794,8 @@ test('visual · #23a when the address can no longer apply (Q48: a referrer regis
 });
 
 const Q34 = 'Recorded on chain; presale service not yet updated';
-test('visual · #26 with the "Presale" badge (the wallet’s purchase, and a site’s with two badges wrapped under its title); #27 with Q34', async () => {
+const Q60 = 'Recorded on chain; the presale service declined to record it';
+test('visual · #26 with the "Presale" badge (the wallet’s purchase, and a site’s with two badges wrapped under its title); #27 with Q34, then Q60', async () => {
   test.setTimeout(240_000);
   const h = await launchPopup('noctura-e2e-visual-presale-history-');
   const csp = await watchCsp(h.ctx);
@@ -820,6 +833,18 @@ test('visual · #26 with the "Presale" badge (the wallet’s purchase, and a sit
     await expect(p.locator('.s-txd .amount-card .eyebrow')).toHaveText('PRESALE PURCHASE', {timeout: 30_000});
     await expect(p.locator('.s-txd .banner.info')).toHaveText(Q34, {timeout: 30_000});
     await frame(p, '27-unrecorded', p.locator('.s-txd .banner.info'), {end: true, bars: 0});
+
+    // Q60 (rev 3.6): the same purchase once the route refused its record (D29) — the line says it never will be.
+    await h.sw.evaluate(async () => {
+      const key = 'v1_presale_records';
+      const stored = (await chrome.storage.local.get(key))[key] as {state: string}[];
+      await chrome.storage.local.set({[key]: stored.map(e => ({...e, state: 'refused'}))});
+    });
+    await p.getByRole('button', {name: 'Back'}).click();
+    await purchases.nth(0).click();
+    await expect(p.locator('.s-txd .amount-card .eyebrow')).toHaveText('PRESALE PURCHASE', {timeout: 30_000});
+    await expect(p.locator('.s-txd .banner.info')).toHaveText(Q60, {timeout: 30_000});
+    await frame(p, '27-declined', p.locator('.s-txd .banner.info'), {bars: 0});
     expect(h.fake.purchaseRecords).toEqual([]);
     expect(csp).toEqual([]);
     contained(h);

@@ -38,15 +38,24 @@ function Stat({label, value, sub, tone}: {label: string; value: string | null; s
 }
 
 /**
+ * The legalese as the design draws it on 24a, 24a-bis and 24b: its words "program terms" in `--accent` (final review T4
+ * M1; unlinked until B1e). Split here, at render, so text.ts keeps the sentence whole (its marker, §6.2).
+ */
+const TERMS_AT = REFER_TEXT.legalese.indexOf(REFER_TEXT.legaleseTerms);
+const LEGALESE_LEAD = REFER_TEXT.legalese.slice(0, TERMS_AT);
+const LEGALESE_TAIL = REFER_TEXT.legalese.slice(TERMS_AT + REFER_TEXT.legaleseTerms.length);
+
+/**
  * #24 referral (B1d-2, §3.5, §4.4; index.html #24 ix 10903-11233 as the app corrected it, C1): one `presale.referral` on
  * every mount, and what it answered as drawn — three stat cards (REFERRALS, EARNED from chain, REFERRED; "—" for a
  * figure whose source failed), the code card with the invite link whole in `.noc-mono` (the address is the code),
  * "Used by N people" / "Not used yet" (hidden when REFERRALS has no source), Copy and "Share invite link" — both copy the
  * link through one useCopy (C15: the popup has no share sheet): while it says `copied` the Copy icon is the checkmark and
  * the code row carries the `--accent` border (24a-bis without its toast: no clipboardWrite, no auto-clear), and the
- * share button says the state (Q38) — "Copy failed" never shows the checkmark. Then Q39's banner and the legalese. A
- * reply that failed shows "—" for every figure, no link and Q11. The design's ACTIVE card, "Recent rewards" and its
- * rows, "View all" and the toast are omitted (§9); the background decides every figure (C3).
+ * share button says the state (Q38) — "Copy failed" never shows the checkmark. Then Q39's banner and the legalese (its
+ * "program terms" in `--accent`, as drawn). A reply that failed shows "—" for every figure, no link and Q11. The
+ * design's ACTIVE card, "Recent rewards" and its rows, "View all" and the toast are omitted (§9); the background decides
+ * every figure (C3).
  */
 export function ReferFriend({onBack}: {onBack: () => void}) {
   const m = useWallet();
@@ -135,7 +144,11 @@ export function ReferFriend({onBack}: {onBack: () => void}) {
             <span className="noc-body-sm">{REFER_TEXT.banner}</span>
           </div>
         </div>
-        <p className="legalese noc-caption">{REFER_TEXT.legalese}</p>
+        <p className="legalese noc-caption">
+          {LEGALESE_LEAD}
+          <span className="app-ref-terms">{REFER_TEXT.legaleseTerms}</span>
+          {LEGALESE_TAIL}
+        </p>
       </div>
     </div>
   );
