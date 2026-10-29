@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import {act, cleanup, fireEvent, render, screen, waitFor} from '@testing-library/react';
 import {PublicKey} from '@solana/web3.js';
-import {drainInFlight, renderInWallet, setupWallet, type Wallet} from '../../__tests__/harness';
+import {renderInWallet, setupWallet, type Wallet} from '../../__tests__/harness';
 import {WalletProvider} from '../../WalletContext';
 import {Presale} from '../Presale';
 import {PresaleConfirm} from '../PresaleConfirm';
@@ -16,7 +16,7 @@ import {RECIPIENT} from '../../../background/__tests__/fixtures';
 import {ACCOUNT, allocationData, program, userData, type Chain} from '../../../background/presale/__tests__/chain';
 import {derivePresalePdas} from '../../../../../core/presale/allocation';
 import type {AccountData} from '../../../../../core/solana/rpc';
-import {purchaseViewOf, type PurchaseView} from '../client';
+import {REFERRER_LINES, purchaseViewOf, type PurchaseView} from '../client';
 import {BOUGHT_BEFORE, purchaseWorld, type PurchaseWorld} from './world';
 
 registerPresale({ext: fakeExt(), deps: fakeDeps(), handle: registerPresaleHandler, alarm: () => undefined});
@@ -56,19 +56,18 @@ const line = (): string | null => document.querySelector('.app-pre-referral .hel
 const enter = (value: string) => fireEvent.change(theField(), {target: {value}});
 const leave = () => fireEvent.blur(theField());
 const amount = (value: string) => fireEvent.change(screen.getByLabelText('YOU PAY'), {target: {value}});
-/** Every answer the background owes has landed and been rendered: the gate's release, the background's work, the screen's continuation. */
-const landed = () =>
-  act(async () => {
-    await new Promise<void>(r => setTimeout(r, 0));
-    await drainInFlight();
-    await new Promise<void>(r => setTimeout(r, 0));
-  });
-/** The rule-6 lock is 500 ms. */
-const settle = () => act(() => new Promise<void>(r => setTimeout(r, 600)));
+/** Buy enabled — the state a click needs (every check answered, nothing holding it). */
+const buyReady = () => waitFor(() => expect(buyButton()?.disabled).toBe(false));
+/** #20 opened: the prepare answered and the screen went on (no clock: the call itself, review 1 M1). */
+const preparedOnce = () => waitFor(() => expect(nav.onPrepared).toHaveBeenCalledTimes(1));
 
-/** The world, the referral address's allocation in its chain, and a gate that records every message and holds the ones `hold` names. */
+/**
+ * The world, the referral address's allocation in its chain, a gate that records every message and holds the ones `hold`
+ * names, and every message the background has answered (`answers` — what a row waits on, never the clock; review 1 M1).
+ */
 function world(o: {chain?: Partial<Chain>; referrer?: AccountData | null} = {}) {
   const asked: unknown[] = [];
+  const answers: unknown[] = [];
   const held: (() => void)[] = [];
   const hold = {type: null as string | null};
   const w = purchaseWorld({
@@ -80,7 +79,13 @@ function world(o: {chain?: Partial<Chain>; referrer?: AccountData | null} = {}) 
   });
   w.chain.set(allocationOf(R), o.referrer === undefined ? ALLOCATED : o.referrer);
   w.chain.set(allocationOf(ON_CHAIN), program(allocationData({user: ON_CHAIN})));
-  return {w, asked, held, hold};
+  w.options.answered = m => void answers.push(m);
+  return {w, asked, answers, held, hold};
+}
+/** The background has answered the `n`th message of this type, and the screen has run what follows it (one task later). */
+async function answered(x: ReturnType<typeof world>, type: string, n: number) {
+  await waitFor(() => expect(sent(x.answers, type).length).toBeGreaterThanOrEqual(n));
+  await act(() => new Promise<void>(r => setTimeout(r, 0)));
 }
 async function show23(x: ReturnType<typeof world>) {
   await renderInWallet(<Presale {...nav} />, x.w.options);
@@ -142,7 +147,9 @@ describe('#23a: the line is the background’s answer on blur (§3.5, C3, Q46 a�
     leave();
     expect(sent(x.asked, 'presale.checkReferrer')).toEqual([{type: 'presale.checkReferrer', account: ACCOUNT, referrer: 'not-an-address'}]);
     // Held: the popup has judged nothing — no line, and Buy waits for the answer.
-    await landed();
+    await waitFor(() => expect(x.held).toHaveLength(1));
+    await act(() => new Promise<void>(r => setTimeout(r, 0)));
+    expect(sent(x.answers, 'presale.checkReferrer')).toEqual([]);
     expect(line()).toBeNull();
     expect(buyButton()?.disabled).toBe(true);
     x.held.forEach(r => r());
@@ -179,8 +186,7 @@ describe('#23a: the line is the background’s answer on blur (§3.5, C3, Q46 a�
     expect(sent(x.asked, 'presale.checkReferrer')).toEqual([]);
     enter(R);
     leave();
-    await waitFor(() => expect(sent(x.asked, 'presale.checkReferrer')).toHaveLength(1));
-    await landed();
+    await answered(x, 'presale.checkReferrer', 1);
     expect(line()).toBeNull();
     expect(buyButton()?.disabled).toBe(false);
   });
@@ -223,22 +229,21 @@ describe('#23a: the line is the background’s answer on blur (§3.5, C3, Q46 a�
     leave();
     enter(ACCOUNT);
     leave();
-    await landed();
-    expect(x.held).toHaveLength(2);
+    await waitFor(() => expect(x.held).toHaveLength(2));
     const [older, newer] = x.held;
     newer?.();
     expect(await screen.findByText(Q46B)).toBeTruthy();
     older?.();
-    await landed();
+    await answered(x, 'presale.checkReferrer', 2);
     expect(line()).toBe(Q46B);
     expect(screen.queryByText(Q46A)).toBeNull();
     // An answer for text the user has since edited (no blur after the edit): dropped.
     enter('abc');
     leave();
     enter('abcd');
-    await landed();
+    await waitFor(() => expect(x.held).toHaveLength(3));
     x.held.at(-1)?.();
-    await landed();
+    await answered(x, 'presale.checkReferrer', 3);
     expect(line()).toBeNull();
     expect(buyButton()?.disabled).toBe(false);
   });
@@ -255,8 +260,9 @@ describe('#23a: what Buy sends (§3.5: refused, never dropped)', () => {
         enter(typed);
         leave();
       }
+      await buyReady();
       fireEvent.click(buyButton() as HTMLButtonElement);
-      await settle();
+      await preparedOnce();
       expect([typed, sent(x.asked, 'presale.checkReferrer')]).toEqual([typed, []]);
       expect([typed, sent(x.asked, 'presale.prepareBuy')]).toEqual([typed, [{type: 'presale.prepareBuy', account: ACCOUNT, intent: {currency: 'SOL', amount: '2000000000', stage: 0}}]]);
       const [, view] = nav.onPrepared.mock.calls[0] as [string, PurchaseView];
@@ -271,9 +277,10 @@ describe('#23a: what Buy sends (§3.5: refused, never dropped)', () => {
     await quoted();
     enter(R);
     leave();
-    await landed();
+    await answered(x, 'presale.checkReferrer', 1);
+    await buyReady();
     fireEvent.click(buyButton() as HTMLButtonElement);
-    await settle();
+    await preparedOnce();
     expect(sent(x.asked, 'presale.prepareBuy')).toEqual([{type: 'presale.prepareBuy', account: ACCOUNT, intent: {currency: 'SOL', amount: '2000000000', stage: 0, referrer: R}}]);
     expect(nav.onPrepared).toHaveBeenCalledTimes(1);
     const [, view] = nav.onPrepared.mock.calls[0] as [string, PurchaseView];
@@ -286,7 +293,8 @@ describe('#23a: what Buy sends (§3.5: refused, never dropped)', () => {
     await quoted();
     enter(R);
     leave();
-    await landed();
+    await answered(x, 'presale.checkReferrer', 1);
+    await buyReady();
     x.w.chain.set(allocationOf(ACCOUNT), program(allocationData({count: 1})));
     x.w.chain.set(derivePresalePdas(new PublicKey(ACCOUNT)).userAccount.toBase58(), program(userData()));
     const views = sent(x.asked, 'presale.view').length;
@@ -305,12 +313,51 @@ describe('#23a: what Buy sends (§3.5: refused, never dropped)', () => {
     await quoted();
     enter(R);
     leave();
-    await landed();
+    await answered(x, 'presale.checkReferrer', 1);
+    await buyReady();
     x.w.chain.set(allocationOf(R), null);
     fireEvent.click(buyButton() as HTMLButtonElement);
     expect(await screen.findByText(Q46C)).toBeTruthy();
+    // The line is prepare's answer, not a check's (review 1 M1): the prepare went, carrying the address.
+    expect(sent(x.asked, 'presale.prepareBuy')).toEqual([{type: 'presale.prepareBuy', account: ACCOUNT, intent: {currency: 'SOL', amount: '2000000000', stage: 0, referrer: R}}]);
+    expect(sent(x.asked, 'presale.checkReferrer')).toHaveLength(1);
     expect(nav.onPrepared).not.toHaveBeenCalled();
     expect([line(), buyButton()?.disabled, field()?.value]).toEqual([Q46C, true, R]);
+  });
+
+  /** R checked, its allocation then gone, Buy's prepare held; `edit` typed (no blur) while it is out; then released. */
+  async function refusedWhileHeld(edit: string | null) {
+    const x = world();
+    await show23(x);
+    await quoted();
+    enter(R);
+    leave();
+    await answered(x, 'presale.checkReferrer', 1);
+    await buyReady();
+    x.w.chain.set(allocationOf(R), null);
+    x.hold.type = 'presale.prepareBuy';
+    fireEvent.click(buyButton() as HTMLButtonElement);
+    await waitFor(() => expect(x.held).toHaveLength(1));
+    if (edit !== null) enter(edit);
+    x.held.forEach(r => r());
+    await answered(x, 'presale.prepareBuy', 1);
+    expect(sent(x.asked, 'presale.prepareBuy')).toEqual([{type: 'presale.prepareBuy', account: ACCOUNT, intent: {currency: 'SOL', amount: '2000000000', stage: 0, referrer: R}}]);
+    expect(nav.onPrepared).not.toHaveBeenCalled();
+    return x;
+  }
+
+  it('a prepare refusal for text the user has since edited is no line (a stale answer never shows, review 1 I1): edited to an address with an allocation while prepare was out — no Q46c under it', async () => {
+    const x = await refusedWhileHeld(ON_CHAIN);
+    expect([field()?.value, line()]).toEqual([ON_CHAIN, null]);
+    expect(screen.queryByText(Q46C)).toBeNull();
+    expect(theField().className).toBe('app-input noc-mono');
+    // Nothing asked about the new text until its blur.
+    expect(sent(x.asked, 'presale.checkReferrer')).toHaveLength(1);
+  });
+
+  it('the same refusal with the text unchanged while prepare was out is its line (positive control of the row above)', async () => {
+    await refusedWhileHeld(null);
+    expect([field()?.value, line(), buyButton()?.disabled]).toEqual([R, Q46C, true]);
   });
 
   it('a check that fails (the presale unreadable) says so, shows no line and holds nothing: prepare decides again', async () => {
@@ -414,6 +461,17 @@ describe('#20 ↔ #23 keep the referral address (never dropped)', () => {
     await waitFor(() => expect(confirmNav.onPresale).toHaveBeenCalledTimes(1));
     expect(confirmNav.onPresale.mock.calls[0]?.[0]).toMatchObject({code: 'referrer-no-allocation', referrer: R});
     expect(x.w.broadcasts).toEqual([]);
+  });
+
+  it('a route naming a refusal of the referral address without the address is not #23 (its line would show nowhere, review 1 M3); other refusals need none', () => {
+    const base = {currency: 'SOL', amount: '2000000000', challengeId: null} as const;
+    for (const code of REFERRER_LINES) {
+      expect([code, PRESALE_ROUTE.isRoute({screen: 'presale', again: {...base, code}})]).toEqual([code, false]);
+      expect([code, PRESALE_ROUTE.isRoute({screen: 'presale', again: {...base, code, referrer: R}})]).toEqual([code, true]);
+    }
+    expect(PRESALE_ROUTE.isRoute({screen: 'presale', again: {...base, code: 'presale-unavailable'}})).toBe(true);
+    expect(PRESALE_ROUTE.isRoute({screen: 'presale', again: {...base, code: null}})).toBe(true);
+    expect(PRESALE_ROUTE.isRoute({screen: 'presale', again: {...base, code: null, referrer: R}})).toBe(true);
   });
 
   it('#23 again with the address and its refusal: the field holds it, the line under it, Buy disabled; a route naming a non-address is not #23', async () => {

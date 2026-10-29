@@ -2,7 +2,7 @@ import type {PresaleRoute, PresaleRouteValue} from '../router';
 import {Presale} from './Presale';
 import {PresaleConfirm} from './PresaleConfirm';
 import {Geo} from './Geo';
-import {PREPARE_REFUSALS, PRESALE_CURRENCIES, type PrepareRefusal, type PresaleCurrency} from './client';
+import {PREPARE_REFUSALS, PRESALE_CURRENCIES, REFERRER_LINES, type PrepareRefusal, type PresaleCurrency} from './client';
 
 /**
  * #23 again with what the user was buying (B1d-1b Task 5): #20's back arrow and the sign-time refusals that keep the
@@ -33,6 +33,8 @@ function isAgain(x: unknown): x is PresaleAgain {
   if (typeof o.currency !== 'string' || !(PRESALE_CURRENCIES as readonly string[]).includes(o.currency)) return false;
   if (typeof o.amount !== 'string' || !AMOUNT.test(o.amount) || BigInt(o.amount) > U64_MAX) return false;
   if (o.code !== null && (typeof o.code !== 'string' || !(PREPARE_REFUSALS as readonly string[]).includes(o.code))) return false;
+  // A refusal of the referral address names the address it refused: without it the line would show nowhere.
+  if ((REFERRER_LINES as readonly unknown[]).includes(o.code) && !('referrer' in o)) return false;
   return o.challengeId === null || (typeof o.challengeId === 'string' && HEX_ID.test(o.challengeId));
 }
 

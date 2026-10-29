@@ -484,6 +484,8 @@ export function Presale({
     if (!ready || open === null || account === null || amount === null) return;
     setNotice(null);
     const asked = key;
+    // The field's text as sent (its check generation): a refusal of it is its line only while the field still holds it.
+    const referrerAsked = checkGeneration.current;
     const r = await client.prepareBuy(account, {currency, amount, stage: open.state.stage, ...(entered === '' ? {} : {referrer: entered})}, carried.current ?? undefined);
     if (!alive.current) return;
     if (r.ok) {
@@ -499,9 +501,10 @@ export function Presale({
       return;
     }
     // §3.5: the referral address refused at prepare — its line under the field, never dropped; Q48 reads the view again
-    // (the field goes).
+    // (the field goes). A refusal of text the user has since edited is no line (a stale answer never shows, as for the
+    // check's own answer): the edited text is checked on its blur, and prepare checks it again.
     if (isReferrerLine(r.error)) {
-      setReferrerLine(r.error);
+      if (checkGeneration.current === referrerAsked) setReferrerLine(r.error);
       if (r.error === 'referrer-not-applicable') void read();
       return;
     }
