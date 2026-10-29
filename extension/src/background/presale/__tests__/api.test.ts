@@ -15,7 +15,7 @@ import {ACCOUNT, CONFIG_PDA, NOW_MS, OTHER, allocationData, chainMap, chainReade
 // B1d §1.4, §2.5, §3.2 (C3, C8, C12, C30, C35): the three presale messages of B1d-1b Task 1, through the real
 // background's message handler — the partition, the strict payloads, the view in every variant with the open record
 // in each, the gate-only re-read, the quote from the last view's snapshot, the banner from the last config snapshot.
-registerPresale({ext: fakeExt(), deps: fakeDeps(), handle: registerPresaleHandler});
+registerPresale({ext: fakeExt(), deps: fakeDeps(), handle: registerPresaleHandler, alarm: () => undefined});
 
 const EXT = fakeExt();
 const ORIGIN = EXT.extensionOrigin;
@@ -113,8 +113,8 @@ const PURCHASE: PendingRecord = pendingRecord({
 const {wire: _wire, firstBroadcast: _firstBroadcast, ...PURCHASE_VIEW} = PURCHASE;
 
 describe('the partition (§1.4): the popup and the full tab only', () => {
-  it('the three types of B1d-1b Task 1, Task 2’s prepare and Task 3’s four, all privileged', () => {
-    expect(PRESALE_MESSAGE_TYPES).toEqual(['presale.view', 'presale.banner', 'presale.quote', 'presale.prepareBuy', 'presale.pending', 'presale.preparedFor', 'presale.buy', 'presale.discardPrepared']);
+  it('the three types of B1d-1b Task 1, Task 2’s prepare, Task 3’s four and B1d-2’s presale.unrecorded, all privileged', () => {
+    expect(PRESALE_MESSAGE_TYPES).toEqual(['presale.view', 'presale.banner', 'presale.quote', 'presale.prepareBuy', 'presale.pending', 'presale.preparedFor', 'presale.buy', 'presale.discardPrepared', 'presale.unrecorded']);
   });
 
   it('answered from the popup and from the full tab (positive control)', async () => {

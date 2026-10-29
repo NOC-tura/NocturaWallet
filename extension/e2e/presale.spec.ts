@@ -157,6 +157,9 @@ test('1 · SOL purchase end to end: #11 Buy → #23a → amount → #20 (rows, t
     await expect(tab.locator('.top-bar .title')).toHaveText('Purchased');
     await expect(tab.locator('.top-bar .status-pill')).toHaveText('Presale');
     expect(h.fake.broadcasts).toHaveLength(1);
+    // B1d-2 (§2.4, D28): the confirmed purchase is recorded with the coordinator, once, with the whole payload.
+    await expect.poll(() => h.fake.purchaseRecords.length).toBe(1);
+    expect(h.fake.purchaseRecords).toEqual([{txHash: h.fake.broadcasts[0], buyerAddress: ACCOUNT, paymentToken: 'SOL', paymentAmount: expect.stringMatching(/^\d+(\.\d+)?$/), nocAmount: expect.any(Number), usdValue: 75, stage: 1}]);
     // #26 now lists the landed purchase from the chain; #23 shows the allocation (D5: claimable after TGE).
     // The payer paid the amount, the two PDAs' rent and the network fee #20 showed — exactly, as the program takes them.
     const network = (await msg(tab, {type: 'wallet.pending'})).data as {fee: {networkLamports: string}}[];

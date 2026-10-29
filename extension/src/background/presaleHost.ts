@@ -12,10 +12,12 @@ export type PresaleHandler = (ext: Ext, deps: WalletDeps, msg: Readonly<Record<s
  * B1d §1.1: what the background hands its presale entry module at start-up (`registerPresale`, called once by
  * index.ts) — the entry `presale/api.ts` in the presale build, its stub `src/presale-off/background.ts` in the build
  * without it. Types only: both import it, and neither imports the other. `handle` registers one handler per type of
- * `PRESALE_MESSAGE_TYPES` (messages.ts's `registerPresaleHandler`).
+ * `PRESALE_MESSAGE_TYPES` (messages.ts's `registerPresaleHandler`); `alarm` (B1d-2) one run per alarm name the entry
+ * arms itself, which index.ts calls when that alarm fires.
  */
 export interface PresaleHost {
   ext: Ext;
   deps: WalletDeps;
   handle(type: string, handler: PresaleHandler): void;
+  alarm(name: string, run: () => Promise<void>): void;
 }

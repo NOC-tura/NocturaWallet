@@ -32,6 +32,7 @@ const PRICES = 'https://api.noc-tura.io/api/v1/wallet/prices';
 const STATS = 'https://api.noc-tura.io/api/v1/stats';
 const GEO_CHECK = 'https://api.noc-tura.io/api/v1/geo/check';
 const GEO_LIST = 'https://api.noc-tura.io/api/v1/geo/restricted-list';
+const PURCHASE_RECORD = 'https://api.noc-tura.io/api/v1/solana/purchase';
 /** rpcResult's answer for a method it does not implement (listed in `unexpected` too). */
 const METHOD_NOT_FOUND: unique symbol = Symbol('method not found');
 const SYSTEM_PROGRAM = '11111111111111111111111111111111';
@@ -110,6 +111,8 @@ export interface FakeCoordinator {
   geo: FakeGeo;
   /** B1d-1b Task 9: SOL's dollar price /wallet/prices answers — null leaves `solana` out of the answer (#23's Q19). */
   marketSolUsd: number | null;
+  /** B1d-2 (spec §2.4): each body POSTed to /solana/purchase, in order — answered as the deployed route (P2a) accepts one. */
+  purchaseRecords: unknown[];
   /**
    * Holds every answer until the returned function is called — how a visual spec keeps a loading
    * state (#40's, #8's "Checking…") on screen deterministically while it is asserted and shot.
@@ -309,6 +312,7 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
     presale: {accounts: new Map(), solUsd: 150, read: 'ok', wrongDestination: false, simulated: [], landed: []},
     geo: {check: {countryCode: 'SI', isVpn: false}, list: restrictedList(), checks: 0, lists: 0},
     marketSolUsd: 150,
+    purchaseRecords: [],
     hold: () => {
       let release: () => void = () => undefined;
       held = new Promise<void>(r => (release = r));
@@ -761,6 +765,11 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
     if (url === GEO_LIST && req.method() === 'GET') {
       fake.geo.lists += 1;
       return json(route, 200, fake.geo.list);
+    }
+    if (url === PURCHASE_RECORD && req.method() === 'POST') {
+      // B1d §2.4: the purchase's coordinator record, after it confirmed. The route's own answer (coordinator 9e7d468).
+      fake.purchaseRecords.push(JSON.parse(req.postData() ?? 'null'));
+      return json(route, 200, {success: true, verified: true, duplicate: false, data: null});
     }
     if (url === STATS && req.method() === 'GET') {
       // The presale stage, for NOC's value in the dollar re-auth rule (owner decision B).

@@ -6,16 +6,17 @@ import {PREPARED_TTL_MS, SEND_INTENT, parseIntent, peekPrepared, preparedFor, pr
 import {sendPrepared} from '../send';
 import {challengeInfo, challengeSatisfied, issueChallenge, rebaseKindChallenge, satisfyChallenge} from '../reauthChallenges';
 import {PREPARED_KEY, REAUTH_KEY, clearSession} from '../session';
-import {PENDING_KEY, markDue, readPending} from '../pendingStore';
+import {PENDING_KEY, markDue, readPending, type PendingRecord} from '../pendingStore';
 import {pollOnce, recordDappSend} from '../pending';
-import {KNOWN_RECIPIENTS_KEY} from '../knownRecipients';
+import {KNOWN_RECIPIENTS_KEY, knownRecipients} from '../knownRecipients';
+import {VAULT_KEY} from '../accountsStore';
 import {handleWallet} from '../walletApi';
 import {randomId} from '../digest';
 import {SendRefused, type SendIntent} from '../sendTypes';
 import {WALLET_TOKENS} from '../../../../core/solana/balances';
 import {registerPresale} from '../presale/api';
 import {firstSignature} from '../../../../core/solana/broadcast';
-import {fakeDeps} from './fakeDeps';
+import {fakeDeps, fakeReader} from './fakeDeps';
 import {fakeExt} from './fakeExt';
 import {ACCOUNT, RECIPIENT, SETTINGS_ABOUT, pendingRecord, sendReader, signedWire, unlocked} from './fixtures';
 
@@ -108,7 +109,7 @@ describe('the intent-kind registry (B1d §1.3, C19)', () => {
   it(`send is registered by prepare.ts itself; ${off ? 'no other kind in the build without presale' : 'presale-buy when the presale entry module loads (B1d-1b Task 2)'}; registerPresale adds none`, () => {
     expect(intentKind(SEND_KIND)).toBe(SEND_INTENT);
     const before = registeredKinds();
-    registerPresale({ext: fakeExt(), deps: fakeDeps(), handle: () => undefined});
+    registerPresale({ext: fakeExt(), deps: fakeDeps(), handle: () => undefined, alarm: () => undefined});
     expect(registeredKinds()).toEqual(before);
     // This file's own kinds are named test-…; besides them, send and — with presale — the purchase.
     expect(before.filter(k => !k.startsWith('test-'))).toEqual(off ? ['send'] : ['send', 'presale-buy']);
@@ -476,5 +477,107 @@ describe('one in-flight transaction per account, a purchase included (C10)', () 
     await expect(sendPrepared(ext, deps, second.id, TEST_BUY.kind)).rejects.toMatchObject({code: 'in-flight'});
     await expect(prepareSend(ext, deps, ACCOUNT.publicKey, INTENT)).rejects.toMatchObject({code: 'in-flight'});
     expect(deps.broadcasts).toHaveLength(1);
+  });
+});
+
+/** B1d §1.3: a kind with a hook — what it was called with, in order; `hookFails` makes it throw. */
+const hooked: {record: PendingRecord; host: KindHost}[] = [];
+const hookControl = {fails: false};
+registerIntentKind<TestIntent>({
+  ...TEST_BUY,
+  kind: 'test-hook',
+  onConfirmed: async (host, record) => {
+    hooked.push({record, host});
+    if (hookControl.fails) throw new Error('the hook failed');
+  },
+});
+
+describe('onConfirmed (B1d §1.3): the poller calls a kind’s hook once, when the record first reaches confirmed', () => {
+  const ENVELOPE = {v: 1, scheme: 'slip10', accounts: [{index: 0, name: 'Account 1', publicKey: ACCOUNT.publicKey}]};
+  const own = (over: Partial<PendingRecord> = {}): PendingRecord =>
+    pendingRecord({id: 'hook', account: ACCOUNT.publicKey, signature: 'sig-hook', intent: null, fee: {networkLamports: '5050', markupLamports: '0'}, extra: {kind: 'test-hook', data: {amount: '1'}}, ...over});
+  const statuses = (s: {err: unknown; confirmationStatus: 'processed' | 'confirmed' | 'finalized'} | null) => fakeReader({getSignatureStatuses: async sigs => sigs.map(() => s), getBlockHeight: async () => 900});
+  const CONFIRMED = {err: null, confirmationStatus: 'confirmed' as const};
+  async function world(records: PendingRecord[], envelope: unknown = ENVELOPE) {
+    const ext = fakeExt();
+    if (envelope !== null) await ext.local.set(VAULT_KEY, envelope);
+    await ext.local.set(PENDING_KEY, records);
+    return ext;
+  }
+  beforeEach(() => {
+    hooked.length = 0;
+    hookControl.fails = false;
+  });
+
+  it('confirmed: called once, with the confirmed record and the poller’s own ext and deps — a second round calls nothing (positive control)', async () => {
+    const ext = await world([own()]);
+    const deps = fakeDeps({reader: statuses(CONFIRMED)});
+    expect(await pollOnce(ext, deps)).toBe(false);
+    expect(hooked).toEqual([{record: {...own(), state: 'confirmed'}, host: {ext, deps}}]);
+    expect(hooked[0]?.host.ext).toBe(ext);
+    expect(hooked[0]?.host.deps).toBe(deps);
+    await pollOnce(ext, deps);
+    expect(hooked).toHaveLength(1);
+  });
+
+  it('confirmed past its expiry through the full-history check: called too', async () => {
+    const ext = await world([own({lastValidBlockHeight: 100})]);
+    let call = 0;
+    const deps = fakeDeps({reader: fakeReader({getSignatureStatuses: async sigs => sigs.map(() => (call++ === 0 ? null : CONFIRMED)), getBlockHeight: async () => 900})});
+    await pollOnce(ext, deps);
+    expect(hooked.map(h => [h.record.signature, h.record.state])).toEqual([['sig-hook', 'confirmed']]);
+  });
+
+  it('not landed, processed only, landed with an error or expired: never called', async () => {
+    for (const s of [null, {err: null, confirmationStatus: 'processed' as const}, {err: {InstructionError: [2, {Custom: 1}]}, confirmationStatus: 'confirmed' as const}]) {
+      const ext = await world([own()]);
+      await pollOnce(ext, fakeDeps({reader: statuses(s)}));
+    }
+    const expiring = await world([own({lastValidBlockHeight: 100, expiryNullSeenAt: 0})]);
+    const deps = fakeDeps({reader: statuses(null)});
+    deps.clock.t = 10_000;
+    await pollOnce(expiring, deps);
+    expect((await readPending(expiring))[0]?.state).toBe('expired');
+    expect(hooked).toEqual([]);
+  });
+
+  it('only for its own kind: a kind without a hook, a send and a dApp record confirm with no call; beside them the hooked one is called once', async () => {
+    const noHook = own({id: 'plain', signature: 'sig-plain', extra: {kind: 'test-buy', data: {amount: '1'}}});
+    const unregistered = own({id: 'gone', signature: 'sig-gone', extra: {kind: 'no-such-kind', data: null}});
+    const send = pendingRecord({id: 'send', account: ACCOUNT.publicKey, signature: 'sig-send', intent: {token: 'SOL', recipient: RECIPIENT, amount: '1'}});
+    const dapp = pendingRecord({id: 'dapp', account: ACCOUNT.publicKey, signature: 'sig-dapp', intent: null, origin: 'https://jup.ag'});
+    const ext = await world([noHook, unregistered, send, dapp, own()]);
+    expect(await pollOnce(ext, fakeDeps({reader: statuses(CONFIRMED)}))).toBe(false);
+    expect((await readPending(ext)).map(r => r.state)).toEqual(['confirmed', 'confirmed', 'confirmed', 'confirmed', 'confirmed']);
+    expect(hooked.map(h => h.record.id)).toEqual(['hook']);
+  });
+
+  it('only for an account of the wallet stored now (as known recipients, review M1): no wallet, or another wallet — no call', async () => {
+    for (const envelope of [null, {...ENVELOPE, accounts: [{index: 0, name: 'Other', publicKey: RECIPIENT}]}]) {
+      const ext = await world([own()], envelope);
+      await pollOnce(ext, fakeDeps({reader: statuses(CONFIRMED)}));
+      expect((await readPending(ext))[0]?.state).toBe('confirmed');
+    }
+    expect(hooked).toEqual([]);
+  });
+
+  it('a hook that throws changes nothing the poller does: the record confirmed, a send beside it still makes its recipient known, a warning', async () => {
+    hookControl.fails = true;
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const send = pendingRecord({id: 'send', account: ACCOUNT.publicKey, signature: 'sig-send', intent: {token: 'SOL', recipient: RECIPIENT, amount: '1'}});
+    const ext = await world([own(), send]);
+    expect(await pollOnce(ext, fakeDeps({reader: statuses(CONFIRMED)}))).toBe(false);
+    expect((await readPending(ext)).map(r => r.state)).toEqual(['confirmed', 'confirmed']);
+    expect([...(await knownRecipients(ext))]).toEqual([RECIPIENT]);
+    expect(hooked).toHaveLength(1);
+    expect(warn).toHaveBeenCalledWith('a confirmed record’s hook failed', expect.any(Error));
+    warn.mockRestore();
+  });
+
+  it('two rounds racing (the 30 s alarm beside the loop) see it confirmed once: one call', async () => {
+    const ext = await world([own()]);
+    const deps = fakeDeps({reader: statuses(CONFIRMED)});
+    await Promise.all([pollOnce(ext, deps), pollOnce(ext, deps)]);
+    expect(hooked).toHaveLength(1);
   });
 });

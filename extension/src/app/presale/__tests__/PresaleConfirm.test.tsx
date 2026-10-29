@@ -17,7 +17,7 @@ import {ACCOUNT, TREASURY_ADDRESS, USDC_VAULT, allocationData, configData, progr
 import {firstSignature} from '../../../../../core/solana/broadcast';
 import {BOUGHT_BEFORE, preparePurchase, purchaseWorld, type PurchaseWorld} from './world';
 
-registerPresale({ext: fakeExt(), deps: fakeDeps(), handle: registerPresaleHandler});
+registerPresale({ext: fakeExt(), deps: fakeDeps(), handle: registerPresaleHandler, alarm: () => undefined});
 
 // B1d §4.2 (C25, C29, C33, D38, rule 6): #20's purchase variant against the REAL background — the purchase prepared by
 // presale.prepareBuy over chain.ts's program state and the honest simulation, signed by presale.buy through the shared

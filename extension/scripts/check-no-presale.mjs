@@ -31,7 +31,7 @@ export const WEB_ALLOWED = ['../web/src/ui/', '../web/src/styles/'];
 // (§2.1); 1b adds presale/quote.ts (Task 1), presale/buy.ts (Task 2), #23's popup modules (Task 4), #20's purchase
 // variant with the record slot (Task 5), #50b (Task 6) and core/presale/{buyInstructions,referrer}.ts — the purchase's
 // builder and its referrer allocation, in the on build's module map since Tasks 1–2 (Task 8); B1d-2 adds
-// presale/{record,referral}.ts and core/referral/index.ts.
+// presale/record.ts (Task 1), presale/referral.ts and core/referral/index.ts.
 export const ON_BUILD = [
   'src/background/presale/api.ts',
   'src/app/presale/index.ts',
@@ -50,10 +50,12 @@ export const ON_BUILD = [
   'src/app/presale/Geo.tsx',
   'core/presale/buyInstructions.ts',
   'core/presale/referrer.ts',
+  'src/background/presale/record.ts',
 ];
 // The intent-kind registry (C19 — both builds sign and read through it); the jurisdiction gate and its fetcher (D15:
-// the off build did not lose the gate); the country's name #48's F12 banner shows (B1d-1b Task 7, §3.6).
-export const BOTH_BUILDS = ['src/background/intents.ts', 'src/background/geo/gate.ts', 'core/geo/fetch.ts', 'src/app/ui/regionName.ts'];
+// the off build did not lose the gate); the country's name #48's F12 banner shows (B1d-1b Task 7, §3.6); the presale
+// records' key and lock (B1d-2 Task 1: a delete wipes them in both builds).
+export const BOTH_BUILDS = ['src/background/intents.ts', 'src/background/geo/gate.ts', 'core/geo/fetch.ts', 'src/app/ui/regionName.ts', 'src/background/presaleRecordsKey.ts'];
 // Armed by B1d-1b (1a shipped none — Q42 is "both"): Task 1's three presale message types (§6.2: "every presale.*
 // message type"), Task 2's prepare and the purchase's intent kind, Task 3's four sign and resume types, Task 4's #23
 // copy (§6.2's named strings and the §10 rows #23 shows whose source is new / approved and whose build is on — each
@@ -140,10 +142,14 @@ export const MARKERS = [
   'The restricted-region list is out of date.',
   'Your region could not be determined from your IP.',
   'The region check is unavailable — try again later.',
+  // B1d-2 Task 1: the record's message type and its alarm's name.
+  'presale.unrecorded',
+  'presale-record',
 ];
 // Q42a (B1d-1a: the generic pending row, both builds); 1b adds F12's Q49–Q51. Q42b ("Transaction") is too short to
 // be a string search. The decoder's instruction names are read from its source (DECODER).
-// B1d-1b Task 7: #48's F12 copy, Q49–Q51 (§6.2 item 3 — "both"; Q50a's literal part before its country).
+// B1d-1b Task 7: #48's F12 copy, Q49–Q51 (§6.2 item 3 — "both"; Q50a's literal part before its country). B1d-2 Task 1:
+// the presale records' key — a delete in the build without presale still wipes them (accountsStore's WALLET_DATA_KEYS).
 export const MUST_STAY = [
   'Presale purchase',
   'PRESALE PURCHASE',
@@ -153,6 +159,7 @@ export const MUST_STAY = [
   "This transaction buys NOC in the presale, which this wallet doesn't allow from your region (",
   "This transaction buys NOC in the presale. The wallet's region check did not succeed, so it can't be approved — try again later.",
   'Only Reject is available · no override',
+  'v1_presale_records',
 ];
 
 const MIN_MARKER = 8;

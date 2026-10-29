@@ -11,6 +11,7 @@ import {usdMicros} from '../reauthPolicy';
 import {readPresaleConfig, readPresaleState, type PresaleSnapshot, type PresaleState, type StageFacts, type UnavailableCode} from './state';
 import {PRESALE_CURRENCIES, quote, type PresaleBalances, type PresaleCurrency, type QuoteLine} from './quote';
 import {PRESALE_BUY_KIND, PurchaseRefused, gateAnswer, parsePurchaseIntent, preparePurchase, purchasePreparedFor} from './buy';
+import {PRESALE_RECORD_ALARM, unrecordedFor, wakePresaleRecords} from './record';
 import {CHALLENGE_ID} from '../reauthChallenges';
 import {SendRefused} from '../sendTypes';
 import {MAINNET_USDC_MINT, MAINNET_USDT_MINT} from '../../../../core/presale/addresses';
@@ -32,6 +33,7 @@ export const PRESALE_MESSAGE_TYPES: readonly string[] = [
   'presale.preparedFor',
   'presale.buy',
   'presale.discardPrepared',
+  'presale.unrecorded',
 ];
 
 /** `presale.quote` answers from the last view's snapshot of the account at most this old (§1.4). */
@@ -354,6 +356,12 @@ async function discardMessage(ext: Ext, _deps: WalletDeps, msg: Readonly<Record<
   return {ok: true};
 }
 
+/** presale.unrecorded {account} (§1.4, §4.6, D29): the signatures #27 shows Q34 for — this account's records not accepted; no network. */
+async function unrecordedMessage(ext: Ext, _deps: WalletDeps, msg: Readonly<Record<string, unknown>>): Promise<Result> {
+  const a = await accountOnly(ext, msg);
+  return 'answer' in a ? a.answer : {ok: true, data: await unrecordedFor(ext, a.account)};
+}
+
 /** A handler's unexpected failure (a storage error) is `failed`, never a thrown error across the message boundary. */
 const guarded =
   (h: (ext: Ext, deps: WalletDeps, msg: Readonly<Record<string, unknown>>) => Promise<Result>) =>
@@ -374,4 +382,9 @@ export function registerPresale(host: PresaleHost): void {
   host.handle('presale.preparedFor', guarded(preparedForMessage));
   host.handle('presale.buy', guarded(buyMessage));
   host.handle('presale.discardPrepared', guarded(discardMessage));
+  host.handle('presale.unrecorded', guarded(unrecordedMessage));
+  // §2.4: the record's retry wakes on its alarm, and resumes at every start (a worker stopped between two slots, or
+  // between a purchase's confirmation and its entry — reconciled first).
+  host.alarm(PRESALE_RECORD_ALARM, () => wakePresaleRecords(host.ext, host.deps));
+  void wakePresaleRecords(host.ext, host.deps).catch(e => console.warn('presale records not reconciled at start', e));
 }

@@ -17,6 +17,7 @@ import {tokenAccountInfo} from '../dapp/tokenState';
 import {readPresaleStateAt, referrerAllocationOf, type PresaleSnapshot, type PresaleState} from './state';
 import {PRESALE_CURRENCIES, PRESALE_FEE_BOUND_LAMPORTS, quote, type BalanceCode, type PresaleBalances, type PresaleCurrency} from './quote';
 import {PRESALE_ALLOCATION_LAYOUT, USER_ACCOUNT_LAYOUT} from './layouts';
+import {recordConfirmedPurchase} from './record';
 import {
   MAINNET_PROGRAM_ID,
   MAINNET_SOL_TREASURY,
@@ -361,7 +362,8 @@ function purchasePendingData(entry: PreparedEntry, intent: PurchaseIntent): Purc
 
 /**
  * B1d §1.3 (C19, D17): the purchase kind, registered when this module loads — only the presale entry module imports it,
- * so the build without presale has no such kind. It is signed only through presale.buy, which names it.
+ * so the build without presale has no such kind. It is signed only through presale.buy, which names it; once confirmed,
+ * it is recorded with the coordinator (B1d-2, §2.4: record.ts).
  */
 export const PRESALE_BUY_INTENT: IntentKind<PurchaseIntent> = {
   kind: PRESALE_BUY_KIND,
@@ -371,6 +373,7 @@ export const PRESALE_BUY_INTENT: IntentKind<PurchaseIntent> = {
   pendingData: purchasePendingData,
   isAbout: isPurchaseAbout,
   rebaseAbout: rebasePurchaseAbout,
+  onConfirmed: recordConfirmedPurchase,
 };
 registerIntentKind(PRESALE_BUY_INTENT);
 

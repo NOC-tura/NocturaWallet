@@ -16,7 +16,7 @@ import {ACCOUNT} from '../../../background/presale/__tests__/chain';
 import {COUNTERPARTY} from '../../../../e2e/historyFixtures';
 import {BOUGHT_BEFORE, preparePurchase, purchaseWorld, type PurchaseWorld} from './world';
 
-registerPresale({ext: fakeExt(), deps: fakeDeps(), handle: registerPresaleHandler});
+registerPresale({ext: fakeExt(), deps: fakeDeps(), handle: registerPresaleHandler, alarm: () => undefined});
 
 // B1d §4.2 "Resume paths" (review M5; Task 3's ruling moved the popup half here): a purchase whose #10 was proven with
 // the popup closed resumes — the popup's hook (App.tsx) asks presale.preparedFor when wallet.preparedFor holds nothing,

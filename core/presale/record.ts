@@ -4,7 +4,8 @@ export interface PresalePurchaseRecord {
   txHash: string;
   buyerAddress: string;
   paymentToken: 'SOL' | 'USDC' | 'USDT';
-  paymentAmount: number;
+  /** A number (web and the app), or a decimal string in display units (the extension, B1d §2.4); the route stores either. */
+  paymentAmount: number | string;
   nocAmount: number;
   usdValue: number;
   stage: number;

@@ -13,7 +13,7 @@ import {base64} from '@scure/base';
 import {ACCOUNT, NOW_MS, TREASURY_ADDRESS, chainMap, chainReader, configData, program, type Chain} from '../../../background/presale/__tests__/chain';
 import {MAINNET_USDC_MINT} from '../../../../../core/presale/addresses';
 
-registerPresale({ext: fakeExt(), deps: fakeDeps(), handle: registerPresaleHandler});
+registerPresale({ext: fakeExt(), deps: fakeDeps(), handle: registerPresaleHandler, alarm: () => undefined});
 
 // B1d §1.4, §2.5, §3.2, §3.3 (C3): the popup's presale client — its shape checks on the REAL background's answers
 // (positive controls), and every way a reply can be of another shape (failed, never shown).

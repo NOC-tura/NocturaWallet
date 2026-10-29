@@ -1,8 +1,8 @@
-import {BROADCAST_TIMEOUT_MS, FORBIDDEN_UNTIL_KEY, REQUEST_TIMEOUT_MS, RequestTimedOut, browserDeps, createJsonGetter, stagePriceFrom, timedFetch} from '../deps';
+import {BROADCAST_TIMEOUT_MS, FORBIDDEN_UNTIL_KEY, REQUEST_TIMEOUT_MS, RequestTimedOut, browserDeps, createJsonGetter, createJsonPoster, stagePriceFrom, timedFetch} from '../deps';
 import {submitSigned} from '../pending';
 import {PENDING_KEY} from '../pendingStore';
 import {fakeDeps} from './fakeDeps';
-import {FORBIDDEN_COOLDOWN_MS, RpcCoolingDown, RpcForbidden, createForbiddenLatch, createRpc, type FetchInit} from '../../../../core/solana/rpc';
+import {FORBIDDEN_COOLDOWN_MS, RequestUnreachable, RpcCoolingDown, RpcForbidden, createForbiddenLatch, createRpc, type FetchInit} from '../../../../core/solana/rpc';
 import {fakeExt} from './fakeExt';
 import {ACCOUNT, RECIPIENT, signedWire} from './fixtures';
 
@@ -22,6 +22,47 @@ describe('createJsonGetter', () => {
     const rpc = createRpc({fetch, latch});
     await expect(get.get('/wallet/prices')).rejects.toBeInstanceOf(RpcForbidden);
     await expect(rpc.call('getBlockHeight', [])).rejects.toBeInstanceOf(RpcForbidden);
+    expect(requests).toBe(1);
+  });
+});
+
+// B1d §2.4: the record's POST — generic, beside the getter, through the same latch; every status answered with its body.
+describe('createJsonPoster', () => {
+  it('POSTs the JSON body to API_BASE + path without credentials, and answers each status with its body (positive control)', async () => {
+    for (const [status, body] of [[200, {success: true, verified: false}], [400, {success: false, error: 'Transaction failed on-chain'}], [429, {error: 'Too many purchase attempts, please wait'}], [500, {success: false, error: 'boom'}]] as const) {
+      const calls: {url: string; init: FetchInit}[] = [];
+      const post = createJsonPoster(async (url, init) => (calls.push({url, init}), {status, json: async () => body}), createForbiddenLatch());
+      expect(await post.post('/solana/purchase', {txHash: 'x', nocAmount: 1.5, paymentAmount: '0.25'})).toEqual({status, body});
+      expect(calls).toEqual([
+        {
+          url: 'https://api.noc-tura.io/api/v1/solana/purchase',
+          init: {method: 'POST', headers: {'content-type': 'application/json'}, body: '{"txHash":"x","nocAmount":1.5,"paymentAmount":"0.25"}', credentials: 'omit'},
+        },
+      ]);
+    }
+  });
+
+  it('a body that is not JSON (a proxy’s page) is answered as null with its status — never thrown away', async () => {
+    const post = createJsonPoster(async () => ({status: 502, json: async () => Promise.reject(new SyntaxError('Unexpected token <'))}), createForbiddenLatch());
+    expect(await post.post('/solana/purchase', {})).toEqual({status: 502, body: null});
+  });
+
+  it('a body that never arrives is no answer (RequestUnreachable), not a null body', async () => {
+    const post = createJsonPoster(async url => ({status: 200, json: async () => Promise.reject(new RequestTimedOut(url, REQUEST_TIMEOUT_MS))}), createForbiddenLatch());
+    await expect(post.post('/solana/purchase', {})).rejects.toBeInstanceOf(RequestTimedOut);
+    const refused = createJsonPoster(async url => Promise.reject(new RequestUnreachable(url, 'offline')), createForbiddenLatch());
+    await expect(refused.post('/solana/purchase', {})).rejects.toBeInstanceOf(RequestUnreachable);
+  });
+
+  it('a 403 trips the one latch the getter and the RPC share: RpcForbidden, then nothing is sent anywhere during the cool-down', async () => {
+    let requests = 0;
+    const fetch = async () => (requests++, {status: 403, json: async () => null});
+    const latch = createForbiddenLatch();
+    const post = createJsonPoster(fetch, latch);
+    await expect(post.post('/solana/purchase', {})).rejects.toBeInstanceOf(RpcForbidden);
+    await expect(post.post('/solana/purchase', {})).rejects.toBeInstanceOf(RpcCoolingDown);
+    await expect(createJsonGetter(fetch, latch).get('/stats')).rejects.toBeInstanceOf(RpcCoolingDown);
+    await expect(createRpc({fetch, latch}).call('getBlockHeight', [])).rejects.toBeInstanceOf(RpcCoolingDown);
     expect(requests).toBe(1);
   });
 });
@@ -52,6 +93,18 @@ describe('browserDeps (review M3: the cool-down survives a restarted worker)', (
     await expect(deps.reader.getBlockHeight()).rejects.toBeInstanceOf(RpcCoolingDown);
     await expect(deps.broadcast(signedWire())).rejects.toBeInstanceOf(RpcCoolingDown);
     expect(urls).toEqual(['https://api.noc-tura.io/api/v1/wallet/prices?ids=solana,usd-coin,tether']);
+  });
+
+  it('postJson goes through the same latch: a 403 on the record route silences the RPC; the RPC’s 403 silences the record route', async () => {
+    const urls: string[] = [];
+    vi.stubGlobal('fetch', async (url: string) => (urls.push(url), {status: 403, json: async () => null}));
+    const deps = browserDeps(fakeExt());
+    await expect(deps.postJson('/solana/purchase', {})).rejects.toBeInstanceOf(RpcForbidden);
+    await expect(deps.reader.getBlockHeight()).rejects.toBeInstanceOf(RpcCoolingDown);
+    const other = browserDeps(fakeExt());
+    await expect(other.reader.getBlockHeight()).rejects.toBeInstanceOf(RpcForbidden);
+    await expect(other.postJson('/solana/purchase', {})).rejects.toBeInstanceOf(RpcCoolingDown);
+    expect(urls).toEqual(['https://api.noc-tura.io/api/v1/solana/purchase', 'https://api.noc-tura.io/api/v1/rpc']);
   });
 
   it('reads the NOC stage price from /stats (owner decision B)', async () => {
@@ -167,6 +220,42 @@ describe('browserDeps request timeouts (CrowdSec answers some users with silence
     );
     await vi.advanceTimersByTimeAsync(REQUEST_TIMEOUT_MS);
     expect(await settled).toBeInstanceOf(RequestTimedOut);
+  });
+
+  it('the record’s POST times out the same way, and is aborted', async () => {
+    vi.useFakeTimers();
+    const f = silentThenAnswering();
+    const settled = browserDeps(fakeExt())
+      .postJson('/solana/purchase', {txHash: 'x'})
+      .then(
+        () => 'resolved',
+        (e: unknown) => e,
+      );
+    await vi.advanceTimersByTimeAsync(REQUEST_TIMEOUT_MS);
+    expect(await settled).toBeInstanceOf(RequestTimedOut);
+    expect(f.signals[0]?.aborted).toBe(true);
+    expect(f.bodies).toEqual(['{"txHash":"x"}']);
+  });
+
+  // Review 1 I2 (rev 2), measured: why the record worker POSTs nothing while a transaction of the wallet is open (record.ts).
+  it('a record POST that never answers holds the reads queued behind it — the RPC (#21’s poller, #11’s balances) and the JSON reads (#23’s /stats) — for its whole REQUEST_TIMEOUT_MS', async () => {
+    vi.useFakeTimers();
+    const f = silentThenAnswering();
+    const deps = browserDeps(fakeExt());
+    const posted = deps.postJson('/solana/purchase', {txHash: 'x'}).then(
+      () => 'resolved',
+      (e: unknown) => e,
+    );
+    const answered: string[] = [];
+    const read = deps.reader.getBlockHeight().then(h => (answered.push('rpc'), h));
+    const json = deps.stagePrice().then(() => void answered.push('json'));
+    await vi.advanceTimersByTimeAsync(REQUEST_TIMEOUT_MS - 1);
+    expect([f.calls(), answered]).toEqual([1, []]);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(await posted).toBeInstanceOf(RequestTimedOut);
+    expect(await read).toBe(77);
+    await json;
+    expect([f.calls(), answered]).toEqual([3, ['rpc', 'json']]);
   });
 
   it('a silent broadcast gets BROADCAST_TIMEOUT_MS, and a timed-out first broadcast leaves the record pending, not failed', async () => {

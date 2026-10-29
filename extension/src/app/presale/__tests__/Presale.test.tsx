@@ -22,7 +22,7 @@ import {RpcForbidden, type AccountData, type TokenAccountEntry} from '../../../.
 import type {Prices} from '../../../../../core/portfolio/value';
 import type {PurchaseView} from '../client';
 
-registerPresale({ext: fakeExt(), deps: fakeDeps(), handle: registerPresaleHandler});
+registerPresale({ext: fakeExt(), deps: fakeDeps(), handle: registerPresaleHandler, alarm: () => undefined});
 
 // B1d §4.1 (C3, C8, C17, C18, C30, C35, D5): #23 against the REAL background — handleMessage with the presale handlers,
 // the program state from chain.ts's byte builders, the gate and the prices as deps — rendered in happy-dom. Every

@@ -26,7 +26,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const FIXTURE = JSON.parse(readFileSync(join(ROOT, 'scripts/__tests__/fixtures/app.modules.0b79442.json'), 'utf8'));
 const map = ids => ({chunks: {'background.js': ids}});
 const without = (m, id) => ({...m, chunks: Object.fromEntries(Object.entries(m.chunks).map(([f, ids]) => [f, ids.filter(i => i !== id)]))});
-const SHARED = ['src/background/index.ts', 'src/background/intents.ts', 'src/background/geo/gate.ts', '../core/geo/fetch.ts', 'src/app/ui/regionName.ts', '../core/presale/addresses.ts', '../core/presale/allocation.ts', '../core/presale/stagePrices.ts', '../core/solana/encoding.ts'];
+const SHARED = ['src/background/index.ts', 'src/background/intents.ts', 'src/background/geo/gate.ts', '../core/geo/fetch.ts', 'src/app/ui/regionName.ts', 'src/background/presaleRecordsKey.ts', '../core/presale/addresses.ts', '../core/presale/allocation.ts', '../core/presale/stagePrices.ts', '../core/solana/encoding.ts'];
 
 // B1d §6.2 item 1 (C38, D15): the off build's module rule — an allowlist for core/presale/**, core/geo/** whole.
 describe('the off-build module rule', () => {
@@ -114,11 +114,12 @@ describe('the positive-control lists (staged: B1d-1a Task 2)', () => {
       'src/app/presale/Geo.tsx',
       'core/presale/buyInstructions.ts',
       'core/presale/referrer.ts',
+      'src/background/presale/record.ts',
     ]);
   });
 
-  it('both builds must carry the intent-kind registry (Task 3), the jurisdiction gate with its fetcher (Task 6, D15) and the country name of #48’s F12 (B1d-1b Task 7)', () => {
-    expect(BOTH_BUILDS).toEqual(['src/background/intents.ts', 'src/background/geo/gate.ts', 'core/geo/fetch.ts', 'src/app/ui/regionName.ts']);
+  it('both builds must carry the intent-kind registry (Task 3), the jurisdiction gate with its fetcher (Task 6, D15), the country name of #48’s F12 (B1d-1b Task 7) and the presale records’ key (B1d-2 Task 1)', () => {
+    expect(BOTH_BUILDS).toEqual(['src/background/intents.ts', 'src/background/geo/gate.ts', 'core/geo/fetch.ts', 'src/app/ui/regionName.ts', 'src/background/presaleRecordsKey.ts']);
   });
 
   it('missingModules names each required module a map does not carry', () => {
@@ -163,7 +164,7 @@ describe('app.features.json', () => {
 describe('strings', () => {
   const file = (path, text) => ({path, bytes: Buffer.from(text, 'utf8')});
 
-  it('armed by B1d-1b: Task 1 adds its three presale message types (§6.2: "every presale.* message type"), Task 2 its prepare and the intent kind, Task 3 its four sign and resume types, Task 4 #23’s copy, Task 5 #20’s, #10’s and the record words, Task 6 #11’s and #50b’s (Q44’s label "Programs" is one bare word: its value is the marker)', () => {
+  it('armed by B1d-1b: Task 1 adds its three presale message types (§6.2: "every presale.* message type"), Task 2 its prepare and the intent kind, Task 3 its four sign and resume types, Task 4 #23’s copy, Task 5 #20’s, #10’s and the record words, Task 6 #11’s and #50b’s (Q44’s label "Programs" is one bare word: its value is the marker); B1d-2 Task 1 the record’s message type and alarm', () => {
     expect(MARKERS.slice(0, 9)).toEqual(['presale.view', 'presale.banner', 'presale.quote', 'presale.prepareBuy', 'presale.pending', 'presale.preparedFor', 'presale.buy', 'presale.discardPrepared', 'presale-buy']);
     // §6.2's named strings #23 shows, then Q01, Q02, Q04–Q06, Q11–Q16, Q19, Q40c, Q41c, Q41d, Q43, Q52 (each literal part ≥ 8 characters).
     expect(MARKERS.slice(9)).toEqual([
@@ -236,6 +237,9 @@ describe('strings', () => {
       'The restricted-region list is out of date.',
       'Your region could not be determined from your IP.',
       'The region check is unavailable — try again later.',
+      // B1d-2 Task 1: the record's message type and its alarm's name.
+      'presale.unrecorded',
+      'presale-record',
     ]);
   });
 
@@ -244,7 +248,7 @@ describe('strings', () => {
   it('every presale.* message type of api.ts is a marker', () => {
     const api = readFileSync(join(ROOT, 'src/background/presale/api.ts'), 'utf8');
     const types = [...(/PRESALE_MESSAGE_TYPES: readonly string\[\] = \[([^\]]*)\]/.exec(api)?.[1] ?? '').matchAll(/'([^']+)'/g)].map(m => m[1]);
-    expect(types).toHaveLength(8);
+    expect(types).toHaveLength(9);
     for (const t of types) expect([t, MARKERS.includes(t)]).toEqual([t, true]);
   });
 
@@ -273,9 +277,10 @@ describe('strings', () => {
     // B1d-1b Task 7: #48's F12 (D15 — the off build blocks a site's purchase exactly as the on build does).
     const q50a = "This transaction buys NOC in the presale, which this wallet doesn't allow from your region (";
     const q50b = "This transaction buys NOC in the presale. The wallet's region check did not succeed, so it can't be approved — try again later.";
-    expect(MUST_STAY).toEqual(['Presale purchase', 'PRESALE PURCHASE', 'Transaction · pending', 'Transaction · taking longer than usual', 'Presale purchase blocked', q50a, q50b, 'Only Reject is available · no override']);
+    // B1d-2 Task 1: the presale records' key — a delete in the build without presale still wipes them.
+    expect(MUST_STAY).toEqual(['Presale purchase', 'PRESALE PURCHASE', 'Transaction · pending', 'Transaction · taking longer than usual', 'Presale purchase blocked', q50a, q50b, 'Only Reject is available · no override', 'v1_presale_records']);
     const f12 = file('chrome/approve.js', `"Presale purchase blocked",regionSanctioned:e=>\`${q50a}\${e}).\`,regionClosed:${JSON.stringify(q50b)},regionMeta:"Only Reject is available · no override"`);
-    const all = [file('app/a.js', '"Presale purchase"'), file('app/b.js', 'PRESALE PURCHASE'), file('app/c.js', '`Transaction · pending`,`Transaction · taking longer than usual`'), f12];
+    const all = [file('app/a.js', '"Presale purchase"'), file('app/b.js', 'PRESALE PURCHASE'), file('app/c.js', '`Transaction · pending`,`Transaction · taking longer than usual`'), f12, file('app/background.js', 'const Y="v1_presale_records";')];
     expect(missingStrings('off', all, MUST_STAY)).toEqual([]);
     expect(missingStrings('off', [file('app/a.js', '"Presale purchase"')], MUST_STAY)).toEqual([
       'off build: no file contains "PRESALE PURCHASE" — the switch stripped what both builds need',
@@ -285,6 +290,7 @@ describe('strings', () => {
       `off build: no file contains ${JSON.stringify(q50a)} — the switch stripped what both builds need`,
       `off build: no file contains ${JSON.stringify(q50b)} — the switch stripped what both builds need`,
       'off build: no file contains "Only Reject is available · no override" — the switch stripped what both builds need',
+      'off build: no file contains "v1_presale_records" — the switch stripped what both builds need',
     ]);
   });
 

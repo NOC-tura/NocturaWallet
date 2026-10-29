@@ -16,7 +16,7 @@ import {ACCOUNT, TREASURY_ADDRESS, configData, program, userData} from '../../..
 import {firstSignature} from '../../../../../core/solana/broadcast';
 import {purchaseWorld} from './world';
 
-registerPresale({ext: fakeExt(), deps: fakeDeps(), handle: registerPresaleHandler});
+registerPresale({ext: fakeExt(), deps: fakeDeps(), handle: registerPresaleHandler, alarm: () => undefined});
 
 // B1d §4.3 (C3, C12, C18; §9's #50b rows; Q20–Q30): #50b against the REAL background — presale.view over chain.ts's
 // program state with the gate's answer as a dep. Every reason as §4.3's table words it, the region card only where it

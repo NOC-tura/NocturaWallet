@@ -64,7 +64,7 @@ import {
 } from './chain';
 import {ALLOCATION_RENT, USER_RENT, honestSimulation} from './simulation';
 
-registerPresale({ext: fakeExt(), deps: fakeDeps(), handle: registerPresaleHandler});
+registerPresale({ext: fakeExt(), deps: fakeDeps(), handle: registerPresaleHandler, alarm: () => undefined});
 
 // B1d §3.3, §3.4 (C2, C10, C11, C21, C23, C27, C28, C36, C39, D3): the purchase's prepare against the byte builders of
 // chain.ts and a simulation computed from the transaction it is given — the program's own effects on the accounts the

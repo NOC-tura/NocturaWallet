@@ -16,7 +16,7 @@ import {purchaseWorld, type PurchaseWorld} from '../presale/__tests__/world';
 import {firstSignature} from '../../../../core/solana/broadcast';
 import {RequestUnreachable, RpcForbidden} from '../../../../core/solana/rpc';
 
-registerPresale({ext: fakeExt(), deps: fakeDeps(), handle: registerPresaleHandler});
+registerPresale({ext: fakeExt(), deps: fakeDeps(), handle: registerPresaleHandler, alarm: () => undefined});
 
 // B1d §4.5 (C30; §9's #11 row): #11's presale banner and Buy quick action in the whole App against the REAL background —
 // the program state from chain.ts, the gate as a dep. The banner is `presale.banner`'s (no geo check; null on any failure
