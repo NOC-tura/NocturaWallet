@@ -70,6 +70,8 @@ test('7 · off build: no presale UI or handler; a seeded purchase record is show
     // No banner, no Buy (B1d §4.5's slots are absent), and presale.view refused before any handler.
     expect(await popup.locator('.quick .qa .lbl').allTextContents()).toEqual(['Send', 'Receive']);
     expect(await msg(popup, {type: 'presale.view'})).toEqual({ok: false, error: 'unknown type'});
+    // B1d-2's message types too: the record's, the referral address's and #24's.
+    for (const type of ['presale.unrecorded', 'presale.checkReferrer', 'presale.referral']) expect([type, await msg(popup, {type, account: MAIN.publicKey})]).toEqual([type, {ok: false, error: 'unknown type'}]);
     // #11: the generic pending row (Q42a).
     await expect(popup.locator('.app-pending-strip .noc-body-sm')).toHaveText(Q42.pending, {timeout: 30_000});
     await expectGeneric(popup);

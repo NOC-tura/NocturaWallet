@@ -1,8 +1,27 @@
 import {expect, type BrowserContext, type ConsoleMessage, type Page} from '@playwright/test';
 import {base58} from '@scure/base';
-import type {Harness} from './popupHarness';
+import {contained, launchPopup, type Harness} from './popupHarness';
 import {ACCOUNT, msg, realWallet} from './sendHelpers';
-import {CONFIG_PDA, SOL_TREASURY, USDC_MINT, USDC_VAULT, USDT_MINT, USDT_VAULT, allocationData, allocationPda, configData, userData, userPda, type ConfigFacts} from './presaleChain';
+import {
+  CONFIG_PDA,
+  SOL_TREASURY,
+  USDC_MINT,
+  USDC_VAULT,
+  USDT_MINT,
+  USDT_VAULT,
+  allocationData,
+  allocationPda,
+  configData,
+  userData,
+  userPda,
+  type AllocationReferral,
+  type ConfigFacts,
+} from './presaleChain';
+
+declare const chrome: {
+  storage: {local: {get(k: string): Promise<Record<string, unknown>>; set(o: object): Promise<void>}};
+  alarms: {get(name: string): Promise<{scheduledTime: number} | undefined>; clear(name: string): Promise<boolean>; create(name: string, o: {when: number}): Promise<void>};
+};
 
 // B1d §6.3's E2E helpers (B1d-1b Task 8): the presale on the fake chain, the CSP watch, #11 → Buy, #50b's reading, the
 // background's own answers. Public constants only; nothing here is imported from core/ (the E2E rule).
@@ -10,8 +29,11 @@ import {CONFIG_PDA, SOL_TREASURY, USDC_MINT, USDC_VAULT, USDT_MINT, USDT_VAULT, 
 /** A USDC token account the account holds that is NOT its associated token account (the user's wallet holds this way). */
 export const USDC_HOLDING = base58.encode(new Uint8Array(32).fill(37));
 
-/** The config live (or as `config` says), the treasury's two vault ATAs, the account's PDAs when `allocation` is given. */
-export function installPresale(h: Harness, o: {config?: Partial<ConfigFacts>; allocation?: {totalBase: bigint; spentCents: bigint; count: number}} = {}): void {
+/**
+ * The config live (or as `config` says), the treasury's two vault ATAs, the account's PDAs when `allocation` is given
+ * (B1d-2: with the bonus credited to it as a referrer and its own referrer, when given).
+ */
+export function installPresale(h: Harness, o: {config?: Partial<ConfigFacts>; allocation?: {totalBase: bigint; spentCents: bigint; count: number} & Partial<AllocationReferral>} = {}): void {
   h.fake.presale.accounts.set(CONFIG_PDA, {lamports: 3_466_080, data: configData(o.config)});
   h.fake.tokenAccounts.set(SOL_TREASURY, [
     {pubkey: USDC_VAULT, mint: USDC_MINT, amount: '172099207', decimals: 6},
@@ -87,6 +109,83 @@ export async function geoScreen(p: Page): Promise<{headline: string; sub: string
     rows: await p.locator('.s11-reason-row .body').evaluateAll(rs => rs.map(r => [...r.children].map(c => c.textContent ?? '').join(' | '))),
     works: (await p.locator('.s11-stillworks').count()) === 1,
   };
+}
+
+/** A presale scene: the contained popup harness and its CSP watch. */
+export async function scene(prefix: string): Promise<{h: Harness; csp: string[]}> {
+  const h = await launchPopup(prefix);
+  return {h, csp: await watchCsp(h.ctx)};
+}
+/** What every presale spec ends with: contained (popupHarness.ts) and no CSP violation on any page. */
+export function done(h: Harness, csp: string[]): void {
+  contained(h);
+  expect(csp).toEqual([]);
+}
+/** #20's detail rows as [label, value]. */
+export const detailRows = (p: Page) => p.locator('.detail-row').evaluateAll(rs => rs.map(r => [r.querySelector('.lbl')?.textContent ?? '', r.querySelector('.val')?.textContent ?? '']));
+
+/** B1d-2: a referrer that is no account of the test wallet — an address with a presale allocation of its own (`installReferrer`). */
+export const REFERRER = base58.encode(new Uint8Array(32).fill(53));
+/** The referrer's own allocation on the fake chain (it bought once): what makes it an address that can refer (§3.5). */
+export function installReferrer(h: Harness, referrer = REFERRER): void {
+  h.fake.presale.accounts.set(allocationPda(referrer), {lamports: 1_244_600, data: allocationData({user: referrer, totalBase: 666_222_518_321n, spentCents: 10_000n, count: 1})});
+}
+
+/** B1d-2 (§2.4): the background's record entries (`v1_presale_records`), as stored. */
+export interface RecordEntry {
+  signature: string;
+  account: string;
+  payload: Record<string, unknown>;
+  confirmedAt: number;
+  attempts: number;
+  nextAt: number;
+  state: 'due' | 'done' | 'refused' | 'given-up';
+}
+export const recordEntries = async (h: Harness): Promise<RecordEntry[]> => (await h.sw.evaluate(() => chrome.storage.local.get('v1_presale_records'))).v1_presale_records as RecordEntry[];
+const RECORD_ALARM = 'presale-record';
+
+/**
+ * B1d-2 (§2.4): the record of `signature` after its `attempts`-th POST, once the worker's run is over — its retry alarm
+ * armed at the entry's next slot (the run's last step) — and then the alarm cleared, so no slot comes due on the browser's
+ * clock while the test looks (record.ts arms it never sooner than 30 s ahead). The entry as it stands.
+ */
+export async function heldRecord(h: Harness, signature: string, attempts: number): Promise<RecordEntry> {
+  await expect
+    .poll(
+      async () => {
+        const e = (await recordEntries(h)).find(x => x.signature === signature);
+        const alarm = await h.sw.evaluate(name => chrome.alarms.get(name), RECORD_ALARM);
+        return e?.state === 'due' && e.attempts === attempts && alarm !== undefined && Math.abs(alarm.scheduledTime - e.nextAt) < 2_000;
+      },
+      {timeout: 60_000},
+    )
+    .toBe(true);
+  await h.sw.evaluate(name => chrome.alarms.clear(name), RECORD_ALARM);
+  const e = (await recordEntries(h)).find(x => x.signature === signature);
+  expect(e?.attempts).toBe(attempts);
+  return e as RecordEntry;
+}
+
+/**
+ * The test's way to make an entry's next slot come without a browser clock: the entry's whole schedule moved back so that
+ * its `nextAt` is now (C24's slots are offsets from `confirmedAt` — both move together), then the record's own alarm fired
+ * (an unpacked extension's alarm may be due at once): the background wakes exactly as at that slot.
+ */
+export async function slotComes(h: Harness, signature: string): Promise<void> {
+  await h.sw.evaluate(
+    async ({key, sig, name}) => {
+      const entries = ((await chrome.storage.local.get(key))[key] ?? []) as {signature: string; confirmedAt: number; nextAt: number}[];
+      const now = Date.now();
+      const moved = entries.map(e => {
+        if (e.signature !== sig) return e;
+        const by = Math.max(0, e.nextAt - now + 1_000);
+        return {...e, confirmedAt: e.confirmedAt - by, nextAt: e.nextAt - by};
+      });
+      await chrome.storage.local.set({[key]: moved});
+      await chrome.alarms.create(name, {when: Date.now()});
+    },
+    {key: 'v1_presale_records', sig: signature, name: RECORD_ALARM},
+  );
 }
 
 /** The background's own answer: what is prepared for the account (null: nothing). */

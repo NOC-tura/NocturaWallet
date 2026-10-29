@@ -18,9 +18,11 @@ import {
   missingStrings,
   moduleIds,
   offModuleViolations,
+  unlistedModules,
 } from '../check-no-presale.mjs';
 import {PRESALE_ENTRIES} from '../presaleSwitch.mjs';
 import {PRESALE_INSTRUCTIONS} from '../../src/background/dapp/decode/presaleIdl';
+import {CONFIRM_PURCHASE_TEXT, RECORD_TEXT, REFERRAL_TEXT, REFERRER_LINE_TEXT, REFER_TEXT} from '../../src/app/presale/text';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const FIXTURE = JSON.parse(readFileSync(join(ROOT, 'scripts/__tests__/fixtures/app.modules.0b79442.json'), 'utf8'));
@@ -131,6 +133,22 @@ describe('the positive-control lists (staged: B1d-1a Task 2)', () => {
     const renamed = moduleIds([map([...SHARED, 'src/background/presale/index.ts', ...ON_BUILD.slice(1)])]);
     expect(missingModules('on', renamed, ON_BUILD)).toEqual(['on build does not carry src/background/presale/api.ts — renamed or moved? the positive control must name it']);
     expect(missingModules('off', moduleIds([map(['../core/geo/fetch.ts'])]), ['core/geo/fetch.ts'])).toEqual([]);
+  });
+
+  // B1d-2 Task 6: the list is complete — a presale module the on build carries and ON_BUILD does not name fails, so a
+  // module cannot join the build without its positive control (the shared core/presale modules and core/geo excepted).
+  it('unlistedModules names each presale module of the on build that the list does not, sorted; the shared ones are not presale modules', () => {
+    expect(unlistedModules(moduleIds([map([...SHARED, ...ON_BUILD])]), ON_BUILD)).toEqual([]);
+    const more = moduleIds([map([...SHARED, ...ON_BUILD, 'src/app/presale/Claim.tsx', '../core/presale/stats.ts', '../core/referral/tiers.ts', 'src/unlock/presale.ts?v=1'])]);
+    expect(unlistedModules(more, ON_BUILD)).toEqual([
+      'on build carries core/presale/stats.ts — a presale module ON_BUILD does not name: the positive control must list every one',
+      'on build carries core/referral/tiers.ts — a presale module ON_BUILD does not name: the positive control must list every one',
+      'on build carries src/app/presale/Claim.tsx — a presale module ON_BUILD does not name: the positive control must list every one',
+    ]);
+    expect(unlistedModules(moduleIds([map([...SHARED, ...ON_BUILD])]), ON_BUILD.filter(id => id !== 'src/background/presale/record.ts'))).toEqual([
+      'on build carries src/background/presale/record.ts — a presale module ON_BUILD does not name: the positive control must list every one',
+    ]);
+    expect(unlistedModules(moduleIds([map(SHARED)]), [])).toEqual([]);
   });
 
   it('every ON_BUILD module is one the off build refuses (else its control proves nothing)', () => {
@@ -277,6 +295,26 @@ describe('strings', () => {
     for (const t of types) expect([t, MARKERS.includes(t)]).toEqual([t, true]);
   });
 
+  // B1d-2 Task 6 (§6.2 item 2: "every §10 string whose build is on"): B1d-2's copy in text.ts, read from the module — each
+  // string of at least 8 characters that is not one bare word contains a marker, or is copy the build without presale
+  // carries too (it would fail the off build as a marker): Q46a is the start of B1b's #12 line "Not a valid Solana
+  // address — check length & characters", "Copy failed" is B1b's useCopy (Q38). A new string without its marker fails here.
+  it('every B1d-2 string of the presale copy is armed by a marker, or is shared copy', () => {
+    const copy = [
+      ...Object.values(REFERRAL_TEXT),
+      ...Object.values(REFERRER_LINE_TEXT),
+      CONFIRM_PURCHASE_TEXT.referredBy,
+      CONFIRM_PURCHASE_TEXT.registers,
+      RECORD_TEXT.unrecorded,
+      ...Object.values(REFER_TEXT).filter(v => typeof v === 'string'),
+      `${REFER_TEXT.usedLead}2${REFER_TEXT.usedTail(2n)}`,
+      `${REFER_TEXT.usedLead}1${REFER_TEXT.usedTail(1n)}`,
+    ];
+    expect(copy).toHaveLength(29);
+    const unarmed = copy.filter(s => s.length >= 8 && !/^[A-Za-z]+$/.test(s) && !MARKERS.some(m => s.includes(m)));
+    expect(unarmed).toEqual(['Not a valid Solana address', 'Copy failed']);
+  });
+
   it('a marker in any off-build file is a violation; each marker must be found in the on build', () => {
     const markers = ['NOC presale', 'v1_presale_records'];
     const off = [file('app/background.js', 'var a=1;'), file('chrome/assets/x.js', '"Buy in the NOC presale"')];
@@ -373,6 +411,12 @@ describe('checkNoPresale(offDir, onDir)', () => {
     good();
     write('on', {presale: true, modules: [...SHARED, ...ON_BUILD.slice(1)], text: ON_TEXT});
     expect(run()).toEqual(['on build does not carry src/background/presale/api.ts — renamed or moved? the positive control must name it']);
+  });
+
+  it('fails when the on build carries a presale module the list does not name (B1d-2 Task 6)', () => {
+    good();
+    write('on', {presale: true, modules: [...SHARED, ...ON_BUILD, 'src/background/presale/claim.ts'], text: ON_TEXT});
+    expect(run()).toEqual(['on build carries src/background/presale/claim.ts — a presale module ON_BUILD does not name: the positive control must list every one']);
   });
 
   it('fails when a marker is in the off build, in chrome/ or firefox/ alone too', () => {

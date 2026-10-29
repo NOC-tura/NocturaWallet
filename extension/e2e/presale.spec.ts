@@ -1,7 +1,6 @@
 import {test, expect, type Page} from '@playwright/test';
 import {base58, base64} from '@scure/base';
 import {BLOCKHASH_LIFETIME, FAKE_START_HEIGHT, parseV0} from './fakeCoordinator';
-import {contained, launchPopup, type Harness} from './popupHarness';
 import {E2E_PASSWORD} from './makeEnvelope';
 import {ACCOUNT, groups, msg, startSend} from './sendHelpers';
 import {
@@ -22,7 +21,7 @@ import {
   stableCents,
   tokensFor,
 } from './presaleChain';
-import {USDC_HOLDING, amount, buyAction, cspControl, geoScreen, home, preparedPurchase, presaleWallet, quickLabels, watchCsp} from './presaleHelpers';
+import {USDC_HOLDING, amount, buyAction, cspControl, detailRows, done, geoScreen, home, preparedPurchase, presaleWallet, quickLabels, scene} from './presaleHelpers';
 
 declare const chrome: {storage: {local: {set(o: object): Promise<void>}}};
 
@@ -54,17 +53,8 @@ const ROW = {
   why: 'Why this matters | Token sales are restricted by jurisdiction · this wallet checks before every purchase',
 };
 
-async function scene(prefix: string): Promise<{h: Harness; csp: string[]}> {
-  const h = await launchPopup(prefix);
-  return {h, csp: await watchCsp(h.ctx)};
-}
-function done(h: Harness, csp: string[]): void {
-  contained(h);
-  expect(csp).toEqual([]);
-}
 /** SOL as #11 shows it: four places, floored. */
 const solText = (lamports: bigint): string => `${lamports / SOL}.${((lamports % SOL) / 100_000n).toString().padStart(4, '0')}`;
-const detailRows = (p: Page) => p.locator('.detail-row').evaluateAll(rs => rs.map(r => [r.querySelector('.lbl')?.textContent ?? '', r.querySelector('.val')?.textContent ?? '']));
 const feeRows = (p: Page) => p.locator('.fee-block .fee-row').evaluateAll(rs => rs.map(r => [...r.children].map(c => c.textContent ?? '').filter(t => t !== '')));
 /** The prepared-purchase view the background answers, as far as these specs read it. */
 type Prepared = {reauth: {proven: boolean} | null; stage: number; destination: string} | null;

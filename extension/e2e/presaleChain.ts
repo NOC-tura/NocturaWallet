@@ -114,15 +114,26 @@ export interface AllocationFacts {
   spentCents: bigint;
   count: number;
 }
-export function allocationData(a: AllocationFacts): Uint8Array {
+/** B1d-2: an allocation's referral fields — the bonus credited to it as a referrer (u64 at 76), its own referrer (84–116, zero = none). */
+export interface AllocationReferral {
+  bonusBase: bigint;
+  referrer: string | null;
+}
+export function allocationData(a: AllocationFacts & Partial<AllocationReferral>): Uint8Array {
   const d = new Uint8Array(ALLOCATION.length);
   d.set(ALLOCATION.discriminator, 0);
   d.set(base58.decode(a.user), ALLOCATION.user);
   putU64(d, ALLOCATION.total, a.totalBase);
   putU64(d, ALLOCATION.spent, a.spentCents);
   new DataView(d.buffer).setUint32(ALLOCATION.count, a.count, true);
+  putU64(d, ALLOCATION.bonus, a.bonusBase ?? 0n);
+  if (a.referrer !== undefined && a.referrer !== null) d.set(base58.decode(a.referrer), ALLOCATION.referrer);
   return d;
 }
+export const allocationReferral = (d: Uint8Array): AllocationReferral => {
+  const referrer = d.subarray(ALLOCATION.referrer, ALLOCATION.referrer + 32);
+  return {bonusBase: u64(d, ALLOCATION.bonus), referrer: referrer.every(b => b === 0) ? null : base58.encode(referrer)};
+};
 export const allocationOf = (d: Uint8Array): AllocationFacts => ({
   user: base58.encode(d.subarray(ALLOCATION.user, ALLOCATION.user + 32)),
   totalBase: u64(d, ALLOCATION.total),
@@ -169,6 +180,12 @@ export const PURCHASE_DISCRIMINATORS: Readonly<Record<Currency, readonly number[
 export function purchaseCurrency(data: Uint8Array): Currency | null {
   for (const c of ['SOL', 'USDC', 'USDT'] as const) if (PURCHASE_DISCRIMINATORS[c].every((b, i) => data[i] === b)) return c;
   return null;
+}
+/** B1d-2: `register_referrer(referrer: Pubkey)` — its discriminator (the IDL's, as buyInstructions.ts names it), then the 32 bytes. */
+export const REGISTER_REFERRER_DISCRIMINATOR: readonly number[] = [122, 229, 215, 169, 100, 145, 198, 120];
+/** The referrer a `register_referrer` instruction's data names, or null when the data is not one. */
+export function registeredReferrer(data: Uint8Array): string | null {
+  return data.length === 40 && REGISTER_REFERRER_DISCRIMINATOR.every((b, i) => data[i] === b) ? base58.encode(data.subarray(8, 40)) : null;
 }
 
 /** The program's arithmetic, every division floored: SOL at its price (B1b's 1e-12-dollar scale), a stablecoin at 100 cents a unit, NOC at the stage's price. */

@@ -12,8 +12,10 @@ import {
   allocationData,
   allocationOf,
   allocationPda,
+  allocationReferral,
   configOf,
   purchaseCurrency,
+  registeredReferrer,
   restrictedList,
   solCents,
   stableCents,
@@ -33,6 +35,9 @@ const STATS = 'https://api.noc-tura.io/api/v1/stats';
 const GEO_CHECK = 'https://api.noc-tura.io/api/v1/geo/check';
 const GEO_LIST = 'https://api.noc-tura.io/api/v1/geo/restricted-list';
 const PURCHASE_RECORD = 'https://api.noc-tura.io/api/v1/solana/purchase';
+const REFERRAL_STATS = 'https://api.noc-tura.io/api/v1/referral-stats/';
+/** The extension's own request timeout (src/background/deps.ts REQUEST_TIMEOUT_MS): a 'timeout' answer is held past it. */
+const EXTENSION_REQUEST_TIMEOUT_MS = 20_000;
 /** rpcResult's answer for a method it does not implement (listed in `unexpected` too). */
 const METHOD_NOT_FOUND: unique symbol = Symbol('method not found');
 const SYSTEM_PROGRAM = '11111111111111111111111111111111';
@@ -111,8 +116,17 @@ export interface FakeCoordinator {
   geo: FakeGeo;
   /** B1d-1b Task 9: SOL's dollar price /wallet/prices answers — null leaves `solana` out of the answer (#23's Q19). */
   marketSolUsd: number | null;
-  /** B1d-2 (spec §2.4): each body POSTed to /solana/purchase, in order — answered as the deployed route (P2a) accepts one. */
+  /** B1d-2 (spec §2.4): each body POSTed to /solana/purchase, in order — each checked against D28's shape (`unexpected` lists a wrong one). */
   purchaseRecords: unknown[];
+  /**
+   * B1d-2 (§2.4, D28–D30): the record route's next answers, one per POST, in order — a status with its JSON body, or
+   * 'timeout' (held past the extension's request timeout, never answered). Once empty, the deployed route's acceptance
+   * (coordinator 9e7d468: 200 `{success: true, verified: true, duplicate: false, data: null}`).
+   */
+  recordAnswers: RecordAnswer[];
+  /** B1d-2 (§3.5): what GET /referral-stats/<address> answers (default: nobody referred yet), and each address it was asked for. */
+  referralStats: {status: number; body: unknown};
+  referralStatsReads: string[];
   /**
    * Holds every answer until the returned function is called — how a visual spec keeps a loading
    * state (#40's, #8's "Checking…") on screen deterministically while it is asserted and shot.
@@ -147,6 +161,7 @@ export interface FakePresale {
   /** Each purchase that landed through the broadcast route. */
   landed: PresaleEffect[];
 }
+export type RecordAnswer = {status: number; body: unknown} | 'timeout';
 export interface PresaleEffect {
   currency: Currency;
   amount: bigint;
@@ -159,6 +174,8 @@ export interface PresaleEffect {
   source: string | null;
   /** The rent of the PDAs it creates, lamports. */
   rent: number;
+  /** B1d-2: the referrer a `register_referrer` before it in the same transaction registered, or null. */
+  registers: string | null;
 }
 /** B1d §6.3: /geo/check's answer (a location, no answer, a body of the wrong shape) and the list's body; each read counted. */
 export interface FakeGeo {
@@ -232,6 +249,31 @@ export function mintData(spec: MintSpec): Uint8Array {
     at += 4 + e.value.length;
   }
   return data;
+}
+
+const BASE58 = /^[1-9A-HJ-NP-Za-km-z]+$/;
+const RECORD_KEYS = ['txHash', 'buyerAddress', 'paymentToken', 'paymentAmount', 'nocAmount', 'usdValue', 'stage', 'referrerAddress'];
+/**
+ * B1d-2 (§2.4, D28): what is wrong with a record body — nothing for the whole payload as the route reads it: `txHash` a
+ * signature (64 bytes, base58), `buyerAddress` an address, `paymentToken` one of the three, `paymentAmount` a decimal string,
+ * `nocAmount` and `usdValue` positive numbers, `stage` an integer 1–10 (the route reads `Number.isInteger(body.stage)`, 1-
+ * indexed), `referrerAddress` an address when present, and no other key.
+ */
+export function recordProblems(body: unknown): string[] {
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) return ['not an object'];
+  const b = body as Record<string, unknown>;
+  const out = Object.keys(b)
+    .filter(k => !RECORD_KEYS.includes(k))
+    .map(k => `extra key ${k}`);
+  const key = (x: unknown, bytes: number): boolean => typeof x === 'string' && BASE58.test(x) && base58.decode(x).length === bytes;
+  if (!key(b.txHash, 64)) out.push('txHash is not a signature');
+  if (!key(b.buyerAddress, 32)) out.push('buyerAddress is not an address');
+  if (!['SOL', 'USDC', 'USDT'].includes(b.paymentToken as string)) out.push('paymentToken is not SOL, USDC or USDT');
+  if (typeof b.paymentAmount !== 'string' || !/^\d+(\.\d+)?$/.test(b.paymentAmount)) out.push('paymentAmount is not a decimal string');
+  for (const k of ['nocAmount', 'usdValue']) if (typeof b[k] !== 'number' || !Number.isFinite(b[k]) || (b[k] as number) <= 0) out.push(`${k} is not a positive number`);
+  if (!Number.isInteger(b.stage) || (b.stage as number) < 1 || (b.stage as number) > 10) out.push('stage is not an integer 1–10');
+  if (Object.hasOwn(b, 'referrerAddress') && !key(b.referrerAddress, 32)) out.push('referrerAddress is not an address');
+  return out;
 }
 
 /** Compact-u16: the signature count that opens a serialized transaction. */
@@ -313,6 +355,9 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
     geo: {check: {countryCode: 'SI', isVpn: false}, list: restrictedList(), checks: 0, lists: 0},
     marketSolUsd: 150,
     purchaseRecords: [],
+    recordAnswers: [],
+    referralStats: {status: 200, body: {success: true, data: {totalReferrals: 0, totalReferredUsd: 0}}},
+    referralStatsReads: [],
     hold: () => {
       let release: () => void = () => undefined;
       held = new Promise<void>(r => (release = r));
@@ -492,7 +537,12 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
    * B1d §6.3: the transaction's presale purchase run as the program runs it — null when it has none; its refusal as the
    * node reports a program error; else what it does. The accounts are the IDL's (config, user account, allocation,
    * referrer allocation, then SOL: Pyth, the buyer, the treasury, System; a stablecoin: the paying token account, the
-   * vault ATA, the mint, the buyer, Token, System).
+   * vault ATA, the mint, the buyer, Token, System). B1d-2: a `register_referrer` before it (the buyer's user account and
+   * allocation, the buyer, System — its PDAs checked, refused with AlreadyHasReferrer 6016 when the allocation has a
+   * referrer) sets the allocation's referrer; the referrer allocation (account 3) must be the `["allocation", referrer]` PDA
+   * of the effective referrer — the registered one, else the allocation's own, else the default key — as the program
+   * checks it (ConstraintSeeds 2006). The PDAs' rent is the transaction's either way (`init_if_needed` in whichever comes
+   * first). A registration after the purchase is listed in `unexpected`.
    */
   const purchaseIn = (keys: string[], instructions: {program: number; accounts: number[]; data: Uint8Array}[]): {effect: PresaleEffect} | {error: unknown} | null => {
     const index = instructions.findIndex(ix => keys[ix.program] === PRESALE_PROGRAM && purchaseCurrency(ix.data) !== null);
@@ -514,18 +564,33 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
       const t = tokenAccountAt(source);
       if (t === null || t.owner !== user || t.mint !== (currency === 'USDC' ? USDC_MINT : USDT_MINT) || BigInt(t.amount) < amount) return fail(1);
     }
-    const rent = (fake.presale.accounts.has(acc[1] ?? '') ? 0 : USER_ACCOUNT_RENT) + (fake.presale.accounts.has(acc[2] ?? '') ? 0 : ALLOCATION_RENT);
-    return {effect: {currency, amount, cents, tokens: tokensFor(cents, c.stage), stage: c.stage, user, destination: (currency === 'SOL' ? acc[6] : acc[5]) ?? '', source, rent}};
+    const before = fake.presale.accounts.get(acc[2] ?? '');
+    const onChain = before === undefined ? null : allocationReferral(before.data).referrer;
+    const reg = instructions.findIndex(x => keys[x.program] === PRESALE_PROGRAM && registeredReferrer(x.data) !== null);
+    if (reg > index) fake.unexpected.push('register_referrer after the purchase');
+    const registers = reg >= 0 && reg < index ? registeredReferrer(instructions[reg]?.data ?? new Uint8Array()) : null;
+    if (registers !== null) {
+      const r = instructions[reg]?.accounts.map(a => keys[a] ?? '') ?? [];
+      if (r[0] !== userPda(user) || r[1] !== allocationPda(user) || r[2] !== user || r[3] !== SYSTEM_PROGRAM) return {error: {InstructionError: [reg, {Custom: 2006}]}};
+      if (onChain !== null) return {error: {InstructionError: [reg, {Custom: 6016}]}};
+    }
+    if (acc[3] !== allocationPda(registers ?? onChain ?? SYSTEM_PROGRAM)) return fail(2006);
+    const rent = (fake.presale.accounts.has(acc[1] ?? '') ? 0 : USER_ACCOUNT_RENT) + (before !== undefined ? 0 : ALLOCATION_RENT);
+    return {effect: {currency, amount, cents, tokens: tokensFor(cents, c.stage), stage: c.stage, user, destination: (currency === 'SOL' ? acc[6] : acc[5]) ?? '', source, rent, registers}};
   };
 
-  /** The presale program's accounts after a purchase (each the account the purchase made or changed). */
+  /**
+   * The presale program's accounts after a purchase (each the account the purchase made or changed). B1d-2: the allocation
+   * keeps its bonus and its referrer, or takes the one the transaction registered.
+   */
   const purchaseAccounts = (e: PresaleEffect): Map<string, {lamports: number; data: Uint8Array}> => {
     const allocation = allocationPda(e.user);
     const before = fake.presale.accounts.get(allocation);
     const was = before === undefined ? {user: e.user, totalBase: 0n, spentCents: 0n, count: 0} : allocationOf(before.data);
+    const referral = before === undefined ? {bonusBase: 0n, referrer: null} : allocationReferral(before.data);
     const user = userPda(e.user);
     return new Map([
-      [allocation, {lamports: before?.lamports ?? ALLOCATION_RENT, data: allocationData({user: e.user, totalBase: was.totalBase + e.tokens, spentCents: was.spentCents + e.cents, count: was.count + 1})}],
+      [allocation, {lamports: before?.lamports ?? ALLOCATION_RENT, data: allocationData({user: e.user, totalBase: was.totalBase + e.tokens, spentCents: was.spentCents + e.cents, count: was.count + 1, bonusBase: referral.bonusBase, referrer: e.registers ?? referral.referrer})}],
       [user, fake.presale.accounts.get(user) ?? {lamports: USER_ACCOUNT_RENT, data: userData()}],
     ]);
   };
@@ -767,9 +832,21 @@ export async function installFakeCoordinator(ctx: BrowserContext): Promise<FakeC
       return json(route, 200, fake.geo.list);
     }
     if (url === PURCHASE_RECORD && req.method() === 'POST') {
-      // B1d §2.4: the purchase's coordinator record, after it confirmed. The route's own answer (coordinator 9e7d468).
-      fake.purchaseRecords.push(JSON.parse(req.postData() ?? 'null'));
-      return json(route, 200, {success: true, verified: true, duplicate: false, data: null});
+      // B1d §2.4: the purchase's coordinator record, after it confirmed — its body held to D28's shape, then the scripted
+      // answer, else the route's own acceptance (coordinator 9e7d468).
+      const body: unknown = JSON.parse(req.postData() ?? 'null');
+      fake.purchaseRecords.push(body);
+      for (const problem of recordProblems(body)) fake.unexpected.push(`purchase record: ${problem}`);
+      const answer = fake.recordAnswers.shift() ?? {status: 200, body: {success: true, verified: true, duplicate: false, data: null}};
+      if (answer !== 'timeout') return json(route, answer.status, answer.body);
+      // Never answered in time: the extension gives up at its timeout; the late answer goes nowhere.
+      await new Promise(r => setTimeout(r, EXTENSION_REQUEST_TIMEOUT_MS + 2_000));
+      return json(route, 200, {success: true, verified: true, duplicate: false, data: null}).catch(() => undefined);
+    }
+    if (url.startsWith(REFERRAL_STATS) && req.method() === 'GET') {
+      // B1d §3.5: the referral aggregates of an address (coordinator 9e7d468, getReferralStats), as scripted.
+      fake.referralStatsReads.push(url.slice(REFERRAL_STATS.length));
+      return json(route, fake.referralStats.status, fake.referralStats.body);
     }
     if (url === STATS && req.method() === 'GET') {
       // The presale stage, for NOC's value in the dollar re-auth rule (owner decision B).

@@ -6,7 +6,8 @@
 //     CORE_PRESALE_ALLOWED; core/geo/ is allowed whole (D15). Of ../web/ (fix round 1, review I1) only WEB_ALLOWED —
 //     web/src/presale/** imports only erased core/presale types, so a denylist would miss it; only an allowlist closes
 //     it, same as core/presale/. Positive control: the on build carries every ON_BUILD module and both carry every
-//     BOTH_BUILDS module, so a renamed or moved module fails instead of passing silently.
+//     BOTH_BUILDS module, so a renamed or moved module fails instead of passing silently; and (B1d-2) every presale
+//     module the on build carries is in ON_BUILD, so a new one cannot join the build without its control.
 //     The maps are the evidence, not the packages: the two packages were byte-identical through B1d-1a's Task 4; from
 //     Task 5 the on build carries the presale background modules, so the maps — not the files — remain the evidence.
 //  2. Strings: no file of the off build's app/, chrome/, firefox/ contains a MARKER; each marker is found in the on build.
@@ -224,6 +225,14 @@ export function offModuleViolations(ids) {
   return out;
 }
 
+/** B1d-2: every module of the on build the off build would refuse (a presale module) that `onBuild` does not name. */
+export function unlistedModules(ids, onBuild) {
+  return [...ids]
+    .sort()
+    .filter(id => offModuleViolations(new Set([id])).length > 0 && !onBuild.includes(id))
+    .map(id => `on build carries ${id} — a presale module ON_BUILD does not name: the positive control must list every one`);
+}
+
 export function missingModules(build, ids, required) {
   return required.filter(id => !ids.has(id)).map(id => `${build} build does not carry ${id} — renamed or moved? the positive control must name it`);
 }
@@ -296,7 +305,7 @@ export function checkNoPresale(offDir, onDir, o = {}) {
   const out = [...off.problems, ...on.problems];
   out.push(...featureViolations(offDir, off.features, false), ...featureViolations(onDir, on.features, true));
   if (off.ids !== undefined) out.push(...offModuleViolations(off.ids), ...missingModules('off', off.ids, bothBuilds));
-  if (on.ids !== undefined) out.push(...missingModules('on', on.ids, [...onBuild, ...bothBuilds]));
+  if (on.ids !== undefined) out.push(...missingModules('on', on.ids, [...onBuild, ...bothBuilds]), ...unlistedModules(on.ids, onBuild));
   const names = decoderInstructionNames(decoderSource);
   if (names.length === 0) out.push(`INCONCLUSIVE: no instruction names read from ${DECODER}`);
   if (off.files !== undefined && on.files !== undefined) out.push(...markerViolations(off.files, on.files, markers));
@@ -316,6 +325,6 @@ if (isMain(import.meta.url)) {
     process.exit(1);
   }
   console.log(
-    `no presale ok (${offArg} off, ${onArg} on): the off build's module maps carry no presale module and of core/presale/ only ${CORE_PRESALE_ALLOWED.length} allowed; the on build carries ${ON_BUILD.length + BOTH_BUILDS.length} required modules; ${MARKERS.length} markers (none in the off build, each in the on build); ${MUST_STAY.length} strings and the decoder's instruction names stay in the off build`,
+    `no presale ok (${offArg} off, ${onArg} on): the off build's module maps carry no presale module and of core/presale/ only ${CORE_PRESALE_ALLOWED.length} allowed; the on build carries ${ON_BUILD.length + BOTH_BUILDS.length} required modules and no presale module outside ON_BUILD; ${MARKERS.length} markers (none in the off build, each in the on build); ${MUST_STAY.length} strings and the decoder's instruction names stay in the off build`,
   );
 }
