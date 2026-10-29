@@ -99,6 +99,7 @@ const OPEN_VIEW = {
   balances: {SOL: '5000000000', USDC: {largest: '50000000', total: '80000000'}, USDT: {largest: '7000000', total: '7000000'}},
   solUsdMicros: '198420000',
   countryCode: 'SI',
+  referral: {onChain: null, canRegister: true},
   pending: null,
 };
 /** B1d §2.3: an open purchase of ACCOUNT in v1_pending. */
@@ -217,6 +218,19 @@ describe('presale.view (§2.5)', () => {
       ok: true,
       data: {open: true, limits: {userRemainingCents: '19700000', firstPurchase: false}, allocation: {exists: true, totalBase: '1998667554963', bonusBase: '16142571618'}},
     });
+  });
+
+  it('B1d-2 (§2.5): the referral — the referrer on chain, and canRegister exactly for a first purchase without one (D8: an on-chain referrer always wins)', async () => {
+    const referral = async (chain: Partial<Chain>) => ((await send(await unlockedExt(), world({chain}), viewMsg)) as {data: {referral: unknown}}).data.referral;
+    // No allocation: a first purchase, nothing on chain → the field is offered (positive control).
+    expect(await referral({})).toEqual({onChain: null, canRegister: true});
+    // An allocation that never bought (purchase_count 0) and has no referrer: still a first purchase (C21).
+    expect(await referral({user: program(userData()), allocation: program(allocationData({count: 0, spent: 0n, totalTokens: 0n, bonus: 0n}))})).toEqual({onChain: null, canRegister: true});
+    // Bought before: nothing can be registered any more.
+    expect(await referral({user: program(userData()), allocation: program(allocationData())})).toEqual({onChain: null, canRegister: false});
+    // A referrer on chain — with no purchase yet, and after purchases: it is named, and it wins.
+    expect(await referral({user: program(userData()), allocation: program(allocationData({count: 0, spent: 0n, totalTokens: 0n, bonus: 0n, referrer: OTHER}))})).toEqual({onChain: OTHER, canRegister: false});
+    expect(await referral({user: program(userData()), allocation: program(allocationData({referrer: OTHER}))})).toEqual({onChain: OTHER, canRegister: false});
   });
 
   it('the open view carries the country the gate detected (D22) — as the gate named it, null when it named none, never a default', async () => {

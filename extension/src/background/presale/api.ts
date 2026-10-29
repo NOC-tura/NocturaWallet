@@ -68,14 +68,22 @@ export interface BalancesView {
   USDT: {largest: string; total: string};
 }
 /**
- * §2.5 — `referral` joins the open variant in B1d-2. `pending` is in every variant (C30). The open variant carries the
- * country the gate detected, or null when it named none (D22: #50b's open variant shows it).
+ * §2.5 (B1d-2): the referrer registered on chain, or null; `canRegister` — #23 offers the referral address — exactly when
+ * this is a first purchase and there is none (D8: an on-chain referrer always wins).
+ */
+export interface ReferralView {
+  onChain: string | null;
+  canRegister: boolean;
+}
+/**
+ * §2.5. `pending` is in every variant (C30). The open variant carries the country the gate detected, or null when it
+ * named none (D22: #50b's open variant shows it), and the account's referral (B1d-2).
  */
 export type PresaleView =
   | {open: false; why: 'unavailable'; code: UnavailableCode; pending: PendingView | null}
   | {open: false; why: 'inactive' | 'blocked'; state: StageView; pending: PendingView | null}
   | {open: false; why: 'geo'; geo: GeoAnswer; state: StageView | null; pending: PendingView | null}
-  | {open: true; state: StageView; limits: LimitsView; allocation: AllocationView; balances: BalancesView; solUsdMicros: string | null; countryCode: string | null; pending: PendingView | null};
+  | {open: true; state: StageView; limits: LimitsView; allocation: AllocationView; balances: BalancesView; solUsdMicros: string | null; countryCode: string | null; referral: ReferralView; pending: PendingView | null};
 /** §3.2. `cents` and `nocBase` are null only with `line: 'no-sol-price'`. */
 export interface Quote {
   amount: string;
@@ -256,6 +264,7 @@ async function view(ext: Ext, deps: WalletDeps, msg: Readonly<Record<string, unk
       balances: balancesView(balances),
       solUsdMicros: micros === null ? null : micros.toString(),
       countryCode: geo.countryCode,
+      referral: {onChain: snapshot.allocation.referrer, canRegister: snapshot.limits.firstPurchase && snapshot.allocation.referrer === null},
       pending,
     } satisfies PresaleView,
   };
@@ -361,15 +370,17 @@ async function discardMessage(ext: Ext, _deps: WalletDeps, msg: Readonly<Record<
 /**
  * presale.checkReferrer {account, referrer} (§1.4, §3.5, B1d-2): `{ok: true}` when the purchase would register the
  * address, `{ok: false, line}` with the line #23's field shows; a read failure is the purchase's refusal. The field's
- * answer only — the prepare and the signature decide again. `referrer` is a string of 32–44 base58 characters (§1.4);
- * whether it is a key is the line's to say.
+ * answer only — the prepare and the signature decide again. `referrer` is whatever the field holds (B1d-2 Task 3: the
+ * popup judges nothing, C3): a string that is not 32–44 base58 characters is `referrer-invalid` with nothing read;
+ * whether one that is names a key is the line's to say too.
  */
 async function checkReferrerMessage(ext: Ext, deps: WalletDeps, msg: Readonly<Record<string, unknown>>): Promise<Result> {
   if (!onlyKeys(msg, ['type', 'account', 'referrer'])) return MALFORMED;
   const {account, referrer} = msg;
-  if (!isAddress(account) || typeof referrer !== 'string' || !REFERRER.test(referrer)) return MALFORMED;
+  if (!isAddress(account) || typeof referrer !== 'string') return MALFORMED;
   const refused = await sessionRefusal(ext, account);
   if (refused !== null) return refused;
+  if (!REFERRER.test(referrer)) return {ok: true, data: {ok: false, line: 'referrer-invalid'}};
   try {
     const line = await checkReferrer(ext, deps, account, referrer);
     return {ok: true, data: line === null ? {ok: true} : {ok: false, line}};

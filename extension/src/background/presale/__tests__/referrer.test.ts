@@ -273,11 +273,23 @@ describe('presale.checkReferrer (§1.4, §3.5, C32): its order, each line at its
     expect(await check(await world({chain: {...EXISTING, allocation: program(allocationData({user: OTHER}))}}), R)).toEqual({ok: false, error: 'presale-unavailable', data: {detail: 'malformed'}});
   });
 
+  it('B1d-2 Task 3: whatever the field holds is the background’s to judge — not 32–44 base58 characters (empty, 31 or 45 characters, outside base58, a long paste) → referrer-invalid, nothing read', async () => {
+    for (const referrer of ['', 'x'.repeat(31), '1'.repeat(45), `${R.slice(0, -1)}0`, ` ${R}`, 'a'.repeat(5000)]) {
+      const w = await world();
+      expect([referrer.length, await check(w, referrer)]).toEqual([referrer.length, {ok: true, data: {ok: false, line: 'referrer-invalid'}}]);
+      expect(w.accountReads).toEqual([]);
+    }
+    // Still behind the session: locked first (nothing judged for a locked wallet).
+    const locked = await world();
+    await clearSession(locked.ext);
+    expect(await check(locked, 'x')).toEqual({ok: false, error: 'locked'});
+  });
+
   it.each([
     ['an extra key', {extra: 1}],
     ['a referrer that is not a string', {referrer: 7}],
-    ['a referrer of 31 characters', {referrer: 'x'.repeat(31)}],
-    ['a referrer outside base58', {referrer: `${R.slice(0, -1)}0`}],
+    ['a referrer that is null', {referrer: null}],
+    ['no referrer', {referrer: undefined}],
     ['a non-address account', {account: 'not-an-address'}],
   ])('%s → malformed, nothing read', async (_, over) => {
     const w = await world();

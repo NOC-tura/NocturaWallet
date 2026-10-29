@@ -1,5 +1,5 @@
 import {formatAmount} from '../../shared/amount';
-import type {GeoReason, PresaleCurrency} from './client';
+import type {GeoReason, PresaleCurrency, ReferrerLine} from './client';
 
 /**
  * #23's strings (B1d §4.1, §10 — controller copy, owner-delegated 2026-10-19; the design's own where §4.1 keeps it) and
@@ -66,6 +66,21 @@ export const PRESALE_TEXT = {
 } as const;
 
 /**
+ * #23a's referral address (B1d-2, D8, §4.1 — undrawn, §9): Q45's label and placeholder, and the line under it for each of
+ * the background's answers — Q46 a–c, Q48 (controller copy, owner-delegated 2026-10-19).
+ */
+export const REFERRAL_TEXT = {
+  label: 'Referral address (optional)',
+  placeholder: 'Solana address of the person who invited you',
+} as const;
+export const REFERRER_LINE_TEXT: Record<ReferrerLine, string> = {
+  'referrer-invalid': 'Not a valid Solana address',
+  'referrer-self': "You can't refer yourself or another account in this wallet",
+  'referrer-no-allocation': "This address has no presale allocation, so it can't receive a referral bonus",
+  'referrer-not-applicable': 'This account can no longer take a referrer — review again',
+};
+
+/**
  * #20's purchase variant (§4.2; Q07–Q10, Q44 — controller copy, owner-delegated 2026-10-19; §4.2's own row labels and
  * B1b's #20 labels where it keeps them). Q57 and Q58 are new in B1d-1b Task 5 — controller copy, flagged to the owner:
  * B1b's "You have a send waiting." and "Confirmed. Review the fresh quote and send." name a send.
@@ -83,6 +98,9 @@ export const CONFIRM_PURCHASE_TEXT = {
   to: 'To',
   /** Q10. */
   presale: 'Noctura presale',
+  /** Q47 (B1d-2): the row, and its note when this purchase registers the referrer. */
+  referredBy: 'Referred by',
+  registers: "Saved to your presale account with this purchase. It can't be changed later.",
   fees: 'Fees',
   networkFee: 'Network fee',
   priority: 'Priority',

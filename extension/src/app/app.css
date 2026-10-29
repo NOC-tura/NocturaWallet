@@ -737,6 +737,12 @@ a.btn {
 .s-conf .detail-grid.app-pre-grid .detail-row {
   grid-template-columns: 112px 1fr;
 }
+/* B1d-2: #20's "Referred by" — Q47's note under the whole address, in words (the design's .val breaks anywhere). */
+.s-conf .detail-row .val .app-pre-note {
+  color: var(--fg-secondary);
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
 /* B1d-1b Task 5: #44's amount line for a purchase (Q32), under the head: no UA paragraph margin, so it sits with the head
    and the sub below keeps the design's spacing (two stacked margins opened a gap; found in the visual check). */
 .s9-fail-hero .sub.app-fail-line {
@@ -2138,19 +2144,45 @@ body:has(.app-window) {
 .s-pre .input-card .input::placeholder {
   color: var(--fg-disabled);
 }
-/* The limit or balance line under the amount, in #12's error style (.s-send .helper.error). */
-.s-pre .input-card .helper {
+/* The limit or balance line under the amount, in #12's error style (.s-send .helper.error) — and, B1d-2, the referral
+   address's line. */
+.s-pre .input-card .helper,
+.s-pre .app-pre-referral .helper {
   display: flex;
   align-items: flex-start;
   gap: 4px;
   font: 400 12px/16px var(--font-body);
 }
-.s-pre .input-card .helper svg {
+.s-pre .input-card .helper svg,
+.s-pre .app-pre-referral .helper svg {
   flex: 0 0 auto;
   margin-top: 2px;
 }
-.s-pre .input-card .helper.error {
+.s-pre .input-card .helper.error,
+.s-pre .app-pre-referral .helper.error {
   color: var(--danger);
+}
+/* B1d-2: #23a's referral address (D8; undrawn, §9) between the receive card and the allocation row — B1b's single-line
+   input (.app-input, the address book's) under an overline label, the value in the mono face at 13 px: a whole 44-
+   character address fits the 412 px popup's field (at #12's 14 px it scrolled; found in the visual check). Q45's
+   placeholder is words, in the body face (in the mono face it was cut off). */
+.s-pre .app-pre-referral {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.s-pre .app-pre-referral-label {
+  color: var(--fg-tertiary);
+}
+.s-pre .app-pre-referral .app-input {
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 20px;
+}
+.s-pre .app-pre-referral .app-input::placeholder {
+  color: var(--fg-tertiary);
+  font-family: var(--font-body);
 }
 /* The allocation row: its value, and D5's TGE line under it (no drawn state; the receipt-row style). */
 .s-pre .receipt .row .r.app-pre-stack {

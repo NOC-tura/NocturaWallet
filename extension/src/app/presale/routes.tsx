@@ -9,13 +9,15 @@ import {PREPARE_REFUSALS, PRESALE_CURRENCIES, type PrepareRefusal, type PresaleC
  * prepared purchase (§3.3: `price-changed`, `state-changed`, a limit that moved), and #44's / #54's [Try again]. Only
  * what the user chose — the currency and the amount, base units as a decimal string — the refusal #23 shows for it,
  * and the purchase's challenge id, which #23's next Buy carries (§3.3 step 6: the background decides whether it still
- * applies). Never a prepared purchase: #23 prepares again on its own Buy.
+ * applies). Never a prepared purchase: #23 prepares again on its own Buy. B1d-2: `referrer` — the referral address the
+ * purchase registered, back in #23's field (present only then; a refusal of it is `code`, its line under the field).
  */
 export interface PresaleAgain {
   currency: PresaleCurrency;
   amount: string;
   code: PrepareRefusal | null;
   challengeId: string | null;
+  referrer?: string;
 }
 
 const AMOUNT = /^[1-9]\d{0,19}$/;
@@ -27,7 +29,7 @@ const exactly = (o: Readonly<Record<string, unknown>>, keys: readonly string[]):
 function isAgain(x: unknown): x is PresaleAgain {
   if (typeof x !== 'object' || x === null || Array.isArray(x)) return false;
   const o = x as Record<string, unknown>;
-  if (!exactly(o, ['currency', 'amount', 'code', 'challengeId'])) return false;
+  if (!exactly(o, ['currency', 'amount', 'code', 'challengeId']) && !(exactly(o, ['currency', 'amount', 'code', 'challengeId', 'referrer']) && typeof o.referrer === 'string' && ADDRESS.test(o.referrer))) return false;
   if (typeof o.currency !== 'string' || !(PRESALE_CURRENCIES as readonly string[]).includes(o.currency)) return false;
   if (typeof o.amount !== 'string' || !AMOUNT.test(o.amount) || BigInt(o.amount) > U64_MAX) return false;
   if (o.code !== null && (typeof o.code !== 'string' || !(PREPARE_REFUSALS as readonly string[]).includes(o.code))) return false;

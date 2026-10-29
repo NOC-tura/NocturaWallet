@@ -149,6 +149,13 @@ export const MARKERS = [
   'presale.checkReferrer',
   'Referred by',
   "Saved to your presale account with this purchase. It can't be changed later.",
+  // B1d-2 Task 3: #23a's referral address — Q45's label and placeholder, Q46 b and c, Q48 (Q46a is a prefix of B1b's
+  // "Not a valid Solana address — check length & characters", which both builds carry).
+  'Referral address (optional)',
+  'Solana address of the person who invited you',
+  "You can't refer yourself or another account in this wallet",
+  "This address has no presale allocation, so it can't receive a referral bonus",
+  'This account can no longer take a referrer — review again',
 ];
 // Q42a (B1d-1a: the generic pending row, both builds); 1b adds F12's Q49–Q51. Q42b ("Transaction") is too short to
 // be a string search. The decoder's instruction names are read from its source (DECODER).

@@ -20,6 +20,8 @@ import type {PresaleAgain} from './routes';
 
 const HEX32 = /^[0-9a-f]{32}$/;
 const isPrepareRefusal = (code: string): code is PrepareRefusal => (PREPARE_REFUSALS as readonly string[]).includes(code);
+/** B1d-2: the referral address this purchase registers — what a re-prepare and #23 again carry; none for an on-chain referrer. */
+const registering = (v: ResumablePurchase): {referrer?: string} => (v.referrer?.registers === true ? {referrer: v.referrer.address} : {});
 /** "271 408 921": a slot in groups of three, as #19 and #20 write it. */
 const groupSlot = (slot: number): string => slot.toLocaleString('en-US').replace(/,/g, ' ');
 
@@ -35,7 +37,9 @@ const groupSlot = (slot: number): string => slot.toLocaleString('en-US').replace
  * simulation credits (`nocBase`, the program's Δtotal_tokens — not #23's estimate), the stage and the price it was
  * simulated at, the account and the recipient — Q10 over the pinned treasury or vault ATA, whole, in groups of four —
  * the fees (network, priority, and Q09 for the accounts this purchase creates; no Noctura fee, C25), and #19's facts
- * (C33, Q44). No first-send warning (§3.4). Re-authentication opens #10 exactly as a send's does.
+ * (C33, Q44), and — B1d-2, Q47 — "Referred by" with the whole referrer and, when this purchase registers it, Q47's note.
+ * No first-send warning (§3.4). Re-authentication opens #10 exactly as a send's does. A re-prepare and #23 again carry
+ * the referral address the purchase registers (never dropped).
  *
  * Where it goes (#23 is this flow's review): back and Esc → #23 with the amount kept and the challenge carried; Cancel
  * → `presale.discardPrepared`, then a fresh #23; a sign-time refusal that no re-prepare can lift (`geo-closed`,
@@ -90,7 +94,7 @@ export function PresaleConfirm({
   const toPresale = useCallback(
     (v: ResumablePurchase, code: PrepareRefusal | null) => {
       left.current = true;
-      onPresale({currency: v.currency, amount: v.amount.toString(), code, challengeId: v.reauth?.challengeId ?? null});
+      onPresale({currency: v.currency, amount: v.amount.toString(), code, challengeId: v.reauth?.challengeId ?? null, ...registering(v)});
     },
     [onPresale],
   );
@@ -105,7 +109,7 @@ export function PresaleConfirm({
     async (v: ResumablePurchase): Promise<boolean> => {
       const g = gen.current;
       setBusy(true);
-      const r = await client.prepareBuy(account, {currency: v.currency, amount: v.amount, stage: v.stage}, v.reauth?.challengeId);
+      const r = await client.prepareBuy(account, {currency: v.currency, amount: v.amount, stage: v.stage, ...registering(v)}, v.reauth?.challengeId);
       setBusy(false);
       if (left.current || gen.current !== g) {
         if (r.ok && cancelled.current) void client.discardPrepared(account);
@@ -346,6 +350,8 @@ export function PresaleConfirm({
       case 'above-max-tx':
       case 'above-user-limit':
       case 'presale-unavailable':
+      case 'referrer-self':
+      case 'referrer-no-allocation':
         // Kept (C29): #23 shows why, for the same amount; its next Buy prepares again carrying the challenge.
         return toPresale(v, r.error);
       case 'coordinator-refused':
@@ -444,6 +450,17 @@ export function PresaleConfirm({
               </span>
             </span>
           </div>
+          {view.referrer === null ? null : (
+            <div className="detail-row">
+              <span className="lbl">{T.referredBy}</span>
+              <span className="val app-stack">
+                <span className="noc-mono">
+                  <AddressGroups address={view.referrer.address} />
+                </span>
+                {view.referrer.registers ? <span className="noc-caption app-pre-note">{T.registers}</span> : null}
+              </span>
+            </div>
+          )}
           <div className="detail-row">
             <span className="lbl">Network</span>
             <span className="val app-prose">{CONFIRM_TEXT.network}</span>
