@@ -1,12 +1,27 @@
 # Noctura Extension B1e — the first Chrome Web Store release
 
-**Status:** draft rev 2, 2026-10-30. Rev 1 (70e691d): the owner approved the design in conversation section by section
+**Status:** draft rev 2.1, 2026-10-30. Rev 1 (70e691d): the owner approved the design in conversation section by section
 (2026-10-30: the release target, the presale decision, the hardening scope, where the legal pages live, D10, D31, then
 the four design sections). Rev 2 applies Fable review 1 (`.superpowers/sdd/b1e-spec-review-1.md`: C1, C2, I1–I9 and
 the twelve Minors) and the owner's answers to its six questions (`.superpowers/sdd/b1e-owner-decisions.md`, E9–E14).
+Rev 2.1 (on 43c4589) applies Fable review 2 (`.superpowers/sdd/b1e-spec-review-2.md`: N1–N4 and its nine Minors) and
+the owner's answers E15–E18.
 Parent specs: B1 (`2026-09-27-extension-b1-design.md` §5 "Build, gates, release" and its release gates), B1b-2b (D10,
 D31), B1c §6.5, B1d §6.5 and §7. Binding design: `/home/user/Downloads/index.html` (+ `screen.md`) — it contains the
 TGE date; nothing is copied from it.
+
+**Rev 2.1** (review 2; §12 maps each finding):
+- §4.3 + §4.2 (N1): the link gate skips `licenses.html` by name; the static-page rule there now refuses `<a`, `href=`,
+  `<script`, `<link`, `<style`, `style=`, `on…=`, `<iframe`, `<form`, with mutations.
+- §4.2 (N2, E15): `Unlicense` joins the allowlist; a committed `name@version → SPDX` table classifies packages without
+  a `license` field; an unclassified package fails the build.
+- §4.2 + R7 (N3, E16): the licence page and its gate take only modules with rendered code (`renderedLength > 0`,
+  recorded by `chunkModules`); `rpc-websockets` renders 0 bytes today — no LGPL code ships; the alias stub stays as a
+  precaution (`CommonClient` class, `WebSocket` function); web3.js is 1.99.0.
+- §6.1 P12/P13, §6.4, §5.6, §7 (N4, E17): nothing is served at `wallet.noc-tura.io`; passkeys show under that name;
+  1.0.0 freezes the RP ID (a pre-upload gate records it); a test pins `RP_ID` to `HOST_PERMISSIONS`.
+- §0 (E18): R1 and R4 are owner decisions now.
+- Minors 1–9 of review 2: §2.1, §2.2, §2.6, §1.3, §4.2, §7. The decrypt-damaged delete is §8 (former §11 Q2).
 
 **Rev 2** (every change traces to a finding or an owner decision; §12 is the table):
 - §2 rewritten: a FROZEN structural predicate for "unreadable" (§2.1, E9, C1) beside a second state, "refused by this
@@ -18,7 +33,8 @@ TGE date; nothing is copied from it.
   type (I2); set-when-none needs no proof, change and remove do (I6, R1); the onboarding step runs after
   `commitWallet` (I6); a built-content-script `storage` gate (I2); Minors 1–4.
 - §4: the link gate rewritten to be true of the real package (I1, probe in §4.3); `licenses.html` as a static root
-  page the gates admit by name, with defined inputs (I9); an LGPL finding (R7, §11 Q1).
+  page the gates admit by name, with defined inputs (I9); an LGPL finding (R7, §11 Q1) — wrong, corrected in rev 2.1
+  (N3: no LGPL code ships).
 - §5: one version source (`extension/package.json`), the `key` render option and its gate, a hand-written STORE zip
   (I8); the release script reuses `verify`'s package with a third digest witness (Minor 12).
 - §6: the privacy text re-derived from the code's real network calls as exact sentences (I3, I7); retention a
@@ -50,19 +66,24 @@ B1e is cut down to **the first release: Chrome Web Store, presale off**. It is o
 | E12 | A damaged vault with an **open send** (`v1_pending`) is refused until the send settles, as E5 / #37 today | §2.4 |
 | E13 | The CWS data-usage form ticks **"Website content"** (the site hands the transaction bytes, which go to the coordinator's simulation) | §6.3 |
 | E14 | The **independent external security review is done before the Unlisted listing** (before any distribution); uploading the zip for store review without publishing may happen earlier | §7 |
+| E15 | **`Unlicense` joins the licence allowlist**; a committed `name@version → SPDX` table classifies packages without a `license` field; an unknown package fails the build (review 2 N2) | §4.2 |
+| E16 | Keep the **`rpc-websockets` alias stub** as a precaution **and** the licence page / gate on **modules with rendered code** (`renderedLength > 0`) (N3) | §4.2 |
+| E17 | The passkey **RP ID stays `wallet.noc-tura.io`**; 1.0.0 freezes it for every enrolled passkey (a pre-upload gate records it); a test pins `RP_ID` to `HOST_PERMISSIONS` (N4) | §5.6, §6, §7 |
+| E18 | **Confirmed: R1** (the first phrase is set while unlocked without a password re-check; change / remove behind #10) **and R4** ("Save the damaged data" on both damaged states) — owner decisions now, no longer spec rulings | §1.3, §2.3 |
 
 **Spec rulings (rev 2).** Decisions the review asked the spec to take that need no owner: each is the most secure
-default, with its reason where it is applied. The owner may overturn any.
+default, with its reason where it is applied. The owner may overturn any. **R1 and R4 are confirmed by the owner
+(E18)**; R7's licence allowlist is the owner's list (E15).
 
 | # | Ruling | Where |
 |---|---|---|
-| R1 | Phrase: **set when none is set** needs an unlocked session and no proof; **change** and **remove** need #10's proof | §1.3 |
+| R1 | Phrase: **set when none is set** needs an unlocked session and no proof; **change** and **remove** need #10's proof — **owner-confirmed, E18** | §1.3 |
 | R2 | The phrase reaches pages only as a field of `wallet.state`, `vault.status` and `dapp.pending`; its key is background-owned (no page may name it) | §1.4 |
 | R3 | `vault.setKeys` binds the keys through `envelopeShape`, not only `readWalletView`: no session is created over an envelope the background calls `stored-invalid` | §2.5 |
-| R4 | "Save the damaged data" is offered on **both** damaged states (unreadable and refused); removal only on unreadable | §2.3 |
+| R4 | "Save the damaged data" is offered on **both** damaged states (unreadable and refused); removal only on unreadable — **owner-confirmed, E18** | §2.3 |
 | R5 | One version source: `extension/package.json` `version` (first: `1.0.0`); `manifest/source.mjs` reads it | §5.2 |
 | R6 | The store zip is a **hand-written STORE (uncompressed) zip**, no dependency | §5.4 |
-| R7 | `licenses.html` refuses any licence outside an allowlist; `rpc-websockets` (LGPL-3.0-only, bundled today) is **stubbed out** of the package — no code path constructs a web3.js `Connection` | §4.2, §11 Q1 |
+| R7 | `licenses.html` lists only packages with rendered code and refuses any licence outside the owner's allowlist (E15); `rpc-websockets` (LGPL-3.0-only) is in the dependency graph but renders **0 bytes** — no LGPL code ships — and is aliased to a stub **as a precaution** against a future web3.js whose tree-shaking keeps it (E16) | §4.2 |
 | R8 | The link gate matches **whole URL strings exactly**, scheme `http`, `https`, `ws`, `wss` and `ftp` included | §4.3 |
 | R9 | A phrase read that fails shows a visible "could not be read" line, never silence | §1.2 |
 | R10 | The release script packs `verify`'s own `dist-nopresale/chrome`, after a third build matches its digest | §5.3 |
@@ -126,7 +147,7 @@ current one; two phrases on one screen invite confusion).
 
 **Onboarding.** A skippable last step: "Set an anti-phishing phrase", with one sentence on why. It runs **after
 `commitWallet`** (`onboarding.ts:148`), never before: the first write, `storeEnvelope(null, …)`, calls
-`removeWalletData` (`accountsStore.ts:258-262`), which removes every `WALLET_DATA_KEYS` key — a phrase written before
+`removeWalletData` (defined at `accountsStore.ts:57`; its call in the first write at `:260`), which removes every `WALLET_DATA_KEYS` key — a phrase written before
 the commit would be wiped by it. Placement:
 - create: after #6 passkey's `done` (`createRun.ts:129`), before `wallet.html#/created` — not before #6, which would
   hold the typed password longer (#6 holds it, §3.5 of B1b-2a);
@@ -226,7 +247,8 @@ envelope format gets its own rule in a new module; tightening the opener's polic
    - `seed` is not an object, or `seed.iv` is not strict base64 of exactly 12 bytes, or `seed.ct` not strict base64
      of at least 17 bytes;
    - `password` is not an object, or `password.wrapped` is not strict base64 of exactly 40 bytes;
-   - `passkey` is present and is not an object, or its `credentialId` is not strict base64 of at least 1 byte, or its
+   - `passkey` is present — `raw.passkey !== undefined`, as `checkEnvelope` and `envelopeShape` read it; so
+     `passkey: null` is present and unreadable — and is not an object, or its `credentialId` is not strict base64 of at least 1 byte, or its
      `prfSalt` not of exactly 32, or its `wrapped` not of exactly 40;
    - `accounts` is not an array, or an entry is not an object with a safe integer `index` ≥ 0, a string `name` and a
      string `publicKey`.
@@ -256,8 +278,9 @@ own read of `v1_vault` (`readLocal`); the background re-judges at removal (§2.4
 Extensions → Update). If it is up to date, the data may have been changed. Nothing was removed." + today's
 `damagedHelp` as the last resort. Buttons: **Save the damaged data** (§2.3). No removal.
 
-**Unreadable** — "Wallet data is damaged" + "This browser's copy of your wallet can't be read by any version of
-Noctura." + "Your funds are on Solana. After you remove this copy, **only your recovery phrase reaches them**." (O64's
+**Unreadable** — "Wallet data is damaged" + "This browser's copy of your wallet can't be read by this or any later
+version of Noctura." (true by construction: a later format gets a new `v`, which §2.1 never deletes; it is not a
+promise about repair tools) + "Your funds are on Solana. After you remove this copy, **only your recovery phrase reaches them**." (O64's
 wording, `DeleteWallet.tsx` `fundedTail`) — said **before** the typed word (Minor 6), never "funds are safe".
 Buttons: **Save the damaged data**, **Remove damaged wallet**.
 
@@ -355,8 +378,21 @@ it carries a passkey. Every variant below is `JSON.parse` of that file, then one
 | F8 | F0, `scheme: 'bip44'` | `not-unreadable` |
 | F9 | F0 plus an unknown field | `not-unreadable` |
 
-**Deletable controls:** `null`; `[]`; `"x"`; F0 with `seed.iv` of 11 bytes; F0 without `password`; F0 with
-`v: "1"`; F0 with `kdf.m: "65536"`; F0 with an unpadded `kdf.salt` → `forgotten`, `v1_vault` absent, the phrase gone.
+**Positive controls — breadth, from the encoder (review 2 Minor 4).** Beside the file-read fixture (the control
+against a symmetric change of encoder and predicate), the test generates with the real encoder and asserts each
+readable, refused by neither opener, and `not-unreadable`: a `cli` wallet; 100 accounts; the output of
+`rewrapPassword`; the output of `reencryptForAccounts` (an account added); `addPasskeyWrap` with a 1-byte and a 64-byte
+credential ID; odd names (`''`, an emoji sequence, a bidi override, 5 000 characters). And one more fixture committed
+verbatim: the output of the **first encoder, at 458dfcd** (the oldest vault a developer profile could hold),
+`src/vault/__tests__/fixtures/envelope-v1-458dfcd.json`, with and without a passkey.
+
+**Deletable controls — at least one per clause of U1–U3 (review 2 Minor 1),** each `→ forgotten`, `v1_vault` absent,
+the phrase gone: U1 `null`, `[]`, `"x"`; U2 no `v`, `v: "1"`, `v: 0`, `v: 1.5`; U3 `scheme: 1`; `kdf.alg: 'scrypt'`;
+`kdf.m: "65536"`; an unpadded `kdf.salt`; `seed.iv` of 11 bytes; `seed.ct` of 16 bytes; no `password`;
+`password.wrapped` of 39 bytes; `passkey: null`; an empty `credentialId`; `prfSalt` of 31 bytes; `accounts: {}`;
+`index: -1`; `index: '0'`; `name: 1`; an account without `publicKey`. **The partition test enumerates every one of
+them**: each is also `envelopeShape === null` and `storedVault` `damaged` — so a future opener that loosened a v1 clause
+without bumping `v` (say, `alg: 'scrypt'` under `v: 1`) fails it.
 
 **Digest controls (C2):** the right digest of an unreadable value replaced by another unreadable value between the
 read and the click → `busy`, nothing removed; a digest of 63 hex → `malformed`; an open send → `send-open`, nothing
@@ -364,7 +400,9 @@ removed, the vault still there.
 
 **Invariance — policy tightened, the controls must stay as they are.** A test mocks `../shared/envelopeRules` with
 `ENVELOPE_KDF_MIN.m = 131072`, `MAX_ACCOUNTS = 1` and an `accountsPolicyOk` that refuses everything, and asserts
-`unreadableV1` gives the same verdict on every control above; a source test asserts `src/shared/unreadable.ts` imports
+`unreadableV1` gives the same verdict on every control above. **Its own positive control (review 2 Minor 2):** under
+the same mock, `envelopeShape` now refuses F0 (`m` 65536 < 131072) — proving the mock took, so the invariance means
+something. A source test asserts `src/shared/unreadable.ts` imports
 only `@scure/base`.
 
 **Named mutations of the predicate — each must turn a control RED** (run in the plan's task, the result recorded):
@@ -407,46 +445,75 @@ only `@scure/base`.
   `https://api.noc-tura.io` (`check-permissions.mjs` `REQUIRED_CONNECT_SRC`).
 - **Open-source licences** open `licenses.html` inside the package (§4.2), in a new tab; no network.
 
-### 4.2 `licenses.html` (I9, R7)
+### 4.2 `licenses.html` (I9, R7, N1–N3, E15, E16)
 
 **A static root page.** Generated by `scripts/build.mjs` after the Vite builds, written to `<outRoot>/app/licenses.html`
-before the per-browser copies, so `chrome/` and `firefox/` carry the same file. It has **no `<script>`, no `<style>`,
-no `style` attribute and no `<link>`** — plain HTML (`<meta charset="utf-8">`, a title, headings, `<pre>` blocks), so
-under the CSP it can load nothing and run nothing. The gates are taught it **by name**:
+before the per-browser copies, so `chrome/` and `firefox/` carry the same file. Plain HTML (`<meta charset="utf-8">`,
+a title, headings, `<pre>` blocks of HTML-escaped licence text), so under the CSP it can load nothing, run nothing and
+link nowhere. The licence texts contain URLs (review 2 probe: `http://www.apache.org/licenses/…`,
+`https://paulmillr.com`, `https://ianstormtaylor.com`, `https://encoding.spec.whatwg.org/`, `http://unlicense.org/`,
+and the OFL's own) — as **escaped text**, never navigable. The gates are taught it **by name**:
 - `check-vault-isolation.mjs`: a new `STATIC_PAGES = ['licenses.html']`; every `.html` at a package root must be a key
-  of `ENTRIES` or a member of `STATIC_PAGES` (an unknown page fails); a static page with a `<script>`, `<style>`, a
-  `style` attribute or a `<link>` fails. `bundleViolations` already treats every built `.html` as a page whose
-  scripts it follows (none here).
+  of `ENTRIES` or a member of `STATIC_PAGES` (an unknown page fails — today `bundleViolations`, line 896, follows the
+  scripts of every root `.html` and refuses nothing for a script-less unknown page). **The static-page rule (N1):** the
+  file contains none of `<a`, `href=`, `<script`, `<link`, `<style`, `style=`, an `on…=` attribute, `<iframe`,
+  `<form` (case-insensitive, over the raw file). Every `<` inside a licence text is escaped to `&lt;` by the generator,
+  so none of these can come from a licence.
+- `check-links.mjs` (§4.3) **skips `licenses.html` by name**; the static-page rule is what holds there instead.
 - `check-csp.mjs` reads every `.html` under the package (`checkHtml`): it covers the file unchanged.
-- `check-page-bundles.mjs` covers the two content scripts only; it is unaffected (no change).
-- Mutations: a `<script src="x.js">` in the generated file → fails; a `<style>` → fails; a second, unknown
-  `extra.html` in the package → fails.
+- `check-page-bundles.mjs` covers the two content scripts only; it is unaffected.
+- Mutations: a `<script src="x.js">` in the generated file → fails; a `<style>` → fails; an
+  `<a href="https://evil.example/">` → the static-page rule fails; the link gate run **without** its skip over the real
+  `licenses.html` → fails (proving the skip is the only reason it passes); a second, unknown `extra.html` in the
+  package → fails.
 
 **Inputs (defined).**
-1. **Module ids** from the build's module maps — `dist*/app.modules.json` (pages, background, the KDF worker),
-   `dist*/app.provider.modules.json`, `dist*/app.relay.modules.json` (`vite.config.ts` `chunkModules`; ids
-   package-relative, `moduleId`). Skipped: ids starting with `\0` (virtual) and `__vite-browser-external`.
+1. **Modules with rendered code (N3, E16).** The maps' `chunks` section (the `css` section names only our
+   stylesheets) records Rollup's `moduleIds` — every module a chunk was composed from, **tree-shaken ones included**.
+   So `chunkModules` (`vite.config.ts`) gains a `rendered` section: chunk → module id → `renderedLength` (from
+   `chunk.modules[id].renderedLength`), written into `dist*/app.modules.json`, `dist*/app.provider.modules.json` and
+   `dist*/app.relay.modules.json`. The licence page and the allowlist take **only modules with `renderedLength > 0`**
+   in some chunk; a map without the `rendered` section → the build fails (INCONCLUSIVE). Skipped: ids starting with
+   `\0` (virtual) and `__vite-browser-external`.
 2. **Ours:** ids under `src/`, the root `.html` entries, `../core/`, `../web/` → one entry "Noctura" under the
    repository's `LICENSE` (Business Source License 1.1).
 3. **Packages:** for an id under `node_modules/`, the **nearest `package.json` with a `name`** walking up from the
    module's directory — so a nested copy (`@solana/web3.js/node_modules/@noble/hashes` 1.8.0 beside the top-level
-   2.4.0) is its own entry. Entry = name, version, `license` field, licence text.
+   2.4.0) is its own entry. Entry = name, version, SPDX id (item 4), licence text. **Copies with the same name,
+   version and licence text are one entry** (the review-1 probe saw `bs58@4.0.1` and `base-x@3.0.11` twice each, via
+   `@solana/web3.js` and `borsh`); a same name and version with a different text are two (Minor 6). Versions are read
+   from each `package.json`, never from memory notes: the extension's `@solana/web3.js` is **1.99.0** (its
+   `package.json`), not the 1.95.8 recorded for the mobile app (Minor 9).
 4. **Licence text:** the package directory's `LICENSE*`, `LICENCE*` or `COPYING*` files (all of them, sorted by name —
    `borsh` ships `LICENSE-APACHE` and `LICENSE-MIT.txt`), CRLF folded to LF. No such file → the SPDX id from
    `package.json` `license`, with that licence's standard text from a committed table
    (`extension/release/licence-texts/<SPDX>.txt`) headed by the package's `author` field; neither → **the build
    fails** (no silent "unknown"). Probe: `bs58` 4.0.1 (twice) and `qrcode-generator` 2.0.4 ship no licence file and
-   say MIT; `text-encoding-utf-8` has a `LICENSE.md` and no `license` field (the file wins).
+   say MIT. **The SPDX id (N2, E15):** the `license` field when present; otherwise the committed table
+   `extension/release/licence-ids.json` (`name@version → SPDX`), consulted for every package with rendered code and no
+   `license` field; **a package in neither → the build fails**. Today the table has one row:
+   `text-encoding-utf-8@1.0.2 → Unlicense` (8 526 rendered bytes in `background.js`, web3.js's TextEncoder polyfill;
+   its `LICENSE.md` is the Unlicense dedication). Controls: the row removed → fails; the row set to `LGPL-3.0-only` →
+   fails (item 6).
 5. **Non-module assets:** the two Geist fonts in `public/fonts/` (copied as files, never modules) — an entry from a
    committed `extension/public/fonts/LICENSE.txt` taken from the Geist release the files came from; any file under
    `fonts/` in the package without an entry fails the build.
-6. **Allowlist (R7):** a licence outside {MIT, ISC, BSD-2-Clause, BSD-3-Clause, Apache-2.0, 0BSD, OFL-1.1, and ours}
-   fails the build. Today that refuses **`rpc-websockets` 9.3.9, LGPL-3.0-only**, bundled into `background.js`
-   by `@solana/web3.js` (probe). No code here constructs a web3.js `Connection` (the extension's RPC is
-   `core/solana/rpc.ts`; `grep 'new Connection'` over `extension/src` and `core` finds none), so B1e-1 resolves
-   `rpc-websockets` to a local stub module (one class with the members web3.js's top level reads, throwing if ever
-   constructed), and a gate asserts no `node_modules/rpc-websockets/` id is in any module map. If the stub cannot be
-   made to hold, shipping LGPL code is §11 Q1 — never a quiet allowlist edit.
+6. **Allowlist (R7, the owner's list, E15):** a rendered package whose SPDX id is outside {MIT, ISC, BSD-2-Clause,
+   BSD-3-Clause, Apache-2.0, 0BSD, OFL-1.1, Unlicense, and ours} fails the build; adding to the list is an owner
+   decision, never a plan edit. **`rpc-websockets` (N3, E16):** 9.3.9, LGPL-3.0-only, is in the dependency graph
+   (`@solana/web3.js` 1.99.0's browser build does `import {CommonClient, WebSocket} from 'rpc-websockets'` and
+   `class RpcWebSocketClient extends CommonClient` at top level, `lib/index.browser.esm.js:12`), but its rendered
+   length is **0** — `Connection` and the WebSocket path are tree-shaken; no LGPL code ships today (rev 2 said
+   otherwise; it read the ids, not the rendered code). Kept anyway, **as a precaution**:
+   - a gate: every module under `node_modules/rpc-websockets/` has `renderedLength` 0 in every chunk (mutation: a
+     `new Connection(...)` planted in the background → fails);
+   - an alias of the bare specifier `rpc-websockets` to a local stub with exactly two named exports — `CommonClient`, a
+     class (an `extends` of a non-constructor would throw at module evaluation), and `WebSocket`, a function — each
+     throwing if ever constructed or called. Only `Connection`'s constructor makes a `RpcWebSocketClient`, and no file
+     the extension bundles constructs a `Connection` (`new Connection` exists only in `web/src/lib/solana.ts`, which
+     the extension never bundles: of `web/` it ships `ui/` and `styles/`, `check-no-presale.mjs` `WEB_ALLOWED`). A
+     test imports `@solana/web3.js` under the alias and uses what the extension uses (`PublicKey`,
+     `VersionedTransaction`, `TransactionMessage`, `SystemProgram`) without a throw.
 7. **Order and determinism:** "Noctura" first, then entries sorted by name, then version (C collation); texts
    HTML-escaped; no date, no absolute path. Determinism follows from the lockfile; `verify-reproducible.mjs` covers the
    file with the rest of the package. The package carries no licence notice today (the minifier drops `@license`
@@ -475,7 +542,8 @@ Coordinator routes the `--no-presale` `background.js` names (relevant to §6): `
 `/referral-stats` (B1d's record and referral routes are presale-only).
 
 **The rule.** A new `scripts/check-links.mjs`, run in `gates:build` for both builds' `chrome/` and `firefox/`
-packages. It reads every `.js`, `.html`, `.css` and `.json` file and extracts every match of
+packages. It reads every `.js`, `.html`, `.css` and `.json` file **except `licenses.html`, skipped by name** (N1: its
+licence texts carry URLs as escaped text; §4.2's static-page rule holds there) and extracts every match of
 `\b(?:https?|wss?|ftp)://[^\s"'`<>)\\;]*`. Each match must equal, **as a whole string**, one entry of:
 - **Coordinator:** `https://api.noc-tura.io/*` and `https://api.noc-tura.io` (in `manifest.json` only);
   `https://api.noc-tura.io/api/v1` and `https://api.noc-tura.io/api/v1/rpc` (in `background.js` only) — a page
@@ -498,8 +566,9 @@ new string with its reason.
 ### 4.4 Tests
 
 The four rows on #38 and the two links on #1 (href, `target`, `rel`); `licenses.html` generated, deterministic (two
-builds, one hash), containing every package of the module maps and no other; the allowlist failure on a planted
-LGPL package; the gates and mutations above.
+builds, one hash), containing **every package with rendered code and no other** (a package whose modules are all
+rendered 0 is absent); the allowlist failure on a planted rendered LGPL package; the `licence-ids.json` controls; the
+gates and mutations above.
 
 ## 5. The release build (E2)
 
@@ -510,9 +579,10 @@ LGPL package; the gates and mutations above.
 2. **A third witness (R10, Minor 12):** `node scripts/build.mjs <tmp> --no-presale`; its `chrome/` file digest
    (`web/scripts/build-manifest.mjs`) must equal that of `verify`'s `dist-nopresale/chrome`. The release packs
    `verify`'s `dist-nopresale/chrome` itself — no fifth build is packed.
-3. The live check (§6.5).
-4. The zip (§5.4), written twice; the two sha256 must be equal.
-5. `extension/release/notes-<version>.md`: version, the zip's sha256, the package's file digest, the commit.
+3. The RP-ID record (§5.6, E17): `extension/release/rp-id.json` present and equal to `RP_ID`, else no pack.
+4. The live check (§6.5).
+5. The zip (§5.4), written twice; the two sha256 must be equal.
+6. `extension/release/notes-<version>.md`: version, the zip's sha256, the package's file digest, the commit.
 
 ### 5.2 Version (I8, R5)
 
@@ -566,6 +636,23 @@ warning is Chrome's all-sites warning ("Read and change all your data on all web
 are covered by it, and `storage` and `alarms` carry no warning — observed and recorded at the first install of the
 zip (§7 step 5). The gate applies to every later update that adds a permission.
 
+### 5.6 The passkey RP ID is frozen by 1.0.0 (N4, E17)
+
+`RP_ID = 'wallet.noc-tura.io'` (`src/vault/passkey.ts:8`), claimed through the host permission
+`https://wallet.noc-tura.io/*` (`manifest/source.mjs` `HOST_PERMISSIONS`: "an extension may claim an RP ID only for a
+host it has permission for"). B1 §2 recorded the choice: nothing is served at that host, and the name is reserved for
+this product. Nothing in the extension connects to it: `connect-src` admits only `https://api.noc-tura.io`
+(`REQUIRED_CONNECT_SRC`), and §4.3's gate allows its URL only in `manifest.json`.
+
+- **Frozen.** The first passkey a store user enrols is bound to this RP ID for good; changing it later orphans every
+  enrolled passkey. **Pre-upload gate:** `release:chrome` refuses to pack unless `extension/release/rp-id.json` exists
+  and records `{rpId: 'wallet.noc-tura.io', confirmedBy: 'owner', decision: 'E17'}`, and its `rpId` equals `RP_ID`;
+  §7 step 3 restates it.
+- **Pinned (test + mutation).** A new test (`src/vault/__tests__/rpId.test.ts`) asserts
+  `` `https://${RP_ID}/*` `` is a `HOST_PERMISSIONS` value and `RP_ID` equals `rp-id.json`'s. Mutation: the entry
+  removed from `HOST_PERMISSIONS` → RED (a later "tidy" of a seemingly unused host permission would otherwise silently
+  break every passkey). Today only the origin derivation is tested (`ext.test.ts`).
+
 ## 6. Texts for the store and for noc-tura.io (B1e-2)
 
 Written as files in the repo (`extension/release/`), each claim traceable to the code or a test that proves it.
@@ -590,8 +677,8 @@ read, §6.5). Re-derived from the `--no-presale` build's real network calls: `co
 | P9 | "When you open a transaction in the Solscan explorer, Solscan receives that transaction's signature, your IP address and your browser's standard headers; no referrer is sent." | `explorer.ts`; `rel="noopener noreferrer"` (`TxDetail.tsx:65`) |
 | P10 | "Messages a site asks you to sign are signed on this device and are not sent anywhere by the wallet." | `dapp/signMessage.ts` (no network dependency) |
 | P11 | "Your recovery phrase, private keys, password and anti-phishing phrase never leave this device through the extension." | vault isolation gate; routes above |
-| P12 | "If your passkeys sync, your passkey provider (for example Google Password Manager) stores the passkey; Noctura never receives it." | the WebAuthn ceremony is the browser's; no route carries it |
-| P13 | "The sites you connected, your address book and your anti-phishing phrase are stored only in this browser." | `v1_dapp_grants`, `v1_contacts`, `v1_phishing_phrase`; no route carries them |
+| P12 | "If your passkeys sync, your passkey provider (for example Google Password Manager) stores the passkey; Noctura never receives it. In your passkey manager the passkey is listed under the name wallet.noc-tura.io." | the WebAuthn ceremony is the browser's; no route carries it; `RP_ID` (`passkey.ts:8`) |
+| P13 | "The sites you connected, your address book and your anti-phishing phrase are stored only in this browser. Nothing is served at wallet.noc-tura.io and the extension never connects to it; the name exists only so that passkeys are bound to a name no website can use." | `v1_dapp_grants`, `v1_contacts`, `v1_phishing_phrase`; no route carries them; `connect-src` (§5.6) |
 | P14 | "The extension reads nothing from the pages you visit; a site's own requests to the wallet are the only page data it handles." | `CONTENT_SCRIPTS.reason` (`source.mjs`); `src/provider`, `src/relay` |
 | P15 | "The extension sends no analytics, telemetry or crash reports." | §4.3's route list |
 | P16 | "Questions about privacy: privacy@noc-tura.io." | E8 |
@@ -651,12 +738,16 @@ pinned by `check-permissions.mjs` `REQUIRED_CSP`). Privacy policy URL: `https://
 - **Terms** — a **draft for the owner's lawyer**, not legal text: non-custodial software, the user holds the keys and
   the responsibility, no financial advice, no warranty, the BSL 1.1 licence, the contact.
 - **Help** — a short FAQ: the recovery phrase; the anti-phishing phrase (§1.1's two limits, Minor 3); a damaged wallet
-  (the two states of §2, saving the data); why a transaction is blocked; what the coordinator sees (P1–P8); the
+  (the two states of §2, saving the data); why a passkey shows as "wallet.noc-tura.io" (P12, P13); why a transaction
+  is blocked; what the coordinator sees (P1–P8); the
   contact.
 - **Store listing** — name, short description (≤ 132 characters), detailed description, category (the owner picks at
   submission), the single-purpose statement ("A Solana wallet: hold, send and receive SOL and tokens, and approve
   requests from Solana sites."), a justification for each permission taken from `manifest/source.mjs`'s reasons
-  (`PERMISSIONS`, `HOST_PERMISSIONS`, `CONTENT_SCRIPTS.reason`), "remote code: none", and §6.3's answers. **No
+  (`PERMISSIONS`, `HOST_PERMISSIONS`, `CONTENT_SCRIPTS.reason`) — for `https://wallet.noc-tura.io/*` it adds, per
+  E17: "No page is served at this host and the extension never connects to it (its content security policy allows
+  connections to one other host only). The permission exists only so the passkey is bound to a name no website can
+  use; passkeys appear under this name in the user's passkey manager." — "remote code: none", and §6.3's answers. **No
   presale, no TGE date, no privacy claim the build does not keep** (memory "shielded privacy guarantee": the extension
   is transparent; nothing says "private" or "anonymous").
 - **Screenshots (Minor 9)** — five at 1280 × 800, by Playwright from the real `--no-presale` extension, contained (no
@@ -686,12 +777,17 @@ Part of `release:chrome` only — never in `verify`, CI, a test, or under `unsha
    declaration).
 2. ICO's §6.2 answers recorded; P1 (OFAC refresh) confirmed; the privacy policy, Terms (approved by the owner or a
    lawyer) and Help published by ICO; `release:chrome`'s live check passes.
-3. Upload the zip, paste the listing and §6.3's answers, add the screenshots. Submitting for store review **with
+3. Before upload: `extension/release/rp-id.json` records the owner's confirmation of the RP ID (E17, §5.6) —
+   `release:chrome` refuses to pack without it. Upload the zip, paste the listing and §6.3's answers, add the
+   screenshots. Submitting for store review **with
    publishing deferred** (the owner publishes manually after approval) may happen now (E14).
 4. **The independent external security review (B1 release gate 2; vendor and cost are the owner's) is done before
    step 6 — before the Unlisted listing, i.e. before any distribution (E14).** Its findings are fixed or accepted in
    writing first.
-5. Install the uploaded zip unpacked once in a clean profile: record the install warning (§5.5) and the version on #38.
+5. Record the permission strings and the version (review 2 Minor 5): an **unpacked** load of the zip's contents in a
+   clean profile shows no install dialog, so record the strings from chrome://extensions → Details → Permissions and
+   the version on #38; the install dialog itself ("Read and change all your data on all websites") is recorded by a
+   tester at the first Unlisted install (step 6).
 6. Visibility: **Unlisted** for a few days with known testers, then **Public** (recommended); the owner decides at
    submission.
 7. After the store assigns the ID: record the ID and its public key in `extension/release/store-key.json` (§5.3) in a
@@ -702,8 +798,10 @@ Part of `release:chrome` only — never in `verify`, CI, a test, or under `unsha
 Firefox / AMO (B1c §6.5's checks, `gecko.id`, the per-install identifier in its privacy text, and the AMO
 `data_collection_permissions` taxonomy check — **never** added to the Chrome manifest "for completeness", Minor 11);
 the drainer / phishing list; the DNR spike; presale in a store build (B1d §6.5: then the disclosures list presale and
-the external review covers §3.3 and §3.6); hardware wallets; a second simulation source; a delete path for a vault
-whose seed fails to decrypt after a correct password (§2.1, §11 Q2).
+the external review covers §3.3 and §3.6); hardware wallets; a second simulation source; **a password-gated delete for a vault that opens but whose seed fails
+to decrypt** (well formed, accepted by both openers, the password unwraps the data key, AES-GCM then fails —
+`unlockFlow.ts` answers `damaged`): a later step may offer #37's proof-gated delete from #9's damaged notice; until
+then today's help stays (uninstall, reinstall, import the phrase) — §2.1.
 
 ## 9. Undrawn elements (flagged)
 
@@ -717,7 +815,7 @@ input and row styles; `licenses.html` has no stylesheet at all) and shown to the
 
 Unit tests for every rule above with positive and negative controls and named mutations (§1.6, §2.6, §3, §4.2–§4.4,
 §5.2–§5.4, §6.5); the vault-isolation (with `STATIC_PAGES` and the built-content-script `storage` rule), CSP,
-permissions (version, `key`), classes, no-presale, links and reproducible gates green; E2E for the phrase on the six
+permissions (version, `key`), the `RP_ID` pin (§5.6), the licence page's rendered-code and allowlist rules (§4.2), classes, no-presale, links and reproducible gates green; E2E for the phrase on the six
 screens, both damaged states (removal of an unreadable vault, its refusal for F0, the save download), #37's checkbox
 path, the links and `licenses.html`; every E2E normally and under `unshare -rn`; a visual pass of the undrawn elements
 at the popup's 412 × 600 and the window's real size. No test contacts `*.noc-tura.io`; only the release script's live
@@ -725,15 +823,10 @@ check does.
 
 ## 11. Open questions for the owner
 
-1. **Q1 — LGPL code (R7).** `rpc-websockets` 9.3.9 (LGPL-3.0-only) is bundled into `background.js` today via
-   `@solana/web3.js`. The ruling stubs it out (unused). If the stub cannot hold, is shipping LGPL-3.0 code acceptable,
-   with its licence in `licenses.html` and the public repository as the source route? That is a legal call, not the
-   plan's.
-2. **Q2 — the decrypt-damaged vault.** A vault that is well formed and whose password unwraps the key, but whose seed
-   then fails AES-GCM, keeps today's help (uninstall, reinstall, import). Offer #37's proof-gated delete from #9's
-   damaged notice in a later step, or leave it?
+None open after E15–E18. Rev 2's Q1 (LGPL) dissolved: no LGPL code ships (N3, E16). Rev 2's Q2 (the decrypt-damaged
+vault) is a later step in §8.
 
-Not the owner's, but blocking: ICO's §6.2 answers and P1.
+Not the owner's, but blocking the release: ICO's §6.2 answers and P1.
 
 ## 12. Review 1 — where each finding went
 
@@ -758,3 +851,22 @@ Not the owner's, but blocking: ICO's §6.2 answers and P1.
 | Minor 11 | §6.3, §8 |
 | Minor 12 | §5.1 (R10) |
 | Q1–Q6 | E9–E14 |
+
+**Review 2 — where each finding went (rev 2.1)**
+
+| finding | rev 2.1 |
+|---|---|
+| N1 | §4.3 the skip by name; §4.2 the static-page rule and its mutations |
+| N2 | §4.2 item 4 (the `licence-ids.json` table), item 6 (`Unlicense`, E15), controls |
+| N3 | §4.2 items 1 and 6 (rendered code, the rendered-0 gate, the stub as a precaution, E16); R7 reworded; web3.js 1.99.0 |
+| N4 | §5.6 (frozen, pre-upload gate, pin test + mutation, E17); §6.1 P12/P13; §6.4 justification and Help; §7 step 3 |
+| Minor 1 | §2.6 deletable controls, one per clause; the partition test enumerates them |
+| Minor 2 | §2.6 the invariance test's own positive control |
+| Minor 3 | §2.1 "present" = `!== undefined`; `passkey: null` unreadable |
+| Minor 4 | §2.6 encoder-generated breadth + the 458dfcd fixture |
+| Minor 5 | §7 step 5 |
+| Minor 6 | §4.2 items 1, 3 and §4.4 |
+| Minor 7 | §1.3 citation |
+| Minor 8 | §2.2 copy |
+| Minor 9 | §4.2 item 3 (web3.js 1.99.0) |
+| Owner Q1–Q4 | E15, E16, E17, E18 |
