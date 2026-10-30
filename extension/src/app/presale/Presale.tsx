@@ -14,17 +14,20 @@ import {SEND_TEXT} from '../screens/Send';
 import type {Pending, Reply, Token} from '../engine';
 import {
   PRESALE_CURRENCIES,
+  REFERRER_LINES,
   presaleClient,
   purchaseDataOf,
+  type CheckRefusal,
   type PrepareRefusal,
   type PresaleCurrency,
   type PresaleView,
   type PurchaseView,
   type Quote,
   type QuoteLine,
+  type ReferrerLine,
   type StageView,
 } from './client';
-import {GEO_REASON_TEXT, PRESALE_TEXT, dollarsText, fillWidth, millionsNoc, priceText, raisedText, shortSignature, solPriceText} from './text';
+import {GEO_REASON_TEXT, PRESALE_TEXT, REFERRAL_TEXT, REFERRER_LINE_TEXT, dollarsText, fillWidth, millionsNoc, priceText, raisedText, shortSignature, solPriceText} from './text';
 import type {PresaleAgain} from './routes';
 
 /** C35: #23a re-reads the snapshot and the gate this often while it is visible. */
@@ -40,6 +43,7 @@ type OpenView = Extract<PresaleView, {open: true}>;
 type Line = QuoteLine | 'above-limit';
 const LINES: readonly string[] = ['below-min', 'above-max-tx', 'above-user-limit', 'above-limit', 'insufficient-sol', 'insufficient-token', 'split-balance', 'sender-below-rent', 'no-sol-price'];
 const isLine = (code: string): code is Line => LINES.includes(code);
+const isReferrerLine = (code: string): code is ReferrerLine => (REFERRER_LINES as readonly string[]).includes(code);
 
 const visible = (): boolean => typeof document === 'undefined' || document.visibilityState === 'visible';
 
@@ -94,6 +98,9 @@ function refusalOf(code: PrepareRefusal | 'failed'): {notice: string | null; rer
       return {notice: PRESALE_TEXT.unavailable, reread: true};
   }
 }
+
+/** A referral-address check that did not answer a line (§5: a read failure): the notice it shows. */
+const checkFailedText = (code: CheckRefusal | 'failed'): string => (code === 'coordinator-refused' ? PRESALE_TEXT.refused : PRESALE_TEXT.unavailable);
 
 function StageCard({state, live}: {state: StageView; live: boolean}) {
   const n = state.stage + 1;
@@ -216,6 +223,11 @@ function Pending23b({record, line, onRegion}: {record: Pending; line: {text: str
  * when 23b's record closes; while 23a is visible, the snapshot and the gate every 25 s (`refresh: 'gate'`, the balances
  * of the last full view kept); nothing while hidden. 23b reads only its record, every 6 s and on focus (no network).
  * Buy (rule 6, a LockedButton) hands the background's prepared purchase to `onPrepared`.
+ *
+ * B1d-2 (§3.5, D8): the referral address, only while the view says `referral.canRegister`. Its line is
+ * presale.checkReferrer's answer on blur (the newest check, for the text as it still is); Buy waits while a check is out
+ * and while a line shows. What the field holds travels in the intent (trimmed; empty: none); prepare decides again and refuses
+ * rather than drops it — Q48 and the view read again, the field and its text gone with Q48 said.
  */
 export function Presale({
   again = null,
@@ -257,7 +269,15 @@ export function Presale({
   const [refusal, setRefusal] = useState<{key: string; line: Line} | null>(() =>
     again === null || again.code === null || !isLine(again.code) ? null : {key: `${again.currency}|${plainAmount(BigInt(again.amount), TOKEN_INFO[again.currency].decimals)}`, line: again.code},
   );
-  const [notice, setNotice] = useState<string | null>(() => (again === null || again.code === null || isLine(again.code) ? null : refusalOf(again.code).notice));
+  const [notice, setNotice] = useState<string | null>(() => (again === null || again.code === null || isLine(again.code) || isReferrerLine(again.code) ? null : refusalOf(again.code).notice));
+  /** B1d-2: the referral address as the user typed it (§4.1, D8). */
+  const [referrer, setReferrer] = useState(again?.referrer ?? '');
+  /** The background's line for the referral address (checkReferrer's answer on blur, or a prepare's refusal of it). */
+  const [referrerLine, setReferrerLine] = useState<ReferrerLine | null>(() => (again?.referrer !== undefined && again.code !== null && isReferrerLine(again.code) ? again.code : null));
+  /** A check of the referral address is out: Buy waits for its answer. */
+  const [checking, setChecking] = useState(false);
+  /** Bumped by every edit of the referral address and every check: an answer to an older one is dropped. */
+  const checkGeneration = useRef(0);
   /** The purchase's challenge #20 handed back: the next Buy carries it (§3.3 step 6). */
   const carried = useRef(again?.challengeId ?? null);
   const [sheet, setSheet] = useState(false);
@@ -396,7 +416,47 @@ export function Presale({
   const noPrice = open !== null && currency === 'SOL' && open.solUsdMicros === null;
   const line: Line | null = refusal !== null && refusal.key === key ? refusal.line : noPrice ? 'no-sol-price' : (quote?.line ?? null);
   const estimate = quote?.nocBase ?? null;
-  const ready = open !== null && account !== null && amount !== null && quote !== null && quote.amount === amount && line === null && !stale && m.net.mode !== 'refused';
+  const entered = referrer.trim();
+  const ready = open !== null && account !== null && amount !== null && quote !== null && quote.amount === amount && line === null && !stale && referrerLine === null && !checking && m.net.mode !== 'refused';
+
+  // §3.5, Q48: the referral address can no longer apply (a purchase or a referrer registered meanwhile): the field goes,
+  // and what was typed in it with it — said, never dropped in silence.
+  const canRegister = open?.referral.canRegister ?? true;
+  useEffect(() => {
+    if (canRegister || referrer === '') return;
+    checkGeneration.current += 1;
+    setReferrer('');
+    setReferrerLine(null);
+    setChecking(false);
+    setNotice(REFERRER_LINE_TEXT['referrer-not-applicable']);
+  }, [canRegister, referrer]);
+
+  const editReferrer = (next: string) => {
+    checkGeneration.current += 1;
+    setReferrer(next);
+    setReferrerLine(null);
+    setChecking(false);
+  };
+  /** On blur (§3.5): the background's line for what the field holds — nothing for an empty field (no referrer). */
+  const checkReferrer = async () => {
+    const mine = ++checkGeneration.current;
+    if (account === null || entered === '') {
+      setChecking(false);
+      return;
+    }
+    setChecking(true);
+    const r = await client.checkReferrer(account, entered);
+    if (!alive.current || checkGeneration.current !== mine) return;
+    setChecking(false);
+    if (!r.ok) {
+      if (r.error === 'locked') return void reload();
+      if (r.error === 'coordinator-refused') report('coordinator-refused');
+      setNotice(checkFailedText(r.error));
+      return;
+    }
+    setReferrerLine(r.data);
+    if (r.data === 'referrer-not-applicable') void read();
+  };
 
   const edit = (next: string) => {
     setText(next);
@@ -424,7 +484,9 @@ export function Presale({
     if (!ready || open === null || account === null || amount === null) return;
     setNotice(null);
     const asked = key;
-    const r = await client.prepareBuy(account, {currency, amount, stage: open.state.stage}, carried.current ?? undefined);
+    // The field's text as sent (its check generation): a refusal of it is its line only while the field still holds it.
+    const referrerAsked = checkGeneration.current;
+    const r = await client.prepareBuy(account, {currency, amount, stage: open.state.stage, ...(entered === '' ? {} : {referrer: entered})}, carried.current ?? undefined);
     if (!alive.current) return;
     if (r.ok) {
       onPrepared(account, r.data);
@@ -436,6 +498,14 @@ export function Presale({
     }
     if (isLine(r.error)) {
       setRefusal({key: asked, line: r.error});
+      return;
+    }
+    // §3.5: the referral address refused at prepare — its line under the field, never dropped; Q48 reads the view again
+    // (the field goes). A refusal of text the user has since edited is no line (a stale answer never shows, as for the
+    // check's own answer): the edited text is checked on its blur, and prepare checks it again.
+    if (isReferrerLine(r.error)) {
+      if (checkGeneration.current === referrerAsked) setReferrerLine(r.error);
+      if (r.error === 'referrer-not-applicable') void read();
       return;
     }
     if (r.error === 'coordinator-refused') report('coordinator-refused');
@@ -534,6 +604,30 @@ export function Presale({
             <span className="ticker">NOC</span>
           </div>
         </div>
+        {v.referral.canRegister ? (
+          <div className="app-pre-referral">
+            <label className="noc-overline app-pre-referral-label" htmlFor="presale-referrer">
+              {REFERRAL_TEXT.label}
+            </label>
+            <input
+              id="presale-referrer"
+              className={`app-input noc-mono${referrerLine === null ? '' : ' is-error'}`}
+              placeholder={REFERRAL_TEXT.placeholder}
+              autoComplete="off"
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
+              value={referrer}
+              onChange={e => editReferrer(e.target.value)}
+              onBlur={() => void checkReferrer()}
+            />
+            {referrerLine === null ? null : (
+              <div className="helper error" role="alert">
+                <ExtIcon name="alert" size={12} /> {REFERRER_LINE_TEXT[referrerLine]}
+              </div>
+            )}
+          </div>
+        ) : null}
         {v.allocation.exists && v.allocation.totalBase > 0n ? (
           <div className="receipt">
             <div className="row">

@@ -6,7 +6,8 @@
 //     CORE_PRESALE_ALLOWED; core/geo/ is allowed whole (D15). Of ../web/ (fix round 1, review I1) only WEB_ALLOWED —
 //     web/src/presale/** imports only erased core/presale types, so a denylist would miss it; only an allowlist closes
 //     it, same as core/presale/. Positive control: the on build carries every ON_BUILD module and both carry every
-//     BOTH_BUILDS module, so a renamed or moved module fails instead of passing silently.
+//     BOTH_BUILDS module, so a renamed or moved module fails instead of passing silently; and (B1d-2) every presale
+//     module the on build carries is in ON_BUILD, so a new one cannot join the build without its control.
 //     The maps are the evidence, not the packages: the two packages were byte-identical through B1d-1a's Task 4; from
 //     Task 5 the on build carries the presale background modules, so the maps — not the files — remain the evidence.
 //  2. Strings: no file of the off build's app/, chrome/, firefox/ contains a MARKER; each marker is found in the on build.
@@ -31,7 +32,7 @@ export const WEB_ALLOWED = ['../web/src/ui/', '../web/src/styles/'];
 // (§2.1); 1b adds presale/quote.ts (Task 1), presale/buy.ts (Task 2), #23's popup modules (Task 4), #20's purchase
 // variant with the record slot (Task 5), #50b (Task 6) and core/presale/{buyInstructions,referrer}.ts — the purchase's
 // builder and its referrer allocation, in the on build's module map since Tasks 1–2 (Task 8); B1d-2 adds
-// presale/{record,referral}.ts and core/referral/index.ts.
+// presale/record.ts (Task 1), and #24's background presale/referral.ts with core/referral/index.ts and its screen (Task 4).
 export const ON_BUILD = [
   'src/background/presale/api.ts',
   'src/app/presale/index.ts',
@@ -50,10 +51,15 @@ export const ON_BUILD = [
   'src/app/presale/Geo.tsx',
   'core/presale/buyInstructions.ts',
   'core/presale/referrer.ts',
+  'src/background/presale/record.ts',
+  'src/background/presale/referral.ts',
+  'core/referral/index.ts',
+  'src/app/presale/ReferFriend.tsx',
 ];
 // The intent-kind registry (C19 — both builds sign and read through it); the jurisdiction gate and its fetcher (D15:
-// the off build did not lose the gate); the country's name #48's F12 banner shows (B1d-1b Task 7, §3.6).
-export const BOTH_BUILDS = ['src/background/intents.ts', 'src/background/geo/gate.ts', 'core/geo/fetch.ts', 'src/app/ui/regionName.ts'];
+// the off build did not lose the gate); the country's name #48's F12 banner shows (B1d-1b Task 7, §3.6); the presale
+// records' key and lock (B1d-2 Task 1: a delete wipes them in both builds).
+export const BOTH_BUILDS = ['src/background/intents.ts', 'src/background/geo/gate.ts', 'core/geo/fetch.ts', 'src/app/ui/regionName.ts', 'src/background/presaleRecordsKey.ts'];
 // Armed by B1d-1b (1a shipped none — Q42 is "both"): Task 1's three presale message types (§6.2: "every presale.*
 // message type"), Task 2's prepare and the purchase's intent kind, Task 3's four sign and resume types, Task 4's #23
 // copy (§6.2's named strings and the §10 rows #23 shows whose source is new / approved and whose build is on — each
@@ -140,10 +146,59 @@ export const MARKERS = [
   'The restricted-region list is out of date.',
   'Your region could not be determined from your IP.',
   'The region check is unavailable — try again later.',
+  // B1d-2 Task 1: the record's message type and its alarm's name.
+  'presale.unrecorded',
+  'presale-record',
+  // B1d-2 Task 2: the referral address's message type, then #10's referrer row (Q47: the label and its note).
+  'presale.checkReferrer',
+  'Referred by',
+  "Saved to your presale account with this purchase. It can't be changed later.",
+  // B1d-2 Task 3: #23a's referral address — Q45's label and placeholder, Q46 b and c, Q48 (Q46a is a prefix of B1b's
+  // "Not a valid Solana address — check length & characters", which both builds carry).
+  'Referral address (optional)',
+  'Solana address of the person who invited you',
+  "You can't refer yourself or another account in this wallet",
+  "This address has no presale allocation, so it can't receive a referral bonus",
+  'This account can no longer take a referrer — review again',
+  // B1d-2 Task 4: #24's message type, then #31's row and #24's title (§6.2's "Refer a friend"), Q35, the EARNED sub, Q36,
+  // Q37, "Not used yet", "Used by " (D27: the count is people), the copy icon's name, "Share invite link", Q39 and the legalese (the route name `referral` is one
+  // bare word: these arm it; REFERRALS / EARNED / REFERRED, "Rewards" and Q38 — B1b's, both builds — are not markers).
+  'presale.referral',
+  'Refer a friend',
+  'total joined',
+  'NOC lifetime',
+  'from your invites',
+  'YOUR INVITE LINK',
+  'Not used yet',
+  'Used by ',
+  'Copy invite link',
+  'Share invite link',
+  'Earn NOC when friends you invite buy in the presale.',
+  'Referral payouts are subject to program terms. Self-referrals are detected and rejected.',
+  // B1d-2 Task 5: #27's Q34 (#26's badge is Q31, "Presale" — one bare word, already the record words').
+  'Recorded on chain; presale service not yet updated',
+  // B1d-2 Task 7: B1d-1b's copy that carried no marker — #23's live eyebrow, "Next stage", the region link, 23b's
+  // "Estimated NOC", its Stage row and its explorer link, Q41b, and the region answer's reason (Q21's first sentence).
+  // Not markers: one word ("Minimum ", "Maximum ", "Currency: ", …), Q40b's tail " per transaction" (@solana/errors'
+  // "…the maximum allowed per transaction" is in the off build when it is built under NODE_ENV=test, as
+  // presaleBuilds.test.mjs builds it), and B1b's copy in both builds ("Available ", "Insufficient ", "Network fee",
+  // "Quote valid ", Q46a, Q38's "Copy failed").
+  ' of 10 · live',
+  'Next stage ',
+  'Not available in your region?',
+  'Estimated NOC',
+  ' of 10 · @ ',
+  'View on Solana explorer',
+  'Need a little SOL for the network fee',
+  "This wallet doesn't offer the presale in your region.",
+  // B1d-2 final review: #24's legalese words in the accent (T4 M1, set apart at render), then #27's Q60 (rev 3.6).
+  'program terms',
+  'Recorded on chain; the presale service declined to record it',
 ];
 // Q42a (B1d-1a: the generic pending row, both builds); 1b adds F12's Q49–Q51. Q42b ("Transaction") is too short to
 // be a string search. The decoder's instruction names are read from its source (DECODER).
-// B1d-1b Task 7: #48's F12 copy, Q49–Q51 (§6.2 item 3 — "both"; Q50a's literal part before its country).
+// B1d-1b Task 7: #48's F12 copy, Q49–Q51 (§6.2 item 3 — "both"; Q50a's literal part before its country). B1d-2 Task 1:
+// the presale records' key — a delete in the build without presale still wipes them (accountsStore's WALLET_DATA_KEYS).
 export const MUST_STAY = [
   'Presale purchase',
   'PRESALE PURCHASE',
@@ -153,6 +208,7 @@ export const MUST_STAY = [
   "This transaction buys NOC in the presale, which this wallet doesn't allow from your region (",
   "This transaction buys NOC in the presale. The wallet's region check did not succeed, so it can't be approved — try again later.",
   'Only Reject is available · no override',
+  'v1_presale_records',
 ];
 
 const MIN_MARKER = 8;
@@ -184,6 +240,14 @@ export function offModuleViolations(ids) {
     else if (id.startsWith('../web/') && !WEB_ALLOWED.some(w => id.startsWith(w))) out.push(`off build carries ${id} — of ../web/ it may carry only ${WEB_ALLOWED.join(', ')}`);
   }
   return out;
+}
+
+/** B1d-2: every module of the on build the off build would refuse (a presale module) that `onBuild` does not name. */
+export function unlistedModules(ids, onBuild) {
+  return [...ids]
+    .sort()
+    .filter(id => offModuleViolations(new Set([id])).length > 0 && !onBuild.includes(id))
+    .map(id => `on build carries ${id} — a presale module ON_BUILD does not name: the positive control must list every one`);
 }
 
 export function missingModules(build, ids, required) {
@@ -258,7 +322,7 @@ export function checkNoPresale(offDir, onDir, o = {}) {
   const out = [...off.problems, ...on.problems];
   out.push(...featureViolations(offDir, off.features, false), ...featureViolations(onDir, on.features, true));
   if (off.ids !== undefined) out.push(...offModuleViolations(off.ids), ...missingModules('off', off.ids, bothBuilds));
-  if (on.ids !== undefined) out.push(...missingModules('on', on.ids, [...onBuild, ...bothBuilds]));
+  if (on.ids !== undefined) out.push(...missingModules('on', on.ids, [...onBuild, ...bothBuilds]), ...unlistedModules(on.ids, onBuild));
   const names = decoderInstructionNames(decoderSource);
   if (names.length === 0) out.push(`INCONCLUSIVE: no instruction names read from ${DECODER}`);
   if (off.files !== undefined && on.files !== undefined) out.push(...markerViolations(off.files, on.files, markers));
@@ -278,6 +342,6 @@ if (isMain(import.meta.url)) {
     process.exit(1);
   }
   console.log(
-    `no presale ok (${offArg} off, ${onArg} on): the off build's module maps carry no presale module and of core/presale/ only ${CORE_PRESALE_ALLOWED.length} allowed; the on build carries ${ON_BUILD.length + BOTH_BUILDS.length} required modules; ${MARKERS.length} markers (none in the off build, each in the on build); ${MUST_STAY.length} strings and the decoder's instruction names stay in the off build`,
+    `no presale ok (${offArg} off, ${onArg} on): the off build's module maps carry no presale module and of core/presale/ only ${CORE_PRESALE_ALLOWED.length} allowed; the on build carries ${ON_BUILD.length + BOTH_BUILDS.length} required modules and no presale module outside ON_BUILD; ${MARKERS.length} markers (none in the off build, each in the on build); ${MUST_STAY.length} strings and the decoder's instruction names stay in the off build`,
   );
 }

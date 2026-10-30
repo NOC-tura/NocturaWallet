@@ -737,14 +737,22 @@ a.btn {
 .s-conf .detail-grid.app-pre-grid .detail-row {
   grid-template-columns: 112px 1fr;
 }
+/* B1d-2: #20's "Referred by" — Q47's note under the whole address, in words (the design's .val breaks anywhere). */
+.s-conf .detail-row .val .app-pre-note {
+  color: var(--fg-secondary);
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
 /* B1d-1b Task 5: #44's amount line for a purchase (Q32), under the head: no UA paragraph margin, so it sits with the head
    and the sub below keeps the design's spacing (two stacked margins opened a gap; found in the visual check). */
 .s9-fail-hero .sub.app-fail-line {
   margin: 0;
 }
 /* B1d-1b Task 5: #21's kind badge (Q31 "Presale", StatusPill `badge`; approved, undrawn) — #27's status pill shape at
-   the top bar's size, in the accent: it names the kind, not the outcome. */
-.s-stat .top-bar .status-pill.app-badge {
+   the top bar's size, in the accent: it names the kind, not the outcome. B1d-2 Task 5: the same badge on #26's
+   purchase rows, beside the title. */
+.s-stat .top-bar .status-pill.app-badge,
+.tx-row .meta .pri .status-pill.app-badge {
   display: inline-flex;
   align-items: center;
   padding: 2px 10px;
@@ -752,6 +760,12 @@ a.btn {
   font: 600 12px/16px var(--font-body);
   background: color-mix(in oklab, var(--accent) 14%, transparent);
   color: var(--accent);
+}
+/* A badged #26 row (B1d-2 Task 5): its badges wrap under the title rather than squeeze it — a site's purchase carries
+   two ("Presale" and B1c's "Dapp · simulated"), wider than the meta column at 412 px. */
+.tx-row .meta .pri.app-tx-badged {
+  flex-wrap: wrap;
+  row-gap: 2px;
 }
 .s-stat .stage-label.app-warning,
 .s-stat .top-bar .step.app-warning,
@@ -2138,19 +2152,45 @@ body:has(.app-window) {
 .s-pre .input-card .input::placeholder {
   color: var(--fg-disabled);
 }
-/* The limit or balance line under the amount, in #12's error style (.s-send .helper.error). */
-.s-pre .input-card .helper {
+/* The limit or balance line under the amount, in #12's error style (.s-send .helper.error) — and, B1d-2, the referral
+   address's line. */
+.s-pre .input-card .helper,
+.s-pre .app-pre-referral .helper {
   display: flex;
   align-items: flex-start;
   gap: 4px;
   font: 400 12px/16px var(--font-body);
 }
-.s-pre .input-card .helper svg {
+.s-pre .input-card .helper svg,
+.s-pre .app-pre-referral .helper svg {
   flex: 0 0 auto;
   margin-top: 2px;
 }
-.s-pre .input-card .helper.error {
+.s-pre .input-card .helper.error,
+.s-pre .app-pre-referral .helper.error {
   color: var(--danger);
+}
+/* B1d-2: #23a's referral address (D8; undrawn, §9) between the receive card and the allocation row — B1b's single-line
+   input (.app-input, the address book's) under an overline label, the value in the mono face at 13 px: a whole 44-
+   character address fits the 412 px popup's field (at #12's 14 px it scrolled; found in the visual check). Q45's
+   placeholder is words, in the body face (in the mono face it was cut off). */
+.s-pre .app-pre-referral {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.s-pre .app-pre-referral-label {
+  color: var(--fg-tertiary);
+}
+.s-pre .app-pre-referral .app-input {
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 20px;
+}
+.s-pre .app-pre-referral .app-input::placeholder {
+  color: var(--fg-tertiary);
+  font-family: var(--font-body);
 }
 /* The allocation row: its value, and D5's TGE line under it (no drawn state; the receipt-row style). */
 .s-pre .receipt .row .r.app-pre-stack {
@@ -2275,4 +2315,53 @@ body:has(.app-window) {
 }
 .s11-stillworks .app-geo-works {
   color: var(--success);
+}
+
+/* B1d-2 Task 4: #24 referral (index.html #24, ix:10903-11233) — what the mockup sets inline, and the link it shows
+   whole where the design drew a 14-character code. */
+/* Three equal thirds whatever the figures (the design's `1fr` grows a column to its longest figure — found in the visual
+   check: "$1,234,567.89" pushed the third card out of the 412 px frame); a long figure wraps at its group separators. */
+.s-ref .stats {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.s-ref .stats .stat {
+  min-width: 0;
+}
+.s-ref .stats .stat .val.app-ref-muted {
+  color: var(--fg-tertiary);
+}
+/* A figure of eight characters or more ("$1,234.56") a size smaller: at 20 px it wrapped in its third (visual pass). */
+.s-ref .stats .stat .val.app-ref-long {
+  font-size: 16px;
+}
+/* 24a-bis's accent border (inline in the mockup) on a row that keeps its size: the idle row's border is transparent. */
+.s-ref .code-card .code-row {
+  border: 1px solid transparent;
+}
+.s-ref .code-card .code-row.app-ref-copied {
+  border-color: var(--accent);
+}
+.s-ref .code-card .actions button.app-ref-check {
+  color: var(--accent);
+}
+/* The whole invite link (C1: never truncated), broken anywhere, at the size its 68 characters fit in three lines. */
+.s-ref .code-card .code-row .code.app-ref-link {
+  font-size: 13px;
+  line-height: 20px;
+  letter-spacing: 0;
+  word-break: break-all;
+}
+.s-ref .banner.app-ref-banner {
+  background: var(--bg-surface-2);
+}
+.s-ref p.legalese,
+.s-ref p.app-ref-failed {
+  margin: 0;
+}
+/* The legalese's "program terms" in the accent, as #24 draws it on all three phones (unlinked until B1e). */
+.s-ref p.legalese .app-ref-terms {
+  color: var(--accent);
+}
+.s-ref p.app-ref-failed {
+  color: var(--fg-secondary);
 }

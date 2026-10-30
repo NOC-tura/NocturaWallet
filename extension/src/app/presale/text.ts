@@ -1,5 +1,5 @@
 import {formatAmount} from '../../shared/amount';
-import type {GeoReason, PresaleCurrency} from './client';
+import type {GeoReason, PresaleCurrency, ReferrerLine} from './client';
 
 /**
  * #23's strings (B1d §4.1, §10 — controller copy, owner-delegated 2026-10-19; the design's own where §4.1 keeps it) and
@@ -66,6 +66,21 @@ export const PRESALE_TEXT = {
 } as const;
 
 /**
+ * #23a's referral address (B1d-2, D8, §4.1 — undrawn, §9): Q45's label and placeholder, and the line under it for each of
+ * the background's answers — Q46 a–c, Q48 (controller copy, owner-delegated 2026-10-19).
+ */
+export const REFERRAL_TEXT = {
+  label: 'Referral address (optional)',
+  placeholder: 'Solana address of the person who invited you',
+} as const;
+export const REFERRER_LINE_TEXT: Record<ReferrerLine, string> = {
+  'referrer-invalid': 'Not a valid Solana address',
+  'referrer-self': "You can't refer yourself or another account in this wallet",
+  'referrer-no-allocation': "This address has no presale allocation, so it can't receive a referral bonus",
+  'referrer-not-applicable': 'This account can no longer take a referrer — review again',
+};
+
+/**
  * #20's purchase variant (§4.2; Q07–Q10, Q44 — controller copy, owner-delegated 2026-10-19; §4.2's own row labels and
  * B1b's #20 labels where it keeps them). Q57 and Q58 are new in B1d-1b Task 5 — controller copy, flagged to the owner:
  * B1b's "You have a send waiting." and "Confirmed. Review the fresh quote and send." name a send.
@@ -83,6 +98,9 @@ export const CONFIRM_PURCHASE_TEXT = {
   to: 'To',
   /** Q10. */
   presale: 'Noctura presale',
+  /** Q47 (B1d-2): the row, and its note when this purchase registers the referrer. */
+  referredBy: 'Referred by',
+  registers: "Saved to your presale account with this purchase. It can't be changed later.",
   fees: 'Fees',
   networkFee: 'Network fee',
   priority: 'Priority',
@@ -124,12 +142,56 @@ export const RECORD_TEXT = {
   /** Q33 (#11's and #26's pending row, B1d-1b Task 6). */
   pending: 'Buying NOC · pending',
   slow: 'Buying NOC · taking longer than usual',
+  /** Q34 (B1d-2, #27): the coordinator has not accepted the purchase's record yet — `due` or `given-up`. */
+  unrecorded: 'Recorded on chain; presale service not yet updated',
+  /** Q60 (rev 3.6, controller copy, owner-delegated D27): the route refused the purchase's record — `refused` (D29), final. */
+  declined: 'Recorded on chain; the presale service declined to record it',
 } as const;
 
 /** #11's presale banner (§4.5, index.html #11 ix:6371-6373): "NOC Presale · Stage N" / "$ 0.1501 · P% to next stage". */
 export const BANNER_TEXT = {
   title: (stage: number): string => `NOC Presale · Stage ${stage}`,
   line: (price: string, percent: number): string => `${price} · ${percent}% to next stage`,
+} as const;
+
+/**
+ * #24 referral and #31's row into it (B1d-2, §4.4, C1, C15, C16; index.html #24 ix 10903-11233, as the app corrected
+ * it): the design's labels, the app's subs and eyebrow (Q35–Q37), useCopy's states (Q38, B1b), Q39 (D13), the legalese
+ * as drawn. Nothing here names a stake, a reward list or a date: §9 omits ACTIVE, "Recent rewards" and the toast.
+ */
+export const REFER_TEXT = {
+  /** C16: #31's row (the app's "Rewards" group) and #24's title. */
+  group: 'Rewards',
+  title: 'Refer a friend',
+  referrals: 'REFERRALS',
+  /** Q35. */
+  referralsSub: 'total joined',
+  earned: 'EARNED',
+  earnedSub: 'NOC lifetime',
+  /** Q36. */
+  referred: 'REFERRED',
+  referredSub: 'from your invites',
+  /** Q37. */
+  eyebrow: 'YOUR INVITE LINK',
+  /**
+   * Around the count (the design's `.noc-numeral`): "Used by N people", one is "Used by 1 person" — `referrals` counts the
+   * people who bought through the link, not its uses (controller copy, owner-delegated D27; the design's "Used N times").
+   */
+  usedLead: 'Used by ',
+  usedTail: (n: bigint): string => (n === 1n ? ' person' : ' people'),
+  notUsed: 'Not used yet',
+  /** The app's accessible name of the copy icon. */
+  copy: 'Copy invite link',
+  /** Q38 (useCopy, B1b): Copy's and "Share invite link"'s states. */
+  copied: 'Copied',
+  copyFailed: 'Copy failed',
+  share: 'Share invite link',
+  /** Q39 (D13: no numbers until the coordinator's tier rule is confirmed). */
+  banner: 'Earn NOC when friends you invite buy in the presale.',
+  legalese: 'Referral payouts are subject to program terms. Self-referrals are detected and rejected.',
+  /** The legalese's words the design sets in `--accent` on all three #24 phones (unlinked until B1e). */
+  legaleseTerms: 'program terms',
+  none: '—',
 } as const;
 
 /**
@@ -192,6 +254,11 @@ export function raisedText(cents: bigint): string {
 
 /** A NOC amount in millions, floored: "10.24 M NOC" (Q01's cap). */
 export const millionsNoc = (base: bigint): string => `${formatAmount(base / 10n ** 13n, 2, {min: 2, max: 2})} M NOC`;
+
+/** #24's figures (§4.4): EARNED in NOC to one place as drawn ("32.4", "0.0"), floored; REFERRED in dollars and cents; REFERRALS grouped. */
+export const earnedText = (base: bigint): string => formatAmount(base, 9, {min: 1, max: 1});
+export const referredText = (cents: bigint): string => `$${formatAmount(cents, 2, {min: 2, max: 2})}`;
+export const countText = (n: bigint): string => group(n);
 
 /** A limit in dollars, as core's lines write it: "$10", "$50,000", "$199,700.50" — whole dollars without cents. */
 export const dollarsText = (cents: bigint): string => (cents % 100n === 0n ? `$${group(cents / 100n)}` : `$${formatAmount(cents, 2, {min: 2, max: 2})}`);

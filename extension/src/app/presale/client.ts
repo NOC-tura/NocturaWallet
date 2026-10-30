@@ -1,4 +1,5 @@
 import {pendingOf, type Engine, type Pending, type Reply} from '../engine';
+import {buildReferralLink} from '../../../../core/referral/index';
 
 /**
  * B1d §1.4, §2.5, §3.2, §3.3: the popup's client for the presale messages #23 asks — through the shared engine's
@@ -42,6 +43,8 @@ export type PresaleView =
       solUsdMicros: bigint | null;
       /** The country the gate detected (D22), or null when it named none. */
       countryCode: string | null;
+      /** B1d-2 (§2.5): the referrer on chain, or null; #23 offers the referral address only while `canRegister`. */
+      referral: {onChain: string | null; canRegister: boolean};
       pending: Pending | null;
     };
 export type LimitLine = 'below-min' | 'above-max-tx' | 'above-user-limit';
@@ -90,6 +93,21 @@ export interface BannerData {
   stagePercent: number;
 }
 
+/**
+ * §3.5, §4.4 (B1d-2): #24's data — the account's invite link, and each figure (base units, a count, cents) or null when
+ * its source failed (shown "—").
+ */
+export interface ReferralData {
+  link: string;
+  earnedBase: bigint | null;
+  referrals: bigint | null;
+  referredCents: bigint | null;
+}
+
+/** §3.5 (B1d-2): the lines under #23's referral address — presale.checkReferrer's answers, and prepare's refusals of the address. */
+export const REFERRER_LINES = ['referrer-invalid', 'referrer-self', 'referrer-not-applicable', 'referrer-no-allocation'] as const;
+export type ReferrerLine = (typeof REFERRER_LINES)[number];
+
 /** The refusals of presale.prepareBuy (§5) the popup translates; anything else is `failed`. */
 export const PREPARE_REFUSALS = [
   'malformed',
@@ -116,10 +134,20 @@ export const PREPARE_REFUSALS = [
   'simulation-failed',
   'simulation-mismatch',
   'presale-busy',
+  ...REFERRER_LINES,
 ] as const;
 export type PrepareRefusal = (typeof PREPARE_REFUSALS)[number];
 const SESSION = ['malformed', 'locked', 'unknown-account', 'unavailable'] as const;
 type SessionRefusal = (typeof SESSION)[number];
+const CHECK_REFUSALS = [...SESSION, 'presale-unavailable', 'coordinator-refused'] as const;
+export type CheckRefusal = (typeof CHECK_REFUSALS)[number];
+/** What #23 asks presale.prepareBuy to buy; `referrer` present only when the field holds one (B1d-2). */
+export interface PurchaseIntent {
+  currency: PresaleCurrency;
+  amount: bigint;
+  stage: number;
+  referrer?: string;
+}
 /**
  * The refusals of presale.buy (§1.4, §3.3, §5) #20 translates: the purchase's sign-time codes and B1b's pipeline's;
  * anything else is `failed`. `reauth-required` carries `{challengeId}`, `check-pending` `{id, signature}`.
@@ -146,6 +174,9 @@ export const BUY_REFUSALS = [
   'below-min',
   'above-max-tx',
   'above-user-limit',
+  // B1d-2: the referral address re-checked at the signature (§3.5) — it became an account of this wallet, or its allocation went.
+  'referrer-self',
+  'referrer-no-allocation',
 ] as const;
 export type BuyRefusal = (typeof BUY_REFUSALS)[number];
 /** §1.4 presale.preparedFor: the account's prepared purchase as #20 shows it; `expired` past its 30 s (re-prepare it). */
@@ -158,9 +189,18 @@ export interface PresaleClient {
   /** `stale`: the account's last view is older than the quote's 30 s (§1.4) — ask a view, then again. */
   quote(account: string, currency: PresaleCurrency, amount: bigint | 'max'): Promise<Reply<Quote | 'stale', SessionRefusal>>;
   pending(account: string): Promise<Reply<Pending | null, SessionRefusal>>;
-  /** `challengeId`: the purchase's live challenge, carried into the new prepare (§3.3 step 6) — the background decides whether it still applies. */
-  prepareBuy(account: string, intent: {currency: PresaleCurrency; amount: bigint; stage: number}, challengeId?: string): Promise<Reply<PurchaseView, PrepareRefusal>>;
+  /**
+   * `challengeId`: the purchase's live challenge, carried into the new prepare (§3.3 step 6) — the background decides
+   * whether it still applies. `referrer` (B1d-2): the referral address as entered, sent only when there is one.
+   */
+  prepareBuy(account: string, intent: PurchaseIntent, challengeId?: string): Promise<Reply<PurchaseView, PrepareRefusal>>;
+  /** §3.5 (B1d-2): the line for this referral address, or null when the purchase would register it — the background's answer. */
+  checkReferrer(account: string, referrer: string): Promise<Reply<ReferrerLine | null, CheckRefusal>>;
   preparedFor(account: string): Promise<Reply<ResumablePurchase | null, SessionRefusal>>;
+  /** §3.5, §4.4 (B1d-2): #24's data for the account — its own link, each figure as the background read it or null. */
+  referral(account: string): Promise<Reply<ReferralData, SessionRefusal>>;
+  /** §1.4, §4.6 (B1d-2): this account's purchases the coordinator has not accepted, each with its state — #27's Q34 or Q60. */
+  unrecorded(account: string): Promise<Reply<readonly UnrecordedPurchase[], SessionRefusal>>;
   buy(id: string): Promise<Reply<Pending, BuyRefusal>>;
   discardPrepared(account: string): Promise<Reply<null, SessionRefusal>>;
 }
@@ -170,6 +210,7 @@ const obj = (x: unknown): J | undefined => (typeof x === 'object' && x !== null 
 const UNITS = /^\d{1,20}$/;
 const ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 const HEX32 = /^[0-9a-f]{32}$/;
+const SIGNATURE = /^[1-9A-HJ-NP-Za-km-z]{64,88}$/;
 const units = (x: unknown): bigint | undefined => (typeof x === 'string' && UNITS.test(x) ? BigInt(x) : undefined);
 const isInt = (x: unknown): x is number => typeof x === 'number' && Number.isSafeInteger(x) && x >= 0;
 const isStage = (x: unknown): x is number => isInt(x) && x <= 9;
@@ -224,12 +265,13 @@ export function presaleViewOf(x: unknown): PresaleView | undefined {
   const pending = pendingIn(o.pending);
   if (pending === undefined) return undefined;
   if (o.open === true) {
-    if (!exactly(o, ['open', 'state', 'limits', 'allocation', 'balances', 'solUsdMicros', 'countryCode', 'pending'])) return undefined;
+    if (!exactly(o, ['open', 'state', 'limits', 'allocation', 'balances', 'solUsdMicros', 'countryCode', 'referral', 'pending'])) return undefined;
     const state = stageOf(o.state);
     const l = obj(o.limits);
     const a = obj(o.allocation);
     const b = obj(o.balances);
-    if (state === undefined || l === undefined || a === undefined || b === undefined || !exactly(l, ['minCents', 'maxTxCents', 'userRemainingCents', 'firstPurchase']) || !exactly(a, ['exists', 'totalBase', 'bonusBase']) || !exactly(b, ['SOL', 'USDC', 'USDT'])) return undefined;
+    const r = obj(o.referral);
+    if (state === undefined || l === undefined || a === undefined || b === undefined || r === undefined || !exactly(l, ['minCents', 'maxTxCents', 'userRemainingCents', 'firstPurchase']) || !exactly(a, ['exists', 'totalBase', 'bonusBase']) || !exactly(b, ['SOL', 'USDC', 'USDT']) || !exactly(r, ['onChain', 'canRegister'])) return undefined;
     const [minCents, maxTxCents, userRemainingCents] = [units(l.minCents), units(l.maxTxCents), units(l.userRemainingCents)];
     const [totalBase, bonusBase, sol] = [units(a.totalBase), units(a.bonusBase), units(b.SOL)];
     const [usdc, usdt] = [pair(b.USDC), pair(b.USDT)];
@@ -237,6 +279,9 @@ export function presaleViewOf(x: unknown): PresaleView | undefined {
     const countryCode = countryOf(o.countryCode);
     if (minCents === undefined || maxTxCents === undefined || userRemainingCents === undefined || typeof l.firstPurchase !== 'boolean') return undefined;
     if (typeof a.exists !== 'boolean' || totalBase === undefined || bonusBase === undefined || sol === undefined || usdc === undefined || usdt === undefined || solUsdMicros === undefined || solUsdMicros === 0n || countryCode === undefined) return undefined;
+    const onChain = r.onChain === null ? null : isAddress(r.onChain) ? r.onChain : undefined;
+    // §2.5: canRegister is exactly "a first purchase and no referrer on chain" — any other pairing is not the background's.
+    if (onChain === undefined || typeof r.canRegister !== 'boolean' || r.canRegister !== (l.firstPurchase && onChain === null)) return undefined;
     return {
       open: true,
       state,
@@ -245,6 +290,7 @@ export function presaleViewOf(x: unknown): PresaleView | undefined {
       balances: {SOL: sol, USDC: usdc, USDT: usdt},
       solUsdMicros,
       countryCode,
+      referral: {onChain, canRegister: r.canRegister},
       pending,
     };
   }
@@ -353,6 +399,48 @@ export function resumableOf(x: unknown): ResumablePurchase | undefined {
   return view === undefined ? undefined : {...view, expired};
 }
 
+/** presale.checkReferrer's answer (§1.4): `{ok: true}` → null, `{ok: false, line}` → the line. */
+export function referrerCheckOf(x: unknown): ReferrerLine | null | undefined {
+  const o = obj(x);
+  if (o === undefined) return undefined;
+  if (exactly(o, ['ok'])) return o.ok === true ? null : undefined;
+  return exactly(o, ['ok', 'line']) && o.ok === false ? oneOf(o.line, REFERRER_LINES) : undefined;
+}
+
+/**
+ * presale.referral's answer (§3.5) for `account`: exactly its four keys; the link is this account's invite link, whole
+ * (never another address's, never shortened); each figure a decimal string of a bigint, or null.
+ */
+export function referralDataOf(x: unknown, account: string): ReferralData | undefined {
+  const o = obj(x);
+  if (o === undefined || !exactly(o, ['link', 'earnedBase', 'referrals', 'referredCents']) || o.link !== buildReferralLink(account)) return undefined;
+  const figure = (v: unknown): bigint | null | undefined => (v === null ? null : units(v));
+  const [earnedBase, referrals, referredCents] = [figure(o.earnedBase), figure(o.referrals), figure(o.referredCents)];
+  if (earnedBase === undefined || referrals === undefined || referredCents === undefined) return undefined;
+  return {link: o.link, earnedBase, referrals, referredCents};
+}
+
+/** A purchase presale.unrecorded lists: its signature and why it is not recorded (§2.4 — `refused` is the route's D29). */
+export interface UnrecordedPurchase {
+  signature: string;
+  state: 'due' | 'given-up' | 'refused';
+}
+const UNRECORDED_STATES: readonly string[] = ['due', 'given-up', 'refused'];
+
+/** presale.unrecorded's answer (§1.4, rev 3.6): an array of `{signature, state}`, possibly empty — anything else failed. */
+export function unrecordedOf(x: unknown): readonly UnrecordedPurchase[] | undefined {
+  if (!Array.isArray(x)) return undefined;
+  const out: UnrecordedPurchase[] = [];
+  for (const item of x as unknown[]) {
+    const o = obj(item);
+    if (o === undefined || !exactly(o, ['signature', 'state'])) return undefined;
+    const {signature, state} = o;
+    if (typeof signature !== 'string' || !SIGNATURE.test(signature) || typeof state !== 'string' || !UNRECORDED_STATES.includes(state)) return undefined;
+    out.push({signature, state: state as UnrecordedPurchase['state']});
+  }
+  return out;
+}
+
 /** The pending record presale.buy answers: the wallet's own purchase (`intent: null`, this kind), nothing else. */
 const purchaseRecordOf = (x: unknown): Pending | undefined => {
   const p = pendingIn(x);
@@ -367,11 +455,19 @@ export function presaleClient(engine: Engine): PresaleClient {
     pending: (account: string) => engine.request({type: 'presale.pending', account}, SESSION, x => (x === null ? null : pendingIn(x))),
     prepareBuy: (account, intent, challengeId) =>
       engine.request(
-        {type: 'presale.prepareBuy', account, intent: {currency: intent.currency, amount: intent.amount.toString(), stage: intent.stage}, ...(challengeId === undefined ? {} : {challengeId})},
+        {
+          type: 'presale.prepareBuy',
+          account,
+          intent: {currency: intent.currency, amount: intent.amount.toString(), stage: intent.stage, ...(intent.referrer === undefined ? {} : {referrer: intent.referrer})},
+          ...(challengeId === undefined ? {} : {challengeId}),
+        },
         PREPARE_REFUSALS,
         purchaseViewOf,
       ),
+    checkReferrer: (account, referrer) => engine.request({type: 'presale.checkReferrer', account, referrer}, CHECK_REFUSALS, referrerCheckOf),
     preparedFor: account => engine.request({type: 'presale.preparedFor', account}, SESSION, x => (x === null ? null : resumableOf(x))),
+    referral: account => engine.request({type: 'presale.referral', account}, SESSION, x => referralDataOf(x, account)),
+    unrecorded: account => engine.request({type: 'presale.unrecorded', account}, SESSION, unrecordedOf),
     buy: id => engine.request({type: 'presale.buy', id}, BUY_REFUSALS, purchaseRecordOf),
     discardPrepared: account => engine.request({type: 'presale.discardPrepared', account}, SESSION, x => (x === undefined ? null : undefined)),
   };

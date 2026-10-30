@@ -5,7 +5,8 @@ import {EXPIRY_MARGIN_BLOCKS, POLL_INTERVAL_MS, pollOnce, resend, submitSigned} 
 import {prepareSend} from '../prepare';
 import {handleWallet} from '../walletApi';
 import {knownRecipients} from '../knownRecipients';
-import {VAULT_KEY} from '../accountsStore';
+import {VAULT_KEY, WALLET_DATA_KEYS, storeEnvelope} from '../accountsStore';
+import {PRESALE_RECORDS_KEY} from '../presaleRecordsKey';
 import {firstSignature} from '../../../../core/solana/broadcast';
 import type {SignatureStatus} from '../../../../core/solana/rpc';
 import {fakeDeps, fakeReader} from './fakeDeps';
@@ -224,5 +225,20 @@ describe('the poller, expiry, resend and wallet.pending are kind-agnostic (B1d �
     await ext.local.set(PENDING_KEY, [PURCHASE, pendingRecord({id: 'dapp', account: 'B', intent: null, origin: 'https://noc-tura.io'})]);
     const r = await handleWallet(ext, fakeDeps(), 'wallet.pending', {});
     expect(r).toEqual({ok: true, data: [viewOf(PURCHASE)]});
+  });
+});
+
+// B1d §2.4 (C19): an update that turns presale off must not leave a deleted wallet's presale records behind — the key
+// and its wipe are shared code, so this holds in both builds (this file runs in both vitest runs).
+describe('the presale records are the wallet’s data in both builds', () => {
+  it('v1_presale_records is one of WALLET_DATA_KEYS, and a first write (what a delete leaves) removes it', async () => {
+    expect(PRESALE_RECORDS_KEY).toBe('v1_presale_records');
+    expect(WALLET_DATA_KEYS).toContain(PRESALE_RECORDS_KEY);
+    const ext = fakeExt();
+    await ext.local.set(PRESALE_RECORDS_KEY, [{signature: 's', state: 'due'}]);
+    const B = (n: number, fill: number) => base64.encode(new Uint8Array(n).fill(fill));
+    const envelope = {v: 1, scheme: 'slip10', kdf: {alg: 'argon2id', m: 65536, t: 3, p: 1, salt: B(16, 1)}, seed: {iv: B(12, 2), ct: B(48, 3)}, password: {wrapped: B(40, 4)}, accounts: [{index: 0, name: 'Main', publicKey: ACCOUNT.publicKey}]};
+    expect(await storeEnvelope(ext, null, envelope)).toBe('stored');
+    expect(await ext.local.get(PRESALE_RECORDS_KEY)).toBeUndefined();
   });
 });

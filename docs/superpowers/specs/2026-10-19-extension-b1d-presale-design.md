@@ -2,7 +2,10 @@
 
 **Status:** **approved rev 3**, 2026-10-19 (owner: "ok je") — Fable reviews 1–2 applied with owner decisions D7–D15; **rev 3.1**
 (D16): rev 3 plus plan B1d-1a's spec edits, listed below; **rev 3.2** (D23): rev 3.1 plus every departure plan B1d-1b
-makes, listed below; **rev 3.3** (D27): the copy calls rev 3.2 left open, decided. The owner approved
+makes, listed below; **rev 3.3** (D27): the copy calls rev 3.2 left open, decided; **rev 3.4** (D28–D30): rev 3.3
+plus every departure plan B1d-2 makes, listed below; **rev 3.5** (D31): rev 3.4 plus the fixes of plan B1d-2's Fable
+review 1, listed below; **rev 3.6** (D27's delegation): rev 3.5 plus the fixes of B1d-2's final whole-branch review,
+listed below. The owner approved
 the design in conversation section by section (`.superpowers/sdd/b1d-approved-design.md`, approach A) and took
 decisions D1–D6, then D7–D14 on Fable's review 1 and D15 on review 2 (`.superpowers/sdd/b1d-owner-decisions.md`,
 `.superpowers/sdd/b1d-spec-review-1.md`, `.superpowers/sdd/b1d-spec-review-2.md`).
@@ -126,6 +129,122 @@ open, decided by the controller under the owner's delegation.**
 - §4.3 #50b's skeleton first (rev 3.2): **kept, as the rule** — #50b shows only an answer its own `presale.view` just
   gave; drawing the routed (older) answer first could show "open" for a frame and then flip to closed. No departure.
 - §10 Q53, Q54a/b, Q56, Q57, Q58: confirmed as built (they mirror B1b's send strings). Q55 as above.
+
+**Rev 3.4 (2026-10-26, owner decisions D28–D30): rev 3.3 plus every departure plan B1d-2 makes, collected here — no
+per-item re-approval, as rev 3.2.** Each was built in the task of plan B1d-2 named (`docs/superpowers/plans/`)
+and is stated there; the passages marked "rev 3.4" below are edited to match. Every other passage is rev 3.3:
+- §2.4 (D28, Task 1): the POST carries the whole payload — `txHash`, `buyerAddress`, `stage` (an integer, 1-indexed),
+  `paymentToken`, `paymentAmount` (a decimal string), `nocAmount` and `usdValue` (numbers, converted at that edge only),
+  `referrerAddress` when there is one; the coordinator stores only what it derives from the chain.
+- §2.4 (D29, Task 1): a 400 is final — the entry is **`refused`**, a fourth state; never POSTed again; #27 keeps Q34.
+  Only the route's own refusal body (`{success: false, error: <string>}`) is final; any other 400 is retried.
+- §2.4 (D30, Task 1): `200 {success: true}` is `done` whatever `verified` / `duplicate` say.
+- §2.4 (Task 1): C24's slots are offsets from `confirmedAt` — 0, 1 min, 5 min, 30 min, 2 h, 12 h, 24 h, 48 h, 72 h; a
+  worker asleep across slots POSTs once when it wakes; a failed attempt with no slot left → `given-up`.
+- §2.4 (Task 1): over 50 entries the oldest `done` goes first, then `given-up`, `refused`, `due` (an entry #27 says Q34
+  for only when no `done` one is left; rev 3.5, review M8).
+- §2.4 (Task 1): a 403 or the cool-down sets `nextAt` to the later of the claimed slot and the latch's persisted end
+  (`v1_forbidden_until`, one value).
+- §2.4 (Task 1): the hook writes an entry only for an account of the wallet stored now.
+- §2.4 (Task 1, controller ruling): **reconcile** — at every start and on the `presale-record` alarm, each confirmed
+  `presale-buy` record of the stored wallet in `v1_pending` without an entry gets one (`confirmedAt` = its `createdAt`;
+  past 72 h written `given-up`, never POSTed). Accepted gap: a purchase pushed out of `v1_pending` by 20 newer records
+  before the worker wakes is not recorded.
+- §2.4 / §6.2 (Task 1): `v1_presale_records` and its lock are shared code; the key is a **must-stay** string of the off
+  build, not a marker (a wallet delete must wipe the records in either build); the records are wiped behind their lock.
+- §2.4 / §6.2 (Task 1): the alarm's name `presale-record` and `presale.unrecorded` are markers; the alarm is dispatched
+  by name and a shared alarm's name is refused at start; an empty store arms no alarm.
+- §2.4 (Task 1): `WalletDeps.postJson` (`createJsonPoster`, generic, both builds); core's
+  `PresalePurchaseRecord.paymentAmount` widens to `number | string` (web and the app keep passing numbers).
+- §1.4 / §3.5 (Task 2): `intent.referrer` is present only when entered (a purchase without one has B1d-1b's bytes and
+  digest exactly); "self" is every account of the unlocked session **and** of the stored wallet.
+- §3.5 (Task 2): `referrer-not-applicable` is `resolveReferrerWith`'s answer; `checkReferrer` reads the buyer's and the
+  referrer's allocation itself (one `getAccountsData`); a 403 there → `coordinator-refused`, other failures
+  `presale-unavailable`.
+- §3.3 (Task 2): `referrer@84` after is checked on **every** purchase (registered, on chain, or the default key).
+- §3.3 / §3.4 (Task 2): a registration signs only behind a proof (`challengeId` null → `prepared-invalid`); the
+  signature re-runs §3.5's lines on fresh reads (`referrer-self`, `referrer-no-allocation`); the C39 retry compares the
+  referrer allocation and whether it registers (`state-changed`).
+- §3.3 / §5 (Task 2): AlreadyHasReferrer (6016) in the simulation is `simulation-failed` (Q16); §5's row stays the
+  on-chain case.
+- §4.2 #10 (Task 2): "Referred by" after "To" for every purchase that credits a referrer (on chain too), Q47's note its
+  own row.
+- §2.5 (Tasks 2, 3): `referral: {onChain, canRegister}` lands in Task 3, with the popup's parser.
+- §3.5 (Task 3): `checkReferrer` answers `referrer-invalid` for any string that is not 32–44 base58 characters (the
+  popup never judges the text); the text is trimmed and spaces alone are empty.
+- §4.1 (Task 3): Buy also waits while a check is out; a failed check shows Q11 / Q12 as #23's notice, no line, Buy not
+  held; whenever the view says `canRegister: false` while the field holds text, the text is cleared and Q48 is #23's
+  notice (the warning banner above the stage card).
+- §4.1 (Task 3): the field is B1b's `.app-input` (the address book's), the value in the mono face at 13 px / 20 px, the
+  placeholder in the body face — no generic `.input` exists in the extension.
+- §4.2 #20 (Task 3): Q47's note sits inside "Referred by"'s value, under the address.
+- §4.2 (Task 3, stated loudly): #44's / #54's [Try again] do not restore the referral address — the field shows again
+  empty (the failed transaction registered nothing) and the user re-enters it.
+- §6.2 / §10 (Task 3): Q46a is not a marker — it is the start of B1b's #12 line, which both builds carry.
+- §3.5 (Task 4): `/referral-stats` is parsed strictly (`success === true`, both figures numbers); core's
+  `fetchReferralStats` (which reads a missing figure as 0) is not used; `WalletDeps.getJson` (generic, both builds).
+- §3.5 / §4.4 (Task 4): no allocation on chain = EARNED 0 ("0.0"); a 403 on `/referral-stats` → "—", no notice (the
+  latch trips); a failed reply → "—" for every figure, no link, Q11.
+- §4.4 (owner-delegated copy, D27; controller ruling): the code card says **"Used by N people"** / **"Used by 1
+  person"** / "Not used yet" — `totalReferrals` counts distinct buyers, not uses of the link (the design: "Used N times").
+- §4.4 (Task 4): one `useCopy` for Copy and "Share invite link"; "Copy failed" draws the close glyph; the copy icon's
+  name "Copy invite link" (the app's); #31's group "Rewards" (the app's).
+- §4.4 (Task 4): the link in 13 px / 20 px mono, broken anywhere; the stats in equal thirds with `<wbr>` after each
+  group separator; the code row's border transparent while idle; EARNED to one place, floored, `--accent` above 0 and
+  `--fg-tertiary` for 0 or "—"; REFERRED as "$1,234.56"; no top-bar spacer; skeletons while loading, Copy and Share
+  disabled until the link is there; one read per mount.
+- §4.4 (Task 7, visual pass): a figure of eight characters or more is set at 16 px ("$1,234.56" wrapped after its comma
+  in its third at 20 px).
+- §4.6 (Task 5): the badge is decided by the row's kind alone (`purchase`, the chain's) — a failed purchase is not a
+  `purchase` row and has no badge; a badged row wraps its badges under the title (a site's purchase carries two).
+- §4.6 (Task 5): Q34 is an info banner between #27's amount card and its detail card; #27 asks for the route's account,
+  once per open; any failure shows nothing (fail quiet); `StatusPill`'s badge is a `span`.
+- §4.2 #10 (Task 7, visual pass): a row naming an address keeps its label on one line ("Referred by" wrapped beside the
+  groups).
+- §6.2 (Task 6): the module list is complete by construction — a presale module the on build carries and `ON_BUILD`
+  does not name fails the gate.
+- §6.2 (Tasks 6, 7): every literal part of `text.ts`'s copy of ≥ 8 characters that is not one word carries a marker,
+  except text both builds carry (Q40b's tail " per transaction" — a library's error text in the off build under
+  `NODE_ENV=test` —, Q46a, "Network fee", "Quote valid ", "Copy failed"); B1d-1b's eight unarmed strings are armed
+  (105 markers).
+- §6.3 (Task 6): E2E 10 has no fake clock in the worker — a slot comes by moving the entry's schedule back and firing
+  the record's own alarm; D29 and D30 are proven in one wake with a due control entry; E2E 7 also refuses B1d-2's three
+  message types; the fake models `register_referrer` but not the referral bonus (E2E 11 seeds it); 6016 is modelled but
+  unreachable (the wallet refuses first).
+- §6.4 (Task 7): B1d-2's shots as listed in §6.4.
+
+**Rev 3.5 (2026-10-26, owner decision D31): rev 3.4 plus the fixes of plan B1d-2's Fable review 1
+(`.superpowers/sdd/b1d2-plan-review-1.md`), made by plan B1d-2 rev 2 — no separate pass:**
+- §2.4, §7 P3 (D31): an unattended record-route 403 trips the wallet-wide 10-min cool-down like every 403 (a 403 is
+  always a whole-IP CrowdSec ban); the premise, stated for ICO: the coordinator never 403s this route selectively.
+- §2.4 (review I2, Task 1): the worker POSTs only an entry of an account of the wallet stored now — another account's
+  (one the stored wallet no longer has, e.g. dropped by `storeEnvelope`) is held, never dropped — and nothing while a transaction of the stored wallet is open, because
+  the shared latch serialises every coordinator request (measured: a record POST that never answers holds the reads
+  queued behind it for its whole 20 s).
+- §2.4 (review M3): the 403's `nextAt` is the later of the claimed slot and `v1_forbidden_until` (one value, the
+  latch's persisted end, named twice in rev 3.4).
+- §2.4 (review M7): a `presale-buy` record's display data always reads back — the invariant, and where it is held.
+- §2.4 (review M5): what the unattended retry adds to the privacy picture (timing, not data).
+- §3.3 (review M1, Task 2): a stored purchase's `shown` reads back only if the referrer it shows without a registration
+  is the one its `basis` read on chain, and a registering one only where the basis read none.
+- §6.2 item 4 (review M4): presale copy lives in `text.ts` by rule; the completeness row's scope is that rule.
+- §2.4 and rev 3.4's change list (review M8): over 50, a Q34 entry goes once no `done` one is left (not "last": `given-up`
+  and `refused` go before `due`).
+
+**Rev 3.6 (2026-10-29, controller copy ruling under the owner's delegation D27): rev 3.5 plus the fixes of B1d-2's final
+whole-branch review (`.superpowers/sdd/2026-10-26-extension-b1d-plan2/final-review.md`), one fix wave:**
+- §10 Q60, §1.4, §2.4, §4.6, §5 (final review Minor 3): #27 says a new string, Q60, for a `refused` record — the route
+  declined it and it will never be updated — and keeps Q34 for `due` and `given-up`; `presale.unrecorded` answers each
+  purchase with its state so #27 can tell them apart. Q60 is controller copy, owner-delegated (D27).
+- §2.4 (final review Minor 1): over 50, an entry whose signature is still in `v1_pending` is never dropped, in any
+  state — the reconcile would write it again at the next wake and POST a settled purchase once more; the next entry in
+  the order goes instead.
+- §2.4 (final review Minor 2): a record POST's answer that finds its entry gone (a delete wiped the records while the
+  POST was out) writes nothing.
+- §4.4 (task 4 review M1): the legalese's "program terms" is set in `--accent` as drawn on 24a, 24a-bis and 24b, still
+  unlinked.
+- §6.4 (task 7 review M2): `23a-referrer-empty` and `23a-referrer-invalid` lose their `-end` shot (it was the same
+  image); `23a-referrer-top` shows #23a's top with the field; `27-declined` shows Q60.
 
 **Ledger (review L12).** The order, so nobody has to guess it: the facts were re-read from the code on 2026-10-18 (§8.2)
 and rev 1 was written from them; the owner's decisions D1–D6 and D7–D14 carry the date the decisions file records,
@@ -384,11 +503,12 @@ existing `vault.challengeInfo`).
 | `presale.discardPrepared` | `{account}` | B1b's `discardPrepared` (all of the account's entries and their challenges) |
 | `presale.checkReferrer` (B1d-2) | `{account, referrer}` | `{ok: true}` or `{ok: false, line: 'referrer-invalid' \| 'referrer-self' \| 'referrer-no-allocation' \| 'referrer-not-applicable'}` (§3.5); a read failure → `presale-unavailable` |
 | `presale.referral` (B1d-2) | `{account}` | `ReferralView` (§3.5) |
-| `presale.unrecorded` (B1d-2) | `{account}` | the signatures of this account's confirmed purchases not yet accepted by the coordinator |
+| `presale.unrecorded` (B1d-2) | `{account}` | this account's entries `due`, `given-up` or `refused`, each as `{signature, state}` (§2.4, rev 3.4; the state rev 3.6) |
 
 Every payload is parsed strictly (extra keys, a non-address `account`, an amount not `^[1-9]\d{0,19}$` or above u64,
 a currency not in `{SOL, USDC, USDT}`, a stage not an integer 0–9, a `referrer` neither null nor a string of 32–44
-base58 characters) → `malformed`. `account` must be in the unlocked session → else `locked` / `unknown-account`.
+base58 characters) → `malformed`; `intent.referrer` absent or null is no referrer, and the parsed intent then has no such
+key (rev 3.4). `presale.checkReferrer` answers `referrer-invalid` for any string that is not 32–44 base58 characters. `account` must be in the unlocked session → else `locked` / `unknown-account`.
 
 ---
 
@@ -554,28 +674,72 @@ and the effective referrer (or null). All strings (decimal strings for numbers);
 `current_stage` (rev 3.2 — the renderer adds 1, and the §2.4 recording sends stage + 1). Readable in both builds (§1.3).
 Shown by #23b, #11, #21, #26, #27, #44 and #54; never used to decide anything.
 
-### 2.4 The coordinator record (`record.ts`, B1d-2, C24)
+### 2.4 The coordinator record (`record.ts`, B1d-2, C24; rev 3.4 — D28–D30)
 
 `storage.local` `v1_presale_records`, background-owned (added to `BACKGROUND_OWNED_KEYS` and to `WALLET_DATA_KEYS`:
-wiped by a wallet delete, kept by a restore), at most 50 entries (the oldest given-up entry dropped first):
-`{signature, account, payload, confirmedAt, attempts, nextAt, state: 'due' | 'done' | 'given-up'}`.
+wiped by a wallet delete — behind the records' own lock — kept by a restore; the key is shared code and a must-stay
+string of the off build, §6.2), at most 50 entries:
+`{signature, account, payload, confirmedAt, attempts, nextAt, state: 'due' | 'done' | 'given-up' | 'refused'}`.
+Over 50, the oldest `done` entry is dropped first, then `given-up`, `refused`, `due` (an entry #27 has a line for goes only
+when no `done` one is left, and a `due` one last — rev 3.5, review M8) — but never an entry whose signature is still in
+`v1_pending`, whatever its state: the reconcile would write it again at the next wake and POST a settled purchase once
+more (rev 3.6, final review Minor 1); the next entry in the order goes instead. `v1_pending` keeps at most 20 closed
+records (open ones are never trimmed and can take it past 20), and an entry is only ever a confirmed — closed —
+purchase's, so at most 20 entries are kept and there is always one to drop.
 
-- Written when the poller sees a `presale-buy` record reach `confirmed` (the kind's `onConfirmed`, §1.3). `payload`:
-  `txHash` = the signature, `buyerAddress` = the account, `paymentToken`, **`paymentAmount` as a decimal string in
-  display units** (no float leaves the background for it; review L4 — core's `PresalePurchaseRecord.paymentAmount`
-  widens to `number | string`, so web and the app keep passing numbers unchanged (D12) and the route stores either
-  into `DECIMAL(30,18)`, `db/migrate.js:20`), `nocAmount` and `usdValue` (the simulation's `nocBase` / `spentCents`
-  converted to the coordinator's decimal numbers at this edge only — the route requires `typeof nocAmount ===
-  'number'`, `server.js:444`), `stage` (1-indexed), `referrerAddress` (the effective referrer or absent).
-- Sent through `createJsonPoster` (POST JSON to a bare path under `API_BASE`, through the shared latch,
-  `REQUEST_TIMEOUT_MS`); core's `recordPresalePurchase` is not used (it swallows every answer, so nothing could be
-  retried). `200` with `success: true` → `done`. Any other answer → the next slot of C24's schedule; a 403 trips the
-  latch and the entry waits for the cool-down (never retried inside it); past 72 h after `confirmedAt` → `given-up`. An
-  `alarms` alarm (`presale-record`, existing permission) wakes the worker at `min(nextAt)`.
+- **Written** when the poller sees a `presale-buy` record reach `confirmed` (the kind's `onConfirmed`, §1.3), for an
+  account of the wallet stored now only. **Reconciled** at every start and on the alarm: a confirmed `presale-buy`
+  record of the stored wallet in `v1_pending` that has no entry gets one (`confirmedAt` = the record's `createdAt`;
+  past 72 h it is written `given-up` and never POSTed) — the worker may stop between the poller's write and the hook.
+  A purchase pushed out of `v1_pending` by 20 newer records before the worker wakes is not recorded (accepted).
+  **Its display data always reads back (rev 3.5, review M7):** `purchaseBeforeSign` refuses `prepared-invalid` when
+  `shownOf` is null, before `purchasePendingData` runs, so no `presale-buy` record whose `extra.data` does not read back
+  is ever written — the hook and the reconcile skip such a record (no entry, no Q34); a change to either side keeps the
+  invariant.
+- **`payload` (D28)** — the whole route payload: `txHash` = the signature, `buyerAddress` = the account,
+  `paymentToken`, **`paymentAmount` as a decimal string in display units** (no float leaves the background for it;
+  review L4 — core's `PresalePurchaseRecord.paymentAmount` widens to `number | string`, so web and the app keep passing
+  numbers unchanged (D12) and the route stores either into `DECIMAL(30,18)`), `nocAmount` and `usdValue` (the
+  simulation's `nocBase` / `spentCents` converted to the coordinator's decimal numbers at this edge only — the route
+  requires `typeof nocAmount === 'number'`), `stage` (an integer, 1-indexed — the route reads
+  `Number.isInteger(body.stage)`), `referrerAddress` (the effective referrer, or absent). The coordinator stores only
+  what it derives from the chain and logs a > 1 % disagreement with ours.
+- **Sent** through `WalletDeps.postJson` (`createJsonPoster`: POST JSON to a bare path under `API_BASE`, through the
+  shared latch, `REQUEST_TIMEOUT_MS`; generic, both builds); core's `recordPresalePurchase` is not used (it swallows
+  every answer). **The answers:** `200` with `success: true` → `done`, whatever `verified` / `duplicate` say (D30 — a
+  `verified: false` row is completed by the coordinator's own sweep); a **400 whose body is the route's own refusal**
+  (`{success: false, error: <string>}`) → **`refused`**, final: never POSTed again, the purchase stands (D29); a 403
+  trips the latch — the wallet-wide 10-min cool-down, like every 403 (D31: a 403 is always a whole-IP CrowdSec ban; the
+  premise is §7 P3's, that the coordinator never 403s this route selectively) — and the entry waits for it (`nextAt` =
+  the later of the claimed slot and the latch's persisted end, `v1_forbidden_until`; never retried inside it, rev 3.5);
+  anything else (429, 500, a timeout, a 400 without
+  the route's body) → the next slot. An answer whose entry is gone (a delete wiped the records while the POST was out)
+  writes nothing (rev 3.6, final review Minor 2).
+- **The schedule (C24):** slots at offsets from `confirmedAt` — 0, 1 min, 5 min, 30 min, 2 h, 12 h, 24 h, 48 h, 72 h. A
+  worker asleep across slots POSTs once when it wakes, then waits for the first slot after now; a failed attempt with no
+  slot left → `given-up`. One `alarms` alarm, `presale-record` (existing permission; dispatched by name, a shared
+  alarm's name refused), wakes the worker at `min(nextAt)` — never sooner than 30 s ahead; no due entry, no alarm.
+- **When, and for whom (rev 3.5, review I2):** only an entry of an account of the wallet stored now is POSTed. Another
+  account's entry (one the stored wallet no longer has, e.g. dropped by `storeEnvelope` — the records are kept, like the rest of `WALLET_DATA_KEYS`) is **held**,
+  not dropped: never POSTed, arming no alarm, kept as it was (it counts toward the 50 and goes by the same order), and
+  sent at the first run after that wallet is stored again; a delete wipes it with the rest. Dropping it would make a
+  restore a second, unlocked partial delete and lose a real purchase's record if the first wallet came back. And
+  nothing is POSTed while a transaction of the stored wallet is open (`pending` or `stuck` — its sends, its purchases
+  and a site's): the shared latch serialises every coordinator request, so a POST the route holds until
+  `REQUEST_TIMEOUT_MS` holds that transaction's reads (#21's poller, #11's balances, #23's reads) for up to 20 s
+  (measured, `deps.test.ts`). A deferred entry stays due, the alarm looks again in 30 s, and it goes at the first run
+  after the transaction settles. Checked before each POST: a transaction that opens while one POST is in flight waits
+  for that POST only.
 - Never more than one POST in flight; never two POSTs for one signature within a slot. **The retry is correct only
-  against a coordinator that makes every side effect idempotent by signature — P2a (§7), a B1d-2 blocker (D11).**
+  against a coordinator that makes every side effect idempotent by signature — P2a (§7), deployed (8f43f49).**
 - The purchase stands on chain whatever the record's state; nothing in the popup says it failed. #27 says Q34 while the
-  record is `due` or `given-up`.
+  entry is `due` or `given-up`, and Q60 when it is `refused` (rev 3.6: the route declined it, so "not yet updated" would
+  promise an update that never comes); `presale.unrecorded` lists those three, each with its state.
+- **Privacy (rev 3.5, review M5):** the body is public on-chain data (the signature, the buyer, amounts derivable from
+  the receipt, the referrer once the transaction lands). What the retry adds is timing: it runs unattended for up to
+  72 h, so the buyer address is tied to the user's IP at up to nine moments, on whatever network the browser is on,
+  with the popup closed. The coordinator can already link the account to the IP — the proxy's reads of its PDAs while
+  the popup is open, `/referral-stats/<address>` at each #24 open — so nothing beyond that.
 
 ### 2.5 What the popup receives (`PresaleView`)
 
@@ -726,8 +890,10 @@ its row (Q47).
 `buildReferralLink(account)` (`https://noc-tura.io?ref=<address>`, `core/referral/index.ts`); `earnedBase` = the
 allocation's `referral_bonus_tokens` from chain (the coordinator reports 0 for a chain-credited bonus — memory
 "referral and backend contract"); `referrals` and `referredCents` from `GET /referral-stats/<address>`
-(`fetchReferralStats`; aggregate only; USD converted to cents at this edge). A source that fails gives `null` for its own
-fields only, shown "—". No stat without a source (approved).
+(through `WalletDeps.getJson`, parsed strictly — `success === true` and both figures numbers; core's
+`fetchReferralStats`, which reads a missing figure as 0, is not used — rev 3.4; aggregate only; USD converted to cents at
+this edge). A source that fails gives `null` for its own fields only, shown "—"; no allocation on chain is EARNED 0. No
+stat without a source (approved).
 
 **The referral address (D8; an undrawn element, §9).** How a referrer enters a purchase, from the IDL and the program:
 the purchase instructions take **no** referrer argument. The referrer is the buyer's `user_allocation.referrer`, which
@@ -745,16 +911,23 @@ the first purchase, and `referrerAllocation` for the *effective* referrer; `buil
   always wins: the field is then absent and #20 shows the existing referrer (Q47, without the note).
 - **Validated by the background only** (C3): on blur the popup asks `presale.checkReferrer`, which answers, in this
   order: `referrer-invalid` (not 32 bytes of base58, or the default key — `captureIsValid`), `referrer-self` (the buyer
-  **or any account of this wallet's session**), `referrer-not-applicable` (the snapshot says an on-chain referrer exists
-  or this is not a first purchase), `referrer-no-allocation` (one `getAccountsData([["allocation", referrer]])`: absent,
-  or not a valid PresaleAllocation by §2.1 rule 6 with `user@8 = referrer`). The line (Q46 a–c, Q48) shows under the
-  field and Buy is disabled while it shows. An empty field is no referrer.
+  **or any account of this wallet's session or of the stored wallet**, rev 3.4), `referrer-not-applicable`
+  (`resolveReferrerWith` on the buyer's allocation: an on-chain referrer exists or this is not a first purchase),
+  `referrer-no-allocation` (one `getAccountsData` of the buyer's and the referrer's allocations: absent, or not a valid
+  PresaleAllocation by §2.1 rule 6 with `user@8 = referrer`); a 403 → `coordinator-refused`, any other read failure
+  `presale-unavailable` (Q12 / Q11 as #23's notice, no line, Buy not held). The line (Q46 a–c) shows under the field and
+  Buy is disabled while it shows **and while a check is out**; `referrer-not-applicable` clears the text and says Q48 as
+  #23's notice (the view re-read). The text is trimmed; an empty field (or spaces) is no referrer (rev 3.4).
 - **Re-checked at prepare and at signing**, never trusted from the popup: prepare repeats every check against its fresh
   snapshot and builds with `resolveReferrerWith(snapshotRef, account, intent.referrer)`; it refuses — never drops —
   a referrer that would not be registered (`referrer-not-applicable`, Q48), so the user's input is never silently
-  ignored; `beforeSign` (C22) refuses `state-changed` when the allocation's referrer or `purchase_count` moved since.
+  ignored; `beforeSign` (C22) refuses `state-changed` when the allocation's referrer or `purchase_count` moved since,
+  re-verifies the `register_referrer` instruction and account 3 from the signed bytes, and re-runs the lines above on
+  fresh reads; a registration signs only behind a proof (always a first purchase); `referrer@84` after the simulation
+  is checked on every purchase (rev 3.4).
 - **#20 and #10** show "Referred by" with the whole address in groups of four and Q47's note when this purchase
-  registers it (permanent).
+  registers it (permanent) — on #20 under the address inside the value, on #10 its own row; #10 shows "Referred by" for
+  an on-chain referrer too (rev 3.4).
 - **The record** carries the effective referrer as `referrerAddress` (§2.4).
 
 ### 3.6 Website purchases through #48 — F12, the presale region block (D9, D15, C31; B1d-1b)
@@ -838,8 +1011,10 @@ B1d-2). #21 is the existing `status` route. Every CTA follows rule 6 (`LockedBut
     "≈"; for a stablecoin "@ $ 0.1501" alone, Q03); the estimate **"15,873.60 NOC"** (`.noc-balance-md` +
     `.noc-numeral`, from `Quote.nocBase`, formatted by B1b's amount formatter to 2 decimals, floored).
   - **Referral address** (B1d-2, D8, undrawn — §9): shown only while `referral.canRegister`; B1b's single-line input
-    style (`.input`, the value in `.noc-mono`), label and placeholder Q45, the line under it (Q46, Q48) in the error
-    style; `autocapitalize`, `autocorrect` and `spellcheck` off; paste allowed; no QR.
+    style (`.app-input`, the address book's — the extension has no generic `.input`; the value in the mono face at
+    13 px / 20 px so 44 characters fit, the placeholder in the body face — rev 3.4), label and placeholder Q45, the
+    line under it (Q46 a–c) in the error style, Q48 as #23's notice; `autocapitalize`, `autocorrect` and `spellcheck`
+    off; paste allowed; no QR. #44's / #54's [Try again] do not restore the address (rev 3.4).
   - **Your allocation** row (approved; no drawn state), in the receipt-row style (`.noc-body-sm`, `.noc-numeral` on
     the value): label Q04, value "<total> NOC", sub **"Claimable after TGE"** (D5). Shown only when
     `allocation.exists` and `totalBase > 0`.
@@ -925,14 +1100,20 @@ Route `referral` from the #31 row **"Refer a friend"** (C16); on mount `presale.
 (`.noc-h3`); three stat cards (`.noc-overline` label, `.noc-balance-md` + `.noc-numeral` value, `.noc-caption` sub):
 **REFERRALS** / Q35 (`referrals`), **EARNED** / **"NOC lifetime"** (`earnedBase`, from chain), **REFERRED** / Q36
 (`referredCents`) — the app's three (the design's ACTIVE "staking now" has no source, §9); "—" for a null. Code card:
-eyebrow Q37 (the app's "YOUR INVITE LINK"), **"Used N times"** / **"Not used yet"** (N = `referrals`; the line hidden
-when null), the full link in `.noc-mono` (never truncated, as the app), **Copy** (`useCopy`; "Copied" / Q38; no
+eyebrow Q37 (the app's "YOUR INVITE LINK"), **"Used by N people"** / **"Used by 1 person"** / **"Not used yet"** (N =
+`referrals`, which counts people — D27, rev 3.4; the line hidden when null), the full link in `.noc-mono` at 13 px /
+20 px, broken anywhere (never truncated, as the app), **Copy** (`useCopy`; "Copied" / Q38; no
 auto-clear and no countdown toast — the extension has no `clipboardWrite`, B1 §4), **"Share invite link"** (C15: copies
 the link). **24a-bis kept as drawn, minus the toast (review L8):** while `useCopy` says `copied` (its 2 s), the Copy
 icon is the checkmark and the code row carries the `--accent` border; "Copy failed" shows no checkmark. Info banner
 Q39 (D13). Legalese **"Referral payouts are subject to program terms. Self-referrals are detected and rejected."** (as
-drawn and as the app; "program terms" unlinked until the terms page exists, B1e). Empty (24b): zeros as returned; the
-"Recent rewards" empty state is omitted with the list (§9).
+drawn and as the app; "program terms" in `--accent` as drawn on all three #24 phones — rev 3.6 — and unlinked until the
+terms page exists, B1e). Empty (24b): zeros as returned; the
+"Recent rewards" empty state is omitted with the list (§9). **As built (rev 3.4):** the stats in equal thirds, a figure
+breakable only after a group separator and set at 16 px from eight characters on; EARNED to one place, floored,
+`--accent` above 0 and `--fg-tertiary` for 0 or "—"; REFERRED "$1,234.56"; Copy and "Share invite link" share one
+`useCopy` and are disabled until the link is there; a failed reply shows "—", no link and Q11; the #31 row sits in the
+app's "Rewards" group; one read per mount.
 
 ### 4.5 #11 banner, Buy and the pending row
 
@@ -948,9 +1129,13 @@ drawn and as the app; "program terms" unlinked until the terms page exists, B1e)
 ### 4.6 #26 and #27 (B1d-2)
 
 - **#26**: a `purchase` history row (B1b's "Presale purchase" / "NOC") gains the **"Presale"** badge (Q31) — on every
-  purchase row, the website's included (the row kind is the chain's, not ours); the badge is on the on build only, the
-  row itself is B1b's and stays in the off build. An open purchase's pending row on #26 reads Q33.
-- **#27**: the `purchase` variant (B1b) gains Q34 while `presale.unrecorded` lists its signature.
+  purchase row, the website's included (the row kind is the chain's, not ours; a failed purchase is not a `purchase` row
+  and has none); the badge is on the on build only, the row itself is B1b's and stays in the off build. A badged row
+  wraps its badges under the title (a site's purchase carries two — rev 3.4). An open purchase's pending row on #26
+  reads Q33.
+- **#27**: the `purchase` variant (B1b) gains a line while `presale.unrecorded` lists its signature — Q34 for a `due` or
+  `given-up` record, Q60 for a `refused` one (rev 3.6) — an info banner between the amount card and the detail card,
+  asked once per open for the route's account; a failed read shows nothing (rev 3.4).
 
 ---
 
@@ -986,6 +1171,7 @@ translates; nothing internal is shown.
 | Pyth older than 120 s at simulation | prepare | the simulation fails → Q16 |
 | the coordinator is unreachable | — | presale closed (§3.1); F12 on #48; the wallet keeps working; a recorded purchase keeps retrying (§2.4) |
 | the record POST keeps failing | B1d-2 | the purchase stands; Q34 on #27; given up after 72 h |
+| the record POST is refused by the route (its own 400, D29) | B1d-2 | `refused`, never POSTed again; the purchase stands; Q60 on #27 (rev 3.4; Q60 rev 3.6) |
 | an update turns the switch off with a purchase pending | off build | C19: the record is read, counted by `inFlightFor`, polled and shown generically (Q42); nothing is lost, nothing re-signed |
 | geo `no_check` or a stale list while a purchase is pending | view | 23b stays, the closed line beneath (C30) |
 | a sanctioned country behind a VPN | geo | closed (`sanctionedWinsOverVpn`); `isVpn` is never read as evidence |
@@ -1078,7 +1264,8 @@ does), and a positive control wherever a negative is asserted. The plan that bui
   non-dependent failed simulation is still `simulation-failed`. **The same tests run in `vitest.nopresale`** with the same
   answers (D15: the off build blocks exactly when the on build does; mutation: stub the gate in the off build → red).
 - **Recording (2):** written on `confirmed` only; the payload's fields, `paymentAmount` a string; the schedule's slots
-  on a fake clock; a 403 waits for the cool-down; given up at 72 h; one POST in flight; delete wipes, restore keeps.
+  on a fake clock; a 403 waits for the cool-down; given up at 72 h; one POST in flight; delete wipes, restore keeps; a
+  route's 400 → `refused` and any 200 with `success: true` → `done` (D29, D30); the reconcile (rev 3.4).
 - **Referral address (2, §3.5, C32):** each `checkReferrer` code with its boundary (a 31-byte key, the default key, the
   buyer, another session account, an absent referrer allocation, a foreign `user@8`, an on-chain referrer present,
   `purchase_count` 1); a valid one → `register_referrer` built between the compute-budget instructions and the purchase,
@@ -1123,7 +1310,7 @@ does), and a positive control wherever a negative is asserted. The plan that bui
      is untracked — review 2 L5) and naming that commit in its first key, fails the gate naming exactly
      `core/presale/buyInstructions.ts`, and passes with that one entry removed.
   2. **Strings:** no file under the off build's `app/`, `chrome/`, `firefox/` contains a **marker** — every `presale.*`
-     message type, the route names `presale-confirm` and `referral`, `presale-buy`, `v1_presale_records`, and the
+     message type, the route names `presale-confirm` and `referral`, `presale-buy`, the alarm name `presale-record`, and the
      strings "NOC presale", "YOU RECEIVE (EST.)", "Claimable after TGE", "Refer a friend", "Not available here",
      "Order pending", and every §10 string whose source is "new", "approved" or "app" and whose build is "on" — each
      literal part of at least 8 characters between placeholders. The list is explicit in the gate file and staged like
@@ -1131,8 +1318,17 @@ does), and a positive control wherever a negative is asserted. The plan that bui
      control:** each marker is found in the on build. A marker that also lives in a shared module shows up in the off
      build and fails the scan itself — the author renames it; no separate self-test of sources is needed (review 2 L5).
   3. **Must stay:** the B1b/B1c presale strings ("Presale purchase", "PRESALE PURCHASE", the decoder's instruction
-     names), Q42 and F12's Q49–Q51 are **found** in the off build (a control that the switch did not strip what both
-     builds need).
+     names), Q42, F12's Q49–Q51 and `v1_presale_records` (a delete wipes the records in either build — rev 3.4) are
+     **found** in the off build (a control that the switch did not strip what both builds need).
+  4. **Complete by construction (rev 3.4):** a presale module the on build carries that `ON_BUILD` does not name fails;
+     and a source row reads `text.ts` whole: every literal part of ≥ 8 characters that is not one word contains a
+     marker, except text both builds carry (Q40b's " per transaction" — @solana/errors' text is in the off build under
+     `NODE_ENV=test` —, Q46a, "Network fee", "Quote valid ", "Copy failed"). One word with a space or a colon
+     ("Minimum ", "Maximum ", "Currency: ") is not a marker — "Minimum " and "Maximum " are library text there too.
+     **Presale copy lives in `text.ts` by rule (rev 3.5, review M4):** a presale string written inline in a shared
+     screen would be in both builds and escape both the marker scan and this row, so the row's scope is the rule. None
+     exists (B1d-2's diffs of `Settings.tsx`, `TxDetail.tsx` and `Activity.tsx` add no literal of ≥ 8 characters outside
+     comments; "Rewards" is one word, from `REFER_TEXT.group`).
 - **No-TGE-date gates:** `extension/scripts/check-no-tge-date.mjs` (src + dist) and the repo's
   `scripts/check-no-tge-date.mjs` (every tracked file) cover the new sources and both builds.
 - **RPC methods gate:** no new method (`getAccountsData` → `getMultipleAccounts`, `getTokenAccountsByOwner`,
@@ -1174,8 +1370,10 @@ review 2 L10). B1d-1b: the rest of 1–9.
 
 B1d-2:
 
-10. **Recording:** the POST fails twice (500, then timeout) and succeeds on the third slot (fake clock); #27's Q34
-    disappears.
+10. **Recording:** the POST fails twice (500, then timeout) and succeeds on the third slot; #27's Q34 disappears. No fake
+    clock in the worker (rev 3.4): a slot comes by moving the entry's schedule back and firing the record's own alarm.
+    D29 (the route's 400 → `refused`; #27 says Q60 — rev 3.6) and D30 (`200 {verified: false, duplicate: true}` → `done`) in one wake
+    with a due control entry.
 11. **Referral:** #31 → #24 with stats; `/referral-stats` failing → "—" for its two stats, EARNED still shown;
     Copy → the clipboard holds the link, the checkmark shows.
 12. **Referral address:** a first purchase with a valid referrer → #20 "Referred by" with Q47's note → the transaction
@@ -1188,7 +1386,12 @@ B1d-2:
 beneath), the allocation row, each #23 closed answer (Q12 as §5's prepare refusal — rev 3.2), #20 purchase (with and without account setup), #21 with the badge,
 #44 and #54 for a purchase, #50b × 6, #11 with the banner and Buy, #48 with F12 (B1d-1b); #24 (populated, empty, a null
 stat, copied), the referral field with a line, #20 with "Referred by", #26 badge, #27 line (B1d-2); the opus-tier review
-against `index.html` as in B1b and B1c, every departure checked against §9.
+against `index.html` as in B1b and B1c, every departure checked against §9. **B1d-2 as built (rev 3.4):** `31-refer-row`;
+`24-referral`, `24-referral-copied`, `24-referral-null-stat`, `24-referral-empty`; `23a-referrer-top` (rev 3.6),
+`23a-referrer-empty`, `23a-referrer-invalid` (Q46a; no `-end` shot since rev 3.6 — it was the same image), `23a-referrer-self` (Q46b), `23a-referrer-no-allocation` (Q46c),
+`23a-referrer-valid`, `23a-referrer-not-applicable` (Q48); `20-referred-by` (+`-end`, Q47), `20-referred-onchain`
+(+`-end`); `10-referred-by`, `10-referred-onchain` (the vault page, 412 × 916); `26-presale-badges` (a site's purchase,
+two badges); `27-unrecorded` (+`-end`, Q34); `27-declined` (Q60, rev 3.6).
 
 ### 6.5 Release gates (B1e)
 
@@ -1249,6 +1452,15 @@ answer 2, measured for GETs only). Why: the extension shows "refused" (403 → Q
 (silence / timeout). **And the per-IP rate budget per route** (review 2 M3): how many requests a minute CrowdSec allows
 from one IP before it answers 403 or silence, so 1b can size #23's 25 s re-read (C35) and the poller against a number.
 Done when: one written answer per route.
+
+**D31's premise (rev 3.5, 2026-10-26) — the coordinator never answers 403 on `POST /api/v1/solana/purchase`
+selectively.** What: an unattended record POST answered 403 trips the extension's wallet-wide 10-minute cool-down — the
+RPC, the broadcast route and every `/wallet/*` read go quiet — because the extension reads every 403 as a whole-IP
+CrowdSec ban (owner decision D31). Why: the retry runs up to nine times over 72 h with the popup closed, so a 403 that
+only this route gives (a WAF rule on POST bodies, or the route joining the Bearer-protected routes) would silence the
+wallet with no visible cause. Ask: refuse on this route with 400 `{success: false, error: <string>}` (final, D29) or
+429 (retried), never 403; tell the wallet side before any change that could make it answer 403. Done when: a written
+confirmation, and a route test that a malformed body is answered 400, not 403.
 
 Also asked, not blocking: whether `/referral-stats` counts referrals made through the extension's purchases (they carry
 `referrerAddress` whenever a referrer is effective, §2.4), and whether the stablecoin purchase path writes the same
@@ -1356,6 +1568,7 @@ and `RegisterReferrer`, `calculate_tokens_for_usd`, `SPACE`s, stablecoin constra
 | #23 "Your allocation" (no drawn state) | built in the receipt-row style (approved), Q04 |
 | #23 (F)/(G) Android and iOS notes (decimal-pad IME, predictive back, haptics, Liquid Glass) | `inputmode="decimal"`; the rest mobile-only |
 | #24 code "NOCT-7F3C-2D1A" (HMAC-derived) | **the address is the code** (C1); the link is shown whole, as the app |
+| #24 "Used 12 times" | **"Used by N people"** (D27, rev 3.4): the count is of people who bought through the link, not of uses |
 | #24 "ACTIVE · staking now" | **omitted:** no source (staking not in B1); the app's REFERRED (Q36) in its place |
 | #24 "Earn 5 % of every referral's stake rewards · paid in NOC · auto-credited each epoch." | **omitted:** does not exist; Q39 without numbers (D13) |
 | #24 "Recent rewards", "View all", reward rows and their long-press menu, 24b's rewards empty state | **omitted:** the coordinator has aggregates only; no per-referral source |
@@ -1426,7 +1639,7 @@ carry it (§6.2's markers are the "on" rows of source new / approved / app). Non
 | Q31 | #21 / #26 badge | "Presale" | approved | on | controller copy, owner-delegated 2026-10-19 |
 | Q32 | #21 / #44 / #54 amount line, purchase | "Buying NOC with <amount> <CUR>" | new | on | controller copy, owner-delegated 2026-10-19 |
 | Q33 | #11 / #26 pending row, purchase | "Buying NOC · pending" / "Buying NOC · taking longer than usual" | new | on | controller copy, owner-delegated 2026-10-19 |
-| Q34 | #27 purchase, not recorded | "Recorded on chain; presale service not yet updated" | approved | on | controller copy, owner-delegated 2026-10-19 |
+| Q34 | #27 purchase, not recorded yet (`due`, `given-up`; rev 3.6) | "Recorded on chain; presale service not yet updated" | approved | on | controller copy, owner-delegated 2026-10-19 |
 | Q35 | #24 REFERRALS sub | "total joined" | app | on | controller copy, owner-delegated 2026-10-19 |
 | Q36 | #24 third stat | "REFERRED" / "from your invites" | app | on | controller copy, owner-delegated 2026-10-19 |
 | Q37 | #24 code eyebrow | "YOUR INVITE LINK" | app | on | controller copy, owner-delegated 2026-10-19 |
@@ -1452,6 +1665,7 @@ carry it (§6.2's markers are the "on" rows of source new / approved / app). Non
 | Q57 | #20, the resume of a prepared purchase | "You have a purchase waiting." | new | on | controller copy, delegated (D20, rev 3.2) |
 | Q58 | #20, a purchase proven on #10 | "Confirmed. Review the fresh quote and buy." | new | on | controller copy, delegated (D20, rev 3.2) |
 | Q59 | #23, the closed line of a region answer | "Not available here — " + #50b's sub for the reason (Q21's first sentence for `sanctioned`) | new | on | controller copy, delegated (D20, rev 3.2) |
+| Q60 | #27 purchase, its record refused by the route (D29) | "Recorded on chain; the presale service declined to record it" | new | on | controller copy, owner-delegated (D27, rev 3.6) |
 
 ---
 

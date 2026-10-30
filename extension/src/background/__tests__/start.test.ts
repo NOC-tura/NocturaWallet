@@ -129,6 +129,132 @@ describe('background start', () => {
     }
   });
 
+  // B1d-2 (§2.4): the presale entry's record retry — resumed at every start, and woken by its own alarm through index.ts.
+  it('a start resumes a due presale record (one POST to the record route), and the presale-record alarm runs the retry again', async () => {
+    const SIG = '5'.repeat(88);
+    const payload = {txHash: SIG, buyerAddress: '9Y7FtteLhCJABAQtkYEFZs46rJgy1ixMA1JFMUepTki4', paymentToken: 'SOL', paymentAmount: '2', nocAmount: 1998.5, usdValue: 300, stage: 1};
+    const due = () => ({signature: SIG, account: payload.buyerAddress, payload, confirmedAt: Date.now(), attempts: 0, nextAt: 0, state: 'due'});
+    const local = new Map<string, unknown>([
+      ['v1_vault', {v: 1, scheme: 'slip10', accounts: [{index: 0, name: 'Main', publicKey: payload.buyerAddress}]}],
+      ['v1_presale_records', [due()]],
+    ]);
+    const created: string[] = [];
+    let onAlarm: ((a: {name: string}) => void) | undefined;
+    const posts: string[] = [];
+    // A stubbed fetch: nothing here leaves the process.
+    vi.stubGlobal('fetch', async (url: string, init: {body?: string}) => {
+      posts.push(`${url} ${init.body ?? ''}`);
+      return {status: 500, json: async () => ({success: false, error: 'boom'})};
+    });
+    const on = () => ({addListener: () => undefined});
+    vi.stubGlobal('chrome', {
+      runtime: {id: 'x', getURL: (p: string) => `https://ext.example/${p}`, onMessage: on(), onConnect: on(), onStartup: on(), onInstalled: on()},
+      tabs: {create: async () => undefined},
+      storage: {
+        session: {get: async () => ({}), set: async () => undefined, remove: async () => undefined, clear: async () => undefined, setAccessLevel: async () => undefined},
+        local: {
+          get: async (k: string) => (local.has(k) ? {[k]: local.get(k)} : {}),
+          set: async (items: Record<string, unknown>) => {
+            for (const [k, v] of Object.entries(items)) local.set(k, v);
+          },
+          remove: async (k: string) => void local.delete(k),
+          clear: async () => local.clear(),
+        },
+      },
+      alarms: {create: (name: string) => void created.push(name), clear: async () => true, onAlarm: {addListener: (cb: (a: {name: string}) => void) => void (onAlarm = cb)}},
+      windows: {getAll: async () => [], onRemoved: on()},
+    });
+    const settle = async () => {
+      for (let i = 0; i < 50; i++) await new Promise(r => setTimeout(r, 0));
+    };
+    await import('../index');
+    await settle();
+    expect(posts).toEqual([`https://api.noc-tura.io/api/v1/solana/purchase ${JSON.stringify(payload)}`]);
+    expect(created).toEqual(['presale-record']);
+    expect(local.get('v1_presale_records')).toMatchObject([{attempts: 1, state: 'due'}]);
+    // Another alarm's name runs nothing of it; its own runs the retry of what is due now.
+    local.set('v1_presale_records', [due()]);
+    onAlarm?.({name: 'autolock-not-presale'});
+    await settle();
+    expect(posts).toHaveLength(1);
+    onAlarm?.({name: 'presale-record'});
+    await settle();
+    expect(posts).toHaveLength(2);
+  });
+
+  // Controller ruling (B1d-2 Task 1): a purchase confirmed while the worker stopped before its entry was written.
+  it('a start reconciles a confirmed purchase the hook never recorded: its entry written, then one POST', async () => {
+    const buyer = '9Y7FtteLhCJABAQtkYEFZs46rJgy1ixMA1JFMUepTki4';
+    const SIG = '5'.repeat(88);
+    const purchase = {
+      id: 'buy',
+      account: buyer,
+      signature: SIG,
+      wire: 'AQ==',
+      lastValidBlockHeight: 1000,
+      createdAt: Date.now() - 60_000,
+      lastSentAt: Date.now() - 60_000,
+      state: 'confirmed',
+      detail: null,
+      intent: null,
+      expiryNullSeenAt: null,
+      extra: {kind: 'presale-buy', data: {currency: 'SOL', amount: '2000000000', stage: '0', priceTicks: '1501', nocBase: '1998500000000', spentCents: '30000', destination: '11111111111111111111111111111111', referrer: null}},
+    };
+    const local = new Map<string, unknown>([
+      ['v1_vault', {v: 1, scheme: 'slip10', accounts: [{index: 0, name: 'Main', publicKey: buyer}]}],
+      ['v1_pending', [purchase]],
+    ]);
+    const posts: string[] = [];
+    // A stubbed fetch: nothing here leaves the process.
+    vi.stubGlobal('fetch', async (url: string, init: {body?: string}) => {
+      posts.push(`${url} ${init.body ?? ''}`);
+      return {status: 200, json: async () => ({success: true, verified: true, duplicate: false, data: null})};
+    });
+    const on = () => ({addListener: () => undefined});
+    vi.stubGlobal('chrome', {
+      runtime: {id: 'x', getURL: (p: string) => `https://ext.example/${p}`, onMessage: on(), onConnect: on(), onStartup: on(), onInstalled: on()},
+      tabs: {create: async () => undefined},
+      storage: {
+        session: {get: async () => ({}), set: async () => undefined, remove: async () => undefined, clear: async () => undefined, setAccessLevel: async () => undefined},
+        local: {
+          get: async (k: string) => (local.has(k) ? {[k]: local.get(k)} : {}),
+          set: async (items: Record<string, unknown>) => {
+            for (const [k, v] of Object.entries(items)) local.set(k, v);
+          },
+          remove: async (k: string) => void local.delete(k),
+          clear: async () => local.clear(),
+        },
+      },
+      alarms: {create: () => undefined, clear: async () => true, onAlarm: on()},
+      windows: {getAll: async () => [], onRemoved: on()},
+    });
+    await import('../index');
+    for (let i = 0; i < 50; i++) await new Promise(r => setTimeout(r, 0));
+    expect(posts).toEqual([`https://api.noc-tura.io/api/v1/solana/purchase ${JSON.stringify({txHash: SIG, buyerAddress: buyer, paymentToken: 'SOL', paymentAmount: '2', nocAmount: 1998.5, usdValue: 300, stage: 1})}`]);
+    expect(local.get('v1_presale_records')).toMatchObject([{signature: SIG, confirmedAt: purchase.createdAt, attempts: 1, state: 'done'}]);
+  });
+
+  it('a presale alarm never takes a shared alarm’s name: the start refuses it', async () => {
+    vi.doMock('../presale/api', () => ({
+      PRESALE_MESSAGE_TYPES: [],
+      registerPresale: (host: {alarm(name: string, run: () => Promise<void>): void}) => host.alarm('pending-poll', async () => undefined),
+    }));
+    const on = () => ({addListener: () => undefined});
+    const area = () => ({get: async () => ({}), set: async () => undefined, remove: async () => undefined, clear: async () => undefined});
+    vi.stubGlobal('chrome', {
+      runtime: {id: 'x', getURL: (p: string) => `https://ext.example/${p}`, onMessage: on(), onConnect: on(), onStartup: on(), onInstalled: on()},
+      tabs: {create: async () => undefined},
+      storage: {session: {...area(), setAccessLevel: async () => undefined}, local: area()},
+      alarms: {create: () => undefined, clear: async () => true, onAlarm: on()},
+      windows: {getAll: async () => [], onRemoved: on()},
+    });
+    try {
+      await expect(import('../index')).rejects.toThrow('registerPresale: the alarm pending-poll is taken');
+    } finally {
+      vi.doUnmock('../presale/api');
+    }
+  });
+
   it('starts no poller and arms no alarm when nothing is open', async () => {
     const created: string[] = [];
     const on = () => ({addListener: () => undefined});

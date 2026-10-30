@@ -8,6 +8,7 @@ import {PRESALE_INSTRUCTIONS} from '../../dapp/decode/presaleIdl';
 import {MAINNET_PROGRAM_ID, MAINNET_USDC_MINT, MAINNET_USDT_MINT} from '../../../../../core/presale/addresses';
 import {derivePresalePdas, readU64LE} from '../../../../../core/presale/allocation';
 import {tokensFor, usdCentsForStable} from '../../../../../core/presale/limits';
+import {REGISTER_REFERRER_DISCRIMINATOR} from '../../../../../core/presale/buyInstructions';
 import {SPL_TOKEN_PROGRAM} from '../../../../../core/solana/encoding';
 import {SYSTEM_PROGRAM_ID, type AccountData, type SimulatedAccount, type SimulationOutcome, type TokenAccountEntry} from '../../../../../core/solana/rpc';
 import {ACCOUNT, CONFIG_PDA, TREASURY_ADDRESS, USDC_VAULT, USDT_VAULT, allocationData, tokenAccountData, userData, vault} from './chain';
@@ -24,6 +25,8 @@ export interface Effects {
   amount: bigint;
   cents: bigint;
   stage: number;
+  /** B1d-2: the referrer a `register_referrer` before the purchase sets (its argument), or null when there is none. */
+  registers: string | null;
 }
 
 export function effectsOf(wire: string, chain: Map<string, AccountData | null>, pythUsd: number): Effects {
@@ -37,7 +40,9 @@ export function effectsOf(wire: string, chain: Map<string, AccountData | null>, 
   const config = chain.get(CONFIG_PDA)?.data ?? new Uint8Array(0);
   const stage = config[CONFIG_LAYOUT.fields.current_stage.offset] as number;
   const cents = currency === 'SOL' ? solCents(amount, scaledUsdPrice(pythUsd) as bigint) : usdCentsForStable(amount);
-  return {currency, amount, cents, stage};
+  const keys = message.staticAccountKeys.map(k => k.toBase58());
+  const register = message.compiledInstructions.find(i => keys[i.programIdIndex] === MAINNET_PROGRAM_ID && i.data.length === 40 && REGISTER_REFERRER_DISCRIMINATOR.every((b, n) => i.data[n] === b));
+  return {currency, amount, cents, stage, registers: register === undefined ? null : new PublicKey(register.data.subarray(8, 40)).toBase58()};
 }
 
 /** The simulation the program and an honest proxy give for `wire`, against `chain` as it is at that slot. */
@@ -47,7 +52,10 @@ export function honestSimulation(wire: string, addresses: readonly string[], cha
   const user = chain.get(PDAS.userAccount.toBase58()) ?? null;
   const A = PRESALE_ALLOCATION_LAYOUT.fields;
   const before = allocation === null ? {total: 0n, spent: 0n, count: 0} : {total: readU64LE(allocation.data, A.total_tokens.offset), spent: readU64LE(allocation.data, A.total_spent_cents.offset), count: allocation.data[A.purchase_count.offset] as number};
-  const referrer = allocation === null ? null : allocation.data.subarray(A.referrer.offset, A.referrer.offset + 32).every(b => b === 0) ? null : new PublicKey(allocation.data.subarray(A.referrer.offset, A.referrer.offset + 32)).toBase58();
+  const onChain = allocation === null ? null : allocation.data.subarray(A.referrer.offset, A.referrer.offset + 32).every(b => b === 0) ? null : new PublicKey(allocation.data.subarray(A.referrer.offset, A.referrer.offset + 32)).toBase58();
+  // register_referrer sets the referrer once (the program refuses a second, AlreadyHasReferrer) and creates the two PDAs.
+  if (e.registers !== null && onChain !== null) return {err: {InstructionError: [2, {Custom: 6016}]}, logs: [], unitsConsumed: 9_000, slot: SIMULATED_SLOT, accounts: null};
+  const referrer = e.registers ?? onChain;
   const allocationAfter: SimulatedAccount = {
     lamports: allocation?.lamports ?? ALLOCATION_RENT,
     owner: MAINNET_PROGRAM_ID,

@@ -8,11 +8,12 @@ import {E2E_PASSWORD, makeEnvelope} from './makeEnvelope';
 import {unlockWith} from './vaultPage';
 import {ACCOUNT, msg} from './sendHelpers';
 import {DAPP_HOSTS, adapter, approvalWindow, openDapp, serveDapp, windowClosed} from './dappPage';
-import {CONFIG_PDA, SOL_TREASURY, USDC_MINT, configData, nocText, restrictedList, solCents, solPurchaseIx, stableCents, tokensFor, userData, userPda} from './presaleChain';
-import {USDC_HOLDING, amount, buyAction, home, installPresale, presaleWallet, quickLabels, watchCsp} from './presaleHelpers';
+import {CONFIG_PDA, SOL_TREASURY, USDC_MINT, allocationData, allocationPda, configData, nocText, restrictedList, solCents, solPurchaseIx, stableCents, tokensFor, userData, userPda} from './presaleChain';
+import {REFERRER, USDC_HOLDING, amount, buyAction, home, installPresale, installReferrer, presaleWallet, quickLabels, watchCsp} from './presaleHelpers';
+import {presalePurchase, sentSol, sig} from './historyFixtures';
 import {DIR} from './visualTab';
 
-declare const chrome: {storage: {local: {set(o: object): Promise<void>}}};
+declare const chrome: {storage: {local: {get(k: string): Promise<Record<string, unknown>>; set(o: object): Promise<void>}}};
 
 // B1d §6.4 (B1d-1b Task 9): every state B1d-1b built, driven through the real extension against the contained fake
 // coordinator (the presale program on its chain, /geo/check and /geo/restricted-list scripted) and saved for the
@@ -21,7 +22,10 @@ declare const chrome: {storage: {local: {set(o: object): Promise<void>}}};
 // windows.create size), the vault page at 412 × 916. Every shot asserts its own copy first, then that its sticky bar
 // is wholly in the frame and the copy clear of the pinned bars, and is taken after the screen's holds (a LockedButton's
 // 500 ms floor, #48's 1.5 s arming): an enabled CTA is awaited enabled. A screen taller than its frame is shot again
-// scrolled to its end (`-end`), the bar still wholly in view. Not a pixel diff.
+// scrolled to its end (`-end`), the bar still wholly in view. Not a pixel diff. B1d-2 (Task 7) adds its states in the same
+// way: #31's "Refer a friend" row, #24 (populated, copied, a null stat, empty), #23a's referral address with each of its
+// lines (Q46 a–c, Q48), #20 and #10 with "Referred by" (with and without Q47's note), #26's "Presale" badge (a site's
+// purchase with two) and #27 with Q34 (index.html #24 ix 10903-11233, #23 ix 10603-10902, #20, #10, #26, #27, #31).
 
 const SOL = 1_000_000_000n;
 /** A returning buyer's allocation on chain (two purchases): no account setup, no first-purchase re-authentication. */
@@ -591,3 +595,260 @@ for (const [build, ext, suffix] of [
     }
   });
 }
+
+// ---- B1d-2 (Task 7) ----
+
+const Q47 = "Saved to your presale account with this purchase. It can't be changed later.";
+/** The element's text sits on one line (its box less than one and a half of its line height). */
+const oneLine = (l: Locator) => l.evaluate(e => e.getBoundingClientRect().height < 1.5 * parseFloat(getComputedStyle(e).lineHeight));
+/** #24's three figures as shown (REFERRALS, EARNED, REFERRED). */
+const figures = (p: Page) => p.locator('.s-ref .stats .stat .val').allTextContents();
+test('visual · #31 with "Refer a friend"; #24 populated, copied (24a-bis without the toast), a null stat, empty (24b)', async () => {
+  test.setTimeout(240_000);
+  const h = await launchPopup('noctura-e2e-visual-presale-referral-');
+  const csp = await watchCsp(h.ctx);
+  try {
+    await presaleWallet(h, {allocation: {...RETURNING, bonusBase: 32_412_345_678n}});
+    h.fake.referralStats = {status: 200, body: {success: true, data: {totalReferrals: 12, totalReferredUsd: 1234.56, totalReferredPurchases: 14}}};
+    const p = await h.openPopup({clock: true});
+    await expect(p.getByText('10.0000 SOL', {exact: true})).toBeVisible({timeout: 30_000});
+    await p.getByRole('button', {name: 'Settings'}).click();
+    const row = p.locator('.s7-row', {hasText: 'Refer a friend'});
+    await expect(p.locator('.s7-group-label', {hasText: 'Rewards'})).toBeVisible({timeout: 30_000});
+    await frame(p, '31-refer-row', row, {ready: row, bars: 0});
+    await row.click();
+    await expect(p.locator('.s-ref .top-bar .title')).toHaveText('Refer a friend', {timeout: 30_000});
+    await expect.poll(() => figures(p), {timeout: 30_000}).toEqual(['12', '32.4', '$1,234.56']);
+    await expect(p.locator('.s-ref .stats .stat .val.acc')).toHaveText('32.4');
+    // Found by this pass: "$1,234.56" wrapped after its comma in its third of the row — now a size smaller, on one line.
+    expect(await oneLine(p.locator('.s-ref .stats .stat .val').nth(2)), 'REFERRED on one line').toBe(true);
+    await expect(p.locator('.s-ref .code-card .lbl-row')).toHaveText('YOUR INVITE LINKUsed by 12 people', {timeout: 30_000});
+    await expect(p.locator('.s-ref .code-card .code-row .code')).toHaveText(`https://noc-tura.io?ref=${ACCOUNT}`);
+    await expect(p.locator('.s-ref .banner')).toHaveText('Earn NOC when friends you invite buy in the presale.');
+    await expect(p.locator('.s-ref .legalese')).toHaveText('Referral payouts are subject to program terms. Self-referrals are detected and rejected.');
+    // Final review T4 M1: "program terms" in the accent as #24 draws it on all three phones — a span, not a link — the
+    // colour the browser computes for it that of EARNED's accent figure, and not the legalese's own tertiary grey.
+    const terms = p.locator('.s-ref .legalese .app-ref-terms');
+    await expect(terms).toHaveText('program terms');
+    await expect(p.locator('.s-ref .legalese a')).toHaveCount(0);
+    const colorOf = (l: Locator) => l.evaluate(e => getComputedStyle(e).color);
+    const [termsColor, accentColor, legaleseColor] = [await colorOf(terms), await colorOf(p.locator('.s-ref .stats .stat .val.acc')), await colorOf(p.locator('.s-ref .legalese'))];
+    expect([termsColor === accentColor, termsColor === legaleseColor]).toEqual([true, false]);
+    const copy = p.locator('.s-ref .code-card .actions button');
+    await frame(p, '24-referral', p.locator('.s-ref .code-card'), {ready: copy, bars: 0});
+
+    // 24a-bis: the checkmark and the accent border while useCopy says copied (its 2 s, the popup's clock held).
+    await p.clock.pauseAt(Date.now() + 1_000);
+    await copy.click();
+    await expect(copy).toHaveAttribute('aria-label', 'Copied');
+    await expect(p.locator('.s-ref .code-card .code-row.app-ref-copied')).toHaveCount(1);
+    await expect(p.locator('.s-ref .share-btn')).toHaveText('Copied');
+    await frame(p, '24-referral-copied', p.locator('.s-ref .code-card'), {bars: 0});
+    await p.clock.runFor(2_000);
+    await expect(p.locator('.s-ref .code-card .code-row.app-ref-copied')).toHaveCount(0);
+    await p.clock.resume();
+
+    // A null stat: /referral-stats fails — its two figures "—", the usage line hidden, EARNED still the chain's.
+    h.fake.referralStats = {status: 500, body: {success: false, error: 'connection terminated'}};
+    await p.getByRole('button', {name: 'Back'}).click();
+    await p.locator('.s7-row', {hasText: 'Refer a friend'}).click();
+    await expect.poll(() => figures(p), {timeout: 30_000}).toEqual(['—', '32.4', '—']);
+    await expect(p.locator('.s-ref .code-card .lbl-row .uses')).toHaveCount(0);
+    await frame(p, '24-referral-null-stat', p.locator('.s-ref .stats'), {ready: copy, bars: 0});
+
+    // 24b: nobody referred yet and no allocation on chain — zeros, "Not used yet", EARNED in the tertiary tone.
+    h.fake.referralStats = {status: 200, body: {success: true, data: {totalReferrals: 0, totalReferredUsd: 0}}};
+    h.fake.presale.accounts.delete(allocationPda(ACCOUNT));
+    await p.getByRole('button', {name: 'Back'}).click();
+    await p.locator('.s7-row', {hasText: 'Refer a friend'}).click();
+    await expect.poll(() => figures(p), {timeout: 30_000}).toEqual(['0', '0.0', '$0.00']);
+    await expect(p.locator('.s-ref .stats .stat .val.app-ref-muted')).toHaveText('0.0');
+    await expect(p.locator('.s-ref .code-card .lbl-row .uses')).toHaveText('Not used yet');
+    await frame(p, '24-referral-empty', p.locator('.s-ref .code-card'), {ready: copy, bars: 0});
+    expect(h.fake.referralStatsReads).toEqual([ACCOUNT, ACCOUNT, ACCOUNT]);
+    expect(csp).toEqual([]);
+    contained(h);
+  } finally {
+    await h.close();
+  }
+});
+
+/** #23a's referral address: `text` typed, the field left (blur — the background's check), its line awaited (null: none). */
+async function referrerTyped(p: Page, text: string, line: string | null): Promise<void> {
+  const field = p.getByLabel('Referral address (optional)');
+  await field.fill(text);
+  await field.blur();
+  const helper = p.locator('.app-pre-referral .helper');
+  if (line === null) {
+    await expect(buyButton(p)).toBeEnabled({timeout: 30_000});
+    await expect(helper).toHaveCount(0);
+  } else {
+    await expect(helper).toHaveText(line, {timeout: 30_000});
+    await expect(buyButton(p)).toBeDisabled();
+  }
+}
+/** #20's "Referred by": the whole address in groups of four, and Q47's note (null: none). */
+async function referredBy(p: Page): Promise<{address: string; note: string | null}> {
+  const row = p.locator('.detail-row', {hasText: 'Referred by'});
+  await expect(row).toHaveCount(1);
+  const note = row.locator('.app-pre-note');
+  return {address: (await row.locator('.addr-groups > span').allTextContents()).join(''), note: (await note.count()) === 0 ? null : await note.textContent()};
+}
+
+test('visual · #23a’s referral address: Q46a, Q46b, Q46c and a valid address; #20 with "Referred by" and Q47; #10 saying it', async () => {
+  test.setTimeout(300_000);
+  const h = await launchPopup('noctura-e2e-visual-presale-referrer-');
+  const csp = await watchCsp(h.ctx);
+  try {
+    await presaleWallet(h);
+    installReferrer(h);
+    const p = await home(h);
+    await toPresale(p);
+    await amount(p, '0.5', nocText(tokensFor(solCents(SOL / 2n, 150), 0)));
+    const field = p.getByLabel('Referral address (optional)');
+    await expect(field).toHaveAttribute('placeholder', 'Solana address of the person who invited you');
+    // Final review T7 M2: #23a's top with the field — the stage card framed, the screen at its top, the field in it.
+    await frame(p, '23a-referrer-top', p.locator('.stage-card'), {ready: buyButton(p)});
+    await expect(field).toBeInViewport();
+    // Centring the field reaches the screen's end, so its -end shot was the same image: one shot each.
+    await frame(p, '23a-referrer-empty', field, {ready: buyButton(p)});
+    await referrerTyped(p, 'not-an-address', 'Not a valid Solana address');
+    await frame(p, '23a-referrer-invalid', p.locator('.app-pre-referral'));
+    await referrerTyped(p, ACCOUNT, "You can't refer yourself or another account in this wallet");
+    await frame(p, '23a-referrer-self', p.locator('.app-pre-referral'));
+    await referrerTyped(p, base58.encode(new Uint8Array(32).fill(55)), "This address has no presale allocation, so it can't receive a referral bonus");
+    await frame(p, '23a-referrer-no-allocation', p.locator('.app-pre-referral'));
+    await referrerTyped(p, REFERRER, null);
+    await expect(field).toHaveValue(REFERRER);
+    await frame(p, '23a-referrer-valid', p.locator('.app-pre-referral'), {ready: buyButton(p)});
+
+    await buyButton(p).click();
+    await expect(p.getByText('Confirm purchase')).toBeVisible({timeout: 30_000});
+    expect(await referredBy(p)).toEqual({address: REFERRER, note: Q47});
+    const buy = p.getByRole('button', {name: 'Buy NOC'});
+    await frame(p, '20-referred-by', p.locator('.detail-row', {hasText: 'Referred by'}), {ready: buy, end: true});
+
+    // #10 in a new tab: the background's description repeats who, and that this purchase saves it.
+    const opened = h.ctx.waitForEvent('page');
+    await buy.click();
+    const tab = await opened;
+    await tab.setViewportSize({width: 412, height: 916});
+    await expect(tab.locator('#ra-about')).toHaveText('Confirm buying NOC with', {timeout: 30_000});
+    await expect(tab.locator('#ra-rows')).toContainText('Referred by');
+    await expect(tab.locator('#ra-rows')).toContainText(REFERRER);
+    await expect(tab.locator('#ra-rows')).toContainText(Q47);
+    // Found by this pass: the label wrapped ("Referred / by") beside the address's groups — one line now, as "To".
+    expect(await oneLine(tab.locator('#ra-rows .intent-row .label', {hasText: /^Referred by$/})), '#10: "Referred by" on one line').toBe(true);
+    await expect(tab.locator('#ra-confirm')).toBeEnabled();
+    await tab.mouse.move(0, 0);
+    mkdirSync(DIR, {recursive: true});
+    await tab.screenshot({path: `${DIR}/10-referred-by.png`, fullPage: true});
+    expect(h.fake.broadcasts).toEqual([]);
+    expect(csp).toEqual([]);
+    contained(h);
+  } finally {
+    await h.close();
+  }
+});
+
+test('visual · #23a when the address can no longer apply (Q48: a referrer registered meanwhile — the field gone); #20 and #10 naming the on-chain referrer without Q47', async () => {
+  test.setTimeout(300_000);
+  const h = await launchPopup('noctura-e2e-visual-presale-q48-');
+  const csp = await watchCsp(h.ctx);
+  try {
+    await presaleWallet(h);
+    installReferrer(h);
+    const p = await home(h);
+    await toPresale(p);
+    await amount(p, '0.5', nocText(tokensFor(solCents(SOL / 2n, 150), 0)));
+    await p.getByLabel('Referral address (optional)').fill(REFERRER);
+    // Another device registers REFERRER for this account (no purchase yet) before the field is left.
+    h.fake.presale.accounts.set(userPda(ACCOUNT), {lamports: 944_880, data: userData()});
+    h.fake.presale.accounts.set(allocationPda(ACCOUNT), {lamports: 1_244_600, data: allocationData({user: ACCOUNT, totalBase: 0n, spentCents: 0n, count: 0, referrer: REFERRER})});
+    await p.getByLabel('Referral address (optional)').blur();
+    await expect(p.locator('.banner .banner-title')).toHaveText('This account can no longer take a referrer — review again', {timeout: 30_000});
+    await expect(p.locator('#presale-referrer')).toHaveCount(0);
+    await frame(p, '23a-referrer-not-applicable', p.locator('.banner .banner-title'), {ready: buyButton(p)});
+
+    await buyButton(p).click();
+    await expect(p.getByText('Confirm purchase')).toBeVisible({timeout: 30_000});
+    expect(await referredBy(p)).toEqual({address: REFERRER, note: null});
+    const buy = p.getByRole('button', {name: 'Buy NOC'});
+    await frame(p, '20-referred-onchain', p.locator('.detail-row', {hasText: 'Referred by'}), {ready: buy, end: true});
+    const opened = h.ctx.waitForEvent('page');
+    await buy.click();
+    const tab = await opened;
+    await tab.setViewportSize({width: 412, height: 916});
+    await expect(tab.locator('#ra-rows')).toContainText('Referred by', {timeout: 30_000});
+    await expect(tab.locator('#ra-rows')).not.toContainText(Q47);
+    await expect(tab.locator('#ra-confirm')).toBeEnabled();
+    await tab.mouse.move(0, 0);
+    mkdirSync(DIR, {recursive: true});
+    await tab.screenshot({path: `${DIR}/10-referred-onchain.png`, fullPage: true});
+    expect(h.fake.broadcasts).toEqual([]);
+    expect(csp).toEqual([]);
+    contained(h);
+  } finally {
+    await h.close();
+  }
+});
+
+const Q34 = 'Recorded on chain; presale service not yet updated';
+const Q60 = 'Recorded on chain; the presale service declined to record it';
+test('visual · #26 with the "Presale" badge (the wallet’s purchase, and a site’s with two badges wrapped under its title); #27 with Q34, then Q60', async () => {
+  test.setTimeout(240_000);
+  const h = await launchPopup('noctura-e2e-visual-presale-history-');
+  const csp = await watchCsp(h.ctx);
+  try {
+    await presaleWallet(h, {allocation: RETURNING});
+    const now = Math.floor(Date.now() / 1000);
+    const ours = sig(31);
+    const sites = sig(32);
+    h.fake.history.set(ACCOUNT, [
+      {signature: sig(30), tx: sentSol(ACCOUNT, SOL_TREASURY, 120_000_000, now - 60)},
+      {signature: ours, tx: presalePurchase(ACCOUNT, 500_000_000, now - 3_600)},
+      {signature: sites, tx: presalePurchase(ACCOUNT, 250_000_000, now - 7_200)},
+    ]);
+    // The site's purchase is B1c-2's record of what a site had this wallet sign; ours was given up by the coordinator
+    // record (§2.4: 72 h without an accepted POST — nothing is POSTed for it any more).
+    const payload = {txHash: ours, buyerAddress: ACCOUNT, paymentToken: 'SOL', paymentAmount: '0.5', nocAmount: 499.66688874, usdValue: 75, stage: 1};
+    const confirmedAt = Date.now() - 80 * 3_600_000;
+    await h.sw.evaluate(
+      ({site, entry}) => chrome.storage.local.set({v1_dapp_txs: [{signature: site, origin: 'https://presale.example', at: 1}], v1_presale_records: [entry]}),
+      {site: sites, entry: {signature: ours, account: ACCOUNT, payload, confirmedAt, attempts: 9, nextAt: confirmedAt + 72 * 3_600_000, state: 'given-up'}},
+    );
+    const p = await home(h);
+    await p.getByRole('button', {name: 'Activity'}).click();
+    const purchases = p.locator('.tx-row', {hasText: 'Presale purchase'});
+    await expect(purchases).toHaveCount(2, {timeout: 30_000});
+    await expect(purchases.nth(0).locator('.pri .status-pill.app-badge')).toHaveText('Presale');
+    await expect(purchases.nth(1).locator('.pri > span')).toHaveText(['Presale', 'Dapp · simulated']);
+    await expect(p.locator('.tx-row', {hasText: 'Sent SOL'}).locator('.app-badge')).toHaveCount(0);
+    // The site's row: its badges wrap under the title — the meta column holds the row, the amount clear of it.
+    const pri = purchases.nth(1).locator('.pri');
+    expect(await pri.evaluate(e => e.scrollWidth <= e.clientWidth)).toBe(true);
+    await frame(p, '26-presale-badges', purchases.nth(1), {bars: 0});
+
+    await purchases.nth(0).click();
+    await expect(p.locator('.s-txd .amount-card .eyebrow')).toHaveText('PRESALE PURCHASE', {timeout: 30_000});
+    await expect(p.locator('.s-txd .banner.info')).toHaveText(Q34, {timeout: 30_000});
+    await frame(p, '27-unrecorded', p.locator('.s-txd .banner.info'), {end: true, bars: 0});
+
+    // Q60 (rev 3.6): the same purchase once the route refused its record (D29) — the line says it never will be.
+    await h.sw.evaluate(async () => {
+      const key = 'v1_presale_records';
+      const stored = (await chrome.storage.local.get(key))[key] as {state: string}[];
+      await chrome.storage.local.set({[key]: stored.map(e => ({...e, state: 'refused'}))});
+    });
+    await p.getByRole('button', {name: 'Back'}).click();
+    await purchases.nth(0).click();
+    await expect(p.locator('.s-txd .amount-card .eyebrow')).toHaveText('PRESALE PURCHASE', {timeout: 30_000});
+    await expect(p.locator('.s-txd .banner.info')).toHaveText(Q60, {timeout: 30_000});
+    await frame(p, '27-declined', p.locator('.s-txd .banner.info'), {bars: 0});
+    expect(h.fake.purchaseRecords).toEqual([]);
+    expect(csp).toEqual([]);
+    contained(h);
+  } finally {
+    await h.close();
+  }
+});

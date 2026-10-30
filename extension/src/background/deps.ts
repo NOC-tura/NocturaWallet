@@ -22,6 +22,10 @@ export interface WalletDeps {
   stagePrice(): Promise<number | null>;
   /** B1d §2.2: the jurisdiction gate's answer now (both builds, D15) — #23 and F12 (B1d-1b) ask it; never throws. */
   geo(): Promise<GeoAnswer>;
+  /** B1d §2.4: POST JSON to a bare path under API_BASE through the shared latch — every status answered (createJsonPoster). */
+  postJson(path: string, body: unknown): Promise<PostAnswer>;
+  /** B1d §3.5: GET JSON from a bare path under API_BASE through the shared latch (createJsonGetter) — a non-200 throws. */
+  getJson(path: string): Promise<unknown>;
   now(): number;
   randomBytes(n: number): Uint8Array;
   sleep(ms: number): Promise<void>;
@@ -38,6 +42,34 @@ export function createJsonGetter(fetch: FetchLike, latch: ForbiddenLatch): JsonG
       const res = await latch.request(path, () => fetch(`${API_BASE}${path}`, {method: 'GET', credentials: 'omit'}));
       if (res.status !== 200) throw new RpcHttpError(path, res.status);
       return (await res.json()) as T;
+    },
+  };
+}
+
+/** What a POST was answered: its HTTP status and its JSON body, or null when the body is not JSON. */
+export interface PostAnswer {
+  status: number;
+  body: unknown;
+}
+
+/**
+ * POST JSON to a bare path under API_BASE (B1d §2.4: the coordinator record). Generic, beside createJsonGetter, through
+ * the same latch: a 403 trips it (RpcForbidden) and a request during the cool-down is never sent (RpcCoolingDown). Every
+ * other status is answered with its body, so the caller can tell the route's refusal from a failure to answer; no
+ * answer in time, or none at all, is RequestUnreachable.
+ */
+export function createJsonPoster(fetch: FetchLike, latch: ForbiddenLatch): {post(path: string, body: unknown): Promise<PostAnswer>} {
+  return {
+    async post(path, body) {
+      const res = await latch.request(path, () => fetch(`${API_BASE}${path}`, {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify(body), credentials: 'omit'}));
+      let answer: unknown = null;
+      try {
+        answer = await res.json();
+      } catch (e) {
+        if (e instanceof RequestUnreachable) throw e;
+        answer = null;
+      }
+      return {status: res.status, body: answer};
     },
   };
 }
@@ -139,6 +171,7 @@ export function browserDeps(ext: Ext): WalletDeps {
   const broadcastFetch = timedFetch(BROADCAST_TIMEOUT_MS);
   const latch = createForbiddenLatch({store: latchStore(ext)});
   const get = createJsonGetter(fetch, latch);
+  const poster = createJsonPoster(fetch, latch);
   const gate = createJurisdictionGate({get, now: () => Date.now()});
   let cache: {at: number; prices: Prices} | null = null;
   let stage: {at: number; price: number} | null = null;
@@ -161,6 +194,8 @@ export function browserDeps(ext: Ext): WalletDeps {
       return price;
     },
     geo: () => gate.check(),
+    postJson: (path, body) => poster.post(path, body),
+    getJson: path => get.get<unknown>(path),
     now: () => Date.now(),
     // A CSPRNG: ids for prepared sends, pending records and re-auth challenges.
     randomBytes: n => globalThis.crypto.getRandomValues(new Uint8Array(n)),

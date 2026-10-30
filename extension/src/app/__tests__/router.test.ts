@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import {FLOW, SCREENS, TAB_ONLY, firstRoute, pickStack, routeReducer, type Route} from '../router';
+import {presaleRoutes} from '../presale';
 
 const HOME: Route[] = [{screen: 'tab', tab: 'home'}];
 
@@ -211,5 +212,17 @@ describe(`#23's route in this build (${process.env.NOCTURA_PRESALE === '0' ? 'of
       expect(routeReducer(onPresale, {type: 'replace', route: {screen: 'geo', ...extra} as unknown as Route})).toBe(onPresale);
     }
     expect(SCREENS.has('geo')).toBe(false);
+  });
+
+  // B1d-2 Task 4: #24, carrying nothing — pushed by #31's row (C16); never a hand-over name (TAB_ONLY is decided first).
+  it(off ? 'off: `referral` is refused like any unknown screen' : 'on: exactly {screen: "referral"} is pushed; any other key refuses it', () => {
+    expect(push({screen: 'referral'})).toEqual(off ? HOME : [...HOME, {screen: 'referral'}]);
+    for (const extra of [{account: ADDR}, {link: 'https://noc-tura.io?ref=x'}, {tab: 'settings'}]) expect(push({screen: 'referral', ...extra})).toBe(HOME);
+    expect(SCREENS.has('referral')).toBe(false);
+  });
+
+  it('no presale route is a TAB_ONLY hand-over name, and none shadows a screen of the closed list', () => {
+    expect(presaleRoutes.map(r => r.screen)).toEqual(off ? [] : ['presale', 'presale-confirm', 'geo', 'referral']);
+    for (const r of presaleRoutes) expect([r.screen, TAB_ONLY.has(r.screen), SCREENS.has(r.screen)]).toEqual([r.screen, false, false]);
   });
 });

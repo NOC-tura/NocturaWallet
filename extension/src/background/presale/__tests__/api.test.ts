@@ -15,7 +15,7 @@ import {ACCOUNT, CONFIG_PDA, NOW_MS, OTHER, allocationData, chainMap, chainReade
 // B1d §1.4, §2.5, §3.2 (C3, C8, C12, C30, C35): the three presale messages of B1d-1b Task 1, through the real
 // background's message handler — the partition, the strict payloads, the view in every variant with the open record
 // in each, the gate-only re-read, the quote from the last view's snapshot, the banner from the last config snapshot.
-registerPresale({ext: fakeExt(), deps: fakeDeps(), handle: registerPresaleHandler});
+registerPresale({ext: fakeExt(), deps: fakeDeps(), handle: registerPresaleHandler, alarm: () => undefined});
 
 const EXT = fakeExt();
 const ORIGIN = EXT.extensionOrigin;
@@ -99,6 +99,7 @@ const OPEN_VIEW = {
   balances: {SOL: '5000000000', USDC: {largest: '50000000', total: '80000000'}, USDT: {largest: '7000000', total: '7000000'}},
   solUsdMicros: '198420000',
   countryCode: 'SI',
+  referral: {onChain: null, canRegister: true},
   pending: null,
 };
 /** B1d §2.3: an open purchase of ACCOUNT in v1_pending. */
@@ -113,8 +114,8 @@ const PURCHASE: PendingRecord = pendingRecord({
 const {wire: _wire, firstBroadcast: _firstBroadcast, ...PURCHASE_VIEW} = PURCHASE;
 
 describe('the partition (§1.4): the popup and the full tab only', () => {
-  it('the three types of B1d-1b Task 1, Task 2’s prepare and Task 3’s four, all privileged', () => {
-    expect(PRESALE_MESSAGE_TYPES).toEqual(['presale.view', 'presale.banner', 'presale.quote', 'presale.prepareBuy', 'presale.pending', 'presale.preparedFor', 'presale.buy', 'presale.discardPrepared']);
+  it('the three types of B1d-1b Task 1, Task 2’s prepare, Task 3’s four and B1d-2’s presale.unrecorded, presale.checkReferrer and presale.referral, all privileged', () => {
+    expect(PRESALE_MESSAGE_TYPES).toEqual(['presale.view', 'presale.banner', 'presale.quote', 'presale.prepareBuy', 'presale.pending', 'presale.preparedFor', 'presale.buy', 'presale.discardPrepared', 'presale.unrecorded', 'presale.checkReferrer', 'presale.referral']);
   });
 
   it('answered from the popup and from the full tab (positive control)', async () => {
@@ -217,6 +218,19 @@ describe('presale.view (§2.5)', () => {
       ok: true,
       data: {open: true, limits: {userRemainingCents: '19700000', firstPurchase: false}, allocation: {exists: true, totalBase: '1998667554963', bonusBase: '16142571618'}},
     });
+  });
+
+  it('B1d-2 (§2.5): the referral — the referrer on chain, and canRegister exactly for a first purchase without one (D8: an on-chain referrer always wins)', async () => {
+    const referral = async (chain: Partial<Chain>) => ((await send(await unlockedExt(), world({chain}), viewMsg)) as {data: {referral: unknown}}).data.referral;
+    // No allocation: a first purchase, nothing on chain → the field is offered (positive control).
+    expect(await referral({})).toEqual({onChain: null, canRegister: true});
+    // An allocation that never bought (purchase_count 0) and has no referrer: still a first purchase (C21).
+    expect(await referral({user: program(userData()), allocation: program(allocationData({count: 0, spent: 0n, totalTokens: 0n, bonus: 0n}))})).toEqual({onChain: null, canRegister: true});
+    // Bought before: nothing can be registered any more.
+    expect(await referral({user: program(userData()), allocation: program(allocationData())})).toEqual({onChain: null, canRegister: false});
+    // A referrer on chain — with no purchase yet, and after purchases: it is named, and it wins.
+    expect(await referral({user: program(userData()), allocation: program(allocationData({count: 0, spent: 0n, totalTokens: 0n, bonus: 0n, referrer: OTHER}))})).toEqual({onChain: OTHER, canRegister: false});
+    expect(await referral({user: program(userData()), allocation: program(allocationData({referrer: OTHER}))})).toEqual({onChain: OTHER, canRegister: false});
   });
 
   it('the open view carries the country the gate detected (D22) — as the gate named it, null when it named none, never a default', async () => {

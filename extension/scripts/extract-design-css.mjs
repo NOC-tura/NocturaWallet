@@ -46,6 +46,8 @@ export const PREFIXES = ['.screen', '.top-bar', '.sticky-bar', '.scroll-area', '
   '.s-pre',
   // B1d-1b Task 6: #50 geo-blocked, from the Section XI block (SECTION_XI_PREFIXES, above).
   ...SECTION_XI_PREFIXES,
+  // B1d-2 Task 4: #24 referral (its rules at ix:2799-2929; the reward list's rules come with it, unused — §9 omits the list).
+  '.s-ref',
 ];
 export const KEYFRAMES = ['shimmer', 'spin', 'shake',
   // Plan 3: what the send-flow rules animate with (#19's progress strip and skeleton, #21's ring and status dot, #54's ring; #20's caret — its rule comes with .s-conf, the typed field does not, D22).

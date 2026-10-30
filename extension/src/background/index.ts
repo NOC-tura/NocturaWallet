@@ -33,8 +33,19 @@ const deps = browserDeps(ext);
 // Firefox). Caught, not left to reject unhandled — a browser that refuses the call must not
 // stop the listeners below from registering.
 void ext.pinSessionAccess().catch(e => console.warn('storage.session access level not pinned', e));
-// B1d §1.1: presale joins here, before any listener can deliver a message (the stub in the build without it).
-registerPresale({ext, deps, handle: registerPresaleHandler});
+// B1d §1.1: presale joins here, before any listener can deliver a message (the stub in the build without it). Its own
+// alarms (B1d-2: the record's retry) by name — none in the build without it; a shared alarm's name is never one.
+const SHARED_ALARMS: readonly string[] = [AUTOLOCK_ALARM, PENDING_ALARM, QUEUE_ALARM];
+const presaleAlarms = new Map<string, () => Promise<void>>();
+registerPresale({
+  ext,
+  deps,
+  handle: registerPresaleHandler,
+  alarm: (name, run) => {
+    if (SHARED_ALARMS.includes(name) || presaleAlarms.has(name)) throw new Error(`registerPresale: the alarm ${name} is taken`);
+    presaleAlarms.set(name, run);
+  },
+});
 
 api.runtime.onMessage.addListener((msg, sender, reply) => {
   handleMessage(ext, msg, sender, deps).then(reply, () => reply({ok: false, error: 'internal'}));
@@ -45,6 +56,8 @@ api.alarms.onAlarm.addListener(a => {
   if (a.name === AUTOLOCK_ALARM) void lock(ext);
   if (a.name === PENDING_ALARM) void onPendingAlarm(ext, deps).catch(e => console.warn('pending alarm tick failed', e));
   if (a.name === QUEUE_ALARM) void onQueueAlarm(ext, deps).catch(e => console.warn('dApp queue tick failed', e));
+  const presale = presaleAlarms.get(a.name);
+  if (presale !== undefined) void presale().catch(e => console.warn('presale alarm tick failed', e));
 });
 // The approval window first: it decides for itself whether to lock (and drain the queue) or reopen, from
 // ext.windowCount() as of right after the reject — before anything here could change that count (fix round 1,

@@ -79,6 +79,22 @@ describe('#10 for a purchase (§4.2)', () => {
     expect(unstyled('v-reauth')).toEqual([]);
   });
 
+  it('B1d-2 (Q47): a purchase that registers its referrer — "Referred by" with the whole address in groups of four after "To", then Q47’s note', async () => {
+    const referrer = '9Y7FtteLhCJABAQtkYEFZs46rJgy1ixMA1JFMUepTki4';
+    await shown({...ABOUT, referrer: {address: referrer, registers: true}});
+    expect(rows().slice(3, 6)).toEqual([
+      ['To', `Noctura presale · ${MAINNET_SOL_TREASURY}`],
+      ['Referred by', referrer],
+      ["Saved to your presale account with this purchase. It can't be changed later.", ''],
+    ]);
+    const groups = [...el('ra-rows').querySelectorAll('.intent-row')][4]?.querySelectorAll('.addr-groups > span') ?? [];
+    expect([...groups].map(g => g.textContent)).toEqual(referrer.match(/.{1,4}/g));
+    // B1d-2 Task 7 (visual pass): a row naming an address keeps its label on one line ("Referred by" wrapped beside the
+    // groups); the note row, label only, still wraps.
+    expect([...el('ra-rows').querySelectorAll('.intent-row .label')].slice(3, 6).map(l => l.classList.contains('vlt-keep'))).toEqual([true, true, false]);
+    expect(unstyled('v-reauth')).toEqual([]);
+  });
+
   it('confirmed: the challenge satisfied and the SAME tab to the resume route — nothing signed or sent from here (D38)', async () => {
     const {h, broadcasts} = await shown();
     type(el<HTMLInputElement>('ra-password'), PW);

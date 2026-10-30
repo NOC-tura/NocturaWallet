@@ -4,6 +4,7 @@ import type {WalletDeps} from './deps';
 import {addKnownRecipient} from './knownRecipients';
 import {readWalletView} from './accountsStore';
 import {randomId} from './digest';
+import {intentKind} from './intents';
 import {inFlightFor, isOpen, readPending, updatePending, viewOf, type FirstBroadcast, type PendingExtra, type PendingFee, type PendingRecord, type PendingView} from './pendingStore';
 import {COOLING_AGAIN_DETAIL, FORBIDDEN_DETAIL, ResendRefused, SendRefused, SentUnconfirmed, type ResendRefusal, type SendIntent} from './sendTypes';
 import {BroadcastRejected, BroadcastSubstituted, firstSignature} from '../../../core/solana/broadcast';
@@ -297,10 +298,15 @@ export async function pollOnce(ext: Ext, deps: WalletDeps): Promise<boolean> {
       updates.set(r.id, {state: 'stuck'});
     }
   }
+  // B1d §1.3: the records this write itself moved to confirmed — a round racing another sees each one only once.
+  const reached: PendingRecord[] = [];
   const after = await updatePending(ext, records =>
     records.map(r => {
       const u = updates.get(r.id);
-      return u !== undefined && isOpen(r) ? {...r, ...u} : r;
+      if (u === undefined || !isOpen(r)) return r;
+      const next = {...r, ...u};
+      if (next.state === 'confirmed') reached.push(next);
+      return next;
     }),
   );
   const confirmed = open.filter(r => updates.get(r.id)?.state === 'confirmed');
@@ -312,8 +318,20 @@ export async function pollOnce(ext: Ext, deps: WalletDeps): Promise<boolean> {
     const own = new Set((await readWalletView(ext))?.accounts.map(a => a.publicKey) ?? []);
     // A dApp's transaction (B1c-2: no intent) names no recipient of the wallet's own.
     for (const r of confirmed) if (own.has(r.account) && r.intent !== null) await addKnownRecipient(ext, r.intent.recipient, now);
+    for (const r of reached) if (own.has(r.account) && r.extra !== null) await confirmedHook(ext, deps, r);
   }
   return after.some(isOpen);
+}
+
+/** B1d §1.3: the record's kind's `onConfirmed`, when it has one; whatever the hook does, the poller goes on. */
+async function confirmedHook(ext: Ext, deps: WalletDeps, record: PendingRecord): Promise<void> {
+  const hook = record.extra === null ? undefined : intentKind(record.extra.kind)?.onConfirmed;
+  if (hook === undefined) return;
+  try {
+    await hook({ext, deps}, record);
+  } catch (e) {
+    console.warn('a confirmed record’s hook failed', e);
+  }
 }
 
 const loops = new WeakMap<Ext, Promise<void>>();

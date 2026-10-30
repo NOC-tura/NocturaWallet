@@ -1527,6 +1527,130 @@
   font-size: 12px;
   word-break: break-all;
 }
+.s-ref .scroll {
+  flex: 1 1 auto; overflow: hidden;
+  padding: var(--space-3) var(--space-5) var(--space-6);
+  display: flex; flex-direction: column; gap: var(--space-5);
+}
+.s-ref .stats {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-3);
+}
+.s-ref .stats .stat {
+  background: var(--bg-surface-1);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4) var(--space-3);
+  display: flex; flex-direction: column; gap: 4px;
+  min-height: 84px;
+}
+.s-ref .stats .stat .lbl {
+  color: var(--fg-tertiary);
+}
+.s-ref .stats .stat .val {
+  color: var(--fg-primary);
+}
+.s-ref .stats .stat .val.acc { color: var(--accent); }
+.s-ref .code-card {
+  background: var(--bg-surface-1);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4) var(--space-5);
+  display: flex; flex-direction: column; gap: var(--space-3);
+}
+.s-ref .code-card .lbl-row {
+  display: flex; justify-content: space-between; align-items: baseline;
+  color: var(--fg-secondary);
+}
+.s-ref .code-card .lbl-row .uses { color: var(--fg-tertiary); }
+.s-ref .code-card .code-row {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-base);
+  border-radius: var(--radius-md);
+}
+.s-ref .code-card .code-row .code {
+  flex: 1; min-width: 0;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-size: 17px; line-height: 22px;
+  color: var(--fg-primary);
+  letter-spacing: 0.04em;
+}
+.s-ref .code-card .actions { display: flex; gap: var(--space-2); }
+.s-ref .code-card .actions button {
+  background: transparent; border: 0; cursor: pointer;
+  width: var(--touch-target-min); height: var(--touch-target-min);
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  color: var(--fg-secondary);
+}
+.s-ref .code-card .actions button:hover { background: var(--bg-surface-2); }
+.s-ref .code-card .share-btn {
+  align-self: stretch;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  height: var(--touch-target-min);
+  padding: 0 var(--space-4);
+  background: var(--bg-surface-2); color: var(--fg-primary);
+  border-radius: var(--radius-pill); border: 0;
+  font: 600 13px/1 var(--font-body);
+  cursor: pointer;
+}
+.s-ref .rewards-h {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 var(--space-1);
+  color: var(--fg-secondary);
+}
+.s-ref .rewards {
+  background: var(--bg-surface-1);
+  border-radius: var(--radius-lg);
+  padding: 0 var(--space-5);
+  display: flex; flex-direction: column;
+}
+.s-ref .rewards .row {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--bg-surface-3);
+  min-height: 56px;
+}
+.s-ref .rewards .row:first-of-type { border-top: 0; }
+.s-ref .rewards .row .av {
+  width: 36px; height: 36px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--bg-surface-3);
+  color: var(--fg-secondary);
+  font: 600 13px/1 var(--font-body); flex: 0 0 auto;
+}
+.s-ref .rewards .row .body {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column; gap: 2px;
+}
+.s-ref .rewards .row .body .name { color: var(--fg-primary); }
+.s-ref .rewards .row .body .when { color: var(--fg-tertiary); }
+.s-ref .rewards .row .amt {
+  display: flex; flex-direction: column; align-items: flex-end; gap: 2px;
+  flex: 0 0 auto;
+}
+.s-ref .rewards .row .amt .figure { color: var(--success); font-weight: 600; }
+.s-ref .rewards .row .amt .ticker { color: var(--fg-tertiary); }
+.s-ref .empty-rewards {
+  background: var(--bg-surface-1);
+  border-radius: var(--radius-lg);
+  padding: var(--space-7) var(--space-5);
+  display: flex; flex-direction: column; align-items: center; gap: var(--space-3);
+  text-align: center;
+}
+.s-ref .empty-rewards .ic {
+  width: 56px; height: 56px; border-radius: 50%;
+  background: var(--bg-surface-2);
+  color: var(--fg-tertiary);
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.s-ref .empty-rewards .head { color: var(--fg-primary); font-weight: 600; }
+.s-ref .empty-rewards .sub { color: var(--fg-secondary); max-width: 28ch; }
+.s-ref .legalese {
+  padding: 0 var(--space-1);
+  color: var(--fg-tertiary);
+  text-align: center;
+}
 .tab-bar {
   flex: 0 0 auto;
   height: 80px;

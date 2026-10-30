@@ -10,7 +10,9 @@ import {isOpen, readPending, viewOf, type PendingView} from '../pendingStore';
 import {usdMicros} from '../reauthPolicy';
 import {readPresaleConfig, readPresaleState, type PresaleSnapshot, type PresaleState, type StageFacts, type UnavailableCode} from './state';
 import {PRESALE_CURRENCIES, quote, type PresaleBalances, type PresaleCurrency, type QuoteLine} from './quote';
-import {PRESALE_BUY_KIND, PurchaseRefused, gateAnswer, parsePurchaseIntent, preparePurchase, purchasePreparedFor} from './buy';
+import {PRESALE_BUY_KIND, PurchaseRefused, checkReferrer, gateAnswer, parsePurchaseIntent, preparePurchase, purchasePreparedFor} from './buy';
+import {PRESALE_RECORD_ALARM, unrecordedFor, wakePresaleRecords} from './record';
+import {referralView} from './referral';
 import {CHALLENGE_ID} from '../reauthChallenges';
 import {SendRefused} from '../sendTypes';
 import {MAINNET_USDC_MINT, MAINNET_USDT_MINT} from '../../../../core/presale/addresses';
@@ -32,6 +34,9 @@ export const PRESALE_MESSAGE_TYPES: readonly string[] = [
   'presale.preparedFor',
   'presale.buy',
   'presale.discardPrepared',
+  'presale.unrecorded',
+  'presale.checkReferrer',
+  'presale.referral',
 ];
 
 /** `presale.quote` answers from the last view's snapshot of the account at most this old (§1.4). */
@@ -65,14 +70,23 @@ export interface BalancesView {
   USDT: {largest: string; total: string};
 }
 /**
- * §2.5 — `referral` joins the open variant in B1d-2. `pending` is in every variant (C30). The open variant carries the
- * country the gate detected, or null when it named none (D22: #50b's open variant shows it).
+ * §2.5 (B1d-2): the referrer registered on chain, or null; `canRegister` — #23 offers the referral address — exactly when
+ * this is a first purchase and there is none (D8: an on-chain referrer always wins). (§3.5's `ReferralView` is #24's,
+ * referral.ts.)
+ */
+export interface ReferralState {
+  onChain: string | null;
+  canRegister: boolean;
+}
+/**
+ * §2.5. `pending` is in every variant (C30). The open variant carries the country the gate detected, or null when it
+ * named none (D22: #50b's open variant shows it), and the account's referral (B1d-2).
  */
 export type PresaleView =
   | {open: false; why: 'unavailable'; code: UnavailableCode; pending: PendingView | null}
   | {open: false; why: 'inactive' | 'blocked'; state: StageView; pending: PendingView | null}
   | {open: false; why: 'geo'; geo: GeoAnswer; state: StageView | null; pending: PendingView | null}
-  | {open: true; state: StageView; limits: LimitsView; allocation: AllocationView; balances: BalancesView; solUsdMicros: string | null; countryCode: string | null; pending: PendingView | null};
+  | {open: true; state: StageView; limits: LimitsView; allocation: AllocationView; balances: BalancesView; solUsdMicros: string | null; countryCode: string | null; referral: ReferralState; pending: PendingView | null};
 /** §3.2. `cents` and `nocBase` are null only with `line: 'no-sol-price'`. */
 export interface Quote {
   amount: string;
@@ -89,6 +103,7 @@ export interface BannerView {
 
 const MALFORMED: Result = {ok: false, error: 'malformed'};
 const AMOUNT = /^[1-9]\d{0,19}$/;
+const REFERRER = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 /** A prepared entry's id: 16 random bytes as 32 hex characters (digest.ts randomId). */
 const PREPARED_ID = /^[0-9a-f]{32}$/;
 const MAX_U64 = 2n ** 64n - 1n;
@@ -252,6 +267,7 @@ async function view(ext: Ext, deps: WalletDeps, msg: Readonly<Record<string, unk
       balances: balancesView(balances),
       solUsdMicros: micros === null ? null : micros.toString(),
       countryCode: geo.countryCode,
+      referral: {onChain: snapshot.allocation.referrer, canRegister: snapshot.limits.firstPurchase && snapshot.allocation.referrer === null},
       pending,
     } satisfies PresaleView,
   };
@@ -354,6 +370,41 @@ async function discardMessage(ext: Ext, _deps: WalletDeps, msg: Readonly<Record<
   return {ok: true};
 }
 
+/**
+ * presale.checkReferrer {account, referrer} (§1.4, §3.5, B1d-2): `{ok: true}` when the purchase would register the
+ * address, `{ok: false, line}` with the line #23's field shows; a read failure is the purchase's refusal. The field's
+ * answer only — the prepare and the signature decide again. `referrer` is whatever the field holds (B1d-2 Task 3: the
+ * popup judges nothing, C3): a string that is not 32–44 base58 characters is `referrer-invalid` with nothing read;
+ * whether one that is names a key is the line's to say too.
+ */
+async function checkReferrerMessage(ext: Ext, deps: WalletDeps, msg: Readonly<Record<string, unknown>>): Promise<Result> {
+  if (!onlyKeys(msg, ['type', 'account', 'referrer'])) return MALFORMED;
+  const {account, referrer} = msg;
+  if (!isAddress(account) || typeof referrer !== 'string') return MALFORMED;
+  const refused = await sessionRefusal(ext, account);
+  if (refused !== null) return refused;
+  if (!REFERRER.test(referrer)) return {ok: true, data: {ok: false, line: 'referrer-invalid'}};
+  try {
+    const line = await checkReferrer(ext, deps, account, referrer);
+    return {ok: true, data: line === null ? {ok: true} : {ok: false, line}};
+  } catch (e) {
+    if (e instanceof PurchaseRefused) return e.detail === '' ? {ok: false, error: e.code} : {ok: false, error: e.code, data: {detail: e.detail}};
+    throw e;
+  }
+}
+
+/** presale.unrecorded {account} (§1.4, §4.6, D29): this account's records not accepted, each with its state — #27's Q34 or Q60 (rev 3.6); no network. */
+async function unrecordedMessage(ext: Ext, _deps: WalletDeps, msg: Readonly<Record<string, unknown>>): Promise<Result> {
+  const a = await accountOnly(ext, msg);
+  return 'answer' in a ? a.answer : {ok: true, data: await unrecordedFor(ext, a.account)};
+}
+
+/** presale.referral {account} (§1.4, §3.5, §4.4, B1d-2): #24's ReferralView — the chain's and the coordinator's, each failing alone. */
+async function referralMessage(ext: Ext, deps: WalletDeps, msg: Readonly<Record<string, unknown>>): Promise<Result> {
+  const a = await accountOnly(ext, msg);
+  return 'answer' in a ? a.answer : {ok: true, data: await referralView(deps, a.account)};
+}
+
 /** A handler's unexpected failure (a storage error) is `failed`, never a thrown error across the message boundary. */
 const guarded =
   (h: (ext: Ext, deps: WalletDeps, msg: Readonly<Record<string, unknown>>) => Promise<Result>) =>
@@ -374,4 +425,11 @@ export function registerPresale(host: PresaleHost): void {
   host.handle('presale.preparedFor', guarded(preparedForMessage));
   host.handle('presale.buy', guarded(buyMessage));
   host.handle('presale.discardPrepared', guarded(discardMessage));
+  host.handle('presale.unrecorded', guarded(unrecordedMessage));
+  host.handle('presale.checkReferrer', guarded(checkReferrerMessage));
+  host.handle('presale.referral', guarded(referralMessage));
+  // §2.4: the record's retry wakes on its alarm, and resumes at every start (a worker stopped between two slots, or
+  // between a purchase's confirmation and its entry — reconciled first).
+  host.alarm(PRESALE_RECORD_ALARM, () => wakePresaleRecords(host.ext, host.deps));
+  void wakePresaleRecords(host.ext, host.deps).catch(e => console.warn('presale records not reconciled at start', e));
 }

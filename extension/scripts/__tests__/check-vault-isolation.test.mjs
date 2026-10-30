@@ -399,6 +399,13 @@ describe('vault isolation (storage, and what may import src/ext.ts)', () => {
     expect(sourceViolations([f('src/app/screens/Contacts.tsx', "const k = 'v1_contacts';")])).toEqual([OWNED('src/app/screens/Contacts.tsx', 'v1_contacts')]);
     expect(sourceViolations([f('src/unlock/main.ts', '// v1_contacts')])).toEqual([OWNED('src/unlock/main.ts', 'v1_contacts')]);
   });
+  // B1d-2 (spec §2.4, §6.2): the presale records are the background's — in both builds (presaleRecordsKey.ts).
+  it('lets only the background name the presale records key (v1_presale_records)', () => {
+    const OWNED = (path, key) => `${path}: names ${key}, which only the background may write`;
+    expect(sourceViolations([f('src/background/presaleRecordsKey.ts', "export const PRESALE_RECORDS_KEY = 'v1_presale_records';")])).toEqual([]);
+    expect(sourceViolations([f('src/app/presale/client.ts', "const k = 'v1_presale_records';")])).toEqual([OWNED('src/app/presale/client.ts', 'v1_presale_records')]);
+    expect(sourceViolations([f('src/unlock/presale.ts', '// v1_presale_records')])).toEqual([OWNED('src/unlock/presale.ts', 'v1_presale_records')]);
+  });
   // B1c §1.7 (review L13): src/approve is held like src/app — no storage, no runtime listener, no ext.ts — and its page
   // may load only its own entry.
   it('holds src/approve like src/app: no storage, no runtime listener, no ext.ts; approve.html loads only src/approve/main.tsx', () => {

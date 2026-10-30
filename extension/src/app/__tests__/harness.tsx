@@ -89,6 +89,8 @@ export interface WalletOptions {
    * test keeps a state on screen, or counts what a screen asked (plan 3).
    */
   gate?: (m: unknown) => Promise<void> | void;
+  /** Sees every message the background has answered, with its answer — how a test waits on the answer, not the clock. */
+  answered?: (m: unknown, r: unknown) => void;
 }
 
 /**
@@ -144,9 +146,11 @@ export async function setupWallet(o: WalletOptions = {}): Promise<Wallet> {
   };
   const gated: Transport = async m => {
     await o.gate?.(m);
-    return transport(m);
+    const r = await transport(m);
+    o.answered?.(m, r);
+    return r;
   };
-  return {ext, deps, platform, transport, engine: createEngine(o.gate === undefined ? transport : gated, async () => undefined)};
+  return {ext, deps, platform, transport, engine: createEngine(o.gate === undefined && o.answered === undefined ? transport : gated, async () => undefined)};
 }
 
 /** One screen inside the real provider (the open sequence runs as in the popup). */

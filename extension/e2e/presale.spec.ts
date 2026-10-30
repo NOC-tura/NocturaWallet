@@ -1,7 +1,6 @@
 import {test, expect, type Page} from '@playwright/test';
 import {base58, base64} from '@scure/base';
 import {BLOCKHASH_LIFETIME, FAKE_START_HEIGHT, parseV0} from './fakeCoordinator';
-import {contained, launchPopup, type Harness} from './popupHarness';
 import {E2E_PASSWORD} from './makeEnvelope';
 import {ACCOUNT, groups, msg, startSend} from './sendHelpers';
 import {
@@ -22,7 +21,7 @@ import {
   stableCents,
   tokensFor,
 } from './presaleChain';
-import {USDC_HOLDING, amount, buyAction, cspControl, geoScreen, home, preparedPurchase, presaleWallet, quickLabels, watchCsp} from './presaleHelpers';
+import {USDC_HOLDING, amount, buyAction, cspControl, detailRows, done, geoScreen, home, preparedPurchase, presaleWallet, quickLabels, scene} from './presaleHelpers';
 
 declare const chrome: {storage: {local: {set(o: object): Promise<void>}}};
 
@@ -54,22 +53,13 @@ const ROW = {
   why: 'Why this matters | Token sales are restricted by jurisdiction · this wallet checks before every purchase',
 };
 
-async function scene(prefix: string): Promise<{h: Harness; csp: string[]}> {
-  const h = await launchPopup(prefix);
-  return {h, csp: await watchCsp(h.ctx)};
-}
-function done(h: Harness, csp: string[]): void {
-  contained(h);
-  expect(csp).toEqual([]);
-}
 /** SOL as #11 shows it: four places, floored. */
 const solText = (lamports: bigint): string => `${lamports / SOL}.${((lamports % SOL) / 100_000n).toString().padStart(4, '0')}`;
-const detailRows = (p: Page) => p.locator('.detail-row').evaluateAll(rs => rs.map(r => [r.querySelector('.lbl')?.textContent ?? '', r.querySelector('.val')?.textContent ?? '']));
 const feeRows = (p: Page) => p.locator('.fee-block .fee-row').evaluateAll(rs => rs.map(r => [...r.children].map(c => c.textContent ?? '').filter(t => t !== '')));
 /** The prepared-purchase view the background answers, as far as these specs read it. */
 type Prepared = {reauth: {proven: boolean} | null; stage: number; destination: string} | null;
 
-test('1 · SOL purchase end to end: #11 Buy → #23a → amount → #20 (rows, the simulation) → #10 (first purchase) → the tab’s #20 → #21 with the badge → confirmed; #11 and #26 while pending; #23 then shows the allocation', async () => {
+test('1 · SOL purchase end to end: #11 Buy → #23a → amount → #20 (rows, the simulation) → #10 (first purchase) → the tab’s #20 → #21 with the badge → confirmed; #11 and #26 while pending; #26’s row badged; #23 then shows the allocation', async () => {
   test.setTimeout(240_000);
   const {h, csp} = await scene('noctura-e2e-presale-sol-');
   try {
@@ -157,6 +147,9 @@ test('1 · SOL purchase end to end: #11 Buy → #23a → amount → #20 (rows, t
     await expect(tab.locator('.top-bar .title')).toHaveText('Purchased');
     await expect(tab.locator('.top-bar .status-pill')).toHaveText('Presale');
     expect(h.fake.broadcasts).toHaveLength(1);
+    // B1d-2 (§2.4, D28): the confirmed purchase is recorded with the coordinator, once, with the whole payload.
+    await expect.poll(() => h.fake.purchaseRecords.length).toBe(1);
+    expect(h.fake.purchaseRecords).toEqual([{txHash: h.fake.broadcasts[0], buyerAddress: ACCOUNT, paymentToken: 'SOL', paymentAmount: expect.stringMatching(/^\d+(\.\d+)?$/), nocAmount: expect.any(Number), usdValue: 75, stage: 1}]);
     // #26 now lists the landed purchase from the chain; #23 shows the allocation (D5: claimable after TGE).
     // The payer paid the amount, the two PDAs' rent and the network fee #20 showed — exactly, as the program takes them.
     const network = (await msg(tab, {type: 'wallet.pending'})).data as {fee: {networkLamports: string}}[];
@@ -164,7 +157,11 @@ test('1 · SOL purchase end to end: #11 Buy → #23a → amount → #20 (rows, t
     expect(BigInt(h.fake.lamports.get(ACCOUNT) ?? 0)).toBe(left);
     const after = await home(h, `${solText(left)} SOL`);
     await after.getByRole('button', {name: 'Activity'}).click();
-    await expect(after.getByText('Presale purchase', {exact: true})).toBeVisible({timeout: 30_000});
+    // B1d-2 Task 5 (§4.6, Q31): the row carries the "Presale" badge beside its title (so the title is no longer the
+    // whole of its element's text: the row is found by it).
+    const landed = after.locator('.tx-row', {hasText: 'Presale purchase'});
+    await expect(landed).toBeVisible({timeout: 30_000});
+    await expect(landed.locator('.pri .status-pill.app-badge')).toHaveText('Presale');
     await after.getByRole('button', {name: 'Home'}).click();
     await buyAction(after).click();
     await expect(after.locator('.receipt .row')).toContainText(`Your allocation${nocText(nocBase)} NOC`, {timeout: 30_000});

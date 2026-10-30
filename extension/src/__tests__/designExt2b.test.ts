@@ -57,7 +57,14 @@ describe('design-ext.css (B1b-2b plan 1)', () => {
     for (const alias of ['\n.topbar', '\n.sticky-bottom-bar', '\n.phone-row', '\n.s11-airgap', '\n.s11-stepdots', '\n.screen-section']) expect([alias, CSS.includes(alias)]).toEqual([alias, false]);
   });
 
+  // B1d-2 Task 4 re-ran the extraction with #24's classes added (ix:2799-2929).
+  it('carries #24’s referral classes (B1d-2 Task 4)', () => {
+    for (const sel of ['.s-ref .scroll', '.s-ref .stats', '.s-ref .stats .stat', '.s-ref .stats .stat .val.acc', '.s-ref .code-card', '.s-ref .code-card .lbl-row', '.s-ref .code-card .code-row', '.s-ref .code-card .code-row .code', '.s-ref .code-card .actions button', '.s-ref .code-card .share-btn', '.s-ref .legalese']) {
+      expect(CSS).toContain(`\n${sel} {`);
+    }
+  });
+
   it('is the extraction output, byte for byte (the hash the plan pins; scripts/extract-design-css.mjs --check against the design)', () => {
-    expect(createHash('sha256').update(CSS).digest('hex')).toBe('0723ca1a2af9c4d89f46ab8e33e71657d82faa0f9e5bd0f7b1e40300056fd87c');
+    expect(createHash('sha256').update(CSS).digest('hex')).toBe('ab642e2a20c7abcddcd4b657ed480132a4fa17a806a914a9a07455f056adfb3d');
   });
 });

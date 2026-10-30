@@ -1,5 +1,5 @@
 import {createEngine, type Transport} from '../../engine';
-import {PREPARE_REFUSALS, bannerOf, presaleClient, presaleViewOf, purchaseDataOf, purchaseViewOf, quoteOf, resumableOf} from '../client';
+import {BUY_REFUSALS, PREPARE_REFUSALS, REFERRER_LINES, bannerOf, presaleClient, presaleViewOf, purchaseDataOf, purchaseViewOf, quoteOf, referralDataOf, referrerCheckOf, resumableOf, unrecordedOf} from '../client';
 import {registerPresale} from '../../../background/presale/api';
 import {handleMessage, registerPresaleHandler} from '../../../background/messages';
 import {PENDING_KEY} from '../../../background/pendingStore';
@@ -8,18 +8,27 @@ import {fakeDeps} from '../../../background/__tests__/fakeDeps';
 import {fakeExt} from '../../../background/__tests__/fakeExt';
 import {HOLDING_LARGE, pendingRecord, signedWire, unlocked} from '../../../background/__tests__/fixtures';
 import {viewOf} from '../../../background/pendingStore';
+import {PRESALE_RECORDS_KEY} from '../../../background/presaleRecordsKey';
 import {firstSignature} from '../../../../../core/solana/broadcast';
 import {base64} from '@scure/base';
-import {ACCOUNT, NOW_MS, TREASURY_ADDRESS, chainMap, chainReader, configData, program, type Chain} from '../../../background/presale/__tests__/chain';
+import {ACCOUNT, NOW_MS, OTHER, TREASURY_ADDRESS, allocationData, chainMap, chainReader, configData, program, userData, type Chain} from '../../../background/presale/__tests__/chain';
 import {MAINNET_USDC_MINT} from '../../../../../core/presale/addresses';
+import {derivePresalePdas} from '../../../../../core/presale/allocation';
+import {PublicKey} from '@solana/web3.js';
+import type {AccountData} from '../../../../../core/solana/rpc';
 
-registerPresale({ext: fakeExt(), deps: fakeDeps(), handle: registerPresaleHandler});
+registerPresale({ext: fakeExt(), deps: fakeDeps(), handle: registerPresaleHandler, alarm: () => undefined});
 
 // B1d §1.4, §2.5, §3.2, §3.3 (C3): the popup's presale client — its shape checks on the REAL background's answers
 // (positive controls), and every way a reply can be of another shape (failed, never shown).
 const OPEN: GeoAnswer = {open: true, reason: null, countryCode: 'SI'};
-function depsFor(o: {chain?: Partial<Chain>; geo?: GeoAnswer}) {
-  const reader = chainReader(chainMap(o.chain), [], {
+/** B1d-2 Task 3: a referral address (32 × 0x09) — a presale buyer where a test gives it an allocation. */
+const REF = 'cGfHiC6Kgg3FpFZvgwGcswsCRtp4aBP2fzuXRQPizuN';
+const allocationOf = (k: string): string => derivePresalePdas(new PublicKey(k)).userAllocation.toBase58();
+function depsFor(o: {chain?: Partial<Chain>; geo?: GeoAnswer; more?: [string, AccountData | null][]}) {
+  const map = chainMap(o.chain);
+  for (const [k, v] of o.more ?? []) map.set(k, v);
+  const reader = chainReader(map, [], {
     getBalance: async () => 5_000_000_000n,
     getTokenAccountsByOwner: async owner => [{pubkey: HOLDING_LARGE, mint: MAINNET_USDC_MINT, owner, amount: 50_000_000n, decimals: 6}],
   });
@@ -28,7 +37,7 @@ function depsFor(o: {chain?: Partial<Chain>; geo?: GeoAnswer}) {
   return deps;
 }
 const popupOf = (ext: ReturnType<typeof fakeExt>) => ({id: ext.runtimeId, origin: ext.extensionOrigin, url: `${ext.extensionOrigin}/popup.html`});
-async function wired(o: {chain?: Partial<Chain>; geo?: GeoAnswer} = {}) {
+async function wired(o: {chain?: Partial<Chain>; geo?: GeoAnswer; more?: [string, AccountData | null][]} = {}) {
   const ext = fakeExt();
   await unlocked(ext);
   const deps = depsFor(o);
@@ -63,6 +72,7 @@ describe('the client against the real background (positive controls)', () => {
         balances: {SOL: 5_000_000_000n, USDC: {largest: 50_000_000n, total: 50_000_000n}, USDT: {largest: 0n, total: 0n}},
         solUsdMicros: 198_420_000n,
         countryCode: 'SI',
+        referral: {onChain: null, canRegister: true},
         pending: null,
       },
     });
@@ -205,6 +215,85 @@ describe('the shape checks: anything else the background did not promise is fail
   });
 });
 
+// B1d-2 Task 3 (§1.4, §2.5, §3.5, C3): what #23a's referral address asks and reads — the view's referral, presale.checkReferrer
+// with whatever the field holds, prepareBuy's referrer only when there is one.
+describe('the client for #23a’s referral address (B1d-2)', () => {
+  const canned = (answer: unknown) => {
+    const sent: unknown[] = [];
+    const client = presaleClient(createEngine(async m => (sent.push(m), answer), async () => undefined));
+    return {sent, client};
+  };
+
+  it('view: the referral as the background answers it — none on chain and offered, or the one on chain and not offered (positive controls)', async () => {
+    expect(await (await wired()).client.view(ACCOUNT)).toMatchObject({ok: true, data: {referral: {onChain: null, canRegister: true}}});
+    expect(await (await wired({chain: {user: program(userData()), allocation: program(allocationData())}})).client.view(ACCOUNT)).toMatchObject({ok: true, data: {referral: {onChain: null, canRegister: false}}});
+    expect(await (await wired({chain: {user: program(userData()), allocation: program(allocationData({count: 0, referrer: OTHER}))}})).client.view(ACCOUNT)).toMatchObject({
+      ok: true,
+      data: {limits: {firstPurchase: true}, referral: {onChain: OTHER, canRegister: false}},
+    });
+  });
+
+  it('view: a referral of any other shape is failed — missing, an extra key, not an address, canRegister not a boolean, or canRegister other than “a first purchase and none on chain”', async () => {
+    const open = await raw({type: 'presale.view', account: ACCOUNT});
+    expect(presaleViewOf(open)).toBeDefined();
+    const limits = open.limits as Record<string, unknown>;
+    const bad: unknown[] = [
+      Object.fromEntries(Object.entries(open).filter(([k]) => k !== 'referral')),
+      {...open, referral: null},
+      {...open, referral: {onChain: null, canRegister: true, extra: 1}},
+      {...open, referral: {onChain: null}},
+      {...open, referral: {onChain: 'x', canRegister: false}},
+      {...open, referral: {onChain: null, canRegister: 'yes'}},
+      // A referrer on chain always wins (D8): never offered beside one.
+      {...open, referral: {onChain: OTHER, canRegister: true}},
+      // Not a first purchase: never offered; a first purchase without one: always offered.
+      {...open, limits: {...limits, firstPurchase: false}, referral: {onChain: null, canRegister: true}},
+      {...open, referral: {onChain: null, canRegister: false}},
+    ];
+    for (const b of bad) expect([b, presaleViewOf(b)]).toEqual([b, undefined]);
+    expect(presaleViewOf({...open, limits: {...limits, firstPurchase: false}, referral: {onChain: OTHER, canRegister: false}})).toMatchObject({referral: {onChain: OTHER, canRegister: false}});
+  });
+
+  it('checkReferrer against the real background: {type, account, referrer} exactly as the field holds it; null when it would register, else the line; a failed read typed', async () => {
+    const w = await wired({more: [[allocationOf(REF), program(allocationData({user: REF, count: 1}))]]});
+    expect(await w.client.checkReferrer(ACCOUNT, REF)).toEqual({ok: true, data: null});
+    expect(await w.client.checkReferrer(ACCOUNT, 'not an address')).toEqual({ok: true, data: 'referrer-invalid'});
+    expect(await w.client.checkReferrer(ACCOUNT, ACCOUNT)).toEqual({ok: true, data: 'referrer-self'});
+    expect(w.sent).toEqual([
+      {type: 'presale.checkReferrer', account: ACCOUNT, referrer: REF},
+      {type: 'presale.checkReferrer', account: ACCOUNT, referrer: 'not an address'},
+      {type: 'presale.checkReferrer', account: ACCOUNT, referrer: ACCOUNT},
+    ]);
+    const none = await wired({more: [[allocationOf(REF), null]]});
+    expect(await none.client.checkReferrer(ACCOUNT, REF)).toEqual({ok: true, data: 'referrer-no-allocation'});
+    const bought = await wired({chain: {user: program(userData()), allocation: program(allocationData())}, more: [[allocationOf(REF), program(allocationData({user: REF}))]]});
+    expect(await bought.client.checkReferrer(ACCOUNT, REF)).toEqual({ok: true, data: 'referrer-not-applicable'});
+    expect(await canned({ok: false, error: 'coordinator-refused'}).client.checkReferrer(ACCOUNT, REF)).toEqual({ok: false, error: 'coordinator-refused'});
+    expect(await canned({ok: false, error: 'presale-unavailable', data: {detail: 'x'}}).client.checkReferrer(ACCOUNT, REF)).toMatchObject({ok: false, error: 'presale-unavailable'});
+  });
+
+  it('referrerCheckOf: {ok: true} → null, {ok: false, line} → the line; anything else failed', () => {
+    expect(referrerCheckOf({ok: true})).toBeNull();
+    for (const line of REFERRER_LINES) expect(referrerCheckOf({ok: false, line})).toBe(line);
+    for (const b of [{ok: true, line: 'referrer-self'}, {ok: false}, {ok: false, line: 'referrer-elsewhere'}, {ok: 'true'}, {}, null, 'referrer-self', {ok: false, line: 'referrer-self', extra: 1}]) {
+      expect([b, referrerCheckOf(b)]).toEqual([b, undefined]);
+    }
+  });
+
+  it('prepareBuy carries the referral address only when there is one — without one, B1d-1b’s intent exactly; prepare’s four referrer codes and the signature’s two are typed refusals', async () => {
+    const c = canned({ok: false, error: 'referrer-not-applicable'});
+    expect(await c.client.prepareBuy(ACCOUNT, {currency: 'SOL', amount: 2_000_000_000n, stage: 0, referrer: REF})).toEqual({ok: false, error: 'referrer-not-applicable'});
+    await c.client.prepareBuy(ACCOUNT, {currency: 'SOL', amount: 2_000_000_000n, stage: 0});
+    expect(c.sent).toEqual([
+      {type: 'presale.prepareBuy', account: ACCOUNT, intent: {currency: 'SOL', amount: '2000000000', stage: 0, referrer: REF}},
+      {type: 'presale.prepareBuy', account: ACCOUNT, intent: {currency: 'SOL', amount: '2000000000', stage: 0}},
+    ]);
+    expect(Object.hasOwn((c.sent[1] as {intent: object}).intent, 'referrer')).toBe(false);
+    for (const code of REFERRER_LINES) expect([code, PREPARE_REFUSALS.includes(code)]).toEqual([code, true]);
+    expect(BUY_REFUSALS.filter(x => x.startsWith('referrer-'))).toEqual(['referrer-self', 'referrer-no-allocation']);
+  });
+});
+
 // B1d-1b Task 5: what #20's purchase variant asks — presale.preparedFor, presale.buy, presale.discardPrepared — and
 // prepareBuy carrying a challenge. The messages as the background parses them; each reply's shape checked.
 describe('the client for #20’s purchase variant', () => {
@@ -315,6 +404,94 @@ describe('the client for #11’s banner', () => {
       'banner',
     ]) {
       expect([bad, bannerOf(bad)]).toEqual([bad, undefined]);
+    }
+  });
+});
+
+// B1d-2 Task 4 (§3.5, §4.4): #24's data.
+describe('the client for #24 (presale.referral)', () => {
+  const LINK = `https://noc-tura.io?ref=${ACCOUNT}`;
+  it('referral against the real background: {type, account}; the link whole, EARNED as bigint from the chain, the stats null when their source failed (positive control)', async () => {
+    const {client, sent} = await wired({chain: {allocation: program(allocationData({bonus: 16_142_571_618n}))}});
+    expect(await client.referral(ACCOUNT)).toEqual({ok: true, data: {link: LINK, earnedBase: 16_142_571_618n, referrals: null, referredCents: null}});
+    expect(sent).toEqual([{type: 'presale.referral', account: ACCOUNT}]);
+  });
+
+  it('referralDataOf: exactly four keys; the link this account’s, whole; each figure a decimal string or null — anything else failed', () => {
+    const good = {link: LINK, earnedBase: '7', referrals: '3', referredCents: '123456'};
+    expect(referralDataOf(good, ACCOUNT)).toEqual({link: LINK, earnedBase: 7n, referrals: 3n, referredCents: 123_456n});
+    expect(referralDataOf({...good, earnedBase: null, referrals: null, referredCents: null}, ACCOUNT)).toEqual({link: LINK, earnedBase: null, referrals: null, referredCents: null});
+    // Beyond a double: the cents stay exact (bigint, never a float).
+    expect(referralDataOf({...good, referredCents: '900719925474099312'}, ACCOUNT)?.referredCents).toBe(900_719_925_474_099_312n);
+    for (const bad of [
+      {...good, extra: 1},
+      {link: LINK, earnedBase: '7', referrals: '3'},
+      {...good, link: `https://noc-tura.io?ref=${OTHER}`},
+      {...good, link: `https://noc-tura.io?ref=${ACCOUNT.slice(0, 8)}…`},
+      {...good, link: `https://evil.example?ref=${ACCOUNT}`},
+      {...good, link: `${LINK} `},
+      {...good, earnedBase: 7},
+      {...good, referrals: '-1'},
+      {...good, referredCents: '12.5'},
+      {...good, referrals: ''},
+      null,
+      'referral',
+    ]) {
+      expect([bad, referralDataOf(bad, ACCOUNT)]).toEqual([bad, undefined]);
+    }
+    expect(referralDataOf(good, OTHER)).toBeUndefined();
+  });
+});
+
+// B1d-2 Task 5 (§1.4, §4.6, D29; rev 3.6): #27's Q34 or Q60 — the purchases presale.unrecorded lists for the account, each with its state.
+describe('the client for #27’s Q34 (presale.unrecorded)', () => {
+  const SIG_B = '4'.repeat(88);
+  const stored = (signature: string, state: string) => ({
+    signature,
+    account: ACCOUNT,
+    payload: {txHash: signature, buyerAddress: ACCOUNT, paymentToken: 'SOL', paymentAmount: '1', nocAmount: 1, usdValue: 1, stage: 1},
+    confirmedAt: 0,
+    attempts: 1,
+    nextAt: 0,
+    state,
+  });
+  it('unrecorded against the real background: {type, account}; the due and refused purchases with their states in order, not the accepted one (positive control)', async () => {
+    const {ext, client, sent} = await wired();
+    await ext.local.set(PRESALE_RECORDS_KEY, [stored(SIGNATURE, 'due'), stored('3'.repeat(88), 'done'), stored(SIG_B, 'refused')]);
+    expect(await client.unrecorded(ACCOUNT)).toEqual({
+      ok: true,
+      data: [
+        {signature: SIGNATURE, state: 'due'},
+        {signature: SIG_B, state: 'refused'},
+      ],
+    });
+    expect(sent).toEqual([{type: 'presale.unrecorded', account: ACCOUNT}]);
+  });
+
+  it('unrecordedOf: an array of {signature, state} (due, given-up, refused), possibly empty — anything else failed', () => {
+    const u = (signature: string, state: string) => ({signature, state});
+    expect(unrecordedOf([])).toEqual([]);
+    const good = [u(SIGNATURE, 'due'), u(SIG_B, 'given-up'), u(SIGNATURE, 'refused')];
+    expect(unrecordedOf(good)).toEqual(good);
+    for (const bad of [
+      null,
+      SIGNATURE,
+      {0: u(SIGNATURE, 'due')},
+      [SIGNATURE],
+      [u(SIGNATURE, 'due'), 7],
+      [u(SIGNATURE, 'due'), null],
+      [u(SIGNATURE, 'done')],
+      [u(SIGNATURE, 'pending')],
+      [u(SIGNATURE, 'Refused')],
+      [{signature: SIGNATURE}],
+      [{...u(SIGNATURE, 'due'), extra: 1}],
+      [u('x', 'due')],
+      [u(`${SIGNATURE} `, 'due')],
+      [u('0'.repeat(88), 'due')],
+      [u('5'.repeat(63), 'due')],
+      [u('5'.repeat(89), 'due')],
+    ]) {
+      expect([bad, unrecordedOf(bad)]).toEqual([bad, undefined]);
     }
   });
 });

@@ -1,0 +1,138 @@
+{
+  "capturedFrom": "commit a1bda47 (main, B1d-1b merged) — B1d-2 Task 2 capture step",
+  "digests": [
+    {
+      "account": "AKnL4NNf3DGWZJS6cPknBuEGnVsV4A4m5tgebLHaRSZ9",
+      "intent": {
+        "currency": "SOL",
+        "amount": "2000000000",
+        "stage": 0
+      },
+      "digest": "3c17087a9e8b506e18540e4fa4b71043c80329f623bca332dc281637eb7f945f"
+    },
+    {
+      "account": "AKnL4NNf3DGWZJS6cPknBuEGnVsV4A4m5tgebLHaRSZ9",
+      "intent": {
+        "currency": "USDC",
+        "amount": "1",
+        "stage": 9
+      },
+      "digest": "f9b58b3899544644ba42ea60e95af83becd66c8f84bcfa56fb4a1a92aae7277c"
+    },
+    {
+      "account": "AKnL4NNf3DGWZJS6cPknBuEGnVsV4A4m5tgebLHaRSZ9",
+      "intent": {
+        "currency": "USDT",
+        "amount": "18446744073709551615",
+        "stage": 3
+      },
+      "digest": "944ca96f03356034378e4bc2490012f9c8c21d162c0298ed44754a89195b2811"
+    },
+    {
+      "account": "9Y7FtteLhCJABAQtkYEFZs46rJgy1ixMA1JFMUepTki4",
+      "intent": {
+        "currency": "SOL",
+        "amount": "2000000000",
+        "stage": 0
+      },
+      "digest": "caaea0f94647c31bdc5adedc6f3f1d1a06da579243191821476be4a9160ec219"
+    },
+    {
+      "account": "9Y7FtteLhCJABAQtkYEFZs46rJgy1ixMA1JFMUepTki4",
+      "intent": {
+        "currency": "USDC",
+        "amount": "1",
+        "stage": 9
+      },
+      "digest": "8b5475041d91505ce362df028b1a814214962467f1eda28d284d204c6e637578"
+    },
+    {
+      "account": "9Y7FtteLhCJABAQtkYEFZs46rJgy1ixMA1JFMUepTki4",
+      "intent": {
+        "currency": "USDT",
+        "amount": "18446744073709551615",
+        "stage": 3
+      },
+      "digest": "556534aa577bb403d9ccdd79698865fc63e19b594d856489d10e780f36dd3e8a"
+    }
+  ],
+  "integrity": [
+    {
+      "entry": {
+        "id": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+        "account": "AKnL4NNf3DGWZJS6cPknBuEGnVsV4A4m5tgebLHaRSZ9",
+        "kind": "presale-buy",
+        "intent": {
+          "currency": "SOL",
+          "amount": "2000000000",
+          "stage": 0
+        },
+        "message": "AQID",
+        "lastValidBlockHeight": 1000,
+        "createdAt": 1000000,
+        "intentDigest": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef",
+        "challengeId": null
+      },
+      "integrity": "1dab09eda711818cf95a3b7430dba0729c6ff04957cca9db34d7962c2a3a3299"
+    },
+    {
+      "entry": {
+        "id": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+        "account": "AKnL4NNf3DGWZJS6cPknBuEGnVsV4A4m5tgebLHaRSZ9",
+        "kind": "presale-buy",
+        "intent": {
+          "currency": "SOL",
+          "amount": "2000000000",
+          "stage": 0
+        },
+        "message": "AQID",
+        "lastValidBlockHeight": 1000,
+        "createdAt": 1000000,
+        "intentDigest": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef",
+        "challengeId": "abababababababababababababababab"
+      },
+      "integrity": "8e10046e8c7c00ff37afc089c70f16e43bd01520f50c1e26dc2771937f4f1965"
+    }
+  ],
+  "flows": {
+    "firstSol": {
+      "intent": {
+        "currency": "SOL",
+        "amount": "2000000000",
+        "stage": 0
+      },
+      "view": "{\"id\":\"02020202020202020202020202020202\",\"currency\":\"SOL\",\"amount\":\"2000000000\",\"stage\":0,\"priceTicks\":\"1501\",\"nocBase\":\"2643837441705\",\"spentCents\":\"39684\",\"destination\":\"6Zia7b1b3NTFMQ8Kd588m8GJioMhY3YLbtcLwbB5o6Vd\",\"referrer\":null,\"fees\":{\"networkLamports\":\"11000\",\"priorityLamports\":\"6000\",\"rentLamports\":\"2189480\"},\"reauth\":{\"challengeId\":\"01010101010101010101010101010101\",\"reasons\":[\"first-purchase\",\"over-5-percent\",\"over-usd-threshold\"],\"proven\":false},\"validUntil\":1760000030000,\"simulation\":{\"slot\":271408921,\"elapsedMs\":0,\"programs\":[\"compute-budget\",\"presale\"],\"instructionCount\":3}}",
+      "prepared": "[{\"id\":\"02020202020202020202020202020202\",\"account\":\"AKnL4NNf3DGWZJS6cPknBuEGnVsV4A4m5tgebLHaRSZ9\",\"kind\":\"presale-buy\",\"intent\":{\"currency\":\"SOL\",\"amount\":\"2000000000\",\"stage\":0},\"message\":\"gAEABAqKiOPddAnxlf1S2y08ul1yymcJvx2UEhvzdIgBtA9vXG1fJJcVdxSNhPJbFGnqCt0at+WKbDuppQWdPS6Mxz9VJ/WJtN29cXSn0foN6oUF3oZFSahzSdeSszvUAxNiBlIJ/4LyprIGPps7inCNwYWDtlHaZUdw3DlmCOB+hBPjt6TWHQgffDdyGqrpypolqUakvEwgsI7NpZVUZIjdnqkxUqwGYNZxBwQ+plpOOzOeb3Vo5ExxtQ8SjckuDEI/QGADBkZv5SEXMv/srbpyw5vnvIzlu8X3EmssQ5s6QAAAAFXve3OgY+lEupbbo02wrq4JN1wrUXcAlHuRbpe2FN75YDFHBDQN7d83H9QkchSPJI6dGm0aXrKsOs2Lf9XWskMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPA2J2JGp1ud4zSe1CsV4jL2UY/CD1/NTx1k6B+b0lj3AwYABQLA1AEABgAJA1DDAAAAAAAABwgBAgMECAAFCRChmUHuoOwrpQCUNXcAAAAAAA==\",\"lastValidBlockHeight\":1000,\"createdAt\":1760000000000,\"intentDigest\":\"3c17087a9e8b506e18540e4fa4b71043c80329f623bca332dc281637eb7f945f\",\"challengeId\":\"01010101010101010101010101010101\",\"integrity\":\"75992c9b2902881128330bd56d53950b9776ec72d80e31bb6ffea51fcde5252f\",\"shown\":{\"fees\":{\"networkLamports\":\"11000\",\"markupLamports\":\"0\"},\"simulation\":{\"slot\":271408921,\"elapsedMs\":0,\"programs\":[\"compute-budget\",\"presale\"],\"instructionCount\":3},\"view\":{\"currency\":\"SOL\",\"amount\":\"2000000000\",\"stage\":0,\"priceTicks\":\"1501\",\"nocBase\":\"2643837441705\",\"spentCents\":\"39684\",\"destination\":\"6Zia7b1b3NTFMQ8Kd588m8GJioMhY3YLbtcLwbB5o6Vd\",\"referrer\":null,\"fees\":{\"networkLamports\":\"11000\",\"priorityLamports\":\"6000\",\"rentLamports\":\"2189480\"},\"reasons\":[\"first-purchase\",\"over-5-percent\",\"over-usd-threshold\"]},\"basis\":{\"allocationExists\":false,\"purchaseCount\":0,\"referrer\":null,\"userAccountExists\":false}}}]",
+      "challenges": "{\"01010101010101010101010101010101\":{\"digest\":\"3c17087a9e8b506e18540e4fa4b71043c80329f623bca332dc281637eb7f945f\",\"issuedAt\":1760000000000,\"expiresAt\":1760000120000,\"satisfied\":false,\"about\":{\"kind\":\"presale-buy\",\"account\":\"AKnL4NNf3DGWZJS6cPknBuEGnVsV4A4m5tgebLHaRSZ9\",\"currency\":\"SOL\",\"amount\":\"2000000000\",\"stage\":0,\"priceTicks\":\"1501\",\"nocBase\":\"2643837441705\",\"spentCents\":\"39684\",\"destination\":\"6Zia7b1b3NTFMQ8Kd588m8GJioMhY3YLbtcLwbB5o6Vd\",\"networkLamports\":\"11000\",\"priorityLamports\":\"6000\",\"rentLamports\":\"2189480\",\"reasons\":[\"first-purchase\",\"over-5-percent\",\"over-usd-threshold\"],\"thresholdCents\":10000}}}",
+      "wire": "ARsCkHhYX/WbHl2k4fcu+nY4zeV4hQZBTXc1wCKQTEQHb6ui/R1xhjxDLmEVEPX1VhZ7H/6fmaAnO1CcFEwAzQKAAQAECoqI4910CfGV/VLbLTy6XXLKZwm/HZQSG/N0iAG0D29cbV8klxV3FI2E8lsUaeoK3Rq35YpsO6mlBZ09LozHP1Un9Ym03b1xdKfR+g3qhQXehkVJqHNJ15KzO9QDE2IGUgn/gvKmsgY+mzuKcI3BhYO2UdplR3DcOWYI4H6EE+O3pNYdCB98N3IaqunKmiWpRqS8TCCwjs2llVRkiN2eqTFSrAZg1nEHBD6mWk47M55vdWjkTHG1DxKNyS4MQj9AYAMGRm/lIRcy/+ytunLDm+e8jOW7xfcSayxDmzpAAAAAVe97c6Bj6US6ltujTbCurgk3XCtRdwCUe5Ful7YU3vlgMUcENA3t3zcf1CRyFI8kjp0abRpesqw6zYt/1dayQwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA8DYnYkanW53jNJ7UKxXiMvZRj8IPX81PHWToH5vSWPcDBgAFAsDUAQAGAAkDUMMAAAAAAAAHCAECAwQIAAUJEKGZQe6g7CulAJQ1dwAAAAAA",
+      "sent": "[{\"id\":\"03030303030303030303030303030303\",\"account\":\"AKnL4NNf3DGWZJS6cPknBuEGnVsV4A4m5tgebLHaRSZ9\",\"signature\":\"YKckQ3nrURNRmPfYc81mm9dB3B1ngA9eQdkeY1RUnzGvbHjqfa2kcaTu76wtXE1uRif9Gcws5RJGkyBsvpWxVPF\",\"wire\":\"ARsCkHhYX/WbHl2k4fcu+nY4zeV4hQZBTXc1wCKQTEQHb6ui/R1xhjxDLmEVEPX1VhZ7H/6fmaAnO1CcFEwAzQKAAQAECoqI4910CfGV/VLbLTy6XXLKZwm/HZQSG/N0iAG0D29cbV8klxV3FI2E8lsUaeoK3Rq35YpsO6mlBZ09LozHP1Un9Ym03b1xdKfR+g3qhQXehkVJqHNJ15KzO9QDE2IGUgn/gvKmsgY+mzuKcI3BhYO2UdplR3DcOWYI4H6EE+O3pNYdCB98N3IaqunKmiWpRqS8TCCwjs2llVRkiN2eqTFSrAZg1nEHBD6mWk47M55vdWjkTHG1DxKNyS4MQj9AYAMGRm/lIRcy/+ytunLDm+e8jOW7xfcSayxDmzpAAAAAVe97c6Bj6US6ltujTbCurgk3XCtRdwCUe5Ful7YU3vlgMUcENA3t3zcf1CRyFI8kjp0abRpesqw6zYt/1dayQwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA8DYnYkanW53jNJ7UKxXiMvZRj8IPX81PHWToH5vSWPcDBgAFAsDUAQAGAAkDUMMAAAAAAAAHCAECAwQIAAUJEKGZQe6g7CulAJQ1dwAAAAAA\",\"lastValidBlockHeight\":1000,\"createdAt\":1760000000000,\"lastSentAt\":1760000000000,\"state\":\"pending\",\"detail\":null,\"detailCode\":null,\"intent\":null,\"origin\":null,\"firstBroadcast\":\"done\",\"expiryNullSeenAt\":null,\"failure\":null,\"fee\":{\"networkLamports\":\"11000\",\"markupLamports\":\"0\"},\"extra\":{\"kind\":\"presale-buy\",\"data\":{\"currency\":\"SOL\",\"amount\":\"2000000000\",\"stage\":\"0\",\"priceTicks\":\"1501\",\"nocBase\":\"2643837441705\",\"spentCents\":\"39684\",\"destination\":\"6Zia7b1b3NTFMQ8Kd588m8GJioMhY3YLbtcLwbB5o6Vd\",\"referrer\":null}}}]",
+      "polled": "[{\"id\":\"03030303030303030303030303030303\",\"account\":\"AKnL4NNf3DGWZJS6cPknBuEGnVsV4A4m5tgebLHaRSZ9\",\"signature\":\"YKckQ3nrURNRmPfYc81mm9dB3B1ngA9eQdkeY1RUnzGvbHjqfa2kcaTu76wtXE1uRif9Gcws5RJGkyBsvpWxVPF\",\"wire\":\"ARsCkHhYX/WbHl2k4fcu+nY4zeV4hQZBTXc1wCKQTEQHb6ui/R1xhjxDLmEVEPX1VhZ7H/6fmaAnO1CcFEwAzQKAAQAECoqI4910CfGV/VLbLTy6XXLKZwm/HZQSG/N0iAG0D29cbV8klxV3FI2E8lsUaeoK3Rq35YpsO6mlBZ09LozHP1Un9Ym03b1xdKfR+g3qhQXehkVJqHNJ15KzO9QDE2IGUgn/gvKmsgY+mzuKcI3BhYO2UdplR3DcOWYI4H6EE+O3pNYdCB98N3IaqunKmiWpRqS8TCCwjs2llVRkiN2eqTFSrAZg1nEHBD6mWk47M55vdWjkTHG1DxKNyS4MQj9AYAMGRm/lIRcy/+ytunLDm+e8jOW7xfcSayxDmzpAAAAAVe97c6Bj6US6ltujTbCurgk3XCtRdwCUe5Ful7YU3vlgMUcENA3t3zcf1CRyFI8kjp0abRpesqw6zYt/1dayQwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA8DYnYkanW53jNJ7UKxXiMvZRj8IPX81PHWToH5vSWPcDBgAFAsDUAQAGAAkDUMMAAAAAAAAHCAECAwQIAAUJEKGZQe6g7CulAJQ1dwAAAAAA\",\"lastValidBlockHeight\":1000,\"createdAt\":1760000000000,\"lastSentAt\":1760000000000,\"state\":\"confirmed\",\"detail\":null,\"detailCode\":null,\"intent\":null,\"origin\":null,\"firstBroadcast\":\"done\",\"expiryNullSeenAt\":null,\"failure\":null,\"fee\":{\"networkLamports\":\"11000\",\"markupLamports\":\"0\"},\"extra\":{\"kind\":\"presale-buy\",\"data\":{\"currency\":\"SOL\",\"amount\":\"2000000000\",\"stage\":\"0\",\"priceTicks\":\"1501\",\"nocBase\":\"2643837441705\",\"spentCents\":\"39684\",\"destination\":\"6Zia7b1b3NTFMQ8Kd588m8GJioMhY3YLbtcLwbB5o6Vd\",\"referrer\":null}}}]"
+    },
+    "repeatUsdc": {
+      "intent": {
+        "currency": "USDC",
+        "amount": "20000000",
+        "stage": 0
+      },
+      "view": "{\"id\":\"01010101010101010101010101010101\",\"currency\":\"USDC\",\"amount\":\"20000000\",\"stage\":0,\"priceTicks\":\"1501\",\"nocBase\":\"133244503664\",\"spentCents\":\"2000\",\"destination\":\"DNMn9dt7sqLoKZ27ms2U7kyBJPJUL9dvtqgTavVNDGW3\",\"referrer\":null,\"fees\":{\"networkLamports\":\"11000\",\"priorityLamports\":\"6000\",\"rentLamports\":\"0\"},\"reauth\":null,\"validUntil\":1760000030000,\"simulation\":{\"slot\":271408921,\"elapsedMs\":0,\"programs\":[\"compute-budget\",\"presale\"],\"instructionCount\":3}}",
+      "prepared": "[{\"id\":\"01010101010101010101010101010101\",\"account\":\"AKnL4NNf3DGWZJS6cPknBuEGnVsV4A4m5tgebLHaRSZ9\",\"kind\":\"presale-buy\",\"intent\":{\"currency\":\"USDC\",\"amount\":\"20000000\",\"stage\":0},\"message\":\"gAEABQyKiOPddAnxlf1S2y08ul1yymcJvx2UEhvzdIgBtA9vXG1fJJcVdxSNhPJbFGnqCt0at+WKbDuppQWdPS6Mxz9VJ/WJtN29cXSn0foN6oUF3oZFSahzSdeSszvUAxNiBlIJ/4LyprIGPps7inCNwYWDtlHaZUdw3DlmCOB+hBPjt6TWHQgffDdyGqrpypolqUakvEwgsI7NpZVUZIjdnqkx3C2q8ZuiV1phDXlwA0cwNuX+6KGIXiPvab+5mykxBSu3xO8xqvX2g5XSjNR315+Fa7kmuT5j5lUQV+/cbtpzIAMGRm/lIRcy/+ytunLDm+e8jOW7xfcSayxDmzpAAAAAVe97c6Bj6US6ltujTbCurgk3XCtRdwCUe5Ful7YU3vnG+nrzvtutOj1l82qryXQxsbvkwtL24OR8pgIDRS9dYQbd9uHXZaGT2cvhRs7reawctIXtX1s3kTqM9YV+/wCpAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADwNidiRqdbneM0ntQrFeIy9lGPwg9fzU8dZOgfm9JY9wMHAAUCwNQBAAcACQNQwwAAAAAAAAgKAQIDBAUGCQAKCxCWIrXv5Xu7gAAtMQEAAAAAAA==\",\"lastValidBlockHeight\":1000,\"createdAt\":1760000000000,\"intentDigest\":\"bcd788eab7311be0e47c7ff90054762b70a3fb9babb45085a42ac12b85c359ad\",\"challengeId\":null,\"integrity\":\"89b74e351901188529ae4d145be2bc318ffe2dd318c4b10df52956e0962db562\",\"shown\":{\"fees\":{\"networkLamports\":\"11000\",\"markupLamports\":\"0\"},\"simulation\":{\"slot\":271408921,\"elapsedMs\":0,\"programs\":[\"compute-budget\",\"presale\"],\"instructionCount\":3},\"view\":{\"currency\":\"USDC\",\"amount\":\"20000000\",\"stage\":0,\"priceTicks\":\"1501\",\"nocBase\":\"133244503664\",\"spentCents\":\"2000\",\"destination\":\"DNMn9dt7sqLoKZ27ms2U7kyBJPJUL9dvtqgTavVNDGW3\",\"referrer\":null,\"fees\":{\"networkLamports\":\"11000\",\"priorityLamports\":\"6000\",\"rentLamports\":\"0\"},\"reasons\":[]},\"basis\":{\"allocationExists\":true,\"purchaseCount\":2,\"referrer\":null,\"userAccountExists\":true}}}]",
+      "challenges": "null",
+      "wire": "AQDa57dnbQfefXTDjQIaZAWKfDeh+yuDUqw2PXCletqSRmNxC2nHNXk3yi8H72trNTvDfWXtCB21IwJuwbAdkA+AAQAFDIqI4910CfGV/VLbLTy6XXLKZwm/HZQSG/N0iAG0D29cbV8klxV3FI2E8lsUaeoK3Rq35YpsO6mlBZ09LozHP1Un9Ym03b1xdKfR+g3qhQXehkVJqHNJ15KzO9QDE2IGUgn/gvKmsgY+mzuKcI3BhYO2UdplR3DcOWYI4H6EE+O3pNYdCB98N3IaqunKmiWpRqS8TCCwjs2llVRkiN2eqTHcLarxm6JXWmENeXADRzA25f7ooYheI+9pv7mbKTEFK7fE7zGq9faDldKM1HfXn4VruSa5PmPmVRBX79xu2nMgAwZGb+UhFzL/7K26csOb57yM5bvF9xJrLEObOkAAAABV73tzoGPpRLqW26NNsK6uCTdcK1F3AJR7kW6XthTe+cb6evO+2606PWXzaqvJdDGxu+TC0vbg5HymAgNFL11hBt324ddloZPZy+FGzut5rBy0he1fWzeROoz1hX7/AKkAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPA2J2JGp1ud4zSe1CsV4jL2UY/CD1/NTx1k6B+b0lj3AwcABQLA1AEABwAJA1DDAAAAAAAACAoBAgMEBQYJAAoLEJYite/le7uAAC0xAQAAAAAA",
+      "sent": "[{\"id\":\"02020202020202020202020202020202\",\"account\":\"AKnL4NNf3DGWZJS6cPknBuEGnVsV4A4m5tgebLHaRSZ9\",\"signature\":\"1zWfY927pGayan1zduEj6mg3WJx49e7SLC2xYaqGqFjeiExyBsSbo85BgjKBwQn4U4FGLT3ELrqvyXHQp2fuiJJ\",\"wire\":\"AQDa57dnbQfefXTDjQIaZAWKfDeh+yuDUqw2PXCletqSRmNxC2nHNXk3yi8H72trNTvDfWXtCB21IwJuwbAdkA+AAQAFDIqI4910CfGV/VLbLTy6XXLKZwm/HZQSG/N0iAG0D29cbV8klxV3FI2E8lsUaeoK3Rq35YpsO6mlBZ09LozHP1Un9Ym03b1xdKfR+g3qhQXehkVJqHNJ15KzO9QDE2IGUgn/gvKmsgY+mzuKcI3BhYO2UdplR3DcOWYI4H6EE+O3pNYdCB98N3IaqunKmiWpRqS8TCCwjs2llVRkiN2eqTHcLarxm6JXWmENeXADRzA25f7ooYheI+9pv7mbKTEFK7fE7zGq9faDldKM1HfXn4VruSa5PmPmVRBX79xu2nMgAwZGb+UhFzL/7K26csOb57yM5bvF9xJrLEObOkAAAABV73tzoGPpRLqW26NNsK6uCTdcK1F3AJR7kW6XthTe+cb6evO+2606PWXzaqvJdDGxu+TC0vbg5HymAgNFL11hBt324ddloZPZy+FGzut5rBy0he1fWzeROoz1hX7/AKkAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPA2J2JGp1ud4zSe1CsV4jL2UY/CD1/NTx1k6B+b0lj3AwcABQLA1AEABwAJA1DDAAAAAAAACAoBAgMEBQYJAAoLEJYite/le7uAAC0xAQAAAAAA\",\"lastValidBlockHeight\":1000,\"createdAt\":1760000000000,\"lastSentAt\":1760000000000,\"state\":\"pending\",\"detail\":null,\"detailCode\":null,\"intent\":null,\"origin\":null,\"firstBroadcast\":\"done\",\"expiryNullSeenAt\":null,\"failure\":null,\"fee\":{\"networkLamports\":\"11000\",\"markupLamports\":\"0\"},\"extra\":{\"kind\":\"presale-buy\",\"data\":{\"currency\":\"USDC\",\"amount\":\"20000000\",\"stage\":\"0\",\"priceTicks\":\"1501\",\"nocBase\":\"133244503664\",\"spentCents\":\"2000\",\"destination\":\"DNMn9dt7sqLoKZ27ms2U7kyBJPJUL9dvtqgTavVNDGW3\",\"referrer\":null}}}]",
+      "polled": "[{\"id\":\"02020202020202020202020202020202\",\"account\":\"AKnL4NNf3DGWZJS6cPknBuEGnVsV4A4m5tgebLHaRSZ9\",\"signature\":\"1zWfY927pGayan1zduEj6mg3WJx49e7SLC2xYaqGqFjeiExyBsSbo85BgjKBwQn4U4FGLT3ELrqvyXHQp2fuiJJ\",\"wire\":\"AQDa57dnbQfefXTDjQIaZAWKfDeh+yuDUqw2PXCletqSRmNxC2nHNXk3yi8H72trNTvDfWXtCB21IwJuwbAdkA+AAQAFDIqI4910CfGV/VLbLTy6XXLKZwm/HZQSG/N0iAG0D29cbV8klxV3FI2E8lsUaeoK3Rq35YpsO6mlBZ09LozHP1Un9Ym03b1xdKfR+g3qhQXehkVJqHNJ15KzO9QDE2IGUgn/gvKmsgY+mzuKcI3BhYO2UdplR3DcOWYI4H6EE+O3pNYdCB98N3IaqunKmiWpRqS8TCCwjs2llVRkiN2eqTHcLarxm6JXWmENeXADRzA25f7ooYheI+9pv7mbKTEFK7fE7zGq9faDldKM1HfXn4VruSa5PmPmVRBX79xu2nMgAwZGb+UhFzL/7K26csOb57yM5bvF9xJrLEObOkAAAABV73tzoGPpRLqW26NNsK6uCTdcK1F3AJR7kW6XthTe+cb6evO+2606PWXzaqvJdDGxu+TC0vbg5HymAgNFL11hBt324ddloZPZy+FGzut5rBy0he1fWzeROoz1hX7/AKkAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPA2J2JGp1ud4zSe1CsV4jL2UY/CD1/NTx1k6B+b0lj3AwcABQLA1AEABwAJA1DDAAAAAAAACAoBAgMEBQYJAAoLEJYite/le7uAAC0xAQAAAAAA\",\"lastValidBlockHeight\":1000,\"createdAt\":1760000000000,\"lastSentAt\":1760000000000,\"state\":\"confirmed\",\"detail\":null,\"detailCode\":null,\"intent\":null,\"origin\":null,\"firstBroadcast\":\"done\",\"expiryNullSeenAt\":null,\"failure\":null,\"fee\":{\"networkLamports\":\"11000\",\"markupLamports\":\"0\"},\"extra\":{\"kind\":\"presale-buy\",\"data\":{\"currency\":\"USDC\",\"amount\":\"20000000\",\"stage\":\"0\",\"priceTicks\":\"1501\",\"nocBase\":\"133244503664\",\"spentCents\":\"2000\",\"destination\":\"DNMn9dt7sqLoKZ27ms2U7kyBJPJUL9dvtqgTavVNDGW3\",\"referrer\":null}}}]"
+    },
+    "onChainReferrerSol": {
+      "intent": {
+        "currency": "SOL",
+        "amount": "200000000",
+        "stage": 0
+      },
+      "view": "{\"id\":\"01010101010101010101010101010101\",\"currency\":\"SOL\",\"amount\":\"200000000\",\"stage\":0,\"priceTicks\":\"1501\",\"nocBase\":\"264357095269\",\"spentCents\":\"3968\",\"destination\":\"6Zia7b1b3NTFMQ8Kd588m8GJioMhY3YLbtcLwbB5o6Vd\",\"referrer\":{\"address\":\"9Y7FtteLhCJABAQtkYEFZs46rJgy1ixMA1JFMUepTki4\",\"registers\":false},\"fees\":{\"networkLamports\":\"11000\",\"priorityLamports\":\"6000\",\"rentLamports\":\"0\"},\"reauth\":null,\"validUntil\":1760000030000,\"simulation\":{\"slot\":271408921,\"elapsedMs\":0,\"programs\":[\"compute-budget\",\"presale\"],\"instructionCount\":3}}",
+      "prepared": "[{\"id\":\"01010101010101010101010101010101\",\"account\":\"AKnL4NNf3DGWZJS6cPknBuEGnVsV4A4m5tgebLHaRSZ9\",\"kind\":\"presale-buy\",\"intent\":{\"currency\":\"SOL\",\"amount\":\"200000000\",\"stage\":0},\"message\":\"gAEABAqKiOPddAnxlf1S2y08ul1yymcJvx2UEhvzdIgBtA9vXG1fJJcVdxSNhPJbFGnqCt0at+WKbDuppQWdPS6Mxz9VJ/WJtN29cXSn0foN6oUF3oZFSahzSdeSszvUAxNiBlIJ/4LyprIGPps7inCNwYWDtlHaZUdw3DlmCOB+hBPjt5hjc4j2zkaK9qXo6N34fI1bipqxOtWxsPgRSnPII7WEUqwGYNZxBwQ+plpOOzOeb3Vo5ExxtQ8SjckuDEI/QGADBkZv5SEXMv/srbpyw5vnvIzlu8X3EmssQ5s6QAAAAFXve3OgY+lEupbbo02wrq4JN1wrUXcAlHuRbpe2FN75YDFHBDQN7d83H9QkchSPJI6dGm0aXrKsOs2Lf9XWskMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPA2J2JGp1ud4zSe1CsV4jL2UY/CD1/NTx1k6B+b0lj3AwYABQLA1AEABgAJA1DDAAAAAAAABwgBAgMECAAFCRChmUHuoOwrpQDC6wsAAAAAAA==\",\"lastValidBlockHeight\":1000,\"createdAt\":1760000000000,\"intentDigest\":\"b00ecaad42a7502ab9ee389b6acbded586980bb460a9116861f0f9fec6050c5a\",\"challengeId\":null,\"integrity\":\"f39db1048a07f80451bafcafa60aaeab97e259a25cb56082c12e266c5adcbe91\",\"shown\":{\"fees\":{\"networkLamports\":\"11000\",\"markupLamports\":\"0\"},\"simulation\":{\"slot\":271408921,\"elapsedMs\":0,\"programs\":[\"compute-budget\",\"presale\"],\"instructionCount\":3},\"view\":{\"currency\":\"SOL\",\"amount\":\"200000000\",\"stage\":0,\"priceTicks\":\"1501\",\"nocBase\":\"264357095269\",\"spentCents\":\"3968\",\"destination\":\"6Zia7b1b3NTFMQ8Kd588m8GJioMhY3YLbtcLwbB5o6Vd\",\"referrer\":{\"address\":\"9Y7FtteLhCJABAQtkYEFZs46rJgy1ixMA1JFMUepTki4\",\"registers\":false},\"fees\":{\"networkLamports\":\"11000\",\"priorityLamports\":\"6000\",\"rentLamports\":\"0\"},\"reasons\":[]},\"basis\":{\"allocationExists\":true,\"purchaseCount\":2,\"referrer\":\"9Y7FtteLhCJABAQtkYEFZs46rJgy1ixMA1JFMUepTki4\",\"userAccountExists\":true}}}]",
+      "challenges": "null",
+      "wire": "AVrQUV670X2s2pHRVJ0JuUllNZ90gHaEqEk1IJ73qL2U9tgoHR1eN/D+9yPhCzWKwxjBWM/Yv4GUV8RcLol2SwqAAQAECoqI4910CfGV/VLbLTy6XXLKZwm/HZQSG/N0iAG0D29cbV8klxV3FI2E8lsUaeoK3Rq35YpsO6mlBZ09LozHP1Un9Ym03b1xdKfR+g3qhQXehkVJqHNJ15KzO9QDE2IGUgn/gvKmsgY+mzuKcI3BhYO2UdplR3DcOWYI4H6EE+O3mGNziPbORor2pejo3fh8jVuKmrE61bGw+BFKc8gjtYRSrAZg1nEHBD6mWk47M55vdWjkTHG1DxKNyS4MQj9AYAMGRm/lIRcy/+ytunLDm+e8jOW7xfcSayxDmzpAAAAAVe97c6Bj6US6ltujTbCurgk3XCtRdwCUe5Ful7YU3vlgMUcENA3t3zcf1CRyFI8kjp0abRpesqw6zYt/1dayQwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA8DYnYkanW53jNJ7UKxXiMvZRj8IPX81PHWToH5vSWPcDBgAFAsDUAQAGAAkDUMMAAAAAAAAHCAECAwQIAAUJEKGZQe6g7CulAMLrCwAAAAAA",
+      "sent": "[{\"id\":\"02020202020202020202020202020202\",\"account\":\"AKnL4NNf3DGWZJS6cPknBuEGnVsV4A4m5tgebLHaRSZ9\",\"signature\":\"2pJsabfML7FJoQdtbkmPehkYP55ePNnBbJE3voFaRENyRN1hdg56NUpg57tLceesC35GrX8Yy8EjJRnKrY1tijdb\",\"wire\":\"AVrQUV670X2s2pHRVJ0JuUllNZ90gHaEqEk1IJ73qL2U9tgoHR1eN/D+9yPhCzWKwxjBWM/Yv4GUV8RcLol2SwqAAQAECoqI4910CfGV/VLbLTy6XXLKZwm/HZQSG/N0iAG0D29cbV8klxV3FI2E8lsUaeoK3Rq35YpsO6mlBZ09LozHP1Un9Ym03b1xdKfR+g3qhQXehkVJqHNJ15KzO9QDE2IGUgn/gvKmsgY+mzuKcI3BhYO2UdplR3DcOWYI4H6EE+O3mGNziPbORor2pejo3fh8jVuKmrE61bGw+BFKc8gjtYRSrAZg1nEHBD6mWk47M55vdWjkTHG1DxKNyS4MQj9AYAMGRm/lIRcy/+ytunLDm+e8jOW7xfcSayxDmzpAAAAAVe97c6Bj6US6ltujTbCurgk3XCtRdwCUe5Ful7YU3vlgMUcENA3t3zcf1CRyFI8kjp0abRpesqw6zYt/1dayQwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA8DYnYkanW53jNJ7UKxXiMvZRj8IPX81PHWToH5vSWPcDBgAFAsDUAQAGAAkDUMMAAAAAAAAHCAECAwQIAAUJEKGZQe6g7CulAMLrCwAAAAAA\",\"lastValidBlockHeight\":1000,\"createdAt\":1760000000000,\"lastSentAt\":1760000000000,\"state\":\"pending\",\"detail\":null,\"detailCode\":null,\"intent\":null,\"origin\":null,\"firstBroadcast\":\"done\",\"expiryNullSeenAt\":null,\"failure\":null,\"fee\":{\"networkLamports\":\"11000\",\"markupLamports\":\"0\"},\"extra\":{\"kind\":\"presale-buy\",\"data\":{\"currency\":\"SOL\",\"amount\":\"200000000\",\"stage\":\"0\",\"priceTicks\":\"1501\",\"nocBase\":\"264357095269\",\"spentCents\":\"3968\",\"destination\":\"6Zia7b1b3NTFMQ8Kd588m8GJioMhY3YLbtcLwbB5o6Vd\",\"referrer\":\"9Y7FtteLhCJABAQtkYEFZs46rJgy1ixMA1JFMUepTki4\"}}}]",
+      "polled": "[{\"id\":\"02020202020202020202020202020202\",\"account\":\"AKnL4NNf3DGWZJS6cPknBuEGnVsV4A4m5tgebLHaRSZ9\",\"signature\":\"2pJsabfML7FJoQdtbkmPehkYP55ePNnBbJE3voFaRENyRN1hdg56NUpg57tLceesC35GrX8Yy8EjJRnKrY1tijdb\",\"wire\":\"AVrQUV670X2s2pHRVJ0JuUllNZ90gHaEqEk1IJ73qL2U9tgoHR1eN/D+9yPhCzWKwxjBWM/Yv4GUV8RcLol2SwqAAQAECoqI4910CfGV/VLbLTy6XXLKZwm/HZQSG/N0iAG0D29cbV8klxV3FI2E8lsUaeoK3Rq35YpsO6mlBZ09LozHP1Un9Ym03b1xdKfR+g3qhQXehkVJqHNJ15KzO9QDE2IGUgn/gvKmsgY+mzuKcI3BhYO2UdplR3DcOWYI4H6EE+O3mGNziPbORor2pejo3fh8jVuKmrE61bGw+BFKc8gjtYRSrAZg1nEHBD6mWk47M55vdWjkTHG1DxKNyS4MQj9AYAMGRm/lIRcy/+ytunLDm+e8jOW7xfcSayxDmzpAAAAAVe97c6Bj6US6ltujTbCurgk3XCtRdwCUe5Ful7YU3vlgMUcENA3t3zcf1CRyFI8kjp0abRpesqw6zYt/1dayQwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA8DYnYkanW53jNJ7UKxXiMvZRj8IPX81PHWToH5vSWPcDBgAFAsDUAQAGAAkDUMMAAAAAAAAHCAECAwQIAAUJEKGZQe6g7CulAMLrCwAAAAAA\",\"lastValidBlockHeight\":1000,\"createdAt\":1760000000000,\"lastSentAt\":1760000000000,\"state\":\"confirmed\",\"detail\":null,\"detailCode\":null,\"intent\":null,\"origin\":null,\"firstBroadcast\":\"done\",\"expiryNullSeenAt\":null,\"failure\":null,\"fee\":{\"networkLamports\":\"11000\",\"markupLamports\":\"0\"},\"extra\":{\"kind\":\"presale-buy\",\"data\":{\"currency\":\"SOL\",\"amount\":\"200000000\",\"stage\":\"0\",\"priceTicks\":\"1501\",\"nocBase\":\"264357095269\",\"spentCents\":\"3968\",\"destination\":\"6Zia7b1b3NTFMQ8Kd588m8GJioMhY3YLbtcLwbB5o6Vd\",\"referrer\":\"9Y7FtteLhCJABAQtkYEFZs46rJgy1ixMA1JFMUepTki4\"}}}]"
+    }
+  }
+}

@@ -2,6 +2,7 @@ import type {Ext} from '../ext';
 import type {WalletDeps} from './deps';
 import {digestOf} from './digest';
 import type {PreparedEntry} from './prepare';
+import type {PendingRecord} from './pendingStore';
 
 /**
  * B1d §1.3 (C19): the shared send pipeline knows kinds, not presale. Each kind is registered once, by the module that
@@ -49,6 +50,12 @@ export interface IntentKind<I> {
    * only — or null when `fresh` describes another intent. Not asked of `send`.
    */
   rebaseAbout?(stored: KindAbout, fresh: KindAbout): KindAbout | null;
+  /**
+   * B1d §1.3: the poller's call, once, when a record of this kind first reaches `confirmed` — only the wallet's own
+   * record (`extra` of this kind) of an account of the wallet stored now. Display and bookkeeping only: it decides
+   * nothing about the transaction, and a hook that throws changes nothing the poller does. Not asked of `send`.
+   */
+  onConfirmed?(host: KindHost, record: PendingRecord): Promise<void>;
 }
 
 const kinds = new Map<string, IntentKind<unknown>>();

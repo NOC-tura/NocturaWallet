@@ -18,15 +18,18 @@ import {
   missingStrings,
   moduleIds,
   offModuleViolations,
+  unlistedModules,
 } from '../check-no-presale.mjs';
 import {PRESALE_ENTRIES} from '../presaleSwitch.mjs';
 import {PRESALE_INSTRUCTIONS} from '../../src/background/dapp/decode/presaleIdl';
+import {CONFIRM_PURCHASE_TEXT, RECORD_TEXT, REFERRAL_TEXT, REFERRER_LINE_TEXT, REFER_TEXT} from '../../src/app/presale/text';
+import ts from 'typescript';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const FIXTURE = JSON.parse(readFileSync(join(ROOT, 'scripts/__tests__/fixtures/app.modules.0b79442.json'), 'utf8'));
 const map = ids => ({chunks: {'background.js': ids}});
 const without = (m, id) => ({...m, chunks: Object.fromEntries(Object.entries(m.chunks).map(([f, ids]) => [f, ids.filter(i => i !== id)]))});
-const SHARED = ['src/background/index.ts', 'src/background/intents.ts', 'src/background/geo/gate.ts', '../core/geo/fetch.ts', 'src/app/ui/regionName.ts', '../core/presale/addresses.ts', '../core/presale/allocation.ts', '../core/presale/stagePrices.ts', '../core/solana/encoding.ts'];
+const SHARED = ['src/background/index.ts', 'src/background/intents.ts', 'src/background/geo/gate.ts', '../core/geo/fetch.ts', 'src/app/ui/regionName.ts', 'src/background/presaleRecordsKey.ts', '../core/presale/addresses.ts', '../core/presale/allocation.ts', '../core/presale/stagePrices.ts', '../core/solana/encoding.ts'];
 
 // B1d §6.2 item 1 (C38, D15): the off build's module rule — an allowlist for core/presale/**, core/geo/** whole.
 describe('the off-build module rule', () => {
@@ -97,7 +100,7 @@ describe('the off-build module rule', () => {
 
 // §6.2 item 1's positive control, staged per plan (review 2 M2): the lists only grow, and each plan's modules are named.
 describe('the positive-control lists (staged: B1d-1a Task 2)', () => {
-  it('the on build must carry the three on-path entries — the plugin maps something real — the program state (Task 5), the quote (B1d-1b Task 1), the purchase (Task 2), #23 (Task 4), #20’s purchase variant with the record slot (Task 5), #50b (Task 6) and the purchase’s builder and referrer resolution from core/presale (Task 8)', () => {
+  it('the on build must carry the three on-path entries — the plugin maps something real — the program state (Task 5), the quote (B1d-1b Task 1), the purchase (Task 2), #23 (Task 4), #20’s purchase variant with the record slot (Task 5), #50b (Task 6), the purchase’s builder and referrer resolution from core/presale (Task 8), B1d-2’s record (Task 1) and #24’s background, core/referral and screen (Task 4)', () => {
     expect(ON_BUILD).toEqual([
       ...PRESALE_ENTRIES.map(e => e.entry),
       'src/background/presale/layouts.ts',
@@ -114,11 +117,15 @@ describe('the positive-control lists (staged: B1d-1a Task 2)', () => {
       'src/app/presale/Geo.tsx',
       'core/presale/buyInstructions.ts',
       'core/presale/referrer.ts',
+      'src/background/presale/record.ts',
+      'src/background/presale/referral.ts',
+      'core/referral/index.ts',
+      'src/app/presale/ReferFriend.tsx',
     ]);
   });
 
-  it('both builds must carry the intent-kind registry (Task 3), the jurisdiction gate with its fetcher (Task 6, D15) and the country name of #48’s F12 (B1d-1b Task 7)', () => {
-    expect(BOTH_BUILDS).toEqual(['src/background/intents.ts', 'src/background/geo/gate.ts', 'core/geo/fetch.ts', 'src/app/ui/regionName.ts']);
+  it('both builds must carry the intent-kind registry (Task 3), the jurisdiction gate with its fetcher (Task 6, D15), the country name of #48’s F12 (B1d-1b Task 7) and the presale records’ key (B1d-2 Task 1)', () => {
+    expect(BOTH_BUILDS).toEqual(['src/background/intents.ts', 'src/background/geo/gate.ts', 'core/geo/fetch.ts', 'src/app/ui/regionName.ts', 'src/background/presaleRecordsKey.ts']);
   });
 
   it('missingModules names each required module a map does not carry', () => {
@@ -127,6 +134,22 @@ describe('the positive-control lists (staged: B1d-1a Task 2)', () => {
     const renamed = moduleIds([map([...SHARED, 'src/background/presale/index.ts', ...ON_BUILD.slice(1)])]);
     expect(missingModules('on', renamed, ON_BUILD)).toEqual(['on build does not carry src/background/presale/api.ts — renamed or moved? the positive control must name it']);
     expect(missingModules('off', moduleIds([map(['../core/geo/fetch.ts'])]), ['core/geo/fetch.ts'])).toEqual([]);
+  });
+
+  // B1d-2 Task 6: the list is complete — a presale module the on build carries and ON_BUILD does not name fails, so a
+  // module cannot join the build without its positive control (the shared core/presale modules and core/geo excepted).
+  it('unlistedModules names each presale module of the on build that the list does not, sorted; the shared ones are not presale modules', () => {
+    expect(unlistedModules(moduleIds([map([...SHARED, ...ON_BUILD])]), ON_BUILD)).toEqual([]);
+    const more = moduleIds([map([...SHARED, ...ON_BUILD, 'src/app/presale/Claim.tsx', '../core/presale/stats.ts', '../core/referral/tiers.ts', 'src/unlock/presale.ts?v=1'])]);
+    expect(unlistedModules(more, ON_BUILD)).toEqual([
+      'on build carries core/presale/stats.ts — a presale module ON_BUILD does not name: the positive control must list every one',
+      'on build carries core/referral/tiers.ts — a presale module ON_BUILD does not name: the positive control must list every one',
+      'on build carries src/app/presale/Claim.tsx — a presale module ON_BUILD does not name: the positive control must list every one',
+    ]);
+    expect(unlistedModules(moduleIds([map([...SHARED, ...ON_BUILD])]), ON_BUILD.filter(id => id !== 'src/background/presale/record.ts'))).toEqual([
+      'on build carries src/background/presale/record.ts — a presale module ON_BUILD does not name: the positive control must list every one',
+    ]);
+    expect(unlistedModules(moduleIds([map(SHARED)]), [])).toEqual([]);
   });
 
   it('every ON_BUILD module is one the off build refuses (else its control proves nothing)', () => {
@@ -163,7 +186,7 @@ describe('app.features.json', () => {
 describe('strings', () => {
   const file = (path, text) => ({path, bytes: Buffer.from(text, 'utf8')});
 
-  it('armed by B1d-1b: Task 1 adds its three presale message types (§6.2: "every presale.* message type"), Task 2 its prepare and the intent kind, Task 3 its four sign and resume types, Task 4 #23’s copy, Task 5 #20’s, #10’s and the record words, Task 6 #11’s and #50b’s (Q44’s label "Programs" is one bare word: its value is the marker)', () => {
+  it('armed by B1d-1b: Task 1 adds its three presale message types (§6.2: "every presale.* message type"), Task 2 its prepare and the intent kind, Task 3 its four sign and resume types, Task 4 #23’s copy, Task 5 #20’s, #10’s and the record words, Task 6 #11’s and #50b’s (Q44’s label "Programs" is one bare word: its value is the marker); B1d-2 Task 1 the record’s message type and alarm, Task 2 the referral address’s type and #10’s referrer row, Task 3 #23a’s referral address (Q45, Q46 b–c, Q48), Task 4 #24’s type, #31’s row and #24’s copy, Task 5 #27’s Q34, Task 7 B1d-1b’s copy that had none; the final review #24’s accent words and #27’s Q60', () => {
     expect(MARKERS.slice(0, 9)).toEqual(['presale.view', 'presale.banner', 'presale.quote', 'presale.prepareBuy', 'presale.pending', 'presale.preparedFor', 'presale.buy', 'presale.discardPrepared', 'presale-buy']);
     // §6.2's named strings #23 shows, then Q01, Q02, Q04–Q06, Q11–Q16, Q19, Q40c, Q41c, Q41d, Q43, Q52 (each literal part ≥ 8 characters).
     expect(MARKERS.slice(9)).toEqual([
@@ -236,6 +259,41 @@ describe('strings', () => {
       'The restricted-region list is out of date.',
       'Your region could not be determined from your IP.',
       'The region check is unavailable — try again later.',
+      // B1d-2 Task 1: the record's message type and its alarm's name.
+      'presale.unrecorded',
+      'presale-record',
+      // B1d-2 Task 2: the referral address's message type, then #10's referrer row (Q47: the label and its note).
+      'presale.checkReferrer',
+      'Referred by',
+      "Saved to your presale account with this purchase. It can't be changed later.",
+      'Referral address (optional)',
+      'Solana address of the person who invited you',
+      "You can't refer yourself or another account in this wallet",
+      "This address has no presale allocation, so it can't receive a referral bonus",
+      'This account can no longer take a referrer — review again',
+      'presale.referral',
+      'Refer a friend',
+      'total joined',
+      'NOC lifetime',
+      'from your invites',
+      'YOUR INVITE LINK',
+      'Not used yet',
+      'Used by ',
+      'Copy invite link',
+      'Share invite link',
+      'Earn NOC when friends you invite buy in the presale.',
+      'Referral payouts are subject to program terms. Self-referrals are detected and rejected.',
+      'Recorded on chain; presale service not yet updated',
+      ' of 10 · live',
+      'Next stage ',
+      'Not available in your region?',
+      'Estimated NOC',
+      ' of 10 · @ ',
+      'View on Solana explorer',
+      'Need a little SOL for the network fee',
+      "This wallet doesn't offer the presale in your region.",
+      'program terms',
+      'Recorded on chain; the presale service declined to record it',
     ]);
   });
 
@@ -244,8 +302,49 @@ describe('strings', () => {
   it('every presale.* message type of api.ts is a marker', () => {
     const api = readFileSync(join(ROOT, 'src/background/presale/api.ts'), 'utf8');
     const types = [...(/PRESALE_MESSAGE_TYPES: readonly string\[\] = \[([^\]]*)\]/.exec(api)?.[1] ?? '').matchAll(/'([^']+)'/g)].map(m => m[1]);
-    expect(types).toHaveLength(8);
+    expect(types).toHaveLength(11);
     for (const t of types) expect([t, MARKERS.includes(t)]).toEqual([t, true]);
+  });
+
+  // B1d-2 Task 6 (§6.2 item 2: "every §10 string whose build is on"): B1d-2's copy in text.ts, read from the module — each
+  // string of at least 8 characters that is not one bare word contains a marker, or is copy the build without presale
+  // carries too (it would fail the off build as a marker): Q46a is the start of B1b's #12 line "Not a valid Solana
+  // address — check length & characters", "Copy failed" is B1b's useCopy (Q38). A new string without its marker fails here.
+  it('every B1d-2 string of the presale copy is armed by a marker, or is shared copy', () => {
+    const copy = [
+      ...Object.values(REFERRAL_TEXT),
+      ...Object.values(REFERRER_LINE_TEXT),
+      CONFIRM_PURCHASE_TEXT.referredBy,
+      CONFIRM_PURCHASE_TEXT.registers,
+      RECORD_TEXT.unrecorded,
+      RECORD_TEXT.declined,
+      ...Object.values(REFER_TEXT).filter(v => typeof v === 'string'),
+      `${REFER_TEXT.usedLead}2${REFER_TEXT.usedTail(2n)}`,
+      `${REFER_TEXT.usedLead}1${REFER_TEXT.usedTail(1n)}`,
+    ];
+    expect(copy).toHaveLength(31);
+    const unarmed = copy.filter(s => s.length >= 8 && !/^[A-Za-z]+$/.test(s) && !MARKERS.some(m => s.includes(m)));
+    expect(unarmed).toEqual(['Not a valid Solana address', 'Copy failed']);
+  });
+
+  // B1d-2 Task 7: the whole of text.ts, read as source — every literal part of its copy (each string, and each part of a
+  // template between its placeholders) of at least 8 characters that is not one word (a space before or after it, or a
+  // colon and a space after, at most) contains a marker, or is text the build without presale carries too (a marker
+  // there would fail the off build): Q40b's tail (a library's error text there under NODE_ENV=test), Q46a (the start of
+  // B1b's #12 line), #20's "Network fee" and "Quote valid ", Q38's "Copy failed".
+  it('every literal part of the presale copy is armed by a marker, or is one word, or is copy both builds carry', () => {
+    const source = ts.createSourceFile('text.ts', readFileSync(join(ROOT, 'src/app/presale/text.ts'), 'utf8'), ts.ScriptTarget.Latest, true);
+    const parts = [];
+    const visit = n => {
+      if (ts.isImportDeclaration(n)) return;
+      if ((ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n)) && !(ts.isPropertyAssignment(n.parent) && n.parent.name === n)) parts.push(n.text);
+      if (ts.isTemplateExpression(n)) parts.push(n.head.text, ...n.templateSpans.map(s => s.literal.text));
+      ts.forEachChild(n, visit);
+    };
+    visit(source);
+    expect(parts.length).toBeGreaterThan(150);
+    const unarmed = parts.filter(s => s.length >= 8 && !/^ ?[A-Za-z]+:? ?$/.test(s) && !MARKERS.some(m => s.includes(m)));
+    expect(unarmed).toEqual([' per transaction', 'Not a valid Solana address', 'Network fee', 'Quote valid ', 'Copy failed']);
   });
 
   it('a marker in any off-build file is a violation; each marker must be found in the on build', () => {
@@ -273,9 +372,10 @@ describe('strings', () => {
     // B1d-1b Task 7: #48's F12 (D15 — the off build blocks a site's purchase exactly as the on build does).
     const q50a = "This transaction buys NOC in the presale, which this wallet doesn't allow from your region (";
     const q50b = "This transaction buys NOC in the presale. The wallet's region check did not succeed, so it can't be approved — try again later.";
-    expect(MUST_STAY).toEqual(['Presale purchase', 'PRESALE PURCHASE', 'Transaction · pending', 'Transaction · taking longer than usual', 'Presale purchase blocked', q50a, q50b, 'Only Reject is available · no override']);
+    // B1d-2 Task 1: the presale records' key — a delete in the build without presale still wipes them.
+    expect(MUST_STAY).toEqual(['Presale purchase', 'PRESALE PURCHASE', 'Transaction · pending', 'Transaction · taking longer than usual', 'Presale purchase blocked', q50a, q50b, 'Only Reject is available · no override', 'v1_presale_records']);
     const f12 = file('chrome/approve.js', `"Presale purchase blocked",regionSanctioned:e=>\`${q50a}\${e}).\`,regionClosed:${JSON.stringify(q50b)},regionMeta:"Only Reject is available · no override"`);
-    const all = [file('app/a.js', '"Presale purchase"'), file('app/b.js', 'PRESALE PURCHASE'), file('app/c.js', '`Transaction · pending`,`Transaction · taking longer than usual`'), f12];
+    const all = [file('app/a.js', '"Presale purchase"'), file('app/b.js', 'PRESALE PURCHASE'), file('app/c.js', '`Transaction · pending`,`Transaction · taking longer than usual`'), f12, file('app/background.js', 'const Y="v1_presale_records";')];
     expect(missingStrings('off', all, MUST_STAY)).toEqual([]);
     expect(missingStrings('off', [file('app/a.js', '"Presale purchase"')], MUST_STAY)).toEqual([
       'off build: no file contains "PRESALE PURCHASE" — the switch stripped what both builds need',
@@ -285,6 +385,7 @@ describe('strings', () => {
       `off build: no file contains ${JSON.stringify(q50a)} — the switch stripped what both builds need`,
       `off build: no file contains ${JSON.stringify(q50b)} — the switch stripped what both builds need`,
       'off build: no file contains "Only Reject is available · no override" — the switch stripped what both builds need',
+      'off build: no file contains "v1_presale_records" — the switch stripped what both builds need',
     ]);
   });
 
@@ -342,6 +443,12 @@ describe('checkNoPresale(offDir, onDir)', () => {
     good();
     write('on', {presale: true, modules: [...SHARED, ...ON_BUILD.slice(1)], text: ON_TEXT});
     expect(run()).toEqual(['on build does not carry src/background/presale/api.ts — renamed or moved? the positive control must name it']);
+  });
+
+  it('fails when the on build carries a presale module the list does not name (B1d-2 Task 6)', () => {
+    good();
+    write('on', {presale: true, modules: [...SHARED, ...ON_BUILD, 'src/background/presale/claim.ts'], text: ON_TEXT});
+    expect(run()).toEqual(['on build carries src/background/presale/claim.ts — a presale module ON_BUILD does not name: the positive control must list every one']);
   });
 
   it('fails when a marker is in the off build, in chrome/ or firefox/ alone too', () => {
