@@ -76,7 +76,7 @@ describe('vault.setKeys binds through envelopeShape (B1e §2.5, R3)', () => {
     expect(await ext.session.get(SESSION_KEY)).toBeUndefined();
   });
 
-  it('F1, F9, F10 and F11 (wallets both sides accept) bind; F7 (no accounts) is refused', async () => {
+  it('F1, F9–F12 and F18 (wallets both sides accept) bind; F7 (no accounts) is refused', async () => {
     for (const [name, raw] of F.filter(([n]) => [...F_WALLETS.filter(w => w !== 'F0'), 'F7'].includes(n.split(' ')[0] ?? ''))) {
       const ext = fakeExt();
       await ext.local.set(VAULT_KEY, raw);

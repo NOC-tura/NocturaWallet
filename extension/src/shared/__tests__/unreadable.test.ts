@@ -76,7 +76,7 @@ describe('unreadableV1 (§2.1 U1–U3)', () => {
     expect(unreadableV1(raw)).toBe(false);
   });
 
-  it('every readable F control is a wallet (F0, F1, F9, F10, F11) or refused by this version (F2–F8), the same on both sides', () => {
+  it('every readable F control is a wallet (F0, F1, F9–F12, F18) or refused by this version (F2–F8, F13–F17), the same on both sides', () => {
     for (const [name, raw] of F) {
       const expected = F_WALLETS.includes(name.split(' ')[0] ?? '') ? 'wallet' : 'refused';
       expect([name, ...kinds(raw)]).toEqual([name, expected, expected]);
@@ -121,16 +121,17 @@ describe('the partition (§2.1): the four readings never overlap', () => {
 });
 
 describe('breadth (§2.6, review 2 Minor 4): everything a v1 writer ever produced is readable and accepted', () => {
-  it('the real encoder: cli, 100 accounts, the KDF cap, odd names, rewrapPassword, reencryptForAccounts, passkeys of 1, 64 and 1023 bytes, the shortest and the longest seed', async () => {
+  it('the real encoder: cli, 100 accounts, the KDF cap, odd names, rewrapPassword, reencryptForAccounts, passkeys of 1, 64 and 1023 bytes, the shortest and the longest seed, the largest account index', async () => {
     const all = await breadth();
-    expect(all).toHaveLength(12);
+    expect(all).toHaveLength(13);
     for (const [name, raw] of all) {
       expect([name, unreadableV1(raw), envelopeShape(raw) !== null, storedVault(raw).kind, ...kinds(raw)]).toEqual([name, false, true, 'wallet', 'wallet', 'wallet']);
     }
   }, 60_000);
 
-  it('the extreme controls sit at the extremes of the open-ended clauses (fix round 1, review I1): seed.ct of 17, 63 and 231 bytes, a credentialId of 1023', async () => {
+  it('the extreme controls sit at the extremes of the open-ended clauses (fix rounds 1 and 2, review I1 and I1b)', async () => {
     const len = (x: unknown): number => base64.decode(String(x)).length;
+    const maxIndex = (raw: Json): number => Math.max(...(raw.accounts as Json[]).map(a => Number(a.index)));
     const byName = new Map<string, Json>([...F, ...(await breadth())]);
     const at = (name: string): Json => {
       const raw = byName.get(name);
@@ -143,7 +144,15 @@ describe('breadth (§2.6, review 2 Minor 4): everything a v1 writer ever produce
       len((at('createEnvelope 24 eight-letter words (seed.ct 231 bytes)').seed as Json).ct),
       len((at('F11 a credentialId of 1023 bytes (the WebAuthn maximum)').passkey as Json).credentialId),
       len((at('addPasskeyWrap, a 1023-byte credential ID').passkey as Json).credentialId),
-    ]).toEqual([17, 63, 231, 1023, 1023]);
+      maxIndex(at('after reencryptForAccounts (account 2^31 - 1 added, the largest index E13 reaches)')),
+      maxIndex(at('F12 a second account at index Number.MAX_SAFE_INTEGER')),
+      String(at('F13 scheme: a 64-character name (a later scheme)').scheme).length,
+      (at('F14 kdf.p = 0').kdf as Json).p,
+      (at('F15 kdf.m = Number.MAX_SAFE_INTEGER').kdf as Json).m,
+      (at('F16 kdf.t = Number.MAX_SAFE_INTEGER').kdf as Json).t,
+      (at('F17 1000 accounts').accounts as Json[]).length,
+      len((at('F18 seed.ct of 65536 bytes').seed as Json).ct),
+    ]).toEqual([17, 63, 231, 1023, 1023, 2 ** 31 - 1, Number.MAX_SAFE_INTEGER, 64, 0, Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER, 1000, 65536]);
   }, 60_000);
 
   it('the first encoder (458dfcd), with and without a passkey', () => {

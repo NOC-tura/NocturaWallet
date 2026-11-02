@@ -42,9 +42,12 @@ const account = (index: number): Json => ({index, name: `Account ${index + 1}`, 
 const bytes = (n: number): string => base64.encode(new Uint8Array(n).fill(0x5a));
 
 /**
- * §2.6 F0–F9, and F10–F11 (fix round 1, review I1): readable — never deletable. F0, F1, F9, F10 and F11 are wallets both
- * openers accept; F2–F8 are refused by both. F10 and F11 sit on the predicate's open-ended clauses at their extremes —
- * the smallest v1 ciphertext and the largest WebAuthn credential ID — so a tightening of either is red.
+ * §2.6 F0–F9, and F10–F18 (fix rounds 1 and 2, review I1 and I1b): readable — never deletable. F0, F1, F9–F12 and F18
+ * are wallets both openers accept; F2–F8 and F13–F17 are refused by both. F10–F18 sit on the predicate's open-ended
+ * clauses at their extremes, so a tightening of any of them is red: the smallest v1 ciphertext (F10), the largest
+ * WebAuthn credential ID (F11), an index of any safe integer (F12), a scheme name of any length (F13), the KDF's p floor
+ * and m / t ceilings as any safe integer (F14–F16), any number of accounts (F17), a ciphertext far above any real seed's
+ * (F18). F12–F18 are shape-only: no real wallet reaches them (F12's real-encoder twin, index 2^31 - 1, is a breadth row).
  */
 export const F: readonly (readonly [string, Json])[] = [
   ['F0 the fixture verbatim', fixtureEnvelope()],
@@ -59,8 +62,15 @@ export const F: readonly (readonly [string, Json])[] = [
   ['F9 an unknown field', edited(e => (e.memo = 'kept by a later version'))],
   ['F10 seed.ct of exactly 17 bytes (the smallest v1 ciphertext)', edited(e => (obj(e.seed).ct = bytes(17)))],
   ['F11 a credentialId of 1023 bytes (the WebAuthn maximum)', edited(e => (obj(e.passkey).credentialId = bytes(1023)))],
+  ['F12 a second account at index Number.MAX_SAFE_INTEGER', edited(e => (e.accounts = [account(0), account(Number.MAX_SAFE_INTEGER)]))],
+  ['F13 scheme: a 64-character name (a later scheme)', edited(e => (e.scheme = 'x'.repeat(64)))],
+  ['F14 kdf.p = 0', edited(e => (obj(e.kdf).p = 0))],
+  ['F15 kdf.m = Number.MAX_SAFE_INTEGER', edited(e => (obj(e.kdf).m = Number.MAX_SAFE_INTEGER))],
+  ['F16 kdf.t = Number.MAX_SAFE_INTEGER', edited(e => (obj(e.kdf).t = Number.MAX_SAFE_INTEGER))],
+  ['F17 1000 accounts', edited(e => (e.accounts = Array.from({length: 1000}, (_, i) => account(i))))],
+  ['F18 seed.ct of 65536 bytes', edited(e => (obj(e.seed).ct = bytes(65536)))],
 ];
-export const F_WALLETS = ['F0', 'F1', 'F9', 'F10', 'F11'];
+export const F_WALLETS = ['F0', 'F1', 'F9', 'F10', 'F11', 'F12', 'F18'];
 
 const fixtureSalt = (): string => String(obj(fixtureEnvelope().kdf).salt);
 const firstAccount = (e: Json): Json => obj((e.accounts as unknown[])[0]);
@@ -130,6 +140,9 @@ const named = async (scheme: 'slip10' | 'cli', names: string[], mnemonic: string
 const create = async (scheme: 'slip10' | 'cli', names: string[], params?: typeof KDF_CAP, mnemonic = MNEMONIC): Promise<EnvelopeV1> =>
   createEnvelope({mnemonic, password: PASSWORD, scheme, accounts: await named(scheme, names, mnemonic), kdf: cheapKdf, ...(params === undefined ? {} : {params})});
 
+/** The largest account index a user can add (E13; src/unlock/accountsFlow.ts MAX_ACCOUNT_INDEX). */
+const MAX_ACCOUNT_INDEX = 2 ** 31 - 1;
+
 /** Odd account names (review 2's probe): each a string, so readable; storeEnvelope's name policy is not the predicate's. */
 export const ODD_NAMES: readonly string[] = [
   '',
@@ -143,8 +156,9 @@ export const ODD_NAMES: readonly string[] = [
 ];
 
 /**
- * §2.6 breadth: what the real encoder writes, each through a storage round trip. The last three (fix round 1, review
- * I1) are the extremes of the predicate's open-ended clauses: the shortest and the longest seed, the largest credential ID.
+ * §2.6 breadth: what the real encoder writes, each through a storage round trip. The last four (fix rounds 1 and 2,
+ * review I1 and I1b) are the extremes of the predicate's open-ended clauses a real wallet reaches: the shortest and the
+ * longest seed, the largest credential ID, the largest account index.
  */
 export async function breadth(): Promise<(readonly [string, Json])[]> {
   const slip10 = await create('slip10', ['Account 1']);
@@ -165,6 +179,7 @@ export async function breadth(): Promise<(readonly [string, Json])[]> {
     ['createEnvelope 12 three-letter words (seed.ct 63 bytes)', await create('slip10', ['Account 1'], undefined, SHORT12)],
     ['createEnvelope 24 eight-letter words (seed.ct 231 bytes)', await create('slip10', ['Account 1'], undefined, LONG24)],
     ['addPasskeyWrap, a 1023-byte credential ID', await addPasskeyWrap(slip10, dataKey.slice(), prf.slice(), new Uint8Array(1023).fill(9), prfSalt())],
+    ['after reencryptForAccounts (account 2^31 - 1 added, the largest index E13 reaches)', await reencryptForAccounts(slip10, dataKey.slice(), [{index: 0, name: 'Account 1'}, {index: MAX_ACCOUNT_INDEX, name: 'Last'}])],
   ];
   dataKey.fill(0);
   return out.map(([name, env]) => [name, obj(stored(env))] as const);
