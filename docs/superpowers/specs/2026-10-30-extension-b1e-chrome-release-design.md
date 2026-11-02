@@ -1,6 +1,8 @@
 # Noctura Extension B1e — the first Chrome Web Store release
 
-**Status:** rev 2.2, 2026-11-02 — text only: the departures the B1e-1 plan's dry run made from rev 2.1 (each one line
+**Status:** rev 2.3, 2026-11-02 — the B1e-1 plan's Fable review 1 (`.superpowers/sdd/b1e1-plan-review-1.md`: I1 and
+its Minors) and the owner's answers E19–E22, each one line under "Rev 2.3", the passages they name edited to match.
+Rev 2.2, 2026-11-02 — text only: the departures the B1e-1 plan's dry run made from rev 2.1 (each one line
 under "Rev 2.2", the passages they name edited to match); no owner decision changed. Rev 2.1, 2026-10-30. Rev 1 (70e691d): the owner approved the design in conversation section by section
 (2026-10-30: the release target, the presale decision, the hardening scope, where the legal pages live, D10, D31, then
 the four design sections). Rev 2 applies Fable review 1 (`.superpowers/sdd/b1e-spec-review-1.md`: C1, C2, I1–I9 and
@@ -10,6 +12,23 @@ the owner's answers E15–E18.
 Parent specs: B1 (`2026-09-27-extension-b1-design.md` §5 "Build, gates, release" and its release gates), B1b-2b (D10,
 D31), B1c §6.5, B1d §6.5 and §7. Binding design: `/home/user/Downloads/index.html` (+ `screen.md`) — it contains the
 TGE date; nothing is copied from it.
+
+**Rev 2.3** (the B1e-1 plan's review 1 and the owner's E19–E22, 2026-11-02; the passages named are edited to match):
+- §1.5 (I1, E21): a phrase that renders blank or draws out of its line is refused — every Default_Ignorable code point
+  (the Hangul fillers U+115F, U+1160, U+3164, U+FFA0 and U+17B4 / U+17B5 among them), the Braille blank U+2800, the
+  replacement characters U+FFFC / U+FFFD, and more than three combining marks in a row; a phrase must hold at least one
+  letter, number, symbol or punctuation character. Rev 2.2's "printable" line was not the whole rule.
+- §1.3 (E20): onboarding's step stays count-less; its overline is "Optional", not "Onboarding".
+- §2.2 (E19): the refused state's heading is "Update Noctura to open this wallet"; "This version of Noctura can't open
+  this wallet's data." is its first body line.
+- §0: E19–E22 added to the owner decisions.
+- §4.2 (review M1): the `rpc-websockets` gate calls a map without a `chunks` section INCONCLUSIVE (it passed vacuously).
+- §4.2 (review M6): `licence-ids.json` classifies only a package with no `license` field; a present field outside the
+  allowlist (an SPDX expression, a `{type}` object) fails, and the failure says the table cannot override it.
+- §4.3 (review M4, the controller's ruling on Q6): the link gate is a review aid, not a security boundary.
+- §4.3 (review M5): the gate reads `.svg` files too.
+- §10 (review M7): `presaleBuilds.test.mjs` builds with `NODE_ENV` removed — it is the only test that runs
+  `build.mjs`, and `verify` and CI run it with no `NODE_ENV`, so it now checks the build that ships.
 
 **Rev 2.2** (the B1e-1 plan, 2026-11-02; every line is a departure of the built code from rev 2.1's text, ruled in the
 plan and recorded in its ledger — the passages named are edited to match):
@@ -115,6 +134,10 @@ B1e is cut down to **the first release: Chrome Web Store, presale off**. It is o
 | E16 | Keep the **`rpc-websockets` alias stub** as a precaution **and** the licence page / gate on **modules with rendered code** (`renderedLength > 0`) (N3) | §4.2 |
 | E17 | The passkey **RP ID stays `wallet.noc-tura.io`**; 1.0.0 freezes it for every enrolled passkey (a pre-upload gate records it); a test pins `RP_ID` to `HOST_PERMISSIONS` (N4) | §5.6, §6, §7 |
 | E18 | **Confirmed: R1** (the first phrase is set while unlocked without a password re-check; change / remove behind #10) **and R4** ("Save the damaged data" on both damaged states) — owner decisions now, no longer spec rulings | §1.3, §2.3 |
+| E19 | (2026-11-02, plan review 1) The **refused-by-this-version** screen gets the short heading "Update Noctura to open this wallet"; the sentence it had becomes the first body line | §2.2 |
+| E20 | (2026-11-02) Onboarding's phrase step stays **count-less**; its overline is **"Optional"**, not "Onboarding" | §1.3 |
+| E21 | (2026-11-02) Phrases that **render blank or draw out of their line are refused**: Default_Ignorable code points, U+2800 and the other blank-rendering characters (the Hangul fillers U+115F / U+1160 / U+3164 / U+FFA0, U+17B4 / U+17B5), stacked combining marks beyond a cap; a phrase holds at least one visible non-mark L / N / S / P character | §1.5 |
+| E22 | (2026-11-02) Keep #37's taller bar with the checkbox, and #35's plain-tone "Off" for the phrase | §3, §1.3 |
 
 **Spec rulings (rev 2).** Decisions the review asked the spec to take that need no owner: each is the most secure
 default, with its reason where it is applied. The owner may overturn any. **R1 and R4 are confirmed by the owner
@@ -203,7 +226,8 @@ current one; two phrases on one screen invite confusion). #10's end states are t
 `removeWalletData` (defined at `accountsStore.ts:57`; its call in the first write at `:260`), which removes every `WALLET_DATA_KEYS` key — a phrase written before
 the commit would be wiped by it. Placement:
 - create: after #6 passkey's `done` (`createRun.ts:129`), before `wallet.html#/created` — not before #6, which would
-  hold the typed password longer (#6 holds it, §3.5 of B1b-2a);
+  hold the typed password longer (#6 holds it, §3.5 of B1b-2a). The step has no count of its own after #6's "5 / 5";
+  its overline is "Optional" (E20, rev 2.3);
 - import: after `created`, before `wallet.html#/imported` (`importRun.ts:62`);
 - `created-locked` (the keys did not reach the background): the step is skipped — `set` would answer `locked`; #35
   offers it.
@@ -236,7 +260,12 @@ stored phrase; the onboarding step answers a refusal with the common "try again"
   character of `FORBIDDEN_IN_NAME` (`envelopeRules.ts:43`: controls, format characters, line and paragraph
   separators, bidi embeddings / overrides / isolates, zero-width joiners, the combining grapheme joiner, variation
   selectors) — so a bidi override cannot restyle the line — and, for "printable", no lone surrogate, private-use or
-  unassigned code point (Cs, Co, Cn; rev 2.2). Look-alike letters of another script are accepted. This also refuses emoji written with a ZWJ or a variation
+  unassigned code point (Cs, Co, Cn; rev 2.2). **Nothing that renders blank or draws out of its line (E21, rev 2.3):**
+  no Default_Ignorable code point (among them the Hangul fillers U+115F, U+1160, U+3164, U+FFA0 and the Khmer U+17B4,
+  U+17B5), no Braille blank U+2800, no U+FFFC / U+FFFD (they stand for a character that could not be shown), at most
+  **three combining marks in a row** (`PHRASE_MAX_MARKS`: Thai needs two, pointed Hebrew and Tibetan stacks three; a
+  fourth only builds a tower over the header above the line), and at least one letter, number, symbol or punctuation
+  character — so no phrase shows as an empty or broken banner a phishing page could copy. Look-alike letters of another script are accepted. This also refuses emoji written with a ZWJ or a variation
   selector (family emoji, ❤️ with VS16) — accepted, and the input's helper says "letters, numbers, symbols and simple
   emoji". The cleaner is `cleanPhrase` in `src/shared/envelopeRules.ts`, beside `cleanName`, sharing the regex.
 - `null` (or an empty string after trimming) means "remove".
@@ -333,7 +362,8 @@ Both entry points that show the damaged notice today get the new states: #9 (`sc
 phase) and #1 welcome (`screens/welcome.ts:95`). The page decides which with `storedVault` and `unreadableV1` on its
 own read of `v1_vault` (`readLocal`); the background re-judges at removal (§2.4).
 
-**Refused by this version** — "This version of Noctura can't open this wallet's data." + "Update Noctura (in Chrome:
+**Refused by this version** — the heading "Update Noctura to open this wallet" (E19, rev 2.3), then "This version of
+Noctura can't open this wallet's data." as the first body line + "Update Noctura (in Chrome:
 Extensions → Update). If it is up to date, the data may have been changed. Nothing was removed." + today's
 `damagedHelp` as the last resort. Buttons: **Save the damaged data** (§2.3). No removal.
 
@@ -575,7 +605,9 @@ and the OFL's own) — as **escaped text**, never navigable. The gates are taugh
    fails** (no silent "unknown"). Probe: `bs58` 4.0.1 (twice) and `qrcode-generator` 2.0.4 ship no licence file and
    say MIT. **The SPDX id (N2, E15):** the `license` field when present; otherwise the committed table
    `extension/release/licence-ids.json` (`name@version → SPDX`), consulted for every package with rendered code and no
-   `license` field; **a package in neither → the build fails**. Today the table has one row:
+   `license` field; **a package in neither → the build fails**. The table never overrides a `license` field the
+   package has: a field outside the allowlist (an SPDX expression such as `MIT OR Apache-2.0`, a `{type}` object) fails
+   the build, and the failure says so — admitting it is an owner decision (rev 2.3). Today the table has one row:
    `text-encoding-utf-8@1.0.2 → Unlicense` (8 526 rendered bytes in `background.js`, web3.js's TextEncoder polyfill;
    its `LICENSE.md` is the Unlicense dedication). Controls: the row removed → fails; the row set to `LGPL-3.0-only` →
    fails (item 6).
@@ -593,7 +625,8 @@ and the OFL's own) — as **escaped text**, never navigable. The gates are taugh
    otherwise; it read the ids, not the rendered code). Kept anyway, **as a precaution**:
    - a gate: no module under `node_modules/rpc-websockets/` is in any chunk of any map (with the alias the package
      never enters the graph), and the stub renders 0 bytes (mutation: a `new Connection(...)` planted in the
-     background → the stub renders code → fails) — stricter than "rendered 0", which the stub would pass (rev 2.2);
+     background → the stub renders code → fails) — stricter than "rendered 0", which the stub would pass (rev 2.2); a
+     map without its `chunks` or `rendered` section is INCONCLUSIVE, never a pass (rev 2.3);
    - an alias of the bare specifier `rpc-websockets` to a local stub with exactly two named exports — `CommonClient`, a
      class (an `extends` of a non-constructor would throw at module evaluation), and `WebSocket`, a function — each
      throwing if ever constructed or called. Only `Connection`'s constructor makes a `RpcWebSocketClient`, and no file
@@ -630,7 +663,8 @@ Coordinator routes the `--no-presale` `background.js` names (relevant to §6): `
 `/referral-stats` (B1d's record and referral routes are presale-only).
 
 **The rule.** A new `scripts/check-links.mjs`, run in `gates:build` for both builds' `chrome/` and `firefox/`
-packages. It reads every `.js`, `.html`, `.css` and `.json` file **except `licenses.html`, skipped by name** (N1: its
+packages. It reads every `.js`, `.html`, `.css`, `.json` and `.svg` file (rev 2.3: an SVG document can carry
+`<a xlink:href>`; none ships today) **except `licenses.html`, skipped by name** (N1: its
 licence texts carry URLs as escaped text; §4.2's static-page rule holds there) and extracts every match of
 `\b(?:https?|wss?|ftp)://[^\s"'`<>)\\;]*`. Each match must equal, **as a whole string**, one entry of:
 - **Coordinator:** `https://api.noc-tura.io/*` and `https://api.noc-tura.io` (in `manifest.json` only);
@@ -656,6 +690,11 @@ chunk → fails; `https://noc-tura.io/extension/privacy` removed → fails (pres
 planted in a page chunk → fails; one inert entry changed by one character → the real package fails; a planted
 `wss://evil.example` → fails. A library update that changes an inert string fails the gate until a reviewer adds the
 new string with its reason.
+
+**What the gate is (rev 2.3, the controller's ruling on review Q6 / M4).** A review aid, **not a security boundary**: a
+URL never written whole — split from its scheme, scheme-relative (`//host`), or encoded — passes it (a test pins that
+limit). The runtime boundary for fetches is CSP `connect-src` (`npm run csp`); navigation is bounded by every link the
+user is given being a whole string from `src/shared/links.ts`, and by review.
 
 ### 4.4 Tests
 
@@ -915,12 +954,14 @@ screens, both damaged states (removal of an unreadable vault, its refusal for F0
 path, the links and `licenses.html`; every E2E normally and under `unshare -rn`; a visual pass of the undrawn elements
 at the popup's 412 × 600 and the window's real size — rev 2.2: in the store build, the popup at 412 × 600, the vault
 page at 412 × 916 and the approval window at 412 × 720. R9's E2E strips the `phrase` field inside the page: the real
-background always sends a valid one (rev 2.2). No test contacts `*.noc-tura.io`; only the release script's live
-check does.
+background always sends a valid one (rev 2.2). `scripts/__tests__/presaleBuilds.test.mjs` runs `build.mjs` with
+`NODE_ENV` removed (rev 2.3, review M7): it is the only test that runs the build, and `verify` and CI run it with no
+`NODE_ENV`, so the test checks the production build that ships — nothing else changes. No test contacts
+`*.noc-tura.io`; only the release script's live check does.
 
 ## 11. Open questions for the owner
 
-None open after E15–E18. Rev 2's Q1 (LGPL) dissolved: no LGPL code ships (N3, E16). Rev 2's Q2 (the decrypt-damaged
+None open after E15–E22. Rev 2's Q1 (LGPL) dissolved: no LGPL code ships (N3, E16). Rev 2's Q2 (the decrypt-damaged
 vault) is a later step in §8.
 
 Not the owner's, but blocking the release: ICO's §6.2 answers and P1.
