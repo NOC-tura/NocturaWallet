@@ -1,6 +1,7 @@
 # Noctura Extension B1e — the first Chrome Web Store release
 
-**Status:** draft rev 2.1, 2026-10-30. Rev 1 (70e691d): the owner approved the design in conversation section by section
+**Status:** rev 2.2, 2026-11-02 — text only: the departures the B1e-1 plan's dry run made from rev 2.1 (each one line
+under "Rev 2.2", the passages they name edited to match); no owner decision changed. Rev 2.1, 2026-10-30. Rev 1 (70e691d): the owner approved the design in conversation section by section
 (2026-10-30: the release target, the presale decision, the hardening scope, where the legal pages live, D10, D31, then
 the four design sections). Rev 2 applies Fable review 1 (`.superpowers/sdd/b1e-spec-review-1.md`: C1, C2, I1–I9 and
 the twelve Minors) and the owner's answers to its six questions (`.superpowers/sdd/b1e-owner-decisions.md`, E9–E14).
@@ -9,6 +10,50 @@ the owner's answers E15–E18.
 Parent specs: B1 (`2026-09-27-extension-b1-design.md` §5 "Build, gates, release" and its release gates), B1b-2b (D10,
 D31), B1c §6.5, B1d §6.5 and §7. Binding design: `/home/user/Downloads/index.html` (+ `screen.md`) — it contains the
 TGE date; nothing is copied from it.
+
+**Rev 2.2** (the B1e-1 plan, 2026-11-02; every line is a departure of the built code from rev 2.1's text, ruled in the
+plan and recorded in its ledger — the passages named are edited to match):
+- §1.2: R9's line also covers a `phrase` field that is missing or not a phrase the background would store — the screen
+  re-judges it with `cleanPhrase` and never refuses the rest of the view.
+- §1.2: the line is also on the approval window's locked state and #48's origin-mismatch notice (every window state,
+  through the window's top), and it carries a screen-reader label "Anti-phishing phrase: " before the phrase.
+- §1.2: #9 and #10 read the phrase only once the stored vault is a wallet; the no-wallet and damaged states have no
+  password field and show no line.
+- §1.3: `vault.challengeInfo` describes a phrase challenge as `{kind: 'phrase', action: 'change' | 'remove'}` — the
+  bound value never reaches #10; change and remove while locked answer `locked`; `unchanged` is answered first.
+- §1.3: #10's end states for a phrase challenge are the settings kind's; #35's card never shows the stored phrase; the
+  onboarding step answers any refusal with the common "try again" line and keeps [Skip].
+- §1.4: a stored value that is not exactly a clean phrase reads as none.
+- §1.5: "printable" also refuses lone surrogates, private-use and unassigned code points (Cs, Co, Cn); look-alike
+  letters of another script are accepted.
+- §2.1 + §2.4: both readings ask the opener first — a value either opener accepts is a wallet; only a refused value is
+  split into unreadable / refused (the partition test keeps the order invisible today).
+- §2.2: the removal is its own vault-page mode, `unlock.html?mode=remove-damaged`, which reads, judges and shows the
+  value itself (no URL parameter); #9 and #1 show one shared damaged screen.
+- §2.2: `busy` and the page's own digest compare are one outcome ("The stored data changed — check it again");
+  `send-open` shows #37's line with [Start again] and [Close this tab], no [Unlock]; a wallet found says "A wallet
+  already exists in this browser. Nothing was changed."; the address carries #37's caption "This wallet's first account".
+- §2.5: `vault.setKeys` answers `unknown-account` (as before) when no vault is stored, `malformed` for an unreadable or
+  refused one.
+- §2.6: M-lock's session is written inside the lock's own session section (the one step 6 must see); a session present
+  before the click is locked by step 3 and has its own control and mutation (M-lock-first). Both fixtures are pinned by
+  sha256; the 458dfcd vault is §2.1's out-of-predicate case (its seed fails AES-GCM).
+- §3: the checkbox is directly **above** the button (in the DOM, on screen and in tab order) on #37 and on the removal,
+  shown only while DELETE matches; the button's name follows it ("Hold to delete" / "Delete wallet" / "Remove damaged
+  wallet") and the hold's instructions hide while it is checked; Space toggles it, Enter on it does nothing (native).
+- §4.1: #1's line stays **above** the buttons, where the design draws it; every link row carries a screen-reader suffix
+  " (opens in a new tab)"; #38's "142 packages" count is not built (the popup cannot know it).
+- §4.2: the static-page rule adds a tag and attribute allowlist; the licence gate also requires each package's
+  `licenses.html` to equal the page its maps give; a missing page is INCONCLUSIVE.
+- §4.2: the `rpc-websockets` gate is stricter — the package in no chunk of any map, and the stub rendering 0 bytes.
+- §4.2: a package without a licence file is headed "Author: …" or "The package names no author."; the fonts' entry
+  pins both faces to geist 1.7.2 by sha256 and `fonts/LICENSE.txt` ships in every package; licence lines are wrapped
+  at 100 columns (a window narrowed to 412 px still scrolls sideways — accepted).
+- §4.3: one presale-build-only row, `https://noc-tura.io?ref=${}` (#24's invite link; an interpolation folds to `${}`),
+  refused in the store build; each row is allowed only in the files it is found in.
+- §5.6: B1e-1's test pins `RP_ID` to `HOST_PERMISSIONS`; the `rp-id.json` half lands with B1e-2's gate.
+- §10: R9's E2E strips the field inside the page (the real background always sends a valid one); the visual pass
+  runs on the store build at 412 × 600 (popup), 412 × 916 (vault page) and 412 × 720 (approval window).
 
 **Rev 2.1** (review 2; §12 maps each finding):
 - §4.3 + §4.2 (N1): the link gate skips `licenses.html` by name; the static-page rule there now refuses `<a`, `href=`,
@@ -111,10 +156,15 @@ One line under the screen's header: a shield icon + the phrase as plain text (`t
 - the vault page's unlock screen (`src/unlock/screens/unlock.ts`) **before** the password is typed, read in its
   `reading` phase, and the popup's locked screen (`src/app/screens/Locked.tsx`);
 - every approval window: #46 sign message (`src/approve/Sign.tsx`), #47 connect (`Connect.tsx`), #48 transaction
-  (`Tx.tsx`);
+  (`Tx.tsx`) — and the window's locked state and #48's origin-mismatch notice (rev 2.2);
 - #10 re-authentication (`src/unlock/screens/reauth.ts`).
 
-**No phrase set:** nothing shows; the extension behaves as today. **A read that fails** (no answer, an error) while a
+On the vault page the line shows only once the stored vault is a wallet: the no-wallet and damaged states have no
+password field and no line. Every line starts with a screen-reader label "Anti-phishing phrase: " (rev 2.2).
+
+**No phrase set:** nothing shows; the extension behaves as today. **A read that fails** (no answer, an error, a
+`phrase` field missing or not exactly a phrase the background would store — the screen re-judges it with `cleanPhrase`;
+rev 2.2) while a
 phrase may be set: the line says "Anti-phishing phrase could not be read — don't type your password until it shows"
 (R9: silence would look exactly like a phishing window and like "no phrase"; the failure is rare — the background
 answers these reads locked or unlocked).
@@ -139,11 +189,14 @@ value is cleaned (§1.5); stored none + a value + a session → written, `set`; 
 equal to the stored value → `unchanged`; otherwise a challenge of a new shared kind **`phrase`**
 (`{kind: 'phrase', phrase: string | null}`, exactly two keys, added to `isAbout`, `reauthChallenges.ts`) is issued and
 the answer is `reauth-required {challengeId}`, exactly as `setSettings` does it (the lock-race handling included).
+`unchanged` is answered first; a change or a removal while locked answers `locked`. `vault.challengeInfo` describes a
+phrase challenge to #10 as `{kind: 'phrase', action: 'change' | 'remove'}` — the bound value never leaves the
+background (rev 2.2).
 `vault.reauthOk` applies it from the value bound at issue — as it applies a `settings` challenge through
 `applySettingsChallenge` (`walletApi.ts:261`) — and the stored value is re-compared at apply time, under the mutex
 (the last confirmed proof wins, as review M6 ruled for settings). #10's "what this is for" line says "Change the
 anti-phishing phrase" or "Remove the anti-phishing phrase" — never the new value (the phrase line on #10 shows the
-current one; two phrases on one screen invite confusion).
+current one; two phrases on one screen invite confusion). #10's end states are the settings kind's (rev 2.2).
 
 **Onboarding.** A skippable last step: "Set an anti-phishing phrase", with one sentence on why. It runs **after
 `commitWallet`** (`onboarding.ts:148`), never before: the first write, `storeEnvelope(null, …)`, calls
@@ -155,7 +208,8 @@ the commit would be wiped by it. Placement:
 - `created-locked` (the keys did not reach the background): the step is skipped — `set` would answer `locked`; #35
   offers it.
 
-**Settings → Security (#35):** a row "Anti-phishing phrase · On / Off"; set, change, remove.
+**Settings → Security (#35):** a row "Anti-phishing phrase · On / Off"; set, change, remove. Its card never shows the
+stored phrase; the onboarding step answers a refusal with the common "try again" line and keeps [Skip] (rev 2.2).
 
 ### 1.4 Storage and reads (I2, R2)
 
@@ -165,6 +219,7 @@ the commit would be wiped by it. Placement:
   `src/background/` may even name it, so no page can write it around the proof. A plain `ext.local.remove` (not in
   `LOCKED_DATA_KEYS`): a `settings.phrase` write racing a delete's cleanup can leave it behind, and the next first
   write's `removeWalletData` is the backstop — the same accepted race as `v1_settings` (`forgetWallet` step 7 comment).
+- A stored value that is not exactly a clean phrase (§1.5) reads as none (rev 2.2): only the background writes the key.
 - Not encrypted, on purpose: it must show before unlock, and it is no secret from the user's own machine, only from
   websites.
 - **Reads ride on existing answers; no new read type:**
@@ -180,7 +235,8 @@ the commit would be wiped by it. Placement:
 - NFC-normalised, then trimmed; **3–32 UTF-16 code units** (as `cleanName` counts, `envelopeRules.ts:46`); no
   character of `FORBIDDEN_IN_NAME` (`envelopeRules.ts:43`: controls, format characters, line and paragraph
   separators, bidi embeddings / overrides / isolates, zero-width joiners, the combining grapheme joiner, variation
-  selectors) — so a bidi override cannot restyle the line. This also refuses emoji written with a ZWJ or a variation
+  selectors) — so a bidi override cannot restyle the line — and, for "printable", no lone surrogate, private-use or
+  unassigned code point (Cs, Co, Cn; rev 2.2). Look-alike letters of another script are accepted. This also refuses emoji written with a ZWJ or a variation
   selector (family emoji, ❤️ with VS16) — accepted, and the input's helper says "letters, numbers, symbols and simple
   emoji". The cleaner is `cleanPhrase` in `src/shared/envelopeRules.ts`, beside `cleanName`, sharing the regex.
 - `null` (or an empty string after trimming) means "remove".
@@ -260,7 +316,10 @@ AES-GCM IV and tag, AES-KW of a 32-byte key, the PRF salt), fixed by `v: 1` itse
 change `v`, which this predicate then refuses to judge.
 
 **Partition, as a test:** for every value the predicate calls unreadable, `envelopeShape` returns `null` and
-`storedVault` answers `damaged` (every U-clause is one of their checks) — so the four readings never overlap.
+`storedVault` answers `damaged` (every U-clause is one of their checks) — so the four readings never overlap. Both
+readings ask the opener first (rev 2.2): a value `envelopeShape` / `storedVault` accepts is a **wallet**, and only a
+refused value is split into unreadable and refused — the partition test keeps that order invisible today, and if the
+predicate and an opener ever disagreed, a value an opener can open would never be offered for a password-less removal.
 
 **Out of the predicate, said loudly:** a vault that is readable and accepted, whose password unwraps the data key but
 whose seed ciphertext then fails AES-GCM (`unlockFlow.ts` answers `damaged` after the unwrap), is neither unreadable
@@ -284,17 +343,24 @@ promise about repair tools) + "Your funds are on Solana. After you remove this c
 wording, `DeleteWallet.tsx` `fundedTail`) — said **before** the typed word (Minor 6), never "funds are safe".
 Buttons: **Save the damaged data**, **Remove damaged wallet**.
 
-**The removal screen** (vault page, plain DOM — the vault page may not carry React, `bundleViolations`):
+#9 and #1 show one shared damaged screen for both states (rev 2.2).
+
+**The removal screen** (vault page, plain DOM — the vault page may not carry React, `bundleViolations`): its own mode,
+`unlock.html?mode=remove-damaged`, reached from [Remove damaged wallet]; it reads, judges and shows the value itself and
+takes no URL parameter, so the digest it sends is that of the value it showed (rev 2.2):
 - the lines above, repeated; "This removes the wallet from this browser only.";
 - the address (Minor 5): among `accounts` entries that are objects with a safe integer `index` ≥ 0 and a `publicKey`
   matching `^[1-9A-HJ-NP-Za-km-z]{32,44}$` (the `ADDRESS` shape, `reauthChallenges.ts:155`), the one with the
-  **lowest** index, in groups of four (`addressGroups`); none → "The address can't be read". Never `accounts[0]`;
+  **lowest** index, in groups of four (`addressGroups`), under #37's caption "This wallet's first account" (rev 2.2);
+  none → "The address can't be read". Never `accounts[0]`;
   nothing else of the value is rendered;
 - the typed **DELETE** and #37's confirmation rule (§3: the hold, or the checkbox and one click) — E11. No password:
   an unreadable vault cannot be opened.
-- Refusals: `send-open` → #37's text (`DELETE_TEXT.sendOpen`, E12); `busy` → "The stored data changed — check it
-  again", and the screen re-reads; `not-unreadable` → the screen re-reads and shows the state it now finds (refused
-  or a wallet); `unlocked` → "Noctura was unlocked meanwhile — try again".
+- Refusals: `send-open` → #37's text (`DELETE_TEXT.sendOpen`, E12) with [Start again] and [Close this tab] — no
+  [Unlock]: an unreadable vault cannot be unlocked (rev 2.2); `busy` → "The stored data changed — check it
+  again", and the screen re-reads — the page's own digest compare at the click is the same outcome (rev 2.2);
+  `not-unreadable` → the screen re-reads and shows the state it now finds (refused, or a wallet: "A wallet already
+  exists in this browser. Nothing was changed."); `unlocked` → "Noctura was unlocked meanwhile — try again".
 
 ### 2.3 Save the damaged data (E10, R4)
 
@@ -331,7 +397,8 @@ Buttons: **Save the damaged data**, **Remove damaged wallet**.
   `accountsStore.ts:472-538`):
   1. `expectedDigest` not 64 lowercase hex → `malformed`;
   2. inside `serial`: read `v1_vault`; `undefined` → `no-wallet`; **`unreadableV1(raw)` false → `not-unreadable`**
-     (a refused vault and a wallet both land here); digest ≠ expected → `busy`;
+     (a refused vault and a wallet both land here; judged opener first, as §2.1's readings — rev 2.2); digest ≠
+     expected → `busy`;
   3. `lock(ext)`;
   4. check-and-clear `v1_pending` in ONE `updatePending`: an open record → `send-open` (E12; nothing removed, the
      wallet stays locked, as E5);
@@ -349,7 +416,8 @@ browser profile — who can also uninstall the extension. It can remove only a v
 
 - **R3:** `vault.setKeys` (`messages.ts:184`) binds the keys through `readWalletView` (`accountsStore.ts:77`), which
   checks only the scheme and the account shape, so today a session could be created over an envelope `envelopeShape`
-  refuses. B1e binds it through `envelopeShape` too: keys over a `stored-invalid` envelope are refused (`malformed`).
+  refuses. B1e binds it through `envelopeShape` too: keys over a `stored-invalid` envelope are refused (`malformed`);
+with no vault stored the answer stays `unknown-account`, as before (rev 2.2).
   Every flow that sends `setKeys` has already stored or read an envelope both sides accept (onboarding, #39, add
   account, unlock — the comment at `messages.ts:186-193`), so no legitimate path changes. Test: a stored envelope with
   `kdf.m = 32768` (refused) and a valid key set → `setKeys` refused; mutation: the old `readWalletView`-only binding →
@@ -384,7 +452,9 @@ readable, refused by neither opener, and `not-unreadable`: a `cli` wallet; 100 a
 `rewrapPassword`; the output of `reencryptForAccounts` (an account added); `addPasskeyWrap` with a 1-byte and a 64-byte
 credential ID; odd names (`''`, an emoji sequence, a bidi override, 5 000 characters). And one more fixture committed
 verbatim: the output of the **first encoder, at 458dfcd** (the oldest vault a developer profile could hold),
-`src/vault/__tests__/fixtures/envelope-v1-458dfcd.json`, with and without a passkey.
+`src/vault/__tests__/fixtures/envelope-v1-458dfcd.json`, with and without a passkey. Both fixtures are pinned by
+sha256 (a swapped fixture is not a control); the 458dfcd vault is readable, but its seed fails AES-GCM (that encoder
+sealed it without the header's additional data) — §2.1's out-of-predicate case (rev 2.2).
 
 **Deletable controls — at least one per clause of U1–U3 (review 2 Minor 1),** each `→ forgotten`, `v1_vault` absent,
 the phrase gone: U1 `null`, `[]`, `"x"`; U2 no `v`, `v: "1"`, `v: 0`, `v: 1.5`; U3 `scheme: 1`; `kdf.alg: 'scrypt'`;
@@ -412,15 +482,21 @@ only `@scure/base`.
 - M-scheme: U3 requires `scheme ∈ {slip10, cli}` → F8 deleted → RED;
 - M-iv: the `seed.iv` length check dropped → the 11-byte-IV control kept → RED (the negative direction);
 - M-digest: step 5's digest re-check dropped → the replaced-value control removes → RED;
-- M-lock: step 6's session check dropped → a session written straight into the session store before the click (as a
-  disk-fault session would be; R3 keeps `setKeys` from making one) is not refused, the vault is removed → RED.
+- M-lock: step 6's session check dropped → a session written straight into the session store (as a disk-fault
+  session would be; R3 keeps `setKeys` from making one) inside the lock's own session section — after step 3, the one
+  step 6 must see — is not refused, the vault is removed → RED. A session present **before** the click is locked by
+  step 3; it has its own control and mutation (M-lock-first: step 3 dropped → RED) (rev 2.2).
 
 ## 3. #37 without holding (E6, D31) — and §2's removal (E11)
 
 - The hold (1 s, `HOLD_MS`, pointer or Space/Enter held) stays (`HoldButton.tsx`).
-- **Added:** a native `<input type="checkbox">` under the button, labelled "I understand this permanently removes this
-  wallet from this browser". When it is checked **and** DELETE matches, the button deletes on **one activation** —
-  a click, or Space / Enter **on the button** — without a hold.
+- **Added:** a native `<input type="checkbox">` directly **above** the button — before it in the DOM, on screen and in
+  tab order, so a screen-reader or keyboard user meets the box before the action it unlocks (rev 2.2; D31) — labelled
+  "I understand this permanently removes this wallet from this browser", shown only while DELETE matches. When it is
+  checked **and** DELETE matches, the button deletes on **one activation** — a click, or Space / Enter **on the
+  button** — without a hold. The button's name follows the box ("Hold to delete"; checked: "Delete wallet" on #37,
+  "Remove damaged wallet" on the removal), and the hold's instructions are hidden while it is checked. On the box,
+  Space toggles it and Enter does nothing (native behaviour, rev 2.2).
 - **Enter does not confirm (Minor 7, B1's rule):** Enter in the DELETE field activates nothing — neither the hold nor
   the checkbox path. Test.
 - **Checkbox state (Minor 8):** unchecked on every entry to the screen; cleared whenever the typed word stops
@@ -436,9 +512,13 @@ only `@scure/base`.
 
 ### 4.1 In the extension
 
-- **#1 welcome** (`src/unlock/screens/welcome.ts`): under the buttons, as drawn, "By continuing you agree to the
-  **Terms** and **Privacy Policy**" — both links.
-- **#38 About** (`src/app/screens/About.tsx`): the rows Terms, Privacy, Open-source licences, Help, as drawn.
+- **#1 welcome** (`src/unlock/screens/welcome.ts`): above the buttons, as drawn (rev 2.2: rev 2.1 said "under"; the
+  design draws the line before the bar, where it is today), "By continuing you agree to the **Terms** and **Privacy
+  Policy**" — both links.
+- **#38 About** (`src/app/screens/About.tsx`): the rows Terms, Privacy, Open-source licences, Help, as drawn — spelled
+  as the design spells them; the design's package count on the licences row is not built (the popup cannot know it:
+  the page is generated after the popup is bundled) (rev 2.2). Every link row's name ends with a screen-reader suffix
+  " (opens in a new tab)" (rev 2.2).
 - Terms, Privacy and Help open in a new tab: `https://noc-tura.io/extension/terms`, `/extension/privacy`,
   `/extension/help`, as `<a target="_blank" rel="noopener noreferrer">` — the pattern of the explorer link
   (`TxDetail.tsx:65`). Links the browser opens, never a fetch: CSP `connect-src` stays exactly
@@ -457,8 +537,11 @@ and the OFL's own) — as **escaped text**, never navigable. The gates are taugh
   of `ENTRIES` or a member of `STATIC_PAGES` (an unknown page fails — today `bundleViolations`, line 896, follows the
   scripts of every root `.html` and refuses nothing for a script-less unknown page). **The static-page rule (N1):** the
   file contains none of `<a`, `href=`, `<script`, `<link`, `<style`, `style=`, an `on…=` attribute, `<iframe`,
-  `<form` (case-insensitive, over the raw file). Every `<` inside a licence text is escaped to `&lt;` by the generator,
-  so none of these can come from a licence.
+  `<form` (case-insensitive, over the raw file) — and, rev 2.2, uses only the tags and attributes the generator emits
+  (`html[lang]`, `head`, `meta[charset=utf-8]`, `title`, `body`, `h1`, `h2`, `p`, `pre`), so a `<meta http-equiv>`,
+  `<img>`, `<base>` or `<svg>` fails too; a missing `licenses.html` is INCONCLUSIVE, and the licence gate requires each
+  package's page to equal the page its maps give. Every `<` inside a licence text is escaped to `&lt;` by the
+  generator, so none of these can come from a licence.
 - `check-links.mjs` (§4.3) **skips `licenses.html` by name**; the static-page rule is what holds there instead.
 - `check-csp.mjs` reads every `.html` under the package (`checkHtml`): it covers the file unchanged.
 - `check-page-bundles.mjs` covers the two content scripts only; it is unaffected.
@@ -487,7 +570,8 @@ and the OFL's own) — as **escaped text**, never navigable. The gates are taugh
 4. **Licence text:** the package directory's `LICENSE*`, `LICENCE*` or `COPYING*` files (all of them, sorted by name —
    `borsh` ships `LICENSE-APACHE` and `LICENSE-MIT.txt`), CRLF folded to LF. No such file → the SPDX id from
    `package.json` `license`, with that licence's standard text from a committed table
-   (`extension/release/licence-texts/<SPDX>.txt`) headed by the package's `author` field; neither → **the build
+   (`extension/release/licence-texts/<SPDX>.txt`) headed by the package's `author` field ("Author: …", or "The package
+   names no author." — rev 2.2), never an invented copyright holder; neither → **the build
    fails** (no silent "unknown"). Probe: `bs58` 4.0.1 (twice) and `qrcode-generator` 2.0.4 ship no licence file and
    say MIT. **The SPDX id (N2, E15):** the `license` field when present; otherwise the committed table
    `extension/release/licence-ids.json` (`name@version → SPDX`), consulted for every package with rendered code and no
@@ -497,7 +581,9 @@ and the OFL's own) — as **escaped text**, never navigable. The gates are taugh
    fails (item 6).
 5. **Non-module assets:** the two Geist fonts in `public/fonts/` (copied as files, never modules) — an entry from a
    committed `extension/public/fonts/LICENSE.txt` taken from the Geist release the files came from; any file under
-   `fonts/` in the package without an entry fails the build.
+   `fonts/` in the package without an entry fails the build. Rev 2.2: the entry pins both faces to geist 1.7.2 by
+   sha256 (a changed face fails the build until its entry is revisited), and `fonts/LICENSE.txt` ships in every package
+   beside the faces (OFL 1.1 asks for it).
 6. **Allowlist (R7, the owner's list, E15):** a rendered package whose SPDX id is outside {MIT, ISC, BSD-2-Clause,
    BSD-3-Clause, Apache-2.0, 0BSD, OFL-1.1, Unlicense, and ours} fails the build; adding to the list is an owner
    decision, never a plan edit. **`rpc-websockets` (N3, E16):** 9.3.9, LGPL-3.0-only, is in the dependency graph
@@ -505,8 +591,9 @@ and the OFL's own) — as **escaped text**, never navigable. The gates are taugh
    `class RpcWebSocketClient extends CommonClient` at top level, `lib/index.browser.esm.js:12`), but its rendered
    length is **0** — `Connection` and the WebSocket path are tree-shaken; no LGPL code ships today (rev 2 said
    otherwise; it read the ids, not the rendered code). Kept anyway, **as a precaution**:
-   - a gate: every module under `node_modules/rpc-websockets/` has `renderedLength` 0 in every chunk (mutation: a
-     `new Connection(...)` planted in the background → fails);
+   - a gate: no module under `node_modules/rpc-websockets/` is in any chunk of any map (with the alias the package
+     never enters the graph), and the stub renders 0 bytes (mutation: a `new Connection(...)` planted in the
+     background → the stub renders code → fails) — stricter than "rendered 0", which the stub would pass (rev 2.2);
    - an alias of the bare specifier `rpc-websockets` to a local stub with exactly two named exports — `CommonClient`, a
      class (an `extends` of a non-constructor would throw at module evaluation), and `WebSocket`, a function — each
      throwing if ever constructed or called. Only `Connection`'s constructor makes a `RpcWebSocketClient`, and no file
@@ -515,7 +602,8 @@ and the OFL's own) — as **escaped text**, never navigable. The gates are taugh
      test imports `@solana/web3.js` under the alias and uses what the extension uses (`PublicKey`,
      `VersionedTransaction`, `TransactionMessage`, `SystemProgram`) without a throw.
 7. **Order and determinism:** "Noctura" first, then entries sorted by name, then version (C collation); texts
-   HTML-escaped; no date, no absolute path. Determinism follows from the lockfile; `verify-reproducible.mjs` covers the
+   HTML-escaped; lines over 100 columns wrapped at word boundaries, so a tab does not scroll sideways (rev 2.2; a
+   window narrowed to 412 px still does — the page may carry no stylesheet); no date, no absolute path. Determinism follows from the lockfile; `verify-reproducible.mjs` covers the
    file with the rest of the package. The package carries no licence notice today (the minifier drops `@license`
    comments — probe: none in any built file); this page is where the notices MIT and Apache-2.0 ask for live.
 
@@ -553,7 +641,13 @@ licence texts carry URLs as escaped text; §4.2's static-page rule holds there) 
   `https://noc-tura.io/extension/privacy`, `https://noc-tura.io/extension/help`;
 - **Inert library strings**, each with its package and reason in the gate: the React error decoder, the `uuid`
   message, the five W3C namespaces. Inert means never fetched — `connect-src` admits only the coordinator — and never
-  navigated: no `href`, `window.open` or `openPage` is built from them (they are message text and namespace ids).
+  navigated: no `href`, `window.open` or `openPage` is built from them (they are message text and namespace ids);
+- **Presale build only (rev 2.2):** `https://noc-tura.io?ref=${}` — #24's invite link (`core/referral`), absent from
+  the probe above, which built only `--no-presale`; a template interpolation inside a match folds to `${}`, so a
+  minifier's renaming is one string while `…/terms${x}` still fails. The store build refuses it.
+
+Each row is allowed only in the files the table names (rev 2.2): the coordinator and the RP host as above, the four
+navigable links in a page file (`.js` / `.html`), the inert strings and the referral link in `.js` only.
 
 Anything else fails, naming the file. Zero matches in a package → `INCONCLUSIVE` (the extraction broke).
 
@@ -649,7 +743,8 @@ this product. Nothing in the extension connects to it: `connect-src` admits only
   and records `{rpId: 'wallet.noc-tura.io', confirmedBy: 'owner', decision: 'E17'}`, and its `rpId` equals `RP_ID`;
   §7 step 3 restates it.
 - **Pinned (test + mutation).** A new test (`src/vault/__tests__/rpId.test.ts`) asserts
-  `` `https://${RP_ID}/*` `` is a `HOST_PERMISSIONS` value and `RP_ID` equals `rp-id.json`'s. Mutation: the entry
+  `` `https://${RP_ID}/*` `` is a `HOST_PERMISSIONS` value (B1e-1) and `RP_ID` equals `rp-id.json`'s (B1e-2, beside the
+  pre-upload gate the owner's confirmation fills — rev 2.2). Mutation: the entry
   removed from `HOST_PERMISSIONS` → RED (a later "tidy" of a seemingly unused host permission would otherwise silently
   break every passkey). Today only the origin derivation is tested (`ext.test.ts`).
 
@@ -818,7 +913,9 @@ Unit tests for every rule above with positive and negative controls and named mu
 permissions (version, `key`), the `RP_ID` pin (§5.6), the licence page's rendered-code and allowlist rules (§4.2), classes, no-presale, links and reproducible gates green; E2E for the phrase on the six
 screens, both damaged states (removal of an unreadable vault, its refusal for F0, the save download), #37's checkbox
 path, the links and `licenses.html`; every E2E normally and under `unshare -rn`; a visual pass of the undrawn elements
-at the popup's 412 × 600 and the window's real size. No test contacts `*.noc-tura.io`; only the release script's live
+at the popup's 412 × 600 and the window's real size — rev 2.2: in the store build, the popup at 412 × 600, the vault
+page at 412 × 916 and the approval window at 412 × 720. R9's E2E strips the `phrase` field inside the page: the real
+background always sends a valid one (rev 2.2). No test contacts `*.noc-tura.io`; only the release script's live
 check does.
 
 ## 11. Open questions for the owner
