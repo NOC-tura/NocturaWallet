@@ -22,10 +22,19 @@ const ACC = [{index: 0, publicKey: base58.encode(PUB), secretKey: SECRET64}];
 // 64 × 0x01 is 64 bytes but not a keypair: its "public half" is not what its seed derives.
 const ONES64 = base64.encode(new Uint8Array(64).fill(1));
 const UNRELATED = 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk';
-/** A fake extension whose stored envelope records ACC's key: vault.setKeys binds to it (review H1). */
+const bytes = (n: number, fill: number) => base64.encode(new Uint8Array(n).fill(fill));
+/** A fake extension whose stored envelope records ACC's key: vault.setKeys binds to it (review H1) — a whole envelope,
+ * with the byte lengths a real one has, since the binding goes through envelopeShape (B1e §2.5, R3). */
 function vaultExt() {
   const ext = fakeExt();
-  (ext.local as ReturnType<typeof memKV>).data.set('v1_vault', {v: 1, scheme: 'slip10', accounts: [{index: 0, name: 'Account 1', publicKey: base58.encode(PUB)}]});
+  (ext.local as ReturnType<typeof memKV>).data.set('v1_vault', {
+    v: 1,
+    scheme: 'slip10',
+    kdf: {alg: 'argon2id', m: 65536, t: 3, p: 1, salt: bytes(16, 1)},
+    seed: {iv: bytes(12, 2), ct: bytes(48, 3)},
+    password: {wrapped: bytes(40, 4)},
+    accounts: [{index: 0, name: 'Account 1', publicKey: base58.encode(PUB)}],
+  });
   return ext;
 }
 

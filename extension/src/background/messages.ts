@@ -7,7 +7,7 @@ import {armAutolock, lock} from './autolock';
 import {readSettings, settingsMutex, writeSettings} from './settings';
 import type {WalletDeps} from './deps';
 import {CHALLENGE_ID, challengeInfo, satisfyChallenge} from './reauthChallenges';
-import {changePassword, forgetWallet, provenRevisionIsStored, readWalletView, removePasskey, storeEnvelope} from './accountsStore';
+import {VAULT_KEY, changePassword, forgetWallet, provenRevisionIsStored, removePasskey, storeEnvelope, vaultReading} from './accountsStore';
 import {isOpen, readPending} from './pendingStore';
 import {startPoller} from './pending';
 import {WALLET_TYPES, applySettingsChallenge, handleWallet, isWalletType, type Result} from './walletApi';
@@ -191,15 +191,22 @@ export async function handleMessage(ext: Ext, msg: unknown, sender: Sender, deps
       // envelope exists), so this refuses only keys of no stored wallet. The envelope is read inside
       // the same sessionMutex section as the session write (setSessionIf), the section vault.forgetWallet
       // writes the vault in: keys bound to a wallet a forget removes meanwhile are never written.
+      // B1e §2.5 (R3): bound through envelopeShape, so no session is created over an envelope the background refuses
+      // (refused by this version, or unreadable) — those keys are `malformed`.
+      let refusal: 'unknown-account' | 'malformed' = 'unknown-account';
       const bound = async (): Promise<boolean> => {
-        const view = await readWalletView(ext);
-        const stored = new Map((view?.accounts ?? []).map(a => [a.index, a.publicKey]));
+        const reading = vaultReading(await ext.local.get(VAULT_KEY));
+        if (reading.kind === 'unreadable' || reading.kind === 'refused') {
+          refusal = 'malformed';
+          return false;
+        }
+        const stored = new Map((reading.kind === 'wallet' ? reading.env.accounts : []).map(a => [a.index, a.publicKey]));
         return accounts.every(a => stored.get(a.index) === a.publicKey);
       };
       // Fail closed: keys in storage.session with no alarm armed would never auto-lock, while
       // the vault page reports "Unlock failed". Anything that throws after the write undoes it.
       try {
-        if (!(await setSessionIf(ext, accounts, bound))) return {ok: false, error: 'unknown-account'};
+        if (!(await setSessionIf(ext, accounts, bound))) return {ok: false, error: refusal};
         await armAutolock(ext);
       } catch (e) {
         await lock(ext);

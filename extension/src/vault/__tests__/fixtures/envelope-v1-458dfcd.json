@@ -1,0 +1,58 @@
+{
+  "note": "The output of the first envelope encoder (extension/src/vault/envelope.ts at 458dfcd, 2026-09-28): createEnvelope, then addPasskeyWrap of it. Written once by B1e-1 Task 1 Step 1, never regenerated. Mnemonic abandon x11 about, password \"correct horse battery staple\", Argon2id at the declared cost, PRF output 0xa0..0xbf.",
+  "created": {
+    "v": 1,
+    "scheme": "slip10",
+    "kdf": {
+      "alg": "argon2id",
+      "m": 65536,
+      "t": 3,
+      "p": 1,
+      "salt": "Rlt11JuuCQ0KXZXjPpN1Eg=="
+    },
+    "seed": {
+      "iv": "Tu8k/W+n/P8dBFCc",
+      "ct": "y0NRB0XxUXdOctbCGY9MBRVQ2/q3kZ8fGodHKONCe0RPqMF9E0sIe7QAti4vo9q62P5/HORKHiSGOZiAAOCx7Z8wAGmGOZNme37z/ROkKW8KWu/P6mz0VpGca3ZHCmt3rOnzJIfXyNO3/kqbbA=="
+    },
+    "password": {
+      "wrapped": "NMhy+/YGUYm7HzNUpV8X//f/+lBMwy/b0EtfciG2+6USULwWbTqeYA=="
+    },
+    "accounts": [
+      {
+        "index": 0,
+        "name": "Account 1",
+        "publicKey": "HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk"
+      }
+    ]
+  },
+  "withPasskey": {
+    "v": 1,
+    "scheme": "slip10",
+    "kdf": {
+      "alg": "argon2id",
+      "m": 65536,
+      "t": 3,
+      "p": 1,
+      "salt": "Rlt11JuuCQ0KXZXjPpN1Eg=="
+    },
+    "seed": {
+      "iv": "Tu8k/W+n/P8dBFCc",
+      "ct": "y0NRB0XxUXdOctbCGY9MBRVQ2/q3kZ8fGodHKONCe0RPqMF9E0sIe7QAti4vo9q62P5/HORKHiSGOZiAAOCx7Z8wAGmGOZNme37z/ROkKW8KWu/P6mz0VpGca3ZHCmt3rOnzJIfXyNO3/kqbbA=="
+    },
+    "password": {
+      "wrapped": "NMhy+/YGUYm7HzNUpV8X//f/+lBMwy/b0EtfciG2+6USULwWbTqeYA=="
+    },
+    "accounts": [
+      {
+        "index": 0,
+        "name": "Account 1",
+        "publicKey": "HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk"
+      }
+    ],
+    "passkey": {
+      "credentialId": "4OHi4+Tl5ufo6err7O3u7w==",
+      "prfSalt": "W/HHMgL+KvzIp2oMEu5WCVHapAocR+ZAZloxlLO5b9k=",
+      "wrapped": "AbEj2TDtPOHLxwyeHAOFYhK4aZbmTG0U7pTd3nxStckiZLVmsVOxPg=="
+    }
+  }
+}

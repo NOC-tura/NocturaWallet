@@ -16,6 +16,7 @@ import {wipeDappStores} from './dapp/store';
 import {PRESALE_RECORDS_KEY, wipePresaleRecords} from './presaleRecordsKey';
 import {ENVELOPE_BYTES, ENVELOPE_KDF_MAX, ENVELOPE_KDF_MIN, MAX_ACCOUNTS, accountsPolicyOk, b64Length, cleanName} from '../shared/envelopeRules';
 import {envelopeRevision} from '../shared/envelopeRevision';
+import {unreadableV1} from '../shared/unreadable';
 import {readWalletBalances} from '../../../core/solana/balances';
 import {RpcForbidden} from '../../../core/solana/rpc';
 
@@ -148,7 +149,7 @@ const bytesAtLeast = (x: unknown, n: number): x is string => (b64Length(x) ?? -1
  * no vault code and cannot check the ciphertext itself; the vault page proved the factor and
  * re-encrypted. Names are checked in storeEnvelope, against the stored envelope. Null otherwise.
  */
-function envelopeShape(x: unknown): StoredEnvelope | null {
+export function envelopeShape(x: unknown): StoredEnvelope | null {
   if (!isObj(x) || x.v !== 1 || (x.scheme !== 'slip10' && x.scheme !== 'cli')) return null;
   const {kdf, seed, password, passkey} = x;
   if (!isObj(kdf) || kdf.alg !== 'argon2id' || !kdfInBounds(kdf) || !bytesExactly(kdf.salt, ENVELOPE_BYTES.salt)) return null;
@@ -181,6 +182,22 @@ function envelopeShape(x: unknown): StoredEnvelope | null {
     ...(pk === undefined ? {} : {passkey: pk}),
     accounts,
   };
+}
+
+/**
+ * B1e §2.1: the background's reading of a stored v1_vault value. A value envelopeShape refuses is `unreadable` when the
+ * frozen predicate (src/shared/unreadable.ts) says no version of Noctura can open it, and otherwise `refused`: this
+ * version's policy refuses it. Asking envelopeShape first is not a check of its own today: the predicate calls no value
+ * envelopeShape accepts unreadable (unreadable.test.ts: the partition and breadth rows), so swapping the two is
+ * invisible — those rows are the guard.
+ */
+export type VaultReading = {kind: 'none'} | {kind: 'unreadable'} | {kind: 'refused'} | {kind: 'wallet'; env: StoredEnvelope};
+
+export function vaultReading(raw: unknown): VaultReading {
+  if (raw === undefined) return {kind: 'none'};
+  const env = envelopeShape(raw);
+  if (env !== null) return {kind: 'wallet', env};
+  return unreadableV1(raw) ? {kind: 'unreadable'} : {kind: 'refused'};
 }
 
 /**
