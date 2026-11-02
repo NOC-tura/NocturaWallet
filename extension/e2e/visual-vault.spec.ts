@@ -343,11 +343,12 @@ test('visual: #9, #39, the restore and retry steps', async () => {
 
     await h.sw.evaluate(() => chrome.storage.local.set({v1_vault: null}));
     await p.goto(`chrome-extension://${h.id}/unlock.html`);
-    await expect(text(p, '#unl-notice-line')).toHaveText("This wallet's stored data is damaged.");
-    await shot(p, '09-damaged');
+    // B1e §2.2: a stored null is unreadable (U1) — the damaged state, on #9 and on #1.
+    await expect(text(p, '#dmg-unreadable')).toHaveText('Wallet data is damaged');
+    await shot(p, '09-damaged', {ready: p.locator('#dmg-remove')});
     await p.goto(`chrome-extension://${h.id}/unlock.html?mode=welcome`);
-    await expect(text(p, '#wel-notice-line')).toHaveText("This wallet's stored data is damaged.");
-    await shot(p, '01-welcome-damaged');
+    await expect(text(p, '#dmg-unreadable')).toHaveText('Wallet data is damaged');
+    await shot(p, '01-welcome-damaged', {ready: p.locator('#dmg-remove')});
     await h.sw.evaluate(() => chrome.storage.local.remove('v1_vault'));
     await p.goto(`chrome-extension://${h.id}/unlock.html`);
     await expect(text(p, '#unl-notice-line')).toHaveText('No wallet on this browser yet.');

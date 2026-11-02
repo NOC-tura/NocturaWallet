@@ -1,4 +1,5 @@
 import {readFileSync} from 'node:fs';
+import {join} from 'node:path';
 import {argon2idAsync} from '@noble/hashes/argon2.js';
 import {base64} from '@scure/base';
 import {KDF_CAP, addPasskeyWrap, createEnvelope, rewrapPassword, unlockWithPassword, type EnvelopeV1, type Kdf} from '../../vault/envelope';
@@ -22,7 +23,8 @@ export const LONG24 =
 /** Account 0 of MNEMONIC (slip10), the fixture's only account. */
 export const FIXTURE_ACCOUNT = 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk';
 
-const readJson = (name: string): Json => JSON.parse(readFileSync(new URL(`../../vault/__tests__/fixtures/${name}`, import.meta.url), 'utf8')) as Json;
+// By path, not import.meta.url: under happy-dom (the vault page's screen tests) import.meta.url is not a file URL.
+const readJson = (name: string): Json => JSON.parse(readFileSync(join(__dirname, '..', '..', 'vault', '__tests__', 'fixtures', name), 'utf8')) as Json;
 const stored = <T>(x: T): T => JSON.parse(JSON.stringify(x)) as T;
 const obj = (x: unknown): Json => {
   if (typeof x !== 'object' || x === null || Array.isArray(x)) throw new Error('the fixture changed shape');

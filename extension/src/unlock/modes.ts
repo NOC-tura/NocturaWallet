@@ -2,6 +2,7 @@ import type {PageMode} from './mode';
 import type {PageDeps} from './page';
 import {mountAccounts} from './screens/accounts';
 import {mountChangePassword} from './screens/changePassword';
+import {mountDamaged} from './screens/damaged';
 import {mountDelete} from './screens/delete';
 import {mountPasskeyManage} from './screens/passkeyManage';
 import {createCreateRun} from './screens/createRun';
@@ -9,6 +10,7 @@ import {mountForgot} from './screens/forgot';
 import {createImportRun} from './screens/importRun';
 import {mountPassword} from './screens/password';
 import {mountReauth} from './screens/reauth';
+import {mountRemoveDamaged} from './screens/removeDamaged';
 import {createRestoreRun} from './screens/restoreRun';
 import {createRetryRun} from './screens/retryRun';
 import {mountPhrase} from './screens/reveal';
@@ -64,6 +66,9 @@ export function startMode(mode: PageMode, deps: PageDeps): void {
       return;
     case 'password':
       mountChangePassword(deps).show();
+      return;
+    case 'remove-damaged':
+      void mountRemoveDamaged(deps, mountDamaged(deps)).show();
       return;
     case 'unlock':
       void mountUnlock(deps).show(mode.returnTo);

@@ -17,6 +17,7 @@ import {PRESALE_RECORDS_KEY, wipePresaleRecords} from './presaleRecordsKey';
 import {ENVELOPE_BYTES, ENVELOPE_KDF_MAX, ENVELOPE_KDF_MIN, MAX_ACCOUNTS, accountsPolicyOk, b64Length, cleanName} from '../shared/envelopeRules';
 import {envelopeRevision} from '../shared/envelopeRevision';
 import {unreadableV1} from '../shared/unreadable';
+import {storedDigest} from '../shared/storedDigest';
 import {readWalletBalances} from '../../../core/solana/balances';
 import {RpcForbidden} from '../../../core/solana/rpc';
 
@@ -549,6 +550,65 @@ export async function forgetWallet(
       await clearCaches(ext);
     } catch (e) {
       console.warn('forgetWallet: cleanup after the vault write failed; the next first write clears it', e);
+    }
+    return 'forgotten';
+  });
+}
+
+export type ForgetDamagedResult = 'forgotten' | 'malformed' | 'no-wallet' | 'not-unreadable' | 'busy' | 'send-open' | 'unlocked';
+
+/**
+ * vault.forgetDamaged (B1e §2.4, C2, E12): the one removal of v1_vault without a password — only of a value the frozen
+ * predicate calls unreadable (src/shared/unreadable.ts), which no version of Noctura can open. The vault page sends the
+ * digest of the value it showed (src/shared/storedDigest.ts); the background judges again on its own reads, in E5's
+ * order (forgetWallet's), inside `serial`:
+ *  1. `expectedDigest` not 64 lowercase hex → `malformed`;
+ *  2. read v1_vault: absent → `no-wallet`; not unreadable → `not-unreadable` (a vault refused by this version and a
+ *     wallet both land here); another digest → `busy`;
+ *  3. lock;
+ *  4. check-and-clear v1_pending in ONE updatePending: an open record → `send-open` (nothing removed, left locked);
+ *  5. read again: still unreadable with the same digest, else `busy`;
+ *  6. under sessionMutex: a session back since step 3 → `unlocked`; otherwise v1_vault is removed;
+ *  7. best effort, never undoing step 6: the wallet's data (WALLET_DATA_KEYS) and the caches.
+ * The predicate is the safety; the digest only narrows it to the value the user saw.
+ */
+export async function forgetDamaged(ext: Ext, req: {expectedDigest: unknown}): Promise<ForgetDamagedResult> {
+  const {expectedDigest} = req;
+  if (!isStr(expectedDigest) || !REVISION.test(expectedDigest)) return 'malformed';
+  return serial(async (): Promise<ForgetDamagedResult> => {
+    // 2.
+    const stored = await ext.local.get(VAULT_KEY);
+    if (stored === undefined) return 'no-wallet';
+    if (vaultReading(stored).kind !== 'unreadable') return 'not-unreadable';
+    if (storedDigest(stored) !== expectedDigest) return 'busy';
+    // 3.
+    await lock(ext);
+    // 4.
+    try {
+      await updatePending(ext, records => {
+        if (records.some(isOpen)) throw new SendOpen();
+        return [];
+      });
+    } catch (e) {
+      if (e instanceof SendOpen) return 'send-open';
+      throw e;
+    }
+    // 5 + 6. The reading's clause is implied by the digest's (the same digest is the same text, so the same verdict as
+    // step 2): belt and braces, not a check of its own — the digest compare is the one M-digest proves.
+    const again = await ext.local.get(VAULT_KEY);
+    if (again === undefined || vaultReading(again).kind !== 'unreadable' || storedDigest(again) !== expectedDigest) return 'busy';
+    const removed = await sessionMutex(async () => {
+      if ((await getSession(ext)) !== null) return false;
+      await ext.local.remove(VAULT_KEY);
+      return true;
+    });
+    if (!removed) return 'unlocked';
+    // 7.
+    try {
+      await removeWalletData(ext);
+      await clearCaches(ext);
+    } catch (e) {
+      console.warn('forgetDamaged: cleanup after the vault removal failed; the next first write clears it', e);
     }
     return 'forgotten';
   });

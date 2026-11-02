@@ -7,7 +7,7 @@ import {armAutolock, lock} from './autolock';
 import {readSettings, settingsMutex, writeSettings} from './settings';
 import type {WalletDeps} from './deps';
 import {CHALLENGE_ID, challengeInfo, satisfyChallenge} from './reauthChallenges';
-import {VAULT_KEY, changePassword, forgetWallet, provenRevisionIsStored, removePasskey, storeEnvelope, vaultReading} from './accountsStore';
+import {VAULT_KEY, changePassword, forgetDamaged, forgetWallet, provenRevisionIsStored, removePasskey, storeEnvelope, vaultReading} from './accountsStore';
 import {isOpen, readPending} from './pendingStore';
 import {startPoller} from './pending';
 import {WALLET_TYPES, applySettingsChallenge, handleWallet, isWalletType, type Result} from './walletApi';
@@ -49,6 +49,7 @@ export const PRIVILEGED = [
   'vault.changePassword',
   'vault.removePasskey',
   'vault.phraseVerified',
+  'vault.forgetDamaged',
   'activity.ping',
   ...WALLET_TYPES,
   // B1c §1.4: the approval window's two, and #49's.
@@ -70,8 +71,8 @@ export const PRIVILEGED = [
  * the envelope it re-encrypted (the background is the one writer of v1_vault), or read what a
  * re-authentication is for (vault.challengeInfo, B1b-2a E3), or forget the wallet it proved
  * (vault.forgetWallet, E5), change the password it proved (vault.changePassword, B1b-2b E10) or remove the passkey
- * (vault.removePasskey, E12), or record that the phrase was verified (vault.phraseVerified, E15): the popup and the
- * tab cannot.
+ * (vault.removePasskey, E12), or record that the phrase was verified (vault.phraseVerified, E15), or remove a vault no
+ * version can read (vault.forgetDamaged, B1e §2.4): the popup and the tab cannot.
  */
 const VAULT_PAGE_ONLY: readonly string[] = [
   'vault.setKeys',
@@ -82,6 +83,7 @@ const VAULT_PAGE_ONLY: readonly string[] = [
   'vault.changePassword',
   'vault.removePasskey',
   'vault.phraseVerified',
+  'vault.forgetDamaged',
 ];
 /** B1c §1.4: the approval window's messages come from approve.html only (sender.origin ours, the path /approve.html). */
 const APPROVE_PAGE_ONLY: readonly string[] = ['dapp.pending', 'dapp.decide'];
@@ -265,6 +267,25 @@ export async function handleMessage(ext: Ext, msg: unknown, sender: Sender, deps
         if ((await readPending(ext)).some(isOpen)) void startPoller(ext, deps);
       } catch (e) {
         console.warn('vault.forgetWallet: forgotten, but the pending check after it failed', e);
+      }
+      return {ok: true};
+    }
+    case 'vault.forgetDamaged': {
+      if (deps === undefined) return {ok: false, error: 'unavailable'};
+      let r: Awaited<ReturnType<typeof forgetDamaged>>;
+      try {
+        r = await forgetDamaged(ext, {expectedDigest: (msg as {expectedDigest?: unknown}).expectedDigest});
+      } catch {
+        // A storage failure: the steps before the removal leave the value in place (locked at most).
+        return {ok: false, error: 'failed'};
+      }
+      if (r !== 'forgotten') return {ok: false, error: r};
+      // As vault.forgetWallet: a send that passed its session check before the lock may have appended a record after
+      // the clear — it is kept, and watched without keys.
+      try {
+        if ((await readPending(ext)).some(isOpen)) void startPoller(ext, deps);
+      } catch (e) {
+        console.warn('vault.forgetDamaged: forgotten, but the pending check after it failed', e);
       }
       return {ok: true};
     }

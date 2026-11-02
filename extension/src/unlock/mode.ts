@@ -25,7 +25,9 @@ export type PageMode =
   /** B1b-2b §1.2: #6 "manage" — add (or replace, C4) by password; remove by password or passkey (E12). */
   | {mode: 'passkey'; op: 'add' | 'remove'}
   /** B1b-2b §3.5: the verify check (unlocked session, password only, D23). `reveal` is the designed #3 (§3.4). */
-  | {mode: 'verify'};
+  | {mode: 'verify'}
+  /** B1e §2.2: the removal of a vault no version can read — the page reads and judges it itself; the URL names nothing. */
+  | {mode: 'remove-damaged'};
 
 const SOURCES: readonly string[] = ['forgot', 'retry'];
 /** The SLIP-0010 hardened limit (accountsFlow.MAX_ACCOUNT_INDEX; mode.ts imports nothing that holds a key). */
@@ -40,7 +42,7 @@ const RETURNS: readonly string[] = ['created', 'imported'];
 export function pageMode(search: string): PageMode {
   const p = new URLSearchParams(search);
   const m = p.get('mode');
-  if (m === 'welcome' || m === 'create' || m === 'forgot' || m === 'reveal' || m === 'password' || m === 'delete' || m === 'verify') return {mode: m};
+  if (m === 'welcome' || m === 'create' || m === 'forgot' || m === 'reveal' || m === 'password' || m === 'delete' || m === 'verify' || m === 'remove-damaged') return {mode: m};
   if (m === 'accounts') {
     if (p.get('op') !== 'remove') return {mode: 'accounts', op: 'add'};
     const raw = p.get('index') ?? '';

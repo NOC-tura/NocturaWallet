@@ -180,7 +180,11 @@ describe('#9 unlock (spec §3.9)', () => {
     await mountUnlock(h.deps).show(null);
     // No attempt ran, so nothing could be charged: no wait of any kind was asked for (the mid-run case is below).
     expect(asked).toEqual([]);
-    expect(text(el('unl-notice'))).toBe("This wallet's stored data is damaged. Your funds stay on Solana; your recovery phrase still controls them. To use them here, remove Noctura from this browser, install it again and import the phrase.");
+    // B1e §2.2: a stored null is unreadable (U1) — the damaged screen, with its removal.
+    expect(visible(el('v-damaged'))).toBe(true);
+    expect(visible(el('dmg-unreadable'))).toBe(true);
+    expect(visible(el('dmg-remove'))).toBe(true);
+    expect(visible(el('v-unlock'))).toBe(false);
     expect(visible(el('unl-entry'))).toBe(false);
     expect(visible(el('unl-forgot'))).toBe(false);
     expect(h.sent).toEqual([]);
@@ -258,8 +262,8 @@ describe('#9 unlock: what the brief left implicit (carried rules)', () => {
     const h = await shown(await withPasskey(PRF), {credentials: prfCredentials(PRF)});
     await h.ext.local.set(VAULT_KEY, null);
     click(el('unl-passkey'));
-    await h.until(() => visible(el('unl-notice')));
-    expect(text(el('unl-notice-line'))).toBe("This wallet's stored data is damaged.");
+    // B1e §2.2: the attempt's `damaged` reads again — a null is unreadable.
+    await h.until(() => visible(el('dmg-unreadable')));
     expect(h.sent).toEqual([]);
     expect(prfOutputs).toHaveLength(1);
     expect(prfOutputs.every(o => o.every(b => b === 0))).toBe(true);
@@ -286,7 +290,9 @@ describe('#9 unlock: what the brief left implicit (carried rules)', () => {
     const env = await withPasskey(PRF);
     await shown({...env, accounts: []});
     expect(visible(el('unl-passkey'))).toBe(false);
-    expect(text(el('unl-notice-line'))).toBe("This wallet's stored data is damaged.");
+    // B1e §2.2: no accounts is policy — refused by this version, and never removable.
+    expect(visible(el('dmg-refused'))).toBe(true);
+    expect(visible(el('dmg-remove'))).toBe(false);
   });
 
   it('cooldown: the ring is set only as a number; the countdown is announced once (polite), not every second', async () => {
@@ -317,7 +323,7 @@ describe('#9 unlock: what the brief left implicit (carried rules)', () => {
   // Review fix round 1, item 2: observed, not inferred — every wait the screen asks for is recorded. After one wrong
   // the streak is 1; had a damaged (or vanished) vault been charged, it would be 2 and a 1 s backoff wait would follow.
   it.each([
-    ['damaged', null, "This wallet's stored data is damaged."],
+    ['damaged', null, null],
     ['no-wallet', undefined, 'No wallet on this browser yet.'],
   ] as const)('a vault %s during the run is named, never charged to the backoff (no wait after it, even after a wrong)', async (_kind, stored, line) => {
     const h = await harness({vault: await wallet()});
@@ -330,8 +336,9 @@ describe('#9 unlock: what the brief left implicit (carried rules)', () => {
     if (stored === undefined) await h.ext.local.remove(VAULT_KEY);
     else await h.ext.local.set(VAULT_KEY, stored);
     submit(PW);
-    await h.until(() => visible(el('unl-notice')) && !h.deps.gate.isBusy());
-    expect(text(el('unl-notice-line'))).toBe(line);
+    // B1e §2.2: a stored null (unreadable) is the damaged screen; a vanished vault the notice.
+    await h.until(() => (line === null ? visible(el('dmg-unreadable')) : visible(el('unl-notice'))) && !h.deps.gate.isBusy());
+    if (line !== null) expect(text(el('unl-notice-line'))).toBe(line);
     // Only the second click's floor: no backoff wait was asked for.
     expect(asked).toEqual([500, 500]);
     expect(visible(el('unl-cooldown'))).toBe(false);

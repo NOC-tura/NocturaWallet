@@ -200,7 +200,31 @@ test('csp: every vault-page mode runs with zero CSP violations; an inline style 
     await expect(p.locator('#imp-phrase')).toBeVisible();
     await clean('import');
 
-    expect(seen).toHaveLength(23);
+    // B1e §2.2: the two damaged states and the removal, whose hold writes --vlt-hold through the CSSOM — never a violation.
+    await h.sw.evaluate(async () => chrome.storage.local.set({v1_vault: {v: 2}}));
+    await p.goto(base);
+    await expect(p.locator('#dmg-refused')).toBeVisible();
+    await clean('#9, refused by this version');
+    await h.sw.evaluate(async () => chrome.storage.local.set({v1_vault: null}));
+    await p.goto(base);
+    await expect(p.locator('#dmg-unreadable')).toBeVisible();
+    await clean('#9, unreadable');
+    await p.locator('#dmg-remove').click();
+    await expect(p.locator('#rd-entry')).toBeVisible();
+    await p.locator('#rd-word').fill('DELETE');
+    await p.clock.pauseAt(await p.evaluate(() => Date.now() + 1_000));
+    await p.locator('#rd-hold').hover();
+    await p.mouse.down();
+    await p.clock.runFor(600);
+    await expect(p.locator('#rd-fill')).toHaveAttribute('style', /--vlt-hold/);
+    await p.clock.runFor(500);
+    await p.mouse.up();
+    await p.clock.resume();
+    await expect(p).toHaveURL(/mode=welcome$/);
+    await expect(p.locator('#wel-create')).toBeVisible();
+    await clean('remove-damaged, the hold');
+
+    expect(seen).toHaveLength(26);
 
     // The positive control, on the same page and watch: an inline <style> and a remote <img> are both refused and reported.
     await p.evaluate(src => {

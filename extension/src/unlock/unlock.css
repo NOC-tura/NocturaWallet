@@ -456,3 +456,113 @@
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+/* B1e §2.2: the damaged states and their removal (undrawn) — #37's card (index.html #s37's inline styles, as app.css
+   carries them for the popup), its typed DELETE field and its hold. */
+.vlt-damaged {
+  padding: var(--space-5) var(--space-5) var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+.vlt-danger-card {
+  background: color-mix(in oklab, var(--danger) 10%, var(--bg-surface-1));
+  border: 1px solid color-mix(in oklab, var(--danger) 36%, transparent);
+  border-radius: var(--radius-2xl);
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.vlt-danger-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.vlt-danger-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: color-mix(in oklab, var(--danger) 18%, var(--bg-surface-2));
+  color: var(--danger);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 48px;
+}
+.vlt-stack-3 {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.vlt-stack-1 {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.vlt-address-start {
+  display: flex;
+}
+.vlt-eyebrow {
+  margin-bottom: var(--space-2);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.vlt-word {
+  color: var(--danger);
+  letter-spacing: 0.16em;
+}
+.vlt-help {
+  margin-top: 6px;
+}
+/* "Save the damaged data" is a link (<a download>) drawn as the design's button: not underlined. */
+.vlt-col a.btn {
+  text-decoration: none;
+}
+.vlt-col .s7-pw input {
+  letter-spacing: 0.16em;
+}
+.vlt-col .s7-pw input::placeholder {
+  color: var(--fg-tertiary);
+  letter-spacing: 0.16em;
+}
+.vlt-col .s7-pw:focus-within,
+.vlt-col .s7-pw.vlt-pw-active {
+  border: 1px solid var(--accent);
+}
+.vlt-col .s7-pw.vlt-pw-ok {
+  background: color-mix(in oklab, var(--success) 8%, var(--bg-surface-3));
+  border: 1px solid color-mix(in oklab, var(--success) 30%, transparent);
+}
+.vlt-col .s7-pw.vlt-pw-ok input {
+  font-weight: 600;
+}
+/* 37c's hold CTA in --danger; the fill follows the hold's ticks through --vlt-hold (0..1, view/deleteConfirm.ts). Gated
+   (37a/37b) it is greyed at full opacity. */
+.vlt-col .btn.s7-longpress.vlt-hold {
+  background: var(--danger);
+  color: var(--danger-on);
+  box-shadow: none;
+}
+.vlt-col .btn.s7-longpress.vlt-hold:disabled {
+  background: var(--bg-surface-3);
+  color: var(--fg-disabled);
+  opacity: 1;
+}
+.vlt-col .btn.s7-longpress.vlt-hold .fill {
+  background: color-mix(in oklab, #000 35%, transparent);
+  transform: scaleX(var(--vlt-hold, 0));
+  transition: none;
+}
+.vlt-hold-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+}
+@media (prefers-reduced-motion: reduce) {
+  .vlt-col .btn.s7-longpress.vlt-hold .fill {
+    display: none;
+  }
+}

@@ -717,6 +717,89 @@
         </div>
       </section>
 
+      <!-- B1e §2.2 (E9, R4): the two damaged states (#9 and #1 show them from their own read); undrawn, built from #37's card. -->
+      <section id="v-damaged" class="screen s-pin" hidden>
+        <div class="vlt-damaged">
+          <div class="vlt-danger-card">
+            <div class="vlt-danger-head">
+              <span class="vlt-danger-icon" aria-hidden="true"><svg width="24" height="24"><use href="#i-warn" /></svg></span>
+              <div id="dmg-unreadable">
+                <h1 class="noc-h2 vlt-danger">Wallet data is damaged</h1>
+              </div>
+              <div id="dmg-refused" hidden>
+                <h1 class="noc-h2 vlt-danger">Update Noctura to open this wallet</h1>
+              </div>
+            </div>
+            <div id="dmg-unreadable-body" class="vlt-stack-3">
+              <p class="noc-body">This browser's copy of your wallet can't be read by this or any later version of Noctura.</p>
+              <p class="noc-body-sm vlt-lede">Your funds are on Solana. After you remove this copy, <b>only your recovery phrase reaches them</b>.</p>
+            </div>
+            <div id="dmg-refused-body" class="vlt-stack-3" hidden>
+              <p class="noc-body">This version of Noctura can't open this wallet's data.</p>
+              <p class="noc-body">Update Noctura (in Chrome: Extensions → Update). If it is up to date, the data may have been changed. Nothing was removed.</p>
+              <p id="dmg-help" class="noc-body-sm vlt-lede"></p>
+            </div>
+          </div>
+          <p class="noc-caption vlt-muted">This file is your wallet's data exactly as this browser holds it. If it contains your encrypted wallet, anyone with the file and your password could try to open it — keep it private.</p>
+        </div>
+        <div class="vlt-grow"></div>
+        <div class="sticky-bar">
+          <a id="dmg-save" class="btn btn-secondary" download>Save the damaged data</a>
+          <button id="dmg-remove" type="button" class="btn btn-destructive"><svg width="18" height="18" aria-hidden="true"><use href="#i-trash" /></svg>Remove damaged wallet</button>
+        </div>
+      </section>
+
+      <!-- B1e §2.2, §2.4 (E9, E11, E12): the removal of a vault no version can read — #37's card, typed DELETE and hold. -->
+      <section id="v-remove-damaged" class="screen s-pin" hidden>
+        <div class="top-bar">
+          <button id="rd-x" type="button" class="icon-btn" aria-label="Close"><svg width="22" height="22" aria-hidden="true"><use href="#i-x" /></svg></button>
+          <span class="title noc-h1">Remove damaged wallet</span>
+        </div>
+        <div id="rd-entry" class="vlt-damaged" hidden>
+          <div class="vlt-danger-card">
+            <div class="vlt-danger-head">
+              <span class="vlt-danger-icon" aria-hidden="true"><svg width="24" height="24"><use href="#i-warn" /></svg></span>
+              <h2 class="noc-h2 vlt-danger">Wallet data is damaged</h2>
+            </div>
+            <p class="noc-body">This browser's copy of your wallet can't be read by this or any later version of Noctura.</p>
+            <p class="noc-body-sm vlt-lede">Your funds are on Solana. After you remove this copy, <b>only your recovery phrase reaches them</b>.</p>
+            <p class="noc-body-sm vlt-lede">This removes the wallet from this browser only.</p>
+          </div>
+          <div class="vlt-stack-1">
+            <p class="noc-caption vlt-muted">This wallet's first account</p>
+            <div id="rd-address" class="vlt-address-start"></div>
+            <p id="rd-no-address" class="noc-body-sm vlt-lede" hidden></p>
+          </div>
+          <div class="vlt-stack-1">
+            <a id="rd-save" class="btn btn-secondary" download>Save the damaged data</a>
+            <p class="noc-caption vlt-muted">This file is your wallet's data exactly as this browser holds it. If it contains your encrypted wallet, anyone with the file and your password could try to open it — keep it private.</p>
+          </div>
+          <div>
+            <p id="rd-eyebrow" class="noc-overline vlt-muted vlt-eyebrow">Type <b class="vlt-word">DELETE</b> to confirm</p>
+            <p id="rd-matched" class="noc-overline vlt-success vlt-eyebrow" hidden><svg width="12" height="12" aria-hidden="true"><use href="#i-check" /></svg>Confirmation matched</p>
+            <label id="rd-box" class="s7-pw">
+              <input id="rd-word" type="text" placeholder="Type DELETE here" aria-label="Type DELETE here" autocapitalize="characters" autocomplete="off" spellcheck="false" />
+              <span id="rd-check" class="vlt-success" hidden><svg width="20" height="20" aria-hidden="true"><use href="#i-check" /></svg></span>
+            </label>
+            <p id="rd-help" class="noc-caption vlt-muted vlt-help"></p>
+          </div>
+          <p id="rd-caption" class="noc-caption vlt-muted vlt-center" hidden>Hold the red button to delete · release to cancel</p>
+        </div>
+        <p id="rd-helper" class="noc-caption vlt-center vlt-pad" aria-live="polite"></p>
+        <div id="rd-notice" class="vlt-notice" role="status" hidden>
+          <p id="rd-notice-line" class="noc-body"></p>
+          <p id="rd-notice-help" class="noc-body-sm vlt-lede"></p>
+        </div>
+        <div class="vlt-grow"></div>
+        <div class="sticky-bar">
+          <button id="rd-hold" type="button" class="btn btn-primary s7-longpress vlt-hold" disabled hidden><span id="rd-fill" class="fill" aria-hidden="true"></span><span class="label vlt-hold-label"><svg width="18" height="18" aria-hidden="true"><use href="#i-trash" /></svg><span>Hold to delete<span id="rd-count"></span></span></span></button>
+          <button id="rd-again" type="button" class="btn btn-primary" hidden>Start again</button>
+          <button id="rd-setup" type="button" class="btn btn-primary" hidden>Set up a wallet</button>
+          <button id="rd-close" type="button" class="btn btn-secondary" hidden>Close this tab</button>
+          <button id="rd-cancel" type="button" class="btn btn-secondary">Cancel</button>
+        </div>
+      </section>
+
     </main>
     <script type="module" src="./src/unlock/main.ts"></script>
   </body>

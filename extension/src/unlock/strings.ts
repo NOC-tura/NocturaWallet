@@ -303,6 +303,23 @@ export const DELETE = {
   failed: 'Something went wrong. Nothing was deleted.',
 } as const;
 
+/** B1e §2.2: the removal of a vault no version can read (screens/removeDamaged.ts). Its static lines are unlock.html's. */
+export const DAMAGED = {
+  /** The address line when no account entry carries a readable address (Minor 5). */
+  noAddress: "The address can't be read",
+  /** `busy`, and the page's own digest compare: the screen reads again. */
+  changed: 'The stored data changed — check it again',
+  /** `unlocked`: a session came back between the lock and the removal. */
+  unlocked: 'Noctura was unlocked meanwhile — try again',
+} as const;
+
+/** #37's typed confirmation on the vault page (B1e §2.2, E11): the popup's words (DeleteWallet.tsx DELETE_TEXT). */
+export const TYPED_DELETE = {
+  caseSensitive: 'Case-sensitive · must match exactly.',
+  keepGoing: (n: number): readonly [string, string, string, string] => [String(n), ' of ', '6', ' characters · keep going'],
+  notAPrefix: 'Type DELETE exactly — it is case-sensitive.',
+} as const;
+
 /** #6 "manage" in the vault tab: add, replace, remove (B1b-2b §3.3, E12, D12, D13, C3, C4). */
 export const MANAGE = {
   addTitle: 'Unlock Noctura with a passkey',

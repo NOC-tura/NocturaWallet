@@ -1780,15 +1780,19 @@ describe('plan 2: the real vault page reaches every screen it builds (positive c
     // and views — a module added or removed there is named here too, and each named one must be reached.
     const named = ['welcome', 'seed', 'confirm', 'password', 'passkey', 'createRun', 'importScreen', 'importRun', 'restoreRun', 'retryRun', 'forgot', 'unlock', 'reauth', 'accounts', 'reveal',
       // B1b-2b plan 1.
-      'changePassword', 'delete', 'passkeyManage'];
+      'changePassword', 'delete', 'passkeyManage',
+      // B1e-1: the damaged states and their removal.
+      'damaged', 'removeDamaged'];
     expect([...screens].sort()).toEqual(named.map(n => `src/unlock/screens/${n}.ts`).sort());
-    expect([...views].sort()).toEqual(['dom', 'words', 'hold', 'meter', 'cooldown'].map(n => `src/unlock/view/${n}.ts`).sort());
+    expect([...views].sort()).toEqual(['dom', 'words', 'hold', 'meter', 'cooldown', 'deleteConfirm', 'saveDamaged'].map(n => `src/unlock/view/${n}.ts`).sort());
     expect(resolved).toEqual(
       expect.arrayContaining([
         ...screens,
         ...views,
         'src/unlock/strings.ts',
         'src/unlock/forgetFlow.ts',
+        'src/unlock/damagedFlow.ts',
+        'src/shared/storedDigest.ts',
         'src/unlock/challenge.ts',
         'src/unlock/stored.ts',
         'src/unlock/page.ts',

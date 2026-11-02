@@ -67,8 +67,10 @@ describe('#1 welcome (spec §3.1)', () => {
     await mountWelcome(h.deps, {create: () => undefined, import: () => undefined}).show();
     expect(visible(el('wel-terms'))).toBe(false);
     expect(visible(el('wel-actions'))).toBe(false);
-    expect(text(el('wel-notice-line'))).toBe("This wallet's stored data is damaged.");
-    expect(text(el('wel-notice-help'))).toBe('Your funds stay on Solana; your recovery phrase still controls them. To use them here, remove Noctura from this browser, install it again and import the phrase.');
+    // B1e §2.2: a stored null is unreadable (U1) — the damaged screen, never the welcome's CTAs.
+    expect(visible(el('v-damaged'))).toBe(true);
+    expect(visible(el('v-welcome'))).toBe(false);
+    expect(visible(el('dmg-unreadable'))).toBe(true);
     expect(h.sent).toEqual([]);
   });
 
