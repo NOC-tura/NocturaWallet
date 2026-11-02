@@ -1,6 +1,7 @@
 # Noctura Extension B1e — the first Chrome Web Store release
 
-**Status:** rev 2.3, 2026-11-02 — the B1e-1 plan's Fable review 1 (`.superpowers/sdd/b1e1-plan-review-1.md`: I1 and
+**Status:** rev 2.4, 2026-11-02 — the B1e-1 plan's Fable review 2 (`.superpowers/sdd/b1e1-plan-review-2.md`: N1, N4)
+and the controller's rulings on its owner questions, under "Rev 2.4". Rev 2.3, 2026-11-02 — the B1e-1 plan's Fable review 1 (`.superpowers/sdd/b1e1-plan-review-1.md`: I1 and
 its Minors) and the owner's answers E19–E22, each one line under "Rev 2.3", the passages they name edited to match.
 Rev 2.2, 2026-11-02 — text only: the departures the B1e-1 plan's dry run made from rev 2.1 (each one line
 under "Rev 2.2", the passages they name edited to match); no owner decision changed. Rev 2.1, 2026-10-30. Rev 1 (70e691d): the owner approved the design in conversation section by section
@@ -12,6 +13,14 @@ the owner's answers E15–E18.
 Parent specs: B1 (`2026-09-27-extension-b1-design.md` §5 "Build, gates, release" and its release gates), B1b-2b (D10,
 D31), B1c §6.5, B1d §6.5 and §7. Binding design: `/home/user/Downloads/index.html` (+ `screen.md`) — it contains the
 TGE date; nothing is copied from it.
+
+**Rev 2.4** (the B1e-1 plan's review 2 and the controller's rulings on its owner questions, 2026-11-02):
+- §1.5 (N1): the combining-mark cap is counted after canonical decomposition (NFD), so a precomposed letter's own
+  marks count (`a` + four graves, `ǘ` or `ậ` + three marks are refused; Vietnamese, polytonic Greek, pointed Hebrew,
+  Tibetan, Thai, Arabic harakat and Hangul are accepted).
+- §1.5 (N4, ruled): the cap stays three; its scope limit is stated — it refuses cantillated Hebrew, Vedic Devanagari
+  and Quranic-annotated Arabic (four marks on one letter). A long phrase wraps and is never cut (N3, ruled, as
+  designed). No migration: no phrase stored before this rule exists outside development profiles.
 
 **Rev 2.3** (the B1e-1 plan's review 1 and the owner's E19–E22, 2026-11-02; the passages named are edited to match):
 - §1.5 (I1, E21): a phrase that renders blank or draws out of its line is refused — every Default_Ignorable code point
@@ -263,8 +272,10 @@ stored phrase; the onboarding step answers a refusal with the common "try again"
   unassigned code point (Cs, Co, Cn; rev 2.2). **Nothing that renders blank or draws out of its line (E21, rev 2.3):**
   no Default_Ignorable code point (among them the Hangul fillers U+115F, U+1160, U+3164, U+FFA0 and the Khmer U+17B4,
   U+17B5), no Braille blank U+2800, no U+FFFC / U+FFFD (they stand for a character that could not be shown), at most
-  **three combining marks in a row** (`PHRASE_MAX_MARKS`: Thai needs two, pointed Hebrew and Tibetan stacks three; a
-  fourth only builds a tower over the header above the line), and at least one letter, number, symbol or punctuation
+  **three combining marks in a row**, counted after canonical decomposition (NFD) so a precomposed letter's own marks
+  count (`PHRASE_MAX_MARKS`: Thai needs two, pointed Hebrew, Tibetan stacks and polytonic Greek three; a fourth only
+  builds a tower over the header above the line — rev 2.4; the scope limit, ruled: the cap refuses liturgical text with
+  four marks on one letter — cantillated Hebrew, Vedic Devanagari, Quranic-annotated Arabic), and at least one letter, number, symbol or punctuation
   character — so no phrase shows as an empty or broken banner a phishing page could copy. Look-alike letters of another script are accepted. This also refuses emoji written with a ZWJ or a variation
   selector (family emoji, ❤️ with VS16) — accepted, and the input's helper says "letters, numbers, symbols and simple
   emoji". The cleaner is `cleanPhrase` in `src/shared/envelopeRules.ts`, beside `cleanName`, sharing the regex.
