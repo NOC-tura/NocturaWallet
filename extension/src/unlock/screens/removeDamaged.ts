@@ -107,6 +107,9 @@ export function mountRemoveDamaged(deps: PageDeps, damaged: DamagedScreen): {sho
     setText(byId('rd-notice-line'), line);
     setText(byId('rd-notice-help'), help);
     shown(byId('rd-notice-help'), help !== '');
+    // B1e §3 (Task 3 fix round 1, I1): a notice removes nothing, so its bar carries no confirmation — the word emptied,
+    // which clears and hides the checkbox row (it sits in the bar, outside #rd-entry).
+    confirm.reset();
     render();
   };
   /** Reads what is stored now and shows it; true when the removal is offered. */

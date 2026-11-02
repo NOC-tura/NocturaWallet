@@ -575,4 +575,42 @@ describe('the removal without holding: the checkbox (B1e §3, E11)', () => {
     expect(forgets(h)).toEqual([]);
     expect([el<HTMLInputElement>('rd-word').value, understood().checked, visible(understood())]).toEqual(['', false, false]);
   });
+
+  // Task 3 fix round 1 (I1): a refusal notice carries no confirmation — the row sits in the bar, outside #rd-entry, so
+  // the notice empties the word, which hides the row and clears the box. Each notice, by both ways of confirming.
+  it.each([
+    ['send-open', DELETE_TEXT.sendOpen, async (h: Harness) => h.ext.local.set(PENDING_KEY, [pendingRecord({state: 'pending'})])],
+    [
+      'unlocked',
+      'Noctura was unlocked meanwhile — try again',
+      async (h: Harness) => {
+        const clear = h.ext.session.clear.bind(h.ext.session);
+        h.ext.session.clear = async () => {
+          await clear();
+          void setSession(h.ext, [ACCOUNT]);
+        };
+      },
+    ],
+    ['no-wallet', null, async (h: Harness) => h.ext.local.remove(VAULT_KEY)],
+  ] as const)('the %s notice shows no checkbox row: hidden, unchecked, the word cleared (checkbox path and hold path)', async (_name, line, refuse) => {
+    for (const way of ['checkbox', 'hold'] as const) {
+      loadPage();
+      const h = await removal(UNREADABLE);
+      await refuse(h);
+      type(el<HTMLInputElement>('rd-word'), 'DELETE');
+      if (way === 'checkbox') {
+        tick();
+        click(el('rd-hold'));
+      } else {
+        press();
+        h.timers.advance(HOLD_MS + HOLD_TICK_MS);
+      }
+      await h.until(() => visible(el('rd-notice')));
+      await idle(h);
+      if (line !== null) expect(text(el('rd-notice-line'))).toBe(line);
+      else expect(visible(el('rd-setup'))).toBe(true);
+      expect(visible(el('rd-hold'))).toBe(false);
+      expect([visible(el('rd-understood-row')), understood().checked, el<HTMLInputElement>('rd-word').value]).toEqual([false, false, '']);
+    }
+  });
 });

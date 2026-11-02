@@ -242,7 +242,7 @@ export function DeleteWallet({onBack, clock = realClock}: {onBack: () => void; c
         {/* Controller ruling (B1e-1 Task 3): the box directly above the CTA it unlocks — reached first in reading and tab order. */}
         {matched ? (
           <label className="s9-ack-row app-understood">
-            <input type="checkbox" checked={understood} onChange={e => setUnderstood(e.target.checked)} />
+            <input type="checkbox" checked={understood} disabled={sendOpen} onChange={e => setUnderstood(e.target.checked)} />
             <span className="lbl">{DELETE_TEXT.understood}</span>
           </label>
         ) : null}

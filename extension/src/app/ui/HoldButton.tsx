@@ -117,6 +117,11 @@ export function HoldButton({
   useEffect(() => {
     if (disabled) release();
   }, [disabled]);
+  // B1e §3 (Task 3 fix round 1, M1): `once` turned on mid-hold ends that hold, as the vault page's deleteConfirm does —
+  // checked, only one activation confirms.
+  useEffect(() => {
+    if (once) release();
+  }, [once]);
 
   const onKeyDown = (e: KeyboardEvent<HTMLButtonElement>) => {
     if (e.key !== ' ' && e.key !== 'Enter') return;

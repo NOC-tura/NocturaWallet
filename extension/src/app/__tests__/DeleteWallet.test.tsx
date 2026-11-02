@@ -813,4 +813,36 @@ describe('#37 without holding: the checkbox (B1e §3)', () => {
     fireEvent.keyDown(holdCta(), {key: 'Enter'});
     expect(w.platform.opened).toEqual([]);
   });
+
+  // Task 3 fix round 1 (M1): as the vault page — the box checked during a hold ends that hold; nothing completes it.
+  it('checked mid-hold: the hold ends there (no fill, no count, Cancel back) and its second completes nothing; one click then opens the proof', async () => {
+    const w = await shown();
+    typeIn('DELETE');
+    fireEvent.pointerDown(holdCta(), {button: 0});
+    w.advance(500);
+    expect(holdCta().textContent).toMatch(/^Hold to delete · 0\.\d s$/);
+    expect(cancel().disabled).toBe(true);
+    tick();
+    expect(holdCta().textContent).toBe('Delete wallet');
+    expect((holdCta().querySelector('.fill') as HTMLElement).style.transform).toBe('scaleX(0)');
+    expect(cancel().disabled).toBe(false);
+    w.advance(1_500);
+    expect(w.platform.opened).toEqual([]);
+    fireEvent.pointerUp(holdCta(), {button: 0});
+    fireEvent.click(holdCta());
+    expect(w.platform.opened).toEqual(['unlock.html?mode=delete']);
+  });
+
+  // Task 3 fix round 1 (M2): a send open disables the box as it disables the CTA.
+  it('a send open: the checkbox is disabled with the CTA, and a click leaves it unchecked', async () => {
+    const open = pendingRecord({account: ACCOUNT.publicKey, signature: '5'.repeat(88), intent: {token: 'SOL', recipient: RECIPIENT, amount: '1'}});
+    const w = await shown({before: async ext => ext.local.set(PENDING_KEY, [open])});
+    await sendOpenBanner();
+    typeIn('DELETE');
+    expect([box().disabled, holdCta().disabled]).toEqual([true, true]);
+    tick();
+    expect(box().checked).toBe(false);
+    expect(holdCta().textContent).toBe('Hold to delete');
+    expect(w.platform.opened).toEqual([]);
+  });
 });
