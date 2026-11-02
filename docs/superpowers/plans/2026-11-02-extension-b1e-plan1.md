@@ -4,13 +4,28 @@
 
 **Revision 1 (2026-11-02):** first issue, dry-run in full — every task implemented for real on a scratch clone of `feat/extension-b1e` 9562c5c (main 521a283 + spec rev 2.1), one commit per task on `dry/b1e1` (e9b0c63, da678b4, 40aefcb, 42dc457, 4ae32b4, 2d157ba, 407213f), each red on its predecessor and green on its own tree with `tsc` (its own exit code), both vitest runs, both builds and every gate. Task 7's whole-suite run found `e2e/presaleSwitch.spec.ts` red since Task 4 (`vault.status` carries `phrase`; no task's Playwright subset ran it); **the controller's ruling moves that test change into Task 4**, where the answer changes, and the Review Focus adds one row to Task 2 and one to Task 6 — so the chain was **rebuilt on `dry/b1e1-rf`: e9b0c63, 8864b4e, 38ceea0, 236ef45, 09e6730, a5d3918, d68cce1**. Each rebuilt tree is its `dry/b1e1` commit plus exactly those files (Task 2: `forgetDamaged.test.ts` +1 row; Tasks 4–6: also `presaleSwitch.spec.ts`; Task 6: also `check-links.test.mjs` +1 row; Task 7: 407213f's tree but for the two rows, its own commit no longer carrying the `presaleSwitch.spec.ts` change). At every rebuilt commit `tsc` 0 and both vitest runs green under `TZ=UTC`, with the totals each task states. **189 named mutations, every one compiling and red** (Task 1 18, Task 2 33, Task 3 22 — its M-p-target does not compile and is recorded INVALID, not counted —, Task 4 42, Task 5 42, Task 6 24, Task 7 8; plus Task 7's DST control M-dst-old) — the two Review Focus mutants (M-serial, M-scheme-relative) run on the rebuilt chain, the other 187 as the dry run ran them (their code and tests unchanged). Playwright, the **whole suite, normally and under `unshare -rn sh -c 'ip link set lo up && npx playwright test'`**: at the rebuilt Task 4 (236ef45) **`108 passed (28.3m)` normally and `108 passed (28.1m)` under `unshare -rn`**; at the rebuilt Task 6 (a5d3918) **`112 passed (28.7m)` normally and `112 passed (28.5m)` under `unshare -rn`**; at Task 7 (on 407213f, whose `e2e/` and product code are d68cce1's byte for byte) 117 passed + `presaleSwitch.spec.ts`' 2 after the fix normally, 119 passed under `unshare -rn`; and each task's own subsets (in the task). Replaying task-1 … task-7's blocks from this file onto `git archive 9562c5c` reproduces each rebuilt commit at every prefix (Self-review). Next: a Fable 5.1 review (owner rule), then the owner.
 
+**Revision 2 (2026-11-02):** Fable review 1 of this plan (`.superpowers/sdd/b1e1-plan-review-1.md`: approve after fixes — 0 Critical, 1 Important, 11 Minor) and the owner's answers E19–E22 with the controller's ruling on Q6 (`.superpowers/sdd/b1e-owner-decisions.md`) applied, dry-run in full again: **the chain rebuilt on `dry/b1e1-r2` from Task 1 — 9c9b8db, 2876fea, be35060, a982e28, a6d3923, 5c9cbd3, a636405** (each `dry/b1e1-rf` commit cherry-picked, then its rev 2 change, one commit per task; `dry/b1e1-rf` untouched). Each changed task section is transcribed from its new commit (every new file and diff block re-taken; Task 3's only by context). Dispositions:
+- **I1 + E21 → Task 4:** `cleanPhrase` refuses every Default_Ignorable code point (the Hangul fillers U+115F / U+1160 / U+3164 / U+FFA0 and U+17B4 / U+17B5 among them), U+2800, U+FFFC / U+FFFD, and more than `PHRASE_MAX_MARKS` = 3 combining marks in a row (Thai needs 2, pointed Hebrew and Tibetan 3); a phrase must hold one L / N / S / P character. 27 rows (the review's six probes and eleven more, nine positive controls incl. a Cyrillic phrase and one accent mark), as escapes from a generator; ten named mutations (M-dicp, M-braille, M-replacement, M-blank, M-stacked, M-cap-loose, M-cap-tight, M-visible, M-visible-marks, M-visible-spaces), each `tsc` 0 and red. Spec §1.5 (rev 2.3).
+- **E19 → Task 2:** the refused state's heading "Update Noctura to open this wallet", the old sentence its first body line; unit, E2E and visual copy rows; M-refused-heading, M-refused-line, M-vis-refused-heading.
+- **E20 → Task 5:** the phrase step's overline "Optional"; the copy row, `visual-vault.spec.ts`, the visual pass; M-overline, M-vis-overline.
+- **E22:** kept as built — no change.
+- **Q6 (the controller's ruling) / M4 → spec §4.3 (rev 2.3, text only) and Review Focus 2:** the link gate is a review aid, not a security boundary. The review's optional source rule is not built (Task 6's notes).
+- **M1 → Task 6:** `rpcWebsocketsViolations` calls a map without `chunks` INCONCLUSIVE (was a vacuous pass); a row with three shapes and its positive control; M-chunks-vacuous.
+- **M2 → Task 2:** `damaged.spec.ts`' short-hold negative runs the page clock past the second and waits on the button still being armed before it reads storage; E2E mutant M-e2e-short-hold red at that line.
+- **M3 → Tasks 1 and 2 (comments):** step 5's reading clause and both readings' opener-first order are marked as not checks of their own (implied / invisible; the digest compare and the partition rows are the guards).
+- **M5 → Task 6:** the link gate reads `.svg`; a row; M-svg. **M6 → Task 6:** the licence failure says `licence-ids.json` cannot override a present `license` field; a row with its positive control; M-ids-override, M-ids-message. **M7 → spec §10** (one line).
+- **M8, M9, M10, M11:** confirmations of rev 1 — no change.
+- **Found while revising (not in the review):** rev 1's Global Constraint "no escaped-character drift" was false — Tasks 4 and 5 typed 53 invisible or confusable characters raw into five test files (and this plan's two generator blocks held their inputs raw); every one is now a `\u` escape, and the constraint carries a check that counts 0 on rev 2 and 53 on rev 1 (its negative control).
+
+Rev 2 totals under `TZ=UTC`: Task 1 224 / 4854, Task 2 228 / 4961, Task 3 228 / 4986, Task 4 230 / 5107, Task 5 234 / 5168, Task 6 239 / 5247, Task 7 239 / 5247 (no-presale runs unchanged: 18 / 435 + 25 through Task 3, 19 / 472 + 25 at Task 4, 22 / 531 + 25 from Task 5); `tsc` 0, both builds, `npm run gates` and `npm run csp` 0 at every rebuilt commit. The first whole `vitest` run at Tasks 5 and 6 each had one test time out while four mutation sweeps loaded the machine (load ≈ 29 on 8 cores): `resume.test.tsx`' prepared-purchase row at Task 5 and `unreadable.test.ts`' breadth row at Task 6 (`Test timed out in 5000ms` — the real encoder's Argon2id); both files green alone at once, and both whole runs green again on an idle machine (Task 5 `234 / 5168`, Task 6 `239 / 5247`) — recorded as load timeouts, not product findings. **209 named mutations, each compiling and red** (Task 1 18, Task 2 36 — the E2E M-e2e-short-hold among them —, Task 3 22 with M-p-target INVALID as in rev 1, Task 4 52, Task 5 43, Task 6 28 — M-missing-target green in the link gate by design and red in its unit files, as in rev 1 —, Task 7 10; plus Task 7's DST control M-dst-old, not re-run: its row and test are unchanged), every one re-run on the rebuilt chain; three of Task 4's new mutants were first written so they did not compile and were rewritten (Task 4's notes). Playwright, the **whole suite at Task 7 (a636405): **`119 passed (30.7m)`** normally and **`119 passed (30.4m)`** under `unshare -rn sh -c 'ip link set lo up && npx playwright test'`**; Task 2's `damaged.spec.ts` and Task 5's `visual-vault.spec.ts` on their own rebuilt commits, both modes (`damaged.spec.ts` on 2876fea `1 passed` both modes; `visual-vault.spec.ts` on a6d3923 `5 passed (1.3m)` both modes); rev 1's whole-suite runs at Tasks 4 and 6 stand (rev 2 changed no E2E-reachable behaviour there before Task 7's specs). `npm run verify` at Task 7: rev 2, on a636405: exit 0 — the build, `239 / 5247` and `22 / 531 + 25` in local time, csp, secrets, gates, reproducible 28 files per package. The replay of task-1 … task-7's blocks onto `git archive 9562c5c` is identical to every rebuilt commit (Self-review). The spec is rev 2.3, committed on its own before this plan. Next: the owner.
+
 **Goal:** Build B1e spec plan 1 (§0's first row, "B1e-1 — code") for the first Chrome Web Store release, presale off. The anti-phishing phrase (§1, E3): `cleanPhrase`, `v1_phishing_phrase` as background-owned wallet data, `settings.phrase` (set when none is set while unlocked, no proof — R1 = E18; a change or a removal only through #10's new `phrase` challenge), the value only on `wallet.state`, `vault.status` and `dapp.pending` (R2), its line on the six screens as plain text with R9's line when the read fails, onboarding's skippable step after `commitWallet`, #35's row. The damaged vaults (§2, E5, E9–E12): the frozen `unreadableV1` predicate and the three readings of `v1_vault`, `vault.setKeys` bound through `envelopeShape` (R3), `vault.forgetDamaged` bound to the sha256 of the stored text, the two damaged states on #9 and #1, the removal screen, "Save the damaged data" (E10, R4). #37 without holding (§3, E6, E11): a native checkbox above the hold on #37 and on the removal. Links and licences (§4, E4, E15–E17): #1's and #38's links, `licenses.html`, the link gate, the licence gate with the `rpc-websockets` stub, the RP ID pin. Gates, E2E and the visual pass (§1.6, §2.6, §4.4, §9, §10) and spec rev 2.2. The release build, version, key, zip and the store texts are B1e-2's (§5–§7) — except the gate hooks §4 needs.
 
 **Architecture:** The background decides; the pages render its answers. The phrase is a background-owned key no page may name: it is written only by `settings.phrase` (and by `vault.reauthOk` applying a `phrase` challenge), read out only as a field of three existing answers, and re-judged by every screen (`phraseRead`) before it is drawn as text. The damaged-vault path is three judges in series — the screen, the removal screen at load, `damagedFlow` at the click — and then the background, which ignores all of them: inside `serial` it reads, judges with the opener first and then the frozen predicate (`unreadable.ts`, imports only `@scure/base`), compares the digest, locks, refuses an open send, reads and judges and compares again, and removes only under `sessionMutex` with no session. #37's confirmation rule lives in one place per page (`DeleteWallet.tsx` + `HoldButton`'s `once`; `mountDeleteConfirm`'s `way()`), and the proof in #37's vault tab is unchanged. The links are `<a target="_blank" rel="noopener noreferrer">` to whole strings in `src/shared/links.ts`; `licenses.html` is generated by `scripts/build.mjs` from the modules the bundler really rendered and is admitted by the gates by name as a static page. Every new gate runs in `npm run gates` once per build.
 
 **Tech Stack:** TypeScript 5 strict, React 18.3.1, Vite 8 (Rolldown), Vitest 5 + happy-dom 21, Playwright 1.63 (contained), `@solana/web3.js` 1.99, `@scure/base` 2. No new dependency (`rpc-websockets` is aliased to a local two-export stub; the Geist fonts' `LICENSE.txt` is geist@1.7.2's, pinned by sha256).
 
-**Spec:** `docs/superpowers/specs/2026-10-30-extension-b1e-chrome-release-design.md` **rev 2.2** (rev 2.1 + every departure of this plan, one line each under "Rev 2.2", the passages they name edited to match — written by Task 7 Step 3 and committed with this plan; no owner decision changed). Parent: B1 §4 and §5. Owner decisions: `.superpowers/sdd/b1e-owner-decisions.md` (E1–E18) and the spec's §0 (E1–E18, rulings R1–R10). Reviews behind the spec: `.superpowers/sdd/b1e-spec-review-1.md`, `.superpowers/sdd/b1e-spec-review-2.md`. Brief and ledger of this plan's dry run: `.superpowers/sdd/b1e1-plan-brief.md`, `.superpowers/sdd/b1e1-plan-ledger.md`. Template: `docs/superpowers/plans/2026-10-26-extension-b1d-plan2.md`. Design (binding, contains the TGE date — never copy it; compare on rendered images only): `/home/user/Downloads/index.html` (#1, #6, #9, #10, #35, #37, #38, #46–#48, the vault page; the phrase, the damaged-vault screens, the removal, the checkbox row and `licenses.html` are undrawn — §9).
+**Spec:** `docs/superpowers/specs/2026-10-30-extension-b1e-chrome-release-design.md` **rev 2.3** (rev 2.1 + every departure of this plan, one line each under "Rev 2.2", the passages they name edited to match; rev 2.3: the plan's review 1 and the owner's E19–E22, one line each under "Rev 2.3" — written by Task 7 Step 3 and committed with this plan). Parent: B1 §4 and §5. Owner decisions: `.superpowers/sdd/b1e-owner-decisions.md` (E1–E22, and the controller's ruling on review Q6) and the spec's §0 (E1–E22, rulings R1–R10). Plan review: `.superpowers/sdd/b1e1-plan-review-1.md`. Reviews behind the spec: `.superpowers/sdd/b1e-spec-review-1.md`, `.superpowers/sdd/b1e-spec-review-2.md`. Brief and ledger of this plan's dry run: `.superpowers/sdd/b1e1-plan-brief.md`, `.superpowers/sdd/b1e1-plan-ledger.md`. Template: `docs/superpowers/plans/2026-10-26-extension-b1d-plan2.md`. Design (binding, contains the TGE date — never copy it; compare on rendered images only): `/home/user/Downloads/index.html` (#1, #6, #9, #10, #35, #37, #38, #46–#48, the vault page; the phrase, the damaged-vault screens, the removal, the checkbox row and `licenses.html` are undrawn — §9).
 
 ## Global Constraints
 
@@ -43,7 +58,7 @@ And, from B1c-1's plan (verbatim where it applies) and the lessons of executing 
 - **The page is untrusted, the window is untrusted, the port's sender is the browser's** (B1c-1). Every transaction is parsed from the page's own bytes, re-parsed from storage whenever it is shown or signed, and signed exactly as received (one slot written).
 - **Copy:** only the strings the spec quotes (§3, §10 — Q21, Q26), the design's own (#48, #26b, #27b), B1 §3's ("unknown program") and B1b's (#19's "Couldn't simulate" and its server line, #20's labels, #10's reasons); anything else is a controller ruling flagged to the owner (Scope §3 R22).
 - CLAUDE.md: the design is binding — every scope-down is stated (Scope §3, "Deferred to B1c-3"); TypeScript strict, no `any`, no `@ts-ignore`; no placeholders; amounts as `bigint` base units (rule 2); UTC in data; Prettier style of the surrounding code.
-- **No escaped-character drift:** test strings with invisible or confusable characters are written as `\u` escapes (none are needed in this plan's tests; `git diff main -- extension core | grep -P '^\+.*[\x{200B}-\x{200F}\x{202A}-\x{202E}\x{2066}-\x{2069}\x{0430}]'` — the lines this plan adds — is empty; `challenge.test.ts` already holds two such characters from B1b, untouched).
+- **No escaped-character drift:** test strings with invisible or confusable characters are written as `\u` escapes, generated by a script from their code points, never typed. **Rev 2 correction:** rev 1 said none were needed and that a `grep -P` over the added lines was empty — both false: Tasks 4 and 5 typed 53 such characters raw into five test files (the check below counts 53 on rev 1's chain end d68cce1 — its negative control — and 0 on rev 2's) (RLO, ZWSP, ZWJ, soft hyphen, BOM, NBSP, U+3000, U+2028/9, CGJ, VS16, a tag character, a private-use and an unassigned code point, combining acute, Cyrillic letters), and the `grep` class missed most of them; rev 2 rewrote every one as an escape (Tasks 4 and 5's diffs). The check, over the lines the plan adds (`node`, any directory): `git diff 9562c5c -- extension core | node -e "const s=require('fs').readFileSync(0,'utf8');const R=/[\p{C}\p{M}\p{Z}\p{Default_Ignorable_Code_Point}\u2800\p{Script=Cyrillic}\p{Script=Greek}\p{Script=Armenian}\p{Script=Hebrew}\p{Script=Arabic}]/u;let n=0;for(const l of s.split('\n'))if(l.startsWith('+')&&!l.startsWith('+++'))for(const c of l)if(c!=='\t'&&c!==' '&&!(c>' '&&c<'\x7f')&&R.test(c))n++;console.log(n)"` → `0` (two visible accented Latin letters stay raw in `storedDigest.test.ts` and `licences.test.mjs`, where they test UTF-8 widths, not look-alikes; `challenge.test.ts` and `walletApi.test.ts` hold three such characters from B1b, untouched).
 
 
 And, for plan 3:
@@ -85,7 +100,7 @@ And, for B1d-2 (owner decisions of 2026-10-25 and 2026-10-26, the containment ru
 - **Review 1 I2 (controller's ruling) — the record never holds a transaction's reads, and goes only for the stored wallet:** the latch serialises every coordinator request and a record POST holds it until its answer or `REQUEST_TIMEOUT_MS` (measured, Task 1), so the worker POSTs nothing while a transaction of the stored wallet is open (`pending` / `stuck`: its sends, its purchases, a site's), and only an entry of an account of the wallet stored now — another account's is held, never dropped (Task 1, W1–W6).
 - **Tests never contact `*.noc-tura.io` or `solscan.io`** — the record route and `/referral-stats` are the fake coordinator's in E2E (counters asserted empty, `contained(h)`), `fakeDeps`' `postJson` / `getJson` throw `unexpected …` unless a test gives one, and nothing committed reaches a real host. (The dry run's unsigned mainnet simulation in Task 2's notes was a scratch file through the public Solana RPC, never committed, and made no `*.noc-tura.io` request.)
 
-And, for B1e-1 (owner decisions E1–E18 where they bind the code, the spec's rulings R1–R10, and the rulings of this plan's ledger — each holds in **both builds at every task**; no later task may weaken one):
+And, for B1e-1 (owner decisions E1–E22 where they bind the code, the spec's rulings R1–R10, and the rulings of this plan's ledger — each holds in **both builds at every task**; no later task may weaken one):
 
 - **E1, E2 — the release is Chrome's, and its build is `--no-presale`** (`dist-nopresale/chrome`). Both builds are still built, tested and gate-checked at every task (B1d-1a's rule); an E2E that must run in both does (`phrase.spec.ts`, `links.spec.ts`, `presaleSwitch.spec.ts`); the visual pass runs on the store build. Firefox (AMO) is a later step (§8).
 - **E3 — of B1's deferred hardening only the anti-phishing phrase ships.** No drainer list, no DNR rule.
@@ -95,7 +110,7 @@ And, for B1e-1 (owner decisions E1–E18 where they bind the code, the spec's ru
 - **R3 — `vault.setKeys` binds through `envelopeShape`:** keys over an unreadable or refused envelope are `malformed`, no session; `unknown-account` as before when no vault is stored. Any test that sends `vault.setKeys` stores a whole envelope.
 - **E6, E11, D31 — #37 without holding, and the removal the same:** typed DELETE + (the 1 s hold, OR a native checkbox and one activation); the checkbox exists only while DELETE matches and sits directly **above** the button — before it in the DOM, on screen and in tab order (controller ruling → rev 2.2); the button's accessible name follows the box; Space toggles it, Enter on it does nothing (native); the proof in #37's vault tab stays required and its code (`screens/delete.ts`) untouched.
 - **R1 (= E18), R2 — the phrase:** set when none is set needs an unlocked session and no proof; a change or a removal is a `phrase` challenge applied only by `vault.reauthOk` (the last confirmed proof wins); `vault.challengeInfo` describes it as `{kind: 'phrase', action}` — the value never reaches #10. The key `v1_phishing_phrase` is in `WALLET_DATA_KEYS` (a delete, a damaged-vault removal and a first write remove it; #39's restore keeps it) and `BACKGROUND_OWNED_KEYS` (no page may name it); the value leaves the background only on `wallet.state`, `vault.status` and `dapp.pending`; the built `relay.js` / `provider.js` name no extension storage (`contentStorageViolations`, Task 4 — Task 6 does not add it again).
-- **§1.5 — the rules:** NFC, then trimmed, 3–32 UTF-16 code units, no `FORBIDDEN_IN_NAME` character and no Cs / Co / Cn (ledger: "printable" → rev 2.2); cross-script look-alike letters are accepted (pinned); `null` or empty = none; a refusal never echoes the value. A stored value that is not exactly a clean phrase reads as none.
+- **§1.5 — the rules:** NFC, then trimmed, 3–32 UTF-16 code units, no `FORBIDDEN_IN_NAME` character and no Cs / Co / Cn (ledger: "printable" → rev 2.2); **E21 (rev 2):** no Default_Ignorable code point, no U+2800, no U+FFFC / U+FFFD, at most `PHRASE_MAX_MARKS` = 3 combining marks in a row, and at least one L / N / S / P character; cross-script look-alike letters are accepted (pinned); `null` or empty = none; a refusal never echoes the value. A stored value that is not exactly a clean phrase reads as none.
 - **§1.2, R9 — the line:** plain text only (a React text child; `textContent` on the vault page — never HTML); nothing when none is set; a read that fails or a field that is missing or malformed is R9's visible line, never silence and never the whole view refused; #9 reads it before the password field shows; every approval-window state draws it through `WindowTop`'s required `phrase` prop.
 - **§1.3 — onboarding writes the phrase only after `commitWallet`** (the first write wipes `WALLET_DATA_KEYS`): create after #6, import once stored, never on `created-locked`; [Skip] writes nothing.
 - **E4 — the links open noc-tura.io in a new tab and are never fetched:** `https://noc-tura.io/extension/{terms,privacy,help}` from `src/shared/links.ts`, `<a target="_blank" rel="noopener noreferrer">`; `connect-src` unchanged; `licenses.html` is a page of the package. No test contacts those pages (the E2E clicks are routed and aborted).
@@ -103,6 +118,7 @@ And, for B1e-1 (owner decisions E1–E18 where they bind the code, the spec's ru
 - **R8 — the link gate:** every URL string in `chrome/` and `firefox/` is exactly one of the link table's, in a file its row allows, and the four links the user is given are present; `licenses.html` alone is skipped, by name, at the package root, and the static-page rule (no `<a`, `href=`, script, style, link, iframe, form, `on…=`; a tag and attribute allowlist) holds there.
 - **E17 — the passkey RP ID:** a test pins `https://${RP_ID}/*` ∈ `HOST_PERMISSIONS`; the `rp-id.json` record and its pre-upload gate are B1e-2's.
 - **Copy (D27, owner-delegated):** only the spec's, the design's, #37's (`DELETE_TEXT`) and B1b's strings; the new strings of Tasks 2, 5 and 6 are the controller's, listed in their notes and flagged to the owner at the finish.
+- **E19, E20, E22 (rev 2):** the refused state's heading is "Update Noctura to open this wallet", its old sentence the first body line; onboarding's phrase step stays count-less with the overline "Optional"; #37's taller bar with the checkbox and #35's plain-tone "Off" stay as built.
 - **Undrawn (§9):** built from the design system's components only (B1b's banner, input and row styles, #47's ack row, #37's danger card); `design-ext.css` untouched; each shown in Task 7's visual pass.
 - **Ledger rulings that bind every task:** the vitest totals are stated under `TZ=UTC` until Task 7 makes `Send.test.tsx`' "last 12 days ago" row time-zone proof (a test-only fix: a fixed provider clock); a test changes in the task whose code changes its answer (`presaleSwitch.spec.ts` in Task 4, the B1d-1b rev 2 lesson); **the whole Playwright suite runs at least at Tasks 4, 6 and 7**, normally and under `unshare -rn`, detached with a marker and waited for with a bounded poll; the 458dfcd vault (readable, its seed failing AES-GCM) is §2.1's out-of-predicate case, deferred with it (§8) — no code.
 
@@ -111,7 +127,7 @@ And, for B1e-1 (owner decisions E1–E18 where they bind the code, the spec's ru
 The five input classes or failure modes most likely to bite that no task's tests exercised in the dry run, one line each — with the row added to its owning task, or written as a known limitation with the reason:
 
 1. **Two removal tabs confirming at once.** Each tab read and showed the same unreadable value and both send `vault.forgetDamaged` with its digest; nothing tested what the second one meets. **Tested:** Task 2, `forgetDamaged.test.ts` "two removal tabs confirming at once: one is forgotten, the other waits for it and finds no wallet" — two requests sent together answer `[{ok: true}, {ok: false, error: 'no-wallet'}]` and leave only the cleared `v1_pending`; M-serial (the body run outside `serial`) red. The second tab then shows set-up (Task 2's ruling for `no-wallet`).
-2. **A URL the link gate cannot see.** The gate reads URL strings as written (R8); a URL never written whole — the scheme split from its `://`, a scheme-relative `//host`, a base64 text — passes it. **Tested, as a limit:** Task 6, `check-links.test.mjs` "a known limit, not a pass …" pins that `urlStrings` finds nothing there and the package passes, beside two controls (the same URL whole fails; a whole scheme with the host added at run time names `https://` and fails); M-scheme-relative red (the row reads the gate's real pattern). **Accepted:** the gate catches an unreviewed URL in the shipped code, not code written to hide one — that is review's; at run time `connect-src` still bounds every fetch (`npm run csp`), and every link the user is given is a whole string from `src/shared/links.ts` (`about.test.tsx`, `welcome.test.ts`).
+2. **A URL the link gate cannot see.** The gate reads URL strings as written (R8); a URL never written whole — the scheme split from its `://`, a scheme-relative `//host`, a base64 text — passes it. **Tested, as a limit:** Task 6, `check-links.test.mjs` "a known limit, not a pass …" pins that `urlStrings` finds nothing there and the package passes, beside two controls (the same URL whole fails; a whole scheme with the host added at run time names `https://` and fails); M-scheme-relative red (the row reads the gate's real pattern). **Accepted — the gate is a review aid, not a security boundary (spec §4.3 rev 2.3, the controller's ruling on review Q6):** it catches an unreviewed URL in the shipped code, not code written to hide one — that is review's; at run time `connect-src` still bounds every fetch (`npm run csp`), and every link the user is given is a whole string from `src/shared/links.ts` (`about.test.tsx`, `welcome.test.ts`).
 3. **The three noc-tura.io pages themselves.** #1's and #38's links lead to `https://noc-tura.io/extension/{terms,privacy,help}`, which ICO publishes from B1e-2's texts; no test of this plan can know whether they answer, or say the right thing. **Known limitation, no test added:** tests never contact `*.noc-tura.io` (Global Constraints) — the E2E clicks are routed and aborted, proving only that a new tab opens on exactly that URL; the check that each page answers 200 without a redirect and carries its text is §6.5's live check in `release:chrome` (B1e-2), run before any upload.
 4. **The Firefox package in a real browser.** Every E2E, the phrase on the six screens and the visual pass run in Chromium only (Playwright's extension support); `firefox/` passes only the static gates (link, licence, vault isolation — the built content scripts included —, page bundles, reproducible). **Known limitation, no test added:** the release is the Chrome Web Store (E1); AMO is a later step with its own open points (§8, B1c §6.5), which will need its own run.
 5. **A real screen reader on #37 and the removal.** D31 is the reason the checkbox exists; the tests read its role, name, order and keys from the DOM (unit rows, M-p-label / M-v-label, M-p-name / M-v-name, M-p-order / M-v-order) and from Chromium's accessibility tree with real key presses (Task 3's E2E: `getByRole('checkbox', {name: …})`, Tab from the box lands on the CTA, Enter on the box nothing, Space checks it, one Enter on the CTA). **Known limitation, no test added:** no assistive technology (ChromeVox, NVDA, VoiceOver) is driven — no harness here can run one; what it announces is the accessible name and role these tests pin. The owner can confirm it with one before the listing.
@@ -836,7 +852,7 @@ export function unreadableV1(raw: unknown): boolean {
 
 ```diff
 diff --git a/extension/src/background/accountsStore.ts b/extension/src/background/accountsStore.ts
-index 84326c3..6b91c43 100644
+index 84326c3..143a102 100644
 --- a/extension/src/background/accountsStore.ts
 +++ b/extension/src/background/accountsStore.ts
 @@ -16,6 +16,7 @@ import {wipeDappStores} from './dapp/store';
@@ -856,14 +872,16 @@ index 84326c3..6b91c43 100644
    if (!isObj(x) || x.v !== 1 || (x.scheme !== 'slip10' && x.scheme !== 'cli')) return null;
    const {kdf, seed, password, passkey} = x;
    if (!isObj(kdf) || kdf.alg !== 'argon2id' || !kdfInBounds(kdf) || !bytesExactly(kdf.salt, ENVELOPE_BYTES.salt)) return null;
-@@ -183,6 +184,20 @@ function envelopeShape(x: unknown): StoredEnvelope | null {
+@@ -183,6 +184,22 @@ function envelopeShape(x: unknown): StoredEnvelope | null {
    };
  }
  
 +/**
 + * B1e §2.1: the background's reading of a stored v1_vault value. A value envelopeShape refuses is `unreadable` when the
 + * frozen predicate (src/shared/unreadable.ts) says no version of Noctura can open it, and otherwise `refused`: this
-+ * version's policy refuses it.
++ * version's policy refuses it. Asking envelopeShape first is not a check of its own today: the predicate calls no value
++ * envelopeShape accepts unreadable (unreadable.test.ts: the partition and breadth rows), so swapping the two is
++ * invisible — those rows are the guard.
 + */
 +export type VaultReading = {kind: 'none'} | {kind: 'unreadable'} | {kind: 'refused'} | {kind: 'wallet'; env: StoredEnvelope};
 +
@@ -883,7 +901,7 @@ index 84326c3..6b91c43 100644
 
 ```diff
 diff --git a/extension/src/unlock/stored.ts b/extension/src/unlock/stored.ts
-index 1129ece..4747505 100644
+index 1129ece..abc4b72 100644
 --- a/extension/src/unlock/stored.ts
 +++ b/extension/src/unlock/stored.ts
 @@ -1,5 +1,6 @@
@@ -893,13 +911,16 @@ index 1129ece..4747505 100644
  
  /**
   * What v1_vault holds, as the vault page reads it — the same three answers the background gives
-@@ -30,6 +31,18 @@ export function storedVault(raw: unknown): StoredVault {
+@@ -30,6 +31,21 @@ export function storedVault(raw: unknown): StoredVault {
    return {kind: 'wallet', env: raw};
  }
  
 +/**
 + * B1e §2.1: the page's reading of v1_vault — storedVault's `damaged` split in two. `unreadable`: the frozen predicate
 + * (src/shared/unreadable.ts) says no version of Noctura can open it. `refused`: this version's policy refuses it.
++ * Asking storedVault first is not a check of its own today: the predicate calls no value storedVault accepts
++ * unreadable (unreadable.test.ts: the partition and breadth rows), so swapping the two is invisible — those rows are
++ * the guard.
 + */
 +export type VaultReading = {kind: 'none'} | {kind: 'unreadable'} | {kind: 'refused'} | {kind: 'wallet'; env: EnvelopeV1};
 +
@@ -1006,6 +1027,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 #### Notes for the executor (Task 1)
 
+- **Rev 2 (review M3, comments only): asking the opener first is marked as not a check of its own.** Both `vaultReading` doc comments (`accountsStore.ts`, `stored.ts`) now say that the predicate calls no value the opener accepts unreadable, so swapping the two is invisible today and the partition and breadth rows of `unreadable.test.ts` are the guard — the review's mutants `order-bg` / `order-page` were green (equivalent), as spec §2.1 says. No code, no test, no total changed; the 18 mutations were re-run on the rebuilt commit 9c9b8db: every one `tsc` 0 and red with rev 1's counts.
 - **Ruling: both readings ask the opener first, then the predicate** — `vaultReading` is `wallet` whenever `envelopeShape` (background) / `storedVault` (page) accepts, and only a value the opener refuses is split into `unreadable` / `refused` — why: if the predicate and an opener ever disagreed, a value the opener can open must never be offered for a password-less removal (fail safe); today the partition test makes the order invisible (every deletable control is refused by both openers) — cost if wrong: none.
 - **Ruling: `vault.setKeys` answers `malformed` for `unreadable` and `refused`, `unknown-account` as before for no wallet and for a key the envelope does not record** — §2.5 names `malformed` for a `stored-invalid` envelope; an absent vault was never "invalid" (the H1 row "refuses any keys while no wallet is stored" keeps its answer) — cost if wrong: an error code; the session is refused either way.
 - **Ruling: `envelopeShape` is exported** (unchanged), for the partition test and for Task 2's `forgetDamaged` — cost if wrong: none.
@@ -1604,9 +1626,12 @@ describe('the damaged states on #9 and #1 (B1e §2.2)', () => {
       const h = await harness({vault: env});
       await open(h);
       expect([name, visible(el('dmg-refused'))]).toEqual([name, true]);
-      expect(text(el('dmg-refused'))).toBe("This version of Noctura can't open this wallet's data.");
+      // E19: a short heading; the sentence that says why is the body's first line.
+      expect(text(el('dmg-refused'))).toBe('Update Noctura to open this wallet');
+      expect(el('dmg-refused').querySelector('h1')?.textContent).toBe('Update Noctura to open this wallet');
+      expect(el('dmg-refused-body').firstElementChild?.textContent).toBe("This version of Noctura can't open this wallet's data.");
       expect(text(el('dmg-refused-body'))).toBe(
-        'Update Noctura (in Chrome: Extensions → Update). If it is up to date, the data may have been changed. Nothing was removed. Your funds stay on Solana; your recovery phrase still controls them. To use them here, remove Noctura from this browser, install it again and import the phrase.',
+        "This version of Noctura can't open this wallet's data. Update Noctura (in Chrome: Extensions → Update). If it is up to date, the data may have been changed. Nothing was removed. Your funds stay on Solana; your recovery phrase still controls them. To use them here, remove Noctura from this browser, install it again and import the phrase.",
       );
       expect(visible(el('dmg-unreadable'))).toBe(false);
       expect(visible(el('dmg-save'))).toBe(true);
@@ -2102,7 +2127,7 @@ Modify `extension/src/background/accountsStore.ts`:
 
 ```diff
 diff --git a/extension/src/background/accountsStore.ts b/extension/src/background/accountsStore.ts
-index 6b91c43..d0c5d0d 100644
+index 143a102..564cd90 100644
 --- a/extension/src/background/accountsStore.ts
 +++ b/extension/src/background/accountsStore.ts
 @@ -17,6 +17,7 @@ import {PRESALE_RECORDS_KEY, wipePresaleRecords} from './presaleRecordsKey';
@@ -2113,7 +2138,7 @@ index 6b91c43..d0c5d0d 100644
  import {readWalletBalances} from '../../../core/solana/balances';
  import {RpcForbidden} from '../../../core/solana/rpc';
  
-@@ -551,3 +552,61 @@ export async function forgetWallet(
+@@ -553,3 +554,62 @@ export async function forgetWallet(
      return 'forgotten';
    });
  }
@@ -2156,7 +2181,8 @@ index 6b91c43..d0c5d0d 100644
 +      if (e instanceof SendOpen) return 'send-open';
 +      throw e;
 +    }
-+    // 5 + 6.
++    // 5 + 6. The reading's clause is implied by the digest's (the same digest is the same text, so the same verdict as
++    // step 2): belt and braces, not a check of its own — the digest compare is the one M-digest proves.
 +    const again = await ext.local.get(VAULT_KEY);
 +    if (again === undefined || vaultReading(again).kind !== 'unreadable' || storedDigest(again) !== expectedDigest) return 'busy';
 +    const removed = await sessionMutex(async () => {
@@ -2994,10 +3020,10 @@ Modify `extension/unlock.html` (two sections before `</main>`; undrawn — §9 �
 
 ```diff
 diff --git a/extension/unlock.html b/extension/unlock.html
-index 31442e9..c69cb6e 100644
+index 31442e9..68d44a7 100644
 --- a/extension/unlock.html
 +++ b/extension/unlock.html
-@@ -717,6 +717,88 @@
+@@ -717,6 +717,89 @@
          </div>
        </section>
  
@@ -3011,7 +3037,7 @@ index 31442e9..c69cb6e 100644
 +                <h1 class="noc-h2 vlt-danger">Wallet data is damaged</h1>
 +              </div>
 +              <div id="dmg-refused" hidden>
-+                <h1 class="noc-h2 vlt-danger">This version of Noctura can't open this wallet's data.</h1>
++                <h1 class="noc-h2 vlt-danger">Update Noctura to open this wallet</h1>
 +              </div>
 +            </div>
 +            <div id="dmg-unreadable-body" class="vlt-stack-3">
@@ -3019,6 +3045,7 @@ index 31442e9..c69cb6e 100644
 +              <p class="noc-body-sm vlt-lede">Your funds are on Solana. After you remove this copy, <b>only your recovery phrase reaches them</b>.</p>
 +            </div>
 +            <div id="dmg-refused-body" class="vlt-stack-3" hidden>
++              <p class="noc-body">This version of Noctura can't open this wallet's data.</p>
 +              <p class="noc-body">Update Noctura (in Chrome: Extensions → Update). If it is up to date, the data may have been changed. Nothing was removed.</p>
 +              <p id="dmg-help" class="noc-body-sm vlt-lede"></p>
 +            </div>
@@ -3290,8 +3317,12 @@ test('damaged vaults: the unreadable state, its saved bytes, the removal; a refu
     await p.fill('#rd-word', 'DELETE');
     await expect(p.locator('#rd-matched')).toBeVisible();
     await shot(p, 'damaged-remove-matched', {ready: p.locator('#rd-hold')});
-    // Released before the full second: nothing removed.
+    // Released before the full second: nothing removed. The clock then runs on past the full second — a hold still
+    // counting would complete now — and the button is still armed: a confirmation disables it in the same tick, before
+    // the removal is sent, so this is the signal that none happened (storage alone could be read before a removal lands).
     await hold(p, HOLD_MS - 300);
+    await p.clock.runFor(HOLD_MS);
+    await expect(p.locator('#rd-hold')).toBeEnabled();
     expect(await storedText(sw)).toBe(text);
     // Held mid-way: the count and the fill, shot under the paused clock.
     await p.locator('#rd-hold').hover();
@@ -3310,7 +3341,8 @@ test('damaged vaults: the unreadable state, its saved bytes, the removal; a refu
     const refused = {...env, v: 2};
     await sw.evaluate(v => chrome.storage.local.set({v1_vault: v}), refused);
     p = await vaultPage(ctx, id, 'unlock.html');
-    await expect(p.locator('#dmg-refused')).toHaveText("This version of Noctura can't open this wallet's data.", {timeout: 60_000});
+    await expect(p.locator('#dmg-refused')).toHaveText('Update Noctura to open this wallet', {timeout: 60_000});
+    await expect(p.locator('#dmg-refused-body p').first()).toHaveText("This version of Noctura can't open this wallet's data.");
     await expect(p.locator('#dmg-remove')).toBeHidden();
     await shot(p, 'damaged-09-refused');
     expect((await save(p, '#dmg-save')).bytes.toString('utf8')).toBe(await storedText(sw));
@@ -3438,7 +3470,7 @@ Run: `rm -rf dist dist-nopresale && node scripts/build.mjs && node scripts/build
 
 No repo-root `src/` or `core/` change: root `tsc` / `jest` and web `verify` are not run.
 
-Playwright, the vault-page specs (every spec that opens `unlock.html`, plus the new one): `npx playwright test e2e/unlock.spec.ts e2e/onboarding.spec.ts e2e/settings.spec.ts e2e/csp.spec.ts e2e/visual-vault.spec.ts e2e/damaged.spec.ts` — `25 passed (6.9m)` normally and `25 passed (6.7m)` under `unshare -rn sh -c 'ip link set lo up && npx playwright test …'`; `e2e/csp.spec.ts` with its three new pages — `1 passed (48.0s)` normally and `1 passed (49.8s)` under `unshare -rn`.
+Playwright, the vault-page specs (every spec that opens `unlock.html`, plus the new one): `npx playwright test e2e/unlock.spec.ts e2e/onboarding.spec.ts e2e/settings.spec.ts e2e/csp.spec.ts e2e/visual-vault.spec.ts e2e/damaged.spec.ts` — `25 passed (6.9m)` normally and `25 passed (6.7m)` under `unshare -rn sh -c 'ip link set lo up && npx playwright test …'`; `e2e/csp.spec.ts` with its three new pages — `1 passed (48.0s)` normally and `1 passed (49.8s)` under `unshare -rn`. **Rev 2** (on the rebuilt 2876fea, `damaged.spec.ts` changed): `npx playwright test e2e/damaged.spec.ts` — `1 passed (9.8s)` normally and `1 passed (9.5s)` under `unshare -rn`.
 
 **Visual check (the two damaged states and the removal, at the vault page's size 412 × 916; shots `test-results/visual/damaged-*.png`, in the dry run's scratch only).** Read against `index.html` #s37 (the card, the typed field's 37a/37b/37c looks, the hold CTA) and the vault page's own screens. Found and fixed before the commit: "Save the damaged data" (an `<a>` drawn as `.btn`) was underlined — `.vlt-col a.btn {text-decoration: none}`; the "a wallet already exists" notice drew both [Close this tab] and the bar's [Cancel] — a notice with its own way out now hides Cancel, as #37's proof page does. Confirmed as intended: the danger card and its warn disc at #37's tints; the refused title wraps to three lines at `.noc-h2` and the unreadable title to one; Save above Remove; 37b's accent ring and "3 of 6 characters · keep going"; 37c's success-tinted field, "✓ CONFIRMATION MATCHED" and the caption; the hold at 0.3 s left with the darkened fill at 70 % and Cancel at .45; the gated CTA greyed at full opacity; "The address can't be read" in the address's place. Undrawn elements, flagged for Task 7's visual pass and the owner (§9): the `v-damaged` screen (no top bar — it replaces #9 / #1), the removal screen's top-bar title "Remove damaged wallet", the save note under each Save.
 
@@ -3490,12 +3522,23 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 | M-release | `src/unlock/view/deleteConfirm.ts`: `for (const ev of ['pointerup', 'pointerleave', 'pointercancel', 'blur'] as const)` → `for (const ev of ['pointerleave', 'pointercancel', 'blur'] as const)` | tsc 0 · SC RED `1 failed \| 24 passed (25)` — “the removal screen (B1e §2.2) › a hold released before the full second removes nothing; held again for the full second it does” |
 | M-serial (Review Focus 1) | `src/background/accountsStore.ts`, `forgetDamaged`: `  return serial(async (): Promise<ForgetDamagedResult> => {` → `  return (async (): Promise<ForgetDamagedResult> => {`, and its closing `  });` (after `return 'forgotten';`) → `  })();` | tsc 0 · BG RED `1 failed \| 69 passed (70)` — “vault.forgetDamaged — an unreadable vault (§2.6: every deletable control) › two removal tabs confirming at once: one is forgotten, the other waits for it and finds no wallet” |
 
-33 mutations (32 from the dry run, M-serial from the assembly's Review Focus row), every one `tsc` 0 and red in each named file; the control C-none (no edit) leaves the gate green, so the gate's red under M-save-blob and M-save-html is theirs. The sweep: `t2-logs/mutate.py` (a fresh `git archive HEAD` copy per mutant; `extension/node_modules` hard-linked — `cp -al` — for the gate rows, since the gate refuses a bundle whose packages resolve outside the package's tree through a symlink, the control included; symlinked otherwise). The vault-isolation gate is named, not `check-vault-isolation.test.mjs`: that file tests the gate's rules on synthetic inputs and the real tree's reachability, while the markup rules (`sourceViolations`: object URL, `text/html`) run over the real sources only in `node scripts/check-vault-isolation.mjs` — under M-save-blob the test file stays `421 passed`, the gate goes red.
+Rev 2's rows (E19, review M2), observed on the rebuilt 2876fea:
+
+| id | the change | named test → observed |
+|---|---|---|
+| M-refused-heading (E19) | `unlock.html`: `<h1 class="noc-h2 vlt-danger">Update Noctura to open this wallet</h1>` → `<h1 class="noc-h2 vlt-danger">This version of Noctura can't open this wallet's data.</h1>` (rev 1's heading back) | tsc 0 · SC RED `2 failed \| 23 passed (25)` — “the damaged states on #9 and #1 (B1e §2.2) › #9: a vault refused by this version (F2–F8) → "update the extension", Save, and NO removal (R4)”; “… › #1: …” (the same row for #1) |
+| M-refused-line (E19) | `unlock.html`: the line `<p class="noc-body">This version of Noctura can't open this wallet's data.</p>` removed from `#dmg-refused-body` | tsc 0 · SC RED `2 failed \| 23 passed (25)` — the same two rows |
+| M-e2e-short-hold (review M2, E2E) | `src/unlock/view/deleteConfirm.ts`: `      if (held < HOLD_MS) return paintHold(held / HOLD_MS);` → `      if (held < HOLD_MS - 400) return paintHold(held / HOLD_MS);` (a hold confirms at 600 ms); both builds, then `npx playwright test e2e/damaged.spec.ts` | tsc 0 · build 0 · **RED** `1 failed` — at the new signal, `expect(locator).toBeEnabled()` on `#rd-hold` (`damaged.spec.ts:82`); rev 1's spec under the same mutant was red too in this run, but at its immediate storage read (`:79`) — a race between that read and the asynchronous removal, which the armed-button signal removes |
+
+36 mutations (32 from the dry run, M-serial from the assembly's Review Focus row, rev 2's M-refused-heading and M-refused-line) plus rev 2's E2E mutant M-e2e-short-hold, every one `tsc` 0 and red in each named file — **rev 2: all re-run on the rebuilt 2876fea**, the counts now over `forgetDamaged.test.ts`' 70 rows (Review Focus 1's row included: e.g. M-digest `1 failed \| 69 passed (70)`; the wipe mutants also fail the two-tab row — M-wipe `46 failed \| 24 passed (70)`, M-wipe-locked and M-caches 45, M-digest-text 48), every other file's counts as rev 1's, C-none's gate green; the control C-none (no edit) leaves the gate green, so the gate's red under M-save-blob and M-save-html is theirs. The sweep: `t2-logs/mutate.py` (a fresh `git archive HEAD` copy per mutant; `extension/node_modules` hard-linked — `cp -al` — for the gate rows, since the gate refuses a bundle whose packages resolve outside the package's tree through a symlink, the control included; symlinked otherwise). The vault-isolation gate is named, not `check-vault-isolation.test.mjs`: that file tests the gate's rules on synthetic inputs and the real tree's reachability, while the markup rules (`sourceViolations`: object URL, `text/html`) run over the real sources only in `node scripts/check-vault-isolation.mjs` — under M-save-blob the test file stays `421 passed`, the gate goes red.
 
 What the first sweep (on the commit before the final one) found, both fixed in the final commit and the whole sweep run again on it: three mutants did not compile (M-page-compare, M-page-judge, M-save-bytes removed the only use of an import — `noUnusedLocals`), now written to keep the import used; and **M-refused-click survived** — the refused-state test "clicked" the Remove button while it was disabled, and a disabled button delivers no click, so the listener's own guard was never reached. The test now enables the button before its stray click; M-refused-click and the new M-refused-disabled each turn it red.
 
 #### Notes for the executor (Task 2)
 
+- **Rev 2 — E19, the refused state's heading.** `unlock.html`'s `#dmg-refused` heading is "Update Noctura to open this wallet" (the owner's words); "This version of Noctura can't open this wallet's data." is the first line of `#dmg-refused-body`, before "Update Noctura (in Chrome: …)". `damagedScreens.test.ts` pins the heading (its `h1`), the body's first element and the body's whole text; `damaged.spec.ts` the heading and the first line. M-refused-heading and M-refused-line (Step 6) turn it red.
+- **Rev 2 — review M2: the short hold's negative waits on a real signal.** After the hold released at 700 ms the spec runs the page's clock on by the full second (a hold still counting would complete inside it) and asserts `#rd-hold` is still enabled — a confirmation disables it in the same tick, before the removal is sent — and only then reads storage. A storage read right after `mouse.up()` could land before an asynchronous removal and pass vacuously. M-e2e-short-hold (the hold confirming at 600 ms) is red at that line (`1 failed` at `toBeEnabled()`, `damaged.spec.ts:82`); on rev 1's spec the same mutant was red in this run at the immediate storage read (`:79`) — the removal happened to land first; nothing made it.
+- **Rev 2 — review M3: step 5's reading clause is marked as implied.** `forgetDamaged`'s comment at steps 5 + 6 says the `vaultReading(again)` clause is implied by the digest compare (the same digest is the same text, so the same verdict as step 2) — belt and braces, not a check of its own; the review's `step5-pred` mutant is equivalent, and M-digest proves the compare.
 - **Ruling: the confirmation is the hold-only path, implemented now; the seam for Task 3 is `mountDeleteConfirm` (`view/deleteConfirm.ts`)** — typed DELETE + #37's 1 s hold (pointer or Space / Enter held; Enter in the field nothing; a release before the second nothing), its word, hold and tick pinned to the popup's (`WORD`, `HOLD_MS`, `HOLD_TICK_MS`) and its copy to `DELETE_TEXT` by a test — why: a password-less removal must never exist in any commit without its friction, and the checkbox path then only adds a branch inside one module — cost if wrong: Task 3 reworks `deleteConfirm.ts`' internals, never `removeDamaged.ts` beyond the `parts` it passes.
 - **Ruling: the removal is its own mode, `unlock.html?mode=remove-damaged`, reached from the unreadable state's [Remove damaged wallet]; it reads, judges and shows the value itself and reads no URL parameter** — why: the digest a removal names must be that of the value this screen read and showed (and saved), never one carried in from another page — cost if wrong: none (a navigation).
 - **Ruling: the two damaged states are one screen (`screens/damaged.ts`, section `v-damaged`) that #9 and #1 show in place of their old damaged notice** — and #9's attempt that ends `damaged` reads again: unreadable / refused → that state; still a wallet (a seed that fails AES-GCM after the unwrap, §2.1 "out of the predicate") → today's notice and `COMMON.damagedHelp`, never a removal (test, M-out-of-predicate) — why: one rendering of each state, and §2.1's out-of-predicate case stays on today's path — cost if wrong: none. The other flows that answer `damaged` (#37's proof, #39, #40, #6, the accounts page) keep today's notice: the spec names only #9 and #1.
@@ -3725,7 +3768,7 @@ Modify `extension/src/unlock/__tests__/damagedScreens.test.ts`:
 
 ```diff
 diff --git a/extension/src/unlock/__tests__/damagedScreens.test.ts b/extension/src/unlock/__tests__/damagedScreens.test.ts
-index f4c1bef..3228410 100644
+index c074709..72b5c50 100644
 --- a/extension/src/unlock/__tests__/damagedScreens.test.ts
 +++ b/extension/src/unlock/__tests__/damagedScreens.test.ts
 @@ -14,8 +14,8 @@ import {mountDamaged} from '../screens/damaged';
@@ -3739,7 +3782,7 @@ index f4c1bef..3228410 100644
  import {click, el, harness, loadPage, testKdf, text, type, unstyled, visible, type Harness} from './pageHarness';
  
  // B1e §2.2–§2.4 against the REAL background: #9's and #1's damaged states, "Save the damaged data", and the removal.
-@@ -379,11 +379,197 @@ describe('#37’s words and hold, as the popup has them (E11)', () => {
+@@ -382,11 +382,197 @@ describe('#37’s words and hold, as the popup has them (E11)', () => {
    it('the word, the hold and its tick are the popup’s; the copy is DELETE_TEXT’s', () => {
      expect([CONFIRM_WORD, HOLD_MS, HOLD_TICK_MS]).toEqual([WORD, POPUP_HOLD_MS, POPUP_TICK_MS]);
      expect([TYPED_DELETE.caseSensitive, TYPED_DELETE.notAPrefix, TYPED_DELETE.keepGoing(3)]).toEqual([DELETE_TEXT.caseSensitive, DELETE_TEXT.notAPrefix, DELETE_TEXT.keepGoing(3)]);
@@ -4404,10 +4447,10 @@ index b1f3d6c..7717c33 100644
 
 ```diff
 diff --git a/extension/unlock.html b/extension/unlock.html
-index c69cb6e..0f98dc9 100644
+index 68d44a7..3867b5b 100644
 --- a/extension/unlock.html
 +++ b/extension/unlock.html
-@@ -791,7 +791,8 @@
+@@ -792,7 +792,8 @@
          </div>
          <div class="vlt-grow"></div>
          <div class="sticky-bar">
@@ -4490,10 +4533,10 @@ index f2a411a..67fc1ab 100644
 
 ```diff
 diff --git a/extension/e2e/damaged.spec.ts b/extension/e2e/damaged.spec.ts
-index 6642400..7302dbf 100644
+index 49998c2..e08c9c7 100644
 --- a/extension/e2e/damaged.spec.ts
 +++ b/extension/e2e/damaged.spec.ts
-@@ -124,3 +124,64 @@ test('damaged vaults: the unreadable state, its saved bytes, the removal; a refu
+@@ -129,3 +129,64 @@ test('damaged vaults: the unreadable state, its saved bytes, the removal; a refu
      rmSync(profile, {recursive: true, force: true});
    }
  });
@@ -4641,6 +4684,7 @@ What the first sweep found, fixed before the final commit: **M-v-once survived**
 
 #### Notes for the executor (Task 3)
 
+- **Rev 2: no change to this task's files.** Its commit is cherry-picked unchanged onto Task 2's rebuilt tree (be35060); its diff blocks differ from rev 1's only in context lines and hashes (Task 2's heading line and short-hold lines move the offsets). `tsc` 0 and `228 / 4986` as before; the 22 mutations re-run on be35060: 22 red with rev 1's counts, M-p-target INVALID again (`tsc` 2, `TS2345` — `openPage` cannot name the mode).
 - **Ruling (controller): the checkbox goes directly ABOVE the button, before it in DOM and tab order, on #37 and on the removal** — a screen-reader or keyboard user reaches the box before the action it unlocks; D31 exists for exactly that. **A departure from §3 ("under the button") for the spec's rev 2.2 change list.** Pinned by a unit row per page (the row's next element sibling is the button; M-p-order and M-v-order restore the old order → red) and by both E2E (Tab from the box lands on the CTA).
 - **Ruling: the rule in one place per page.** Popup: `DeleteWallet.tsx` decides (`once = matched && understood`; `HoldButton` is rendered only when the word matches), `HoldButton` executes (`once`); vault page: `way()` in `mountDeleteConfirm`, consulted by `press`, `once`, the keydown and `render`. `screens/delete.ts` (#37's vault half) is not touched: it never had the hold, it is the proof — why: "the checkbox only trades the hold" (§3) means the proof must stay the same code — cost if wrong: none for the removal; for #37 a later "accessible proof" would be its own change.
 - **Ruling: the checkbox exists only while DELETE matches** (popup: not rendered; vault page: its row `hidden`) — why: §3 clears it whenever the word stops matching, so a box shown earlier could never stay checked — cost if wrong: a markup change only.
@@ -4659,7 +4703,7 @@ What the first sweep found, fixed before the final commit: **M-v-once survived**
 - The next task must know: `HoldButton` has `once` and `describedBy` (only #37 uses them; #49 unchanged); `mountDeleteConfirm` needs `name`, `understood`, `understoodRow` and `onceName`; `TYPED_DELETE.hold` / `understood` (pinned to `DELETE_TEXT`) and `DAMAGED.remove` exist; in both bars the checkbox row comes before the CTA.
 
 
-### Task 4: The anti-phishing phrase in the background — `cleanPhrase` (NFC, trimmed, 3–32 UTF-16 code units, printable only, empty = none); `v1_phishing_phrase` in `WALLET_DATA_KEYS` and `BACKGROUND_OWNED_KEYS`; the privileged write `settings.phrase` (set when none is set: an unlocked session, no proof — R1 = E18; change and remove: #10 through a new shared challenge kind `phrase`, applied by `vault.reauthOk`); the phrase as a field of `wallet.state`, `vault.status` and `dapp.pending` and of no other answer; onboarding's step hook (`PhraseStep`) on the create and import runs, called only after `commitWallet` stored the wallet and handed over its keys; the built `relay.js` / `provider.js` carry no `storage`
+### Task 4: The anti-phishing phrase in the background — `cleanPhrase` (NFC, trimmed, 3–32 UTF-16 code units, printable only — rev 2, E21: nothing that renders blank or draws out of its line, at most three combining marks in a row, one visible character —, empty = none); `v1_phishing_phrase` in `WALLET_DATA_KEYS` and `BACKGROUND_OWNED_KEYS`; the privileged write `settings.phrase` (set when none is set: an unlocked session, no proof — R1 = E18; change and remove: #10 through a new shared challenge kind `phrase`, applied by `vault.reauthOk`); the phrase as a field of `wallet.state`, `vault.status` and `dapp.pending` and of no other answer; onboarding's step hook (`PhraseStep`) on the create and import runs, called only after `commitWallet` stored the wallet and handed over its keys; the built `relay.js` / `provider.js` carry no `storage`
 
 **Spec:** B1e §1.3 (the operations table, the message, the challenge kind, `vault.reauthOk` applying it, the last proof wins, #10's line never the value; onboarding after `commitWallet`, placement, skipped on `created-locked`), §1.4 (the key, `WALLET_DATA_KEYS` + `BACKGROUND_OWNED_KEYS`, plain remove and the accepted race, not encrypted, the reads ride on three answers), §1.5 (the rules, `cleanPhrase` beside `cleanName` sharing the regex, `null` / empty = remove, never echoed), §1.6 (the background's rows: set / locked / unchanged / change / remove / a later challenge applies its own value / refusals carry no value; the sender partition; onboarding survives the first write and a mutation moving it before `commitWallet` is RED; wiped by #37's delete and §2's removal, kept by #39's restore; the built-content-script `storage` gate and its mutation; the `BACKGROUND_OWNED_KEYS` mutation); owner decision E18 (R1 confirmed). **Not here:** every screen — the line on the six screens, R9's "could not be read" line, the onboarding step's screen, #35's row, #10's "Change / Remove the anti-phishing phrase" copy (Task 5); the six-screen E2E and the visual pass (Task 7). **Moved here from Task 6 (controller's assignment):** the built `relay.js` / `provider.js` no-`storage` check of §1.6.
 
@@ -4669,14 +4713,16 @@ What the first sweep found, fixed before the final commit: **M-v-once survived**
 - Create: `extension/src/background/phraseKey.ts` (the key alone, as `presaleRecordsKey.ts`), `extension/src/background/phrase.ts` (`readPhrase`, `setPhrase`, `applyPhraseChallenge`)
 - Modify: `extension/src/shared/envelopeRules.ts` (`PHRASE_LENGTH`, `cleanPhrase`), `extension/src/background/reauthChallenges.ts` (the `phrase` kind in `ChallengeAbout`, `SHARED_KINDS`, `isAbout`; `takePhraseChallenge`), `extension/src/background/walletApi.ts` (`settings.phrase` in `WALLET_TYPES` and its case; `wallet.state`'s `phrase`), `extension/src/background/messages.ts` (`vault.status`'s `phrase`; `vault.reauthOk` applies a `phrase` challenge; `vault.challengeInfo`'s redacted description; `dapp.pending`'s top-level `phrase`), `extension/src/background/accountsStore.ts` (`PHRASE_KEY` in `WALLET_DATA_KEYS`), `extension/src/unlock/screens/createRun.ts` (`PhraseStep`, the create run's hook after #6), `extension/src/unlock/screens/importRun.ts` (the import run's hook after `created`), `extension/scripts/check-vault-isolation.mjs` (`v1_phishing_phrase` in `BACKGROUND_OWNED_KEYS`; `CONTENT_SCRIPTS`, `contentStorageViolations`, run on `dist*/{app,chrome,firefox}`), `extension/vitest.nopresale.config.ts` (`phrase.test.ts` runs in the build without presale too)
 - Create (tests): `extension/src/background/__tests__/phrase.test.ts` (37), `extension/src/unlock/__tests__/phraseStep.test.ts` (6)
-- Modify (tests): `extension/src/shared/__tests__/envelopeRules.test.ts` (+42), `extension/scripts/__tests__/check-vault-isolation.test.mjs` (+9), `extension/src/background/__tests__/messages.test.ts` (`vault.status`'s field; `settings.phrase` in the literal partition list), `extension/src/background/__tests__/walletApi.test.ts` (`wallet.state`'s field), `extension/src/background/dapp/__tests__/decide.test.ts` (`dapp.pending`'s field), `extension/e2e/presaleSwitch.spec.ts` (`vault.status`'s field — rev 1: moved here from Task 7)
+- Modify (tests): `extension/src/shared/__tests__/envelopeRules.test.ts` (+69: rev 1's 42 and rev 2's E21 rows, 1 + 17 + 9), `extension/scripts/__tests__/check-vault-isolation.test.mjs` (+9), `extension/src/background/__tests__/messages.test.ts` (`vault.status`'s field; `settings.phrase` in the literal partition list), `extension/src/background/__tests__/walletApi.test.ts` (`wallet.state`'s field), `extension/src/background/dapp/__tests__/decide.test.ts` (`dapp.pending`'s field), `extension/e2e/presaleSwitch.spec.ts` (`vault.status`'s field — rev 1: moved here from Task 7)
 
 **Interfaces:**
 - Consumes (existing): `FORBIDDEN_IN_NAME` (`envelopeRules.ts`, module-private, shared by reference); `settingsMutex` → `sessionMutex` lock order (`settings.ts`, `session.ts`); `issueChallenge`, `challengeInfo`, `CHALLENGE_ID`, `live` / `load` / `save` (`reauthChallenges.ts`); `digestOf` (`digest.ts`); `Result`, `handleWallet`'s `failure()` (`walletApi.ts`); `pending()` (`dapp/decide.ts`, unchanged); `removeWalletData` through `WALLET_DATA_KEYS` (`accountsStore.ts` — `forgetWallet` step 7, `forgetDamaged` step 7, `storeEnvelope`'s first write); `TOUCHES_STORAGE` (`check-vault-isolation.mjs`). From Tasks 1–2: `forgetDamaged`, `storedDigest`, `edited` (`src/shared/__tests__/vaultControls.ts`). Tests: `fakeExt`, `fakeDeps`, `fakeReader`, `ACCOUNT`, `RECIPIENT`, `openPage` (`dapp/__tests__/pageHarness.ts`), the vault-page `harness` (`unlock/__tests__/pageHarness.ts`).
 - Produces (`extension/src/shared/envelopeRules.ts`):
   ```ts
   export const PHRASE_LENGTH: {readonly min: 3; readonly max: 32};
-  /** NFC, then trim; PHRASE_LENGTH UTF-16 code units; no FORBIDDEN_IN_NAME character, no Cs / Co / Cn.
+  export const PHRASE_MAX_MARKS = 3; // rev 2, E21
+  /** NFC, then trim; PHRASE_LENGTH UTF-16 code units; no FORBIDDEN_IN_NAME character, no Cs / Co / Cn; rev 2 (E21): no
+   *  Default_Ignorable code point, U+2800, U+FFFC or U+FFFD, at most PHRASE_MAX_MARKS marks in a row, one L/N/S/P.
    *  null: none (null, or a string empty after trimming). undefined: refused. */
   export function cleanPhrase(x: unknown): string | null | undefined;
   ```
@@ -4714,13 +4760,48 @@ What the first sweep found, fixed before the final commit: **M-v-once survived**
 
 - [ ] **Step 1: Write the failing tests.**
 
-The test strings with characters that do not print are `\u` escapes printed by a generator, never typed (`node gen-phrase-strings.mjs`, scratch only):
+The test strings with characters that do not print or look like others are `\u` escapes printed by a generator from their code points, never typed (rev 2: rev 1's rows had been typed raw — the Global Constraints' correction; every one is now an escape). Rev 2's E21 rows come from this generator (scratch `gen_e21.mjs`; `node gen_e21.mjs` prints exactly the two `it.each` lists below):
 
 ```js
-// Prints the phrase rules' test strings as \u escapes.
-const esc = s => [...s].map(ch => { const out=[]; for (let i=0;i<ch.length;i++){const c=ch.charCodeAt(i); out.push(c>=0x20&&c<0x7f&&ch!=="'"&&ch!=='\\'?ch:'\\u'+c.toString(16).padStart(4,'0'));} return out.join(''); }).join('');
-const refused = {'NUL (Cc)': 'ab\u0000cd', /* … one entry per row of the it.each below … */ 'unassigned (Cn)': 'ab͸cd'};
-for (const [k, v] of Object.entries(refused)) console.log(`  ['${k}', '${esc(v)}'],`);
+// Prints Task 4's E21 rows (rev 2): every string is built from its code points and printed as \u escapes, never typed.
+const esc = s => [...s].map(ch => { const cp = ch.codePointAt(0); return cp >= 0x20 && cp < 0x7f && ch !== "'" && ch !== '\\' ? ch : cp > 0xffff ? `\\u{${cp.toString(16)}}` : `\\u${cp.toString(16).padStart(4, '0')}`; }).join('');
+const cps = (...c) => String.fromCodePoint(...c);
+const nfc = s => s.normalize('NFC');
+const refused = [
+  ['Hangul choseong filler U+115F x3 (Default_Ignorable)', cps(0x115f, 0x115f, 0x115f)],
+  ['Hangul jungseong filler U+1160 x3 (Default_Ignorable)', cps(0x1160, 0x1160, 0x1160)],
+  ['Hangul filler U+3164 x3 (Default_Ignorable)', cps(0x3164, 0x3164, 0x3164)],
+  ['halfwidth Hangul filler U+FFA0 x3 (Default_Ignorable)', cps(0xffa0, 0xffa0, 0xffa0)],
+  ['Hangul fillers around a space (Default_Ignorable)', cps(0x3164, 0x20, 0x3164)],
+  ['Khmer inherent vowel U+17B4 inside a word (Default_Ignorable)', 'ab' + cps(0x17b4) + 'cd'],
+  ['Khmer inherent vowel U+17B5 inside a word (Default_Ignorable)', 'ab' + cps(0x17b5) + 'cd'],
+  ['Mongolian free variation selector U+180B (Default_Ignorable, Mn)', 'ab' + cps(0x180b) + 'cd'],
+  ['variation selector-17 U+E0100 (Default_Ignorable, Mn)', 'ab' + cps(0xe0100) + 'cd'],
+  ['Braille blank U+2800 x3', cps(0x2800, 0x2800, 0x2800)],
+  ['Braille blank U+2800 inside a word', 'ab' + cps(0x2800) + 'cd'],
+  ['replacement character U+FFFD x3', cps(0xfffd, 0xfffd, 0xfffd)],
+  ['object replacement character U+FFFC inside a word', 'ab' + cps(0xfffc) + 'cd'],
+  ['a combining tower: a + U+0300 x31 (32 code units)', 'a' + cps(0x300).repeat(31)],
+  ['four combining marks on one letter (one over the cap)', 'x' + cps(0x301, 0x302, 0x303, 0x304) + 'yz'],
+  ['marks only: no character that draws itself', cps(0x301, 0x301, 0x301)],
+  ['marks and no-break spaces only', cps(0x301, 0xa0, 0x301)],
+];
+const accepted = [
+  ['a Cyrillic phrase', cps(0x441, 0x438, 0x43d, 0x438, 0x439, 0x20, 0x43a, 0x43e, 0x43d, 0x44c) + ' 42'],
+  ['one accent mark on a letter with no precomposed form', 'x' + cps(0x301) + 'yz'],
+  ['exactly PHRASE_MAX_MARKS marks on one letter', 'x' + cps(0x301, 0x302, 0x303) + 'yz'],
+  ['Thai: a vowel and a tone mark on one consonant (2 marks)', nfc(cps(0xe19, 0xe35, 0xe49, 0xe19, 0xe30))],
+  ['pointed Hebrew: a dagesh, a vowel and a shin dot on one letter (3 marks)', nfc(cps(0x5e9, 0x5bc, 0x5b8, 0x5c1, 0x5dc, 0x5d5, 0x5b9, 0x5dd))],
+  ['Tibetan: a stack of three marks on one letter', nfc(cps(0xf66, 0xf92, 0xfb2, 0xf74, 0xf56, 0xf66))],
+  ['Hebrew and digits', cps(0x5e9, 0x5dc, 0x5d5, 0x5dd) + ' 42'],
+  ['16 emoji (32 code units)', '\u{1f600}'.repeat(16)],
+  ['32 wide letters', 'W'.repeat(32)],
+];
+const row = ([n, s]) => `    ['${esc(n)}', '${esc(s)}'],`;
+for (const [n, s] of accepted) if (nfc(s) !== s) throw new Error(n);
+console.log(refused.map(row).join('\n'));
+console.log('---');
+console.log(accepted.map(row).join('\n'));
 ```
 
 Create `extension/src/background/__tests__/phrase.test.ts`:
@@ -4796,8 +4877,8 @@ async function challengeFor(c: Ctx, value: unknown): Promise<string> {
 describe('settings.phrase: set when none is set — an unlocked session, no proof (R1, E18)', () => {
   it('unlocked with none stored: written at once, cleaned (NFC, trimmed); the answer carries no value', async () => {
     const c = await setup();
-    expect(await phrase(c, '  café noir ')).toEqual({ok: true, data: {outcome: 'set'}});
-    expect(await stored(c)).toBe('café noir');
+    expect(await phrase(c, '  cafe\u0301 noir ')).toEqual({ok: true, data: {outcome: 'set'}});
+    expect(await stored(c)).toBe('caf\u00e9 noir');
     expect(await challenges(c)).toEqual([]);
   });
 
@@ -4830,7 +4911,7 @@ describe('settings.phrase: set when none is set — an unlocked session, no proo
   });
 
   it('a stored value that is not a clean phrase reads as none: shown as none, and set without a proof', async () => {
-    for (const bad of ['ab‮cd', 'ab', ' padded ', 42, {phrase: BLUE}]) {
+    for (const bad of ['ab\u202ecd', 'ab', ' padded ', 42, {phrase: BLUE}]) {
       const c = await setup({phrase: bad});
       expect(await handleMessage(c.ext, {type: 'wallet.state'}, popup, c.deps)).toMatchObject({ok: true, data: {phrase: null}});
       expect(await phrase(c, BLUE)).toEqual({ok: true, data: {outcome: 'set'}});
@@ -4846,7 +4927,7 @@ describe('settings.phrase: set when none is set — an unlocked session, no proo
       {type: 'settings.phrase', phrase: undefined},
       {type: 'settings.phrase', phrase: 42},
       {type: 'settings.phrase', phrase: [BLUE]},
-      {type: 'settings.phrase', phrase: 'ab‮cd'},
+      {type: 'settings.phrase', phrase: 'ab\u202ecd'},
       {type: 'settings.phrase', phrase: 'ab'},
       {type: 'settings.phrase', phrase: BLUE, challengeId: settled},
     ]) {
@@ -5009,9 +5090,9 @@ describe('a proof of another kind never changes the phrase', () => {
       {kind: 'phrase'},
       {kind: 'phrase', phrase: BLUE, extra: 1},
       {kind: 'phrase', phrase: 'ab'},
-      {kind: 'phrase', phrase: 'ab‮cd'},
+      {kind: 'phrase', phrase: 'ab\u202ecd'},
       {kind: 'phrase', phrase: ` ${BLUE}`},
-      {kind: 'phrase', phrase: 'café noir'},
+      {kind: 'phrase', phrase: 'cafe\u0301 noir'},
       {kind: 'phrase', phrase: 42},
       {kind: 'phrase', phrase: ''},
     ]) {
@@ -5022,7 +5103,7 @@ describe('a proof of another kind never changes the phrase', () => {
 
 describe('never echoed (§1.5)', () => {
   // Characters that appear in no answer's keys or codes (ok, error, data, challengeId, outcome, applied, hex ids).
-  const TRIED = ['ZQXW‮', 'ZQXW', 'WQZX'];
+  const TRIED = ['ZQXW\u202e', 'ZQXW', 'WQZX'];
   const noneOf = (answer: unknown, value: string) => [...value].filter(ch => JSON.stringify(answer).includes(ch));
 
   it('a refusal carries no character of the tried value, and nothing is logged', async () => {
@@ -5340,17 +5421,17 @@ Modify `extension/src/shared/__tests__/envelopeRules.test.ts` (the rules):
 
 ```diff
 diff --git a/extension/src/shared/__tests__/envelopeRules.test.ts b/extension/src/shared/__tests__/envelopeRules.test.ts
-index 9bdab88..8f24ebb 100644
+index 9bdab88..3d98a47 100644
 --- a/extension/src/shared/__tests__/envelopeRules.test.ts
 +++ b/extension/src/shared/__tests__/envelopeRules.test.ts
 @@ -1,5 +1,5 @@
  import {base64} from '@scure/base';
 -import {ENVELOPE_BYTES, MAX_ACCOUNTS, MAX_NAME_LENGTH, b64Length, cleanName} from '../envelopeRules';
-+import {ENVELOPE_BYTES, MAX_ACCOUNTS, MAX_NAME_LENGTH, PHRASE_LENGTH, b64Length, cleanName, cleanPhrase} from '../envelopeRules';
++import {ENVELOPE_BYTES, MAX_ACCOUNTS, MAX_NAME_LENGTH, PHRASE_LENGTH, PHRASE_MAX_MARKS, b64Length, cleanName, cleanPhrase} from '../envelopeRules';
  
  describe('envelope rules shared by the vault page and the background', () => {
    it('pins the limits', () => {
-@@ -48,3 +48,94 @@ describe('envelope rules shared by the vault page and the background', () => {
+@@ -48,3 +48,139 @@ describe('envelope rules shared by the vault page and the background', () => {
      expect('\u0412inance'.normalize('NFKC')).not.toBe('Binance');
    });
  });
@@ -5363,9 +5444,9 @@ index 9bdab88..8f24ebb 100644
 +  });
 +
 +  it('NFC first, then trimmed: the stored phrase is the composed, trimmed text', () => {
-+    expect(cleanPhrase('café noir')).toBe('café noir');
++    expect(cleanPhrase('cafe\u0301 noir')).toBe('caf\u00e9 noir');
 +    expect(cleanPhrase('  Blue horse 42  ')).toBe('Blue horse 42');
-+    expect(cleanPhrase(' 　 abc  ﻿')).toBe('abc');
++    expect(cleanPhrase('\u00a0\u3000 abc \u2028\ufeff')).toBe('abc');
 +  });
 +
 +  it('the length counts after NFC and after trimming: 3 and 32 accepted, 2 and 33 refused', () => {
@@ -5377,15 +5458,15 @@ index 9bdab88..8f24ebb 100644
 +    expect(cleanPhrase('  ab  ')).toBeUndefined();
 +    expect(cleanPhrase(' abc ')).toBe('abc');
 +    // Composed before counting: 33 code units that NFC makes 32 are accepted.
-+    expect('éxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'.length).toBe(33);
-+    expect(cleanPhrase('éxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx')).toBe('éxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx');
++    expect('e\u0301xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'.length).toBe(33);
++    expect(cleanPhrase('e\u0301xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx')).toBe('\u00e9xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx');
 +    // UTF-16 code units, as cleanName counts: an emoji outside the BMP is two.
 +    expect(cleanPhrase('🐴'.repeat(16))).toBe('🐴'.repeat(16));
 +    expect(cleanPhrase('🐴'.repeat(16) + 'x')).toBeUndefined();
 +  });
 +
 +  it('empty means none: null, "", and a string of only whitespace are null (remove)', () => {
-+    for (const none of [null, '', '   ', '  ﻿']) expect(cleanPhrase(none)).toBeNull();
++    for (const none of [null, '', '   ', '\u00a0\u2028\ufeff']) expect(cleanPhrase(none)).toBeNull();
 +  });
 +
 +  it('not a string (and not null) is refused — never "none"', () => {
@@ -5399,30 +5480,30 @@ index 9bdab88..8f24ebb 100644
 +    ['LF (Cc)', 'ab\u000acd'],
 +    ['DEL (Cc)', 'ab\u007fcd'],
 +    ['NEL, C1 (Cc)', 'ab\u0085cd'],
-+    ['soft hyphen (Cf)', 'ab­cd'],
-+    ['ZWSP (Cf)', 'ab​cd'],
-+    ['ZWNJ (Cf)', 'ab‌cd'],
-+    ['ZWJ (Cf)', 'ab‍cd'],
-+    ['LRM (Cf)', 'ab‎cd'],
-+    ['RLM (Cf)', 'ab‏cd'],
-+    ['LRE (bidi embedding)', 'ab‪cd'],
-+    ['RLO (bidi override)', 'ab‮cd'],
-+    ['LRI (bidi isolate)', 'ab⁦cd'],
-+    ['PDI (bidi isolate)', 'ab⁩cd'],
-+    ['ALM (Cf)', 'ab؜cd'],
-+    ['word joiner (Cf)', 'ab⁠cd'],
-+    ['BOM inside (Cf)', 'ab﻿cd'],
-+    ['tag character (Cf)', 'ab󠁁cd'],
-+    ['line separator (Zl)', 'ab cd'],
-+    ['paragraph separator (Zp)', 'ab cd'],
-+    ['combining grapheme joiner', 'ab͏cd'],
-+    ['variation selector-16', 'ab️cd'],
-+    ['family emoji (ZWJ)', '👨‍👩‍👧'],
-+    ['red heart + VS16', 'love ❤️'],
++    ['soft hyphen (Cf)', 'ab\u00adcd'],
++    ['ZWSP (Cf)', 'ab\u200bcd'],
++    ['ZWNJ (Cf)', 'ab\u200ccd'],
++    ['ZWJ (Cf)', 'ab\u200dcd'],
++    ['LRM (Cf)', 'ab\u200ecd'],
++    ['RLM (Cf)', 'ab\u200fcd'],
++    ['LRE (bidi embedding)', 'ab\u202acd'],
++    ['RLO (bidi override)', 'ab\u202ecd'],
++    ['LRI (bidi isolate)', 'ab\u2066cd'],
++    ['PDI (bidi isolate)', 'ab\u2069cd'],
++    ['ALM (Cf)', 'ab\u061ccd'],
++    ['word joiner (Cf)', 'ab\u2060cd'],
++    ['BOM inside (Cf)', 'ab\ufeffcd'],
++    ['tag character (Cf)', 'ab\u{e0041}cd'],
++    ['line separator (Zl)', 'ab\u2028cd'],
++    ['paragraph separator (Zp)', 'ab\u2029cd'],
++    ['combining grapheme joiner', 'ab\u034fcd'],
++    ['variation selector-16', 'ab\ufe0fcd'],
++    ['family emoji (ZWJ)', '👨\u200d👩\u200d👧'],
++    ['red heart + VS16', 'love ❤\ufe0f'],
 +    ['lone high surrogate (Cs)', 'ab\ud800cd'],
 +    ['lone low surrogate (Cs)', 'ab\udc00cd'],
-+    ['private use (Co)', 'abcd'],
-+    ['unassigned (Cn)', 'ab͸cd'],
++    ['private use (Co)', 'ab\ue000cd'],
++    ['unassigned (Cn)', 'ab\u0378cd'],
 +  ])('refuses a character that does not print as typed: %s', (_, s) => {
 +    expect(cleanPhrase(s)).toBeUndefined();
 +    // Negative control: the same phrase with each such character replaced by a plain letter is accepted as it is.
@@ -5431,18 +5512,63 @@ index 9bdab88..8f24ebb 100644
 +  });
 +
 +  it.each([
-+    ['cyrillic letters', 'синий конь'],
-+    ['accented, precomposed', 'café noir'],
++    ['cyrillic letters', '\u0441\u0438\u043d\u0438\u0439 \u043a\u043e\u043d\u044c'],
++    ['accented, precomposed', 'caf\u00e9 noir'],
 +    ['simple emoji', 'blue 🐴 42'],
 +    ['CJK', '青い馬'],
-+    ['no-break space inside (Zs)', 'blue horse'],
++    ['no-break space inside (Zs)', 'blue\u00a0horse'],
 +    ['markup, as text', '<b>x</b>'],
 +  ])('accepts printable text in any script: %s', (_, s) => {
 +    expect(cleanPhrase(s)).toBe(s);
 +  });
 +
++  // E21: what renders blank or draws out of its line. Every string is written as \u escapes, generated by a script from
++  // its code points (never typed).
++  it('pins the combining-mark cap: three in a row', () => {
++    expect(PHRASE_MAX_MARKS).toBe(3);
++  });
++
++  it.each([
++    ['Hangul choseong filler U+115F x3 (Default_Ignorable)', '\u115f\u115f\u115f'],
++    ['Hangul jungseong filler U+1160 x3 (Default_Ignorable)', '\u1160\u1160\u1160'],
++    ['Hangul filler U+3164 x3 (Default_Ignorable)', '\u3164\u3164\u3164'],
++    ['halfwidth Hangul filler U+FFA0 x3 (Default_Ignorable)', '\uffa0\uffa0\uffa0'],
++    ['Hangul fillers around a space (Default_Ignorable)', '\u3164 \u3164'],
++    ['Khmer inherent vowel U+17B4 inside a word (Default_Ignorable)', 'ab\u17b4cd'],
++    ['Khmer inherent vowel U+17B5 inside a word (Default_Ignorable)', 'ab\u17b5cd'],
++    ['Mongolian free variation selector U+180B (Default_Ignorable, Mn)', 'ab\u180bcd'],
++    ['variation selector-17 U+E0100 (Default_Ignorable, Mn)', 'ab\u{e0100}cd'],
++    ['Braille blank U+2800 x3', '\u2800\u2800\u2800'],
++    ['Braille blank U+2800 inside a word', 'ab\u2800cd'],
++    ['replacement character U+FFFD x3', '\ufffd\ufffd\ufffd'],
++    ['object replacement character U+FFFC inside a word', 'ab\ufffccd'],
++    ['a combining tower: a + U+0300 x31 (32 code units)', 'a\u0300\u0300\u0300\u0300\u0300\u0300\u0300\u0300\u0300\u0300\u0300\u0300\u0300\u0300\u0300\u0300\u0300\u0300\u0300\u0300\u0300\u0300\u0300\u0300\u0300\u0300\u0300\u0300\u0300\u0300\u0300'],
++    ['four combining marks on one letter (one over the cap)', 'x\u0301\u0302\u0303\u0304yz'],
++    ['marks only: no character that draws itself', '\u0301\u0301\u0301'],
++    ['marks and no-break spaces only', '\u0301\u00a0\u0301'],
++  ])('refuses a phrase that renders blank or draws out of its line (E21): %s', (_, s) => {
++    expect(cleanPhrase(s)).toBeUndefined();
++    // Negative control: the same phrase with each such character replaced by a plain letter is accepted as it is.
++    const plain = s.replace(/[^ -~]/gu, 'x');
++    expect(cleanPhrase(plain)).toBe(plain);
++  });
++
++  it.each([
++    ['a Cyrillic phrase', '\u0441\u0438\u043d\u0438\u0439 \u043a\u043e\u043d\u044c 42'],
++    ['one accent mark on a letter with no precomposed form', 'x\u0301yz'],
++    ['exactly PHRASE_MAX_MARKS marks on one letter', 'x\u0301\u0302\u0303yz'],
++    ['Thai: a vowel and a tone mark on one consonant (2 marks)', '\u0e19\u0e35\u0e49\u0e19\u0e30'],
++    ['pointed Hebrew: a dagesh, a vowel and a shin dot on one letter (3 marks)', '\u05e9\u05b8\u05bc\u05c1\u05dc\u05d5\u05b9\u05dd'],
++    ['Tibetan: a stack of three marks on one letter', '\u0f66\u0f92\u0fb2\u0f74\u0f56\u0f66'],
++    ['Hebrew and digits', '\u05e9\u05dc\u05d5\u05dd 42'],
++    ['16 emoji (32 code units)', '\u{1f600}\u{1f600}\u{1f600}\u{1f600}\u{1f600}\u{1f600}\u{1f600}\u{1f600}\u{1f600}\u{1f600}\u{1f600}\u{1f600}\u{1f600}\u{1f600}\u{1f600}\u{1f600}'],
++    ['32 wide letters', 'WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW'],
++  ])('accepts (E21 positive control): %s', (_, s) => {
++    expect(cleanPhrase(s)).toBe(s);
++  });
++
 +  it('a clean phrase is its own cleaning (the stored value is re-judged on every read)', () => {
-+    for (const s of ['Blue horse 42', 'café noir', '青い馬']) expect(cleanPhrase(cleanPhrase(s))).toBe(s);
++    for (const s of ['Blue horse 42', 'caf\u00e9 noir', '青い馬']) expect(cleanPhrase(cleanPhrase(s))).toBe(s);
 +  });
 +});
 ```
@@ -5658,7 +5784,7 @@ index 39de9df..9041fad 100644
 
 Run (in `extension/`): `npx tsc --noEmit; echo $?` — `2` (TS2305 `cleanPhrase` / `PHRASE_LENGTH` / `takePhraseChallenge` / `PhraseStep` not exported; TS2307 `../phraseKey` not found; TS2353 `phraseStep` not in the runs' options — vitest runs regardless).
 Run: `TZ=UTC npx vitest run src/shared/__tests__/envelopeRules.test.ts src/background/__tests__/phrase.test.ts src/unlock/__tests__/phraseStep.test.ts scripts/__tests__/check-vault-isolation.test.mjs src/background/__tests__/messages.test.ts src/background/__tests__/walletApi.test.ts src/background/dapp/__tests__/decide.test.ts`
-Expected on Task 3's tree: `Test Files  7 failed (7)` · `Tests  57 failed | 514 passed (571)` — `phrase.test.ts` and `phraseStep.test.ts` fail to load (`Cannot find module '../phraseKey'`); envelopeRules 42 (every `cleanPhrase` row: not a function), check-vault-isolation 9 (the key row; every `contentStorageViolations` row: not a function), messages 2 (`vault.status` has no `phrase`; `settings.phrase` is `unknown type`), walletApi 1 and decide 3 (no `phrase` field). (Observed: the final test files on Task 3's tree 40aefcb in a scratch copy.)
+Expected on Task 3's tree: `Test Files  7 failed (7)` · `Tests  84 failed | 514 passed (598)` (rev 2, observed on be35060 with this task's test files) — `phrase.test.ts` and `phraseStep.test.ts` fail to load (`Cannot find module '../phraseKey'`); envelopeRules 69 (every `cleanPhrase` row: not a function — rev 1's 42 and rev 2's 27), check-vault-isolation 9 (the key row; every `contentStorageViolations` row: not a function), messages 2 (`vault.status` has no `phrase`; `settings.phrase` is `unknown type`), walletApi 1 and decide 3 (no `phrase` field). (Observed: the final test files on Task 3's tree 40aefcb in a scratch copy.)
 Run (the E2E row; both builds of Task 3's tree with only `e2e/presaleSwitch.spec.ts` changed — observed at rev 1 on 38ceea0 in a scratch copy): `node scripts/build.mjs && node scripts/build.mjs --no-presale && npx playwright test e2e/presaleSwitch.spec.ts` — `2 failed`, both builds (“switch · the on (dist) build boots …”, “switch · the off (dist-nopresale) build boots …”): `- Expected` `"phrase": null`, received without it.
 
 - [ ] **Step 3: Implement.**
@@ -5768,23 +5894,38 @@ export async function applyPhraseChallenge(ext: Ext, deps: Pick<WalletDeps, 'now
 
 ```diff
 diff --git a/extension/src/shared/envelopeRules.ts b/extension/src/shared/envelopeRules.ts
-index aea0261..af739dd 100644
+index aea0261..1e6ee1f 100644
 --- a/extension/src/shared/envelopeRules.ts
 +++ b/extension/src/shared/envelopeRules.ts
-@@ -50,6 +50,27 @@ export function cleanName(x: unknown): string | null {
+@@ -50,6 +50,43 @@ export function cleanName(x: unknown): string | null {
    return name;
  }
  
 +/** B1e §1.5: the anti-phishing phrase's length, in UTF-16 code units (as cleanName counts). */
 +export const PHRASE_LENGTH = {min: 3, max: 32} as const;
++/**
++ * B1e §1.5 (E21): the most combining marks one character may carry in a row. Thai (a vowel and a tone mark) needs two,
++ * pointed Hebrew (a dagesh, a vowel and a shin dot) and Tibetan stacks three; a fourth mark only builds a tower that
++ * draws above or below the line — over the header the line sits under.
++ */
++export const PHRASE_MAX_MARKS = 3;
 +// B1e §1.5 ("printable only"): on top of FORBIDDEN_IN_NAME, a phrase may not hold a lone surrogate (Cs), a private-use
 +// character (Co) or an unassigned code point (Cn) — none of them prints as the text the user typed.
 +const NOT_PRINTABLE = /[\p{Cs}\p{Co}\p{Cn}]/u;
++// B1e §1.5 (E21): nor a character that renders blank — every Default_Ignorable code point (the Hangul fillers U+115F,
++// U+1160, U+3164, U+FFA0, the Khmer inherent vowels U+17B4, U+17B5, the Mongolian and supplementary variation selectors
++// among them) and the Braille blank U+2800 — nor the two that stand in for a character that could not be shown (U+FFFC,
++// U+FFFD): a phishing page draws an empty or a broken line as easily as it draws none.
++const BLANK = /[\p{Default_Ignorable_Code_Point}\u2800\ufffc\ufffd]/u;
++const STACKED = new RegExp(`\\p{M}{${PHRASE_MAX_MARKS + 1}}`, 'u');
++// B1e §1.5 (E21): at least one character that draws itself — a letter, number, symbol or punctuation (never a mark).
++const VISIBLE = /[\p{L}\p{N}\p{S}\p{P}]/u;
 +
 +/**
 + * B1e §1.5: the anti-phishing phrase as stored — NFC-normalised, then trimmed; PHRASE_LENGTH code units; no character of
 + * FORBIDDEN_IN_NAME (so a bidi override cannot restyle the line, and no invisible character makes two phrases look
-+ * alike) and none that does not print. `null`: no phrase (null, or a string empty after trimming — "remove").
++ * alike), none that does not print or renders blank, no more than PHRASE_MAX_MARKS combining marks in a row, and at
++ * least one visible character (E21). `null`: no phrase (null, or a string empty after trimming — "remove").
 + * `undefined`: refused.
 + */
 +export function cleanPhrase(x: unknown): string | null | undefined {
@@ -5793,6 +5934,7 @@ index aea0261..af739dd 100644
 +  const phrase = x.normalize('NFC').trim();
 +  if (phrase.length === 0) return null;
 +  if (phrase.length < PHRASE_LENGTH.min || phrase.length > PHRASE_LENGTH.max || FORBIDDEN_IN_NAME.test(phrase) || NOT_PRINTABLE.test(phrase)) return undefined;
++  if (BLANK.test(phrase) || STACKED.test(phrase) || !VISIBLE.test(phrase)) return undefined;
 +  return phrase;
 +}
 +
@@ -5996,7 +6138,7 @@ index 068cda7..9c12c05 100644
 
 ```diff
 diff --git a/extension/src/background/accountsStore.ts b/extension/src/background/accountsStore.ts
-index d0c5d0d..45071b0 100644
+index 564cd90..f88e58b 100644
 --- a/extension/src/background/accountsStore.ts
 +++ b/extension/src/background/accountsStore.ts
 @@ -14,6 +14,7 @@ import {LIMITS_KEY} from './dapp/limits';
@@ -6184,15 +6326,15 @@ index 2919494..e532a70 100644
 
 - [ ] **Step 4: Run — green, the whole suite, both builds, the gates.**
 
-Run: the Step 2 command — `Test Files  7 passed (7)` · `Tests  571 passed (571)`.
+Run: the Step 2 command — `Test Files  7 passed (7)` · `Tests  598 passed (598)`.
 
-Run (in `extension/`): `npx tsc --noEmit; echo $?` — `0`. `TZ=UTC npx vitest run` — `Test Files  230 passed (230)` · `Tests  5080 passed (5080)` (Task 3's tree 228 / 4986: +2 files, +94 — envelopeRules +42, phrase 37, phraseStep 6, check-vault-isolation +9; the messages / walletApi / decide rows changed, not added). Run in the local zone on 2026-11-02 it gives the same totals (Task 3's `Send.test.tsx` DST row fails only near midnight; Task 7 fixes it). `npx vitest run --config vitest.nopresale.config.ts` — `Test Files  19 passed (19)` · `Tests  472 passed | 25 skipped (497)` (Task 3's 18 / 435 + 25: `phrase.test.ts` added to `NOPRESALE_TESTS`, 37 rows, both builds).
+Run (in `extension/`): `npx tsc --noEmit; echo $?` — `0`. `TZ=UTC npx vitest run` — `Test Files  230 passed (230)` · `Tests  5107 passed (5107)` (Task 3's tree 228 / 4986: +2 files, +121 — envelopeRules +69, phrase 37, phraseStep 6, check-vault-isolation +9; the messages / walletApi / decide rows changed, not added). Run in the local zone on 2026-11-02 it gives the same totals (Task 3's `Send.test.tsx` DST row fails only near midnight; Task 7 fixes it). `npx vitest run --config vitest.nopresale.config.ts` — `Test Files  19 passed (19)` · `Tests  472 passed | 25 skipped (497)` (Task 3's 18 / 435 + 25: `phrase.test.ts` added to `NOPRESALE_TESTS`, 37 rows, both builds).
 
 Run: `rm -rf dist dist-nopresale && node scripts/build.mjs && node scripts/build.mjs --no-presale` (exit 0), `npm run csp` (exit 0), `npm run gates` — exit 0; `vault isolation ok (dist): … no page reaches storage.session, and neither built content script names extension storage; …` and the same for `dist-nopresale`.
 
 No repo-root `src/` or `core/` change: root `tsc` / `jest` and web `verify` are not run. `npx eslint` on the touched files: 0 errors (the `no-void` warnings are the surrounding code's style, as in `createRun.ts` before this task).
 
-Playwright, **the whole suite** (rev 1, the controller's ruling: this task changes an answer every page reads, `vault.status`, and the dry run's subsets missed the one spec that asserts it whole), launched detached with a log and a marker and waited for with a bounded poll: `npx playwright test --reporter=line` — **`108 passed (28.3m)`**; and `unshare -rn sh -c 'ip link set lo up && npx playwright test --reporter=line'` — **`108 passed (28.1m)`** (observed on the rebuilt 236ef45; `presaleSwitch.spec.ts` 2 of them, both builds). No screen changes here: the phrase's E2E is Task 7's, on Task 5's screens.
+Playwright, **the whole suite** (rev 1, the controller's ruling: this task changes an answer every page reads, `vault.status`, and the dry run's subsets missed the one spec that asserts it whole), launched detached with a log and a marker and waited for with a bounded poll: `npx playwright test --reporter=line` — **`108 passed (28.3m)`**; and `unshare -rn sh -c 'ip link set lo up && npx playwright test --reporter=line'` — **`108 passed (28.1m)`** (observed on the rebuilt 236ef45; `presaleSwitch.spec.ts` 2 of them, both builds; rev 2 changes only `cleanPhrase`, which no E2E before Task 7's reaches, and rev 2 ran the whole suite at Task 7). No screen changes here: the phrase's E2E is Task 7's, on Task 5's screens.
 
 - [ ] **Step 5: Commit.**
 
@@ -6203,7 +6345,7 @@ git commit -m "feat(extension): B1e-1 the anti-phishing phrase in the background
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
-- [ ] **Step 6: The named mutations — each alone, in a fresh `git archive HEAD` copy (node_modules symlinked), `timeout 300`; `tsc`'s own exit code first, then the named test file.** `ER` = `src/shared/__tests__/envelopeRules.test.ts` (49), `PT` = `src/background/__tests__/phrase.test.ts` (37), `PS` = `src/unlock/__tests__/phraseStep.test.ts` (6), `VI` = `scripts/__tests__/check-vault-isolation.test.mjs` (430). Files: `R` = `src/shared/envelopeRules.ts`, `P` = `src/background/phrase.ts`, `RC` = `src/background/reauthChallenges.ts`, `MS` = `src/background/messages.ts`, `WA` = `src/background/walletApi.ts`, `AS` = `src/background/accountsStore.ts`, `CR` = `src/unlock/screens/createRun.ts`, `IR` = `src/unlock/screens/importRun.ts`, `CV` = `scripts/check-vault-isolation.mjs`. The brief's pins: the rules (M-nfc, M-trim, M-min, M-max, M-empty, M-type, M-forbidden, M-printable) · set-when-none only while unlocked (M-session) · change and remove refuse without the proof (M-change-proof, M-remove-proof, M-unchanged, M-challengeId, M-apply-missing) and refuse a proof of another kind (M-apply-dispatch, M-take-kind) · the challenge itself (M-take-session, M-take-once, M-last-wins, M-lockrace, M-about-clean, M-about-keys, M-info, M-apply-failed) · no content-script, provider or relay context (M-content, M-approve; the gates M-key-list, M-key-named, M-content-rule, M-content-missing, M-built-storage) · wiped and kept (M-wipe, M-restore) · the order after `commitWallet` (M-order, M-locked-step, M-import-order, M-import-skip) · the three reads and no other (M-state, M-status, M-pending, M-read-judge, M-leak). The two gate mutants (§1.6's own) run in the clone itself, built, then `git checkout` — in a symlinked copy the module-map paths leave the package and the vault-page rules report the harness, not the mutant.
+- [ ] **Step 6: The named mutations — each alone, in a fresh `git archive HEAD` copy (node_modules symlinked), `timeout 300`; `tsc`'s own exit code first, then the named test file.** `ER` = `src/shared/__tests__/envelopeRules.test.ts` (76; rev 1's observations below were on its 49), `PT` = `src/background/__tests__/phrase.test.ts` (37), `PS` = `src/unlock/__tests__/phraseStep.test.ts` (6), `VI` = `scripts/__tests__/check-vault-isolation.test.mjs` (430). Files: `R` = `src/shared/envelopeRules.ts`, `P` = `src/background/phrase.ts`, `RC` = `src/background/reauthChallenges.ts`, `MS` = `src/background/messages.ts`, `WA` = `src/background/walletApi.ts`, `AS` = `src/background/accountsStore.ts`, `CR` = `src/unlock/screens/createRun.ts`, `IR` = `src/unlock/screens/importRun.ts`, `CV` = `scripts/check-vault-isolation.mjs`. The brief's pins: the rules (M-nfc, M-trim, M-min, M-max, M-empty, M-type, M-forbidden, M-printable) · set-when-none only while unlocked (M-session) · change and remove refuse without the proof (M-change-proof, M-remove-proof, M-unchanged, M-challengeId, M-apply-missing) and refuse a proof of another kind (M-apply-dispatch, M-take-kind) · the challenge itself (M-take-session, M-take-once, M-last-wins, M-lockrace, M-about-clean, M-about-keys, M-info, M-apply-failed) · no content-script, provider or relay context (M-content, M-approve; the gates M-key-list, M-key-named, M-content-rule, M-content-missing, M-built-storage) · wiped and kept (M-wipe, M-restore) · the order after `commitWallet` (M-order, M-locked-step, M-import-order, M-import-skip) · the three reads and no other (M-state, M-status, M-pending, M-read-judge, M-leak). The two gate mutants (§1.6's own) run in the clone itself, built, then `git checkout` — in a symlinked copy the module-map paths leave the package and the vault-page rules report the harness, not the mutant.
 
 | id | the change | named test → observed |
 |---|---|---|
@@ -6250,12 +6392,34 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 | M-key-named | `src/unlock/screens/unlock.ts`: `// v1_phishing_phrase` added above its first line (§1.6's mutation) | tsc 0 · build 0 · `node scripts/check-vault-isolation.mjs` exit **1** — `src/unlock/screens/unlock.ts: names v1_phishing_phrase, which only the background may write` (the only line) |
 | M-built-storage | `src/relay/index.ts`: `(globalThis as unknown as {chrome?: {storage?: {local?: {get(k: string): unknown}}}}).chrome?.storage?.local?.get('v1_phishing_phrase');` above `startRelay({` · CV: `SESSION_ALLOWED` gains `\|^src\/relay\/` and the `BACKGROUND_OWNED_KEYS` loop skips `src/relay/` (the source-rule exemptions §1.6 names) | tsc 0 · build 0 · `node scripts/check-vault-isolation.mjs` exit **1** — `dist/app: relay.js touches extension storage (?.storage) — a content script reaches none`, the same for `dist/chrome` and `dist/firefox` (the only lines) |
 
-42 rows, all counted, all run on the final commit: every mutant `tsc` 0, every unit mutant red in its named file, both gate mutants exit 1 with only their own lines. The sweep: `t4/mut2.py` (scratch).
+Rev 2's rows (E21), observed on the rebuilt a982e28, `ER` now 76 rows:
+
+| id | the change | named test → observed |
+|---|---|---|
+| M-dicp | R: `const BLANK = /[\p{Default_Ignorable_Code_Point}\u2800\ufffc\ufffd]/u;` → `const BLANK = /[\u2800\ufffc\ufffd]/u;` | tsc 0 · ER RED `9 failed \| 67 passed (76)` — “cleanPhrase: the anti-phishing phrase (B1e §1.5) > refuses a phrase that renders blank or draws out of its line (E21): Hangul choseong filler U+115F x3 (Default_Ignorable)”; “cleanPhrase: the anti-phishing phrase (B1e §1.5) > refuses a phrase that renders blank or draws out of its line (E21): Hangul jungseong filler U+1160 x3 (Default_Ignorable)” (+7 more: U+3164, U+FFA0, the fillers around a space, U+17B4, U+17B5, U+180B, U+E0100) |
+| M-braille | R: `\p{Default_Ignorable_Code_Point}\u2800\ufffc` → `\p{Default_Ignorable_Code_Point}\ufffc` | tsc 0 · ER RED `2 failed \| 74 passed (76)` — “cleanPhrase: the anti-phishing phrase (B1e §1.5) > refuses a phrase that renders blank or draws out of its line (E21): Braille blank U+2800 x3”; “cleanPhrase: the anti-phishing phrase (B1e §1.5) > refuses a phrase that renders blank or draws out of its line (E21): Braille blank U+2800 inside a word” |
+| M-replacement | R: `\u2800\ufffc\ufffd]/u` → `\u2800]/u` | tsc 0 · ER RED `2 failed \| 74 passed (76)` — “cleanPhrase: the anti-phishing phrase (B1e §1.5) > refuses a phrase that renders blank or draws out of its line (E21): replacement character U+FFFD x3”; “cleanPhrase: the anti-phishing phrase (B1e §1.5) > refuses a phrase that renders blank or draws out of its line (E21): object replacement character U+FFFC inside a word” |
+| M-blank | R: `  if (BLANK.test(phrase) \|\| STACKED.test(phrase)` → `  if (BLANK.test('') \|\| STACKED.test(phrase)` | tsc 0 · ER RED `13 failed \| 63 passed (76)` — every Default_Ignorable, U+2800 and U+FFFC / U+FFFD row, e.g. “cleanPhrase: the anti-phishing phrase (B1e §1.5) > refuses a phrase that renders blank or draws out of its line (E21): Hangul choseong filler U+115F x3 (Default_Ignorable)” (+12 more) |
+| M-stacked | R: `BLANK.test(phrase) \|\| STACKED.test(phrase) \|\|` → `BLANK.test(phrase) \|\| STACKED.test('') \|\|` | tsc 0 · ER RED `2 failed \| 74 passed (76)` — “cleanPhrase: the anti-phishing phrase (B1e §1.5) > refuses a phrase that renders blank or draws out of its line (E21): a combining tower: a + U+0300 x31 (32 code units)”; “cleanPhrase: the anti-phishing phrase (B1e §1.5) > refuses a phrase that renders blank or draws out of its line (E21): four combining marks on one letter (one over the cap)” |
+| M-cap-loose | R: ``\\p{M}{${PHRASE_MAX_MARKS + 1}}`` → ``\\p{M}{${PHRASE_MAX_MARKS + 2}}`` | tsc 0 · ER RED `1 failed \| 75 passed (76)` — “cleanPhrase: the anti-phishing phrase (B1e §1.5) > refuses a phrase that renders blank or draws out of its line (E21): four combining marks on one letter (one over the cap)” |
+| M-cap-tight | R: ``\\p{M}{${PHRASE_MAX_MARKS + 1}}`` → ``\\p{M}{${PHRASE_MAX_MARKS}}`` | tsc 0 · ER RED `3 failed \| 73 passed (76)` — “cleanPhrase: the anti-phishing phrase (B1e §1.5) > accepts (E21 positive control): exactly PHRASE_MAX_MARKS marks on one letter”; “cleanPhrase: the anti-phishing phrase (B1e §1.5) > accepts (E21 positive control): pointed Hebrew: a dagesh, a vowel and a shin dot on one letter (3 marks)”; “cleanPhrase: the anti-phishing phrase (B1e §1.5) > accepts (E21 positive control): Tibetan: a stack of three marks on one letter” (the positive controls) |
+| M-visible | R: ` \|\| !VISIBLE.test(phrase)) return undefined;` → ` \|\| !VISIBLE.test('x')) return undefined;` | tsc 0 · ER RED `2 failed \| 74 passed (76)` — “cleanPhrase: the anti-phishing phrase (B1e §1.5) > refuses a phrase that renders blank or draws out of its line (E21): marks only: no character that draws itself”; “cleanPhrase: the anti-phishing phrase (B1e §1.5) > refuses a phrase that renders blank or draws out of its line (E21): marks and no-break spaces only” |
+| M-visible-marks | R: `const VISIBLE = /[\p{L}\p{N}\p{S}\p{P}]/u;` → `const VISIBLE = /[\p{L}\p{N}\p{S}\p{P}\p{M}]/u;` | tsc 0 · ER RED `2 failed \| 74 passed (76)` — the same two rows |
+| M-visible-spaces | R: `const VISIBLE = /[\p{L}\p{N}\p{S}\p{P}]/u;` → `const VISIBLE = /[\p{L}\p{N}\p{S}\p{P}\p{Z}]/u;` | tsc 0 · ER RED `1 failed \| 75 passed (76)` — “cleanPhrase: the anti-phishing phrase (B1e §1.5) > refuses a phrase that renders blank or draws out of its line (E21): marks and no-break spaces only” |
+
+M-blank, M-stacked and M-visible were first written as the clause removed: each then left its constant unused and did not compile (`tsc` 2, `noUnusedLocals`) — INVALID, not red; rewritten as above (the constant tested on a fixed string, as M-printable), all three red. On the rev 2 tree rev 1's 42 rows are all red again with `ER` at 76 rows; their counts move only where the E21 rows overlap: M-nfc `2 failed \| 74 passed (76)`, M-trim 3, M-min 1, M-max 1, **M-forbidden 8** (was 26: the Cf and bidi rows are Default_Ignorable too, so `BLANK` still refuses them — the six Cc rows and Zl / Zp keep it red), M-printable 4, M-empty 1, M-type 1; PT, PS, VI and the gate rows as observed in rev 1.
+
+42 rows, all counted, all run on the final commit: every mutant `tsc` 0, every unit mutant red in its named file, both gate mutants exit 1 with only their own lines. The sweep: `t4/mut2.py` (scratch). **Rev 2:** ten more rows for E21 (above), and all 52 re-run on the rebuilt a982e28 (`b1e1-r2tools/mut/t4.py`): every one `tsc` 0 and red (M-blank, M-stacked and M-visible after the rewrite recorded above).
 
 What the first sweep found, fixed before the final commit: **M-take-session survived** — `vault.reauthOk` refuses a locked session before it dispatches, so a test through it never reached `takePhraseChallenge`'s own check (which closes a lock landing between the two); the row "locked at apply" now also calls `applyPhraseChallenge` and `takePhraseChallenge` directly (`locked`, the challenge left in place), and its comment, which claimed the take's check was what the old test reached, was corrected. **M-apply-dispatch was equivalent** as first written (a `settings` challenge never reaches the phrase line, the settings line runs first) — rewritten to send a `phrase` challenge to the settings apply. Eight first-sweep mutants did not compile — seven left a name unused (M-printable, M-lockrace, M-apply-missing, M-take-kind, M-about-clean, M-wipe: `noUnusedLocals`; M-session: TS2367 on the then-unreachable `locked`) and M-import-skip a no-overlap comparison — each rewritten to keep the name used; none was counted before it compiled.
 
 #### Notes for the executor (Task 4)
 
+- **Rev 2 — I1 + E21: what renders blank or draws out of its line is refused.** `cleanPhrase` gains, after rev 1's checks: `BLANK` — every `\p{Default_Ignorable_Code_Point}` (which holds the Hangul fillers U+115F, U+1160, U+3164, U+FFA0, the Khmer U+17B4 / U+17B5, the Mongolian and supplementary variation selectors, and the Cf set), the Braille blank U+2800, and U+FFFC / U+FFFD; `STACKED` — more than `PHRASE_MAX_MARKS` combining marks (`\p{M}`) in a row; and `VISIBLE` — at least one `\p{L}\p{N}\p{S}\p{P}` character (a mark is never one). The E21 code points are not listed again beside `\p{Default_Ignorable_Code_Point}`: each is one, so a list would make M-dicp an equivalent mutation; the rows pin every one.
+- **Ruling (rev 2): the cap is 3 marks in a row** — why: Thai writes a vowel and a tone mark on one consonant (2), pointed Hebrew a dagesh, a vowel and a shin dot (3), Tibetan stacks three; a fourth only builds a tower that draws above or below the line, over the header (the review's `'a' + U+0300 ×31`). Positive rows pin 3 marks, Thai, pointed Hebrew and Tibetan; M-cap-tight (cap 2) and M-cap-loose (cap 4) are red — cost if wrong: a script needing four marks on one letter is refused (fail closed).
+- **Ruling (rev 2): U+FFFC and U+FFFD are refused** — the review lists U+FFFD ×3 among the probes to refuse; neither is a character the user typed (each stands for one that could not be shown) and a banner of them is as easy to fake as an empty one. Not owner-listed in E21; the narrowest reading of "printable" that refuses the probe — cost if wrong: one class member.
+- **Ruling (rev 2): a phrase may begin with a combining mark** (it draws on the line's own start; no rule added beyond E21).
+- **Rev 2 — the escapes.** Rev 1's rows typed 47 characters raw in `envelopeRules.test.ts` and 7 in `phrase.test.ts` (RLO, ZWSP, BOM, soft hyphen, NBSP, U+3000, U+2028/9, CGJ, VS16, a tag character, private-use, unassigned, combining acute, Cyrillic), despite the file's own comment saying they were escapes; rev 2 rewrote every one as a `\u` escape by a script (the strings are the same code points: the rows and their counts are unchanged). The review's probe strings and the positive controls (a Cyrillic phrase, one accent mark, a Hebrew word with digits, 16 emoji, 32 × W) are the new rows.
 - **The order is the run's, not the screen's.** The onboarding step is called by `createRun` / `importRun` only on `created` and only after `commitWallet` (create: when #6 ends; import: at once) — so whatever Task 5's screen does, it cannot write before the first write. `phraseStep.test.ts` pins it three ways: at the step the vault is stored and the session holds the keys; the value set there is read back after (`vault.status`); and the negative control shows a phrase in storage before the first write is gone after it (the reason the order matters). M-order (the step moved before #5's store) turns it red.
 - **Two judges of a stored value, one rule.** `readPhrase` returns the stored value only when it is exactly what `cleanPhrase` would store; anything else (another type, a refused character, untrimmed) reads as none — on the three answers and for set-when-none. Only the background can write the key, so such a value is a bug or a future version's; it is never shown.
 - **`vault.challengeInfo` is redacted for `phrase`.** The stored challenge keeps §1.3's two keys `{kind: 'phrase', phrase}` (the value is needed to apply it); the vault page is told only `{kind: 'phrase', action: 'change' | 'remove'}`. #10 must not show the new value (§1.3), so it is never sent.
@@ -6311,16 +6475,17 @@ What the first sweep found, fixed before the final commit: **M-take-session surv
 
 - [ ] **Step 1: Write the failing tests.**
 
-The strings with characters that do not print, or that NFC changes, are `\u` escapes printed by a generator (`node gen-phrase-ui-strings.mjs`, scratch only):
+The strings with characters that do not print, or that NFC changes, are `\u` escapes printed by a generator from their code points (`node gen-phrase-ui-strings.mjs`, scratch only; rev 2: rev 1's generator and test rows held them raw — every one is now an escape):
 
 ```js
 // Prints Task 5's test strings that carry characters that do not print, or that NFC changes, as \u escapes.
 const esc = s => [...s].map(ch => { const out = []; for (let i = 0; i < ch.length; i++) { const c = ch.charCodeAt(i); out.push(c >= 0x20 && c < 0x7f && ch !== "'" && ch !== '\\' ? ch : '\\u' + c.toString(16).padStart(4, '0')); } return out.join(''); }).join('');
+const cp = (...c) => String.fromCodePoint(...c);
 const strings = {
-  'bidi override inside': 'Blue ‮horse 42',
+  'bidi override inside': 'Blue ' + cp(0x202e) + 'horse 42',
   'untrimmed': ' Blue horse 42 ',
-  'decomposed (not NFC)': 'café noir',
-  'composed (NFC)': 'café noir',
+  'decomposed (not NFC)': 'cafe' + cp(0x301) + ' noir',
+  'composed (NFC)': 'caf' + cp(0xe9) + ' noir',
 };
 for (const [k, v] of Object.entries(strings)) console.log(`${k}: '${esc(v)}'`);
 ```
@@ -6337,11 +6502,11 @@ describe('phraseRead', () => {
     expect(phraseRead(null)).toEqual(PHRASE_NONE);
     expect(phraseRead('Blue horse 42')).toEqual({state: 'set', phrase: 'Blue horse 42'});
     expect(phraseRead('<b>x</b>')).toEqual({state: 'set', phrase: '<b>x</b>'});
-    expect(phraseRead('café noir')).toEqual({state: 'set', phrase: 'café noir'});
+    expect(phraseRead('caf\u00e9 noir')).toEqual({state: 'set', phrase: 'caf\u00e9 noir'});
   });
 
   it('a field missing, of another type, or not exactly what the background stores is failed — never none, never shown', () => {
-    for (const bad of [undefined, 7, true, {}, [], '', 'ab', 'x'.repeat(33), ' Blue horse 42 ', 'Blue ‮horse 42', 'café noir']) expect([bad, phraseRead(bad)]).toEqual([bad, PHRASE_FAILED]);
+    for (const bad of [undefined, 7, true, {}, [], '', 'ab', 'x'.repeat(33), ' Blue horse 42 ', 'Blue \u202ehorse 42', 'cafe\u0301 noir']) expect([bad, phraseRead(bad)]).toEqual([bad, PHRASE_FAILED]);
   });
 });
 ```
@@ -6601,7 +6766,7 @@ describe('onboarding’s anti-phishing step, as the page mounts it (B1e §1.3)',
     await h.until(() => visible(el('v-passkey')));
     await press(h, 'pk-skip');
     await h.until(() => visible(el('v-anti-phishing')) && !h.deps.gate.isBusy());
-    for (const bad of ['', '   ', 'ab', 'x'.repeat(33), 'Blue ‮horse 42']) {
+    for (const bad of ['', '   ', 'ab', 'x'.repeat(33), 'Blue \u202ehorse 42']) {
       type(el<HTMLInputElement>('ap-field'), bad);
       expect([bad, el<HTMLButtonElement>('ap-set').disabled]).toEqual([bad, true]);
       click(el('ap-set'));
@@ -6657,6 +6822,8 @@ describe('onboarding’s anti-phishing step, as the page mounts it (B1e §1.3)',
 
   it('the copy: one text for the step and #35’s card; R9’s line on #9 and #10 is the popup’s', () => {
     expect([text(document.querySelector('#v-anti-phishing .vlt-lede')), text(el('ap-helper')), text(el('ap-help'))]).toEqual([SECURITY_TEXT.phraseCaption, SECURITY_TEXT.phraseHelper, SECURITY_TEXT.phraseHelp]);
+    // E20: the step comes after #6's "5 / 5" with no count of its own; its overline says what it is.
+    expect([...document.querySelectorAll('#v-anti-phishing .top-bar > *')].map(text)).toEqual(['Optional']);
     expect([text(el('unl-phrase-failed')), text(el('ra-phrase-failed'))]).toEqual([PHRASE_TEXT.failed, PHRASE_TEXT.failed]);
   });
 });
@@ -6763,7 +6930,7 @@ describe('#35: the anti-phishing row and its card (B1e §1.3, R1 = E18)', () => 
     open();
     expect([field().getAttribute('aria-label'), screen.queryByRole('button', {name: SECURITY_TEXT.phraseRemove})]).toEqual([SECURITY_TEXT.phrase, null]);
     expect(unstyledClasses(document.querySelector('.app-phrase-card') as HTMLElement, SELECTORS)).toEqual([]);
-    for (const bad of ['', 'ab', 'x'.repeat(33), 'Blue ‮horse 42']) {
+    for (const bad of ['', 'ab', 'x'.repeat(33), 'Blue \u202ehorse 42']) {
       fireEvent.change(field(), {target: {value: bad}});
       expect([bad, action(SECURITY_TEXT.phraseSet).disabled]).toEqual([bad, true]);
     }
@@ -8407,7 +8574,7 @@ index 38b7c62..0dd2780 100644
    'v-retry',
    'v-unlock',
 diff --git a/extension/unlock.html b/extension/unlock.html
-index 0f98dc9..709f073 100644
+index 3867b5b..86f6aca 100644
 --- a/extension/unlock.html
 +++ b/extension/unlock.html
 @@ -245,6 +245,30 @@
@@ -8418,7 +8585,7 @@ index 0f98dc9..709f073 100644
 +           wallet is stored; never on created-locked. The design's #6 scope (.s-bio) and B1b's input. -->
 +      <section id="v-anti-phishing" class="screen s-bio" hidden>
 +        <div class="top-bar">
-+          <span class="title noc-overline vlt-muted">Onboarding</span>
++          <span class="title noc-overline vlt-muted">Optional</span>
 +        </div>
 +        <div class="hero-icon"><svg width="56" height="56" aria-hidden="true"><use href="#i-shield-lock" /></svg></div>
 +        <div class="vlt-pad-6 vlt-center">
@@ -8543,21 +8710,22 @@ index 8511d5c..9c40924 100644
  }
  
 diff --git a/extension/e2e/visual-vault.spec.ts b/extension/e2e/visual-vault.spec.ts
-index b787abd..db39306 100644
+index b787abd..f752cf3 100644
 --- a/extension/e2e/visual-vault.spec.ts
 +++ b/extension/e2e/visual-vault.spec.ts
-@@ -138,6 +138,10 @@ test('visual: the create run — #1, #2, #3, #4, #5, #6 and #7', async () => {
+@@ -138,6 +138,11 @@ test('visual: the create run — #1, #2, #3, #4, #5, #6 and #7', async () => {
      await expect(text(p, '#pk-line')).toHaveText('This device cannot unlock the wallet with a passkey; your password still works.', {timeout: 60_000});
      await shot(p, '06-unsupported', {ready: p.locator('#pk-continue')});
      await p.locator('#pk-continue').click();
 +    // B1e §1.3 (undrawn, §9): the anti-phishing step, then skipped.
 +    await expect(p.locator('#v-anti-phishing')).toBeVisible({timeout: 60_000});
++    await expect(p.locator('#v-anti-phishing .top-bar .noc-overline')).toHaveText('Optional');
 +    await shot(p, '06b-anti-phishing', {ready: p.locator('#ap-skip')});
 +    await p.locator('#ap-skip').click();
  
      await p.waitForURL(/wallet\.html#\/created$/);
      await expect(p.getByText('Wallet created')).toBeVisible();
-@@ -208,6 +212,8 @@ test('visual: import — #8’s states, #5 import, and #40', async () => {
+@@ -208,6 +213,8 @@ test('visual: import — #8’s states, #5 import, and #40', async () => {
      await expect(text(p, '#pw-step')).toHaveText('Import · 2 / 2');
      await shot(p, '05-import-enter', {ready: p.locator('#pw-back')});
      await setPassword(p, PASSWORD);
@@ -8570,9 +8738,9 @@ index b787abd..db39306 100644
 
 - [ ] **Step 4: Run — green, the whole suite, both builds, the gates, the affected E2E.**
 
-Run: the Step 2 command — `Test Files  10 passed (10)` · `Tests  656 passed (656)`.
+Run: the Step 2 command — `Test Files  10 passed (10)` · `Tests  656 passed (656)` (rev 2: the same; the overline is one more assertion in an existing row).
 
-Run (in `extension/`): `npx tsc --noEmit; echo $?` — `0`. `TZ=UTC npx vitest run` — `Test Files  234 passed (234)` · `Tests  5141 passed (5141)` (Task 4's 230 / 5080: +4 files, +61 — phraseRead 2, phraseScreens 20, app phrase 11, approve phrase 25, challenge +3; the other changed rows changed, not added). `TZ=UTC npx vitest run --config vitest.nopresale.config.ts` — `Test Files  22 passed (22)` · `Tests  531 passed | 25 skipped (556)` (Task 4's 19 / 472 + 25: the three screen files added to `NOPRESALE_TESTS`, 56 rows, plus challenge's +3 — both builds).
+Run (in `extension/`): `npx tsc --noEmit; echo $?` — `0`. `TZ=UTC npx vitest run` — `Test Files  234 passed (234)` · `Tests  5168 passed (5168)` (rev 2; Task 4's 230 / 5107: +4 files, +61 — phraseRead 2, phraseScreens 20, app phrase 11, approve phrase 25, challenge +3; the other changed rows changed, not added). `TZ=UTC npx vitest run --config vitest.nopresale.config.ts` — `Test Files  22 passed (22)` · `Tests  531 passed | 25 skipped (556)` (Task 4's 19 / 472 + 25: the three screen files added to `NOPRESALE_TESTS`, 56 rows, plus challenge's +3 — both builds).
 
 Run: `rm -rf dist dist-nopresale && node scripts/build.mjs && node scripts/build.mjs --no-presale` (exit 0), `npm run csp` (exit 0: `CSP ok` for both), `npm run gates` — exit 0; among its lines, for `dist` and `dist-nopresale`: `vault isolation ok (…): … every module bundled into the vault page is vault-page code or one of its five packages …` and `classes ok: every class in 62 src/app and src/approve files is defined by …; every class in 51 vault-page files by …`.
 
@@ -8638,10 +8806,21 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 42 rows, all counted, all run on the final commit: every mutant `tsc` 0, every one red in each named file, the two class mutants also exit 1 from `check-classes.mjs`, M-markup-vault also exit 1 from the vault-isolation gate. The sweep: `b1e1-t5/mut.py` (scratch).
 
+Rev 2's row (E20), observed on the rebuilt a6d3923:
+
+| id | the change | named test → observed |
+|---|---|---|
+| M-overline | `unlock.html`: `<span class="title noc-overline vlt-muted">Optional</span>` → `<span class="title noc-overline vlt-muted">Onboarding</span>` (rev 1's overline back) | tsc 0 · PS RED `1 failed \| 19 passed (20)` — “onboarding’s anti-phishing step, as the page mounts it (B1e §1.3) › the copy: one text for the step and #35’s card; R9’s line on #9 and #10 is the popup’s” |
+
+Rev 1's 42 rows re-run on a6d3923: every one `tsc` 0 and red, with rev 1's counts (the gate rows exit 1).
+
 What the first sweep found, fixed before the final commit: **M-security-shows survived** — the change/remove test checked that the stored phrase appeared nowhere in the page's text, but an input's value is not text; the test now also asserts the card's field starts empty. **M-app-css and M-vault-css survived as first written** (one rule renamed; the class was still styled by its other selectors) — rewritten to rename every selector naming the class. **M-markup-vault and M-security-reauth did not compile** as first written (`setText` left unused, TS6133; a no-overlap comparison, TS2367) — each rewritten to keep the names used; neither was counted before it compiled.
 
 #### Notes for the executor (Task 5)
 
+- **Rev 2 — E20: the step's overline is "Optional".** `unlock.html`'s `#v-anti-phishing` top bar says "Optional" (was "Onboarding"); the step stays count-less after #6's "5 / 5". `phraseScreens.test.ts`' copy row pins the top bar's only child to "Optional" (red on rev 1's markup: `1 failed | 19 passed (20)`); `visual-vault.spec.ts` asserts it before its `06b-anti-phishing` shot. M-overline (Step 6) turns the unit row red. Re-run on the rebuilt a6d3923: `visual-vault.spec.ts` `5 passed (1.3m)` normally, `5 passed (1.3m)` under `unshare -rn`; the shot viewed.
+- **Rev 2 — the escapes.** `phrase.test.tsx` (1), `phraseRead.test.ts` (4) and `phraseScreens.test.ts` (1) had typed RLO, a combining acute and a precomposed é raw; each is now a `\u` escape (the same code points; no count changed).
+- Rev 2 totals: `234 / 5168` under `TZ=UTC` (Task 4's +27), the no-presale run unchanged. The 42 mutations and M-overline re-run on a6d3923: all 43 `tsc` 0 and red (rev 1's 42 with rev 1's counts).
 - **Why `WindowTop` carries the line.** Every request screen of the approval window (#46, #47, #48 and its mismatch notice) has exactly one top bar, and #48 alone has two return paths plus the risk sheet; putting the line in `WindowTop` with a **required** `phrase` prop makes "a state without the line" a type error, and the per-state tests (`approve/__tests__/phrase.test.tsx`) pin that the prop carries the read (M-tx-*). The locked window has no top bar: its line is the first child of its body.
 - **#9 and #10 read `vault.status` once.** #9 reads in its `reading` phase, after the stored vault is judged a wallet (no wallet / damaged show no line and no field) and before the field shows; #10 reads after the stored check and before the description. Existing tests that count exact sends gained the leading `vault.status` (#10) or clear the show's sends (#9's `shown` helper) — none lost a check.
 - **R9 can only be caused by a bad answer.** The background always sends a valid field (`readPhrase` judges the stored value); R9's tests strip or spoil the field in the answer. The visual check did the same in the page (an init script), so the line was seen at its real size.
@@ -8884,14 +9063,25 @@ describe('the licence page (B1e §4.2)', () => {
   });
 
   it('a rendered LGPL package fails the build; a package rendered 0 is never judged', () => {
-    expect(fails({...RENDERED, 'node_modules/gamma/index.js': 1})).toEqual([`gamma@3.0.0 (node_modules/gamma): LGPL-3.0-only is outside the licence allowlist (${ALLOWED_LICENCES.join(', ')}) — adding to it is the owner's decision`]);
+    expect(fails({...RENDERED, 'node_modules/gamma/index.js': 1})).toEqual([`gamma@3.0.0 (node_modules/gamma): LGPL-3.0-only is outside the licence allowlist (${ALLOWED_LICENCES.join(', ')}) (its license field; release/licence-ids.json cannot override a license field the package has) — adding to it is the owner's decision`]);
+  });
+
+  it('licence-ids.json cannot override a license field the package has: an SPDX expression or a {type} object still fails, and says so', () => {
+    write(LICENCE_IDS, `${JSON.stringify({'beta@2.0.0': 'Unlicense', 'zeta@0.1.0': 'MIT'})}\n`);
+    pkg('node_modules/zeta', {name: 'zeta', version: '0.1.0', license: 'MIT OR Apache-2.0'});
+    expect(fails()).toEqual([`zeta@0.1.0 (node_modules/zeta): MIT OR Apache-2.0 is outside the licence allowlist (${ALLOWED_LICENCES.join(', ')}) (its license field; release/licence-ids.json cannot override a license field the package has) — adding to it is the owner's decision`]);
+    pkg('node_modules/zeta', {name: 'zeta', version: '0.1.0', license: {type: 'MIT'}});
+    expect(fails()).toEqual(['zeta@0.1.0 (node_modules/zeta): its license field is not an SPDX string ({"type":"MIT"}); release/licence-ids.json cannot override a license field the package has — admitting it is the owner\'s decision']);
+    // Positive control: the same row classifies the package once it has no license field.
+    pkg('node_modules/zeta', {name: 'zeta', version: '0.1.0'}, {LICENSE: 'Copyright (c) Zeta\nMIT text\n'});
+    expect(Object.fromEntries(entries().map(e => [e.name, e]))['zeta']).toMatchObject({spdx: 'MIT', text: 'Copyright (c) Zeta\nMIT text'});
   });
 
   it('fails a licence it cannot show, a module it cannot name, a license field that is not a string', () => {
     pkg('node_modules/zeta', {name: 'zeta', version: '0.1.0', license: 'ISC'});
     expect(fails()).toEqual(['zeta@0.1.0 (node_modules/zeta): ships no licence file, and release/licence-texts/ISC.txt does not exist — the build cannot show its licence']);
     pkg('node_modules/zeta', {name: 'zeta', version: '0.1.0', license: {type: 'MIT'}});
-    expect(fails()).toEqual(['zeta@0.1.0 (node_modules/zeta): its license field is not an SPDX string ({"type":"MIT"})']);
+    expect(fails()).toEqual(['zeta@0.1.0 (node_modules/zeta): its license field is not an SPDX string ({"type":"MIT"}); release/licence-ids.json cannot override a license field the package has — admitting it is the owner\'s decision']);
     pkg('node_modules/zeta', {name: 'zeta', version: '0.1.0', license: 'MIT'});
     expect(fails({...RENDERED, 'vendor/x.js': 1})).toEqual(['"vendor/x.js" has rendered code but is neither ours (src/, ../core/, ../web/, a root page) nor a package\'s — the licence page cannot name it']);
     expect(fails({...RENDERED, 'node_modules/nameless/index.js': 1})).toEqual(['"node_modules/nameless/index.js": no package.json with a name above it']);
@@ -8949,6 +9139,15 @@ describe('the licence gate (B1e §4.2, E16)', () => {
 
   it('a map without its rendered section is INCONCLUSIVE', () => {
     expect(rpcWebsocketsViolations([['app.relay.modules.json', {chunks: {}}]])).toEqual(['INCONCLUSIVE: app.relay.modules.json has no rendered section — what rpc-websockets renders is unknown']);
+  });
+
+  it('a map without its chunks section is INCONCLUSIVE — never a vacuous "in no chunk" (review M1)', () => {
+    const [[name, map]] = clean();
+    for (const chunks of [undefined, null, 'background.js']) {
+      expect(rpcWebsocketsViolations([[name, {...map, chunks}]])).toEqual(['INCONCLUSIVE: app.modules.json has no chunks section — whether rpc-websockets is in a chunk is unknown']);
+    }
+    // Positive control: the same map with its chunks passes.
+    expect(rpcWebsocketsViolations([[name, map]])).toEqual([]);
   });
 
   it('each package carries exactly the page its build’s maps give: a hand edit or a missing copy fails', () => {
@@ -9079,6 +9278,15 @@ describe('the link gate (B1e §4.3)', () => {
       'licenses.html names "https://paulmillr.com" — a URL the link table does not name',
     ]);
     expect(linkViolations(files({'licenses.html.copy.html': PACKAGE['licenses.html']}), false)).toHaveLength(2);
+  });
+
+  it('reads an SVG document too: a link planted in one fails (review M5); a .txt or a font is still not read', () => {
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg"><a xlink:href="https://evil.example/">x</a></svg>';
+    expect(linkViolations(files({'icons/x.svg': svg}), false)).toEqual([
+      'icons/x.svg names "http://www.w3.org/2000/svg" — inert: react-dom and React elements, an XML namespace identifier, not allowed in this file',
+      'icons/x.svg names "https://evil.example/" — a URL the link table does not name',
+    ]);
+    expect(linkViolations(files({'icons/x.txt': svg, 'fonts/x.woff2': svg}), false)).toEqual([]);
   });
 
   it('the table is a parameter for the controls: one inert string changed by one character → the package fails', () => {
@@ -9971,13 +10179,16 @@ export function licenceEntries(root, maps, appDir) {
     const key = `${name}@${version}`;
     const declared = pkg.json.license;
     let spdx;
+    // A license field the package has wins: licence-ids.json classifies only a package that has none (M6).
+    const noOverride = `${LICENCE_IDS} cannot override a license field the package has`;
     if (typeof declared === 'string' && declared !== '') spdx = declared;
-    else if (declared !== undefined) problems.push(`${where}: its license field is not an SPDX string (${JSON.stringify(declared)})`);
+    else if (declared !== undefined) problems.push(`${where}: its license field is not an SPDX string (${JSON.stringify(declared)}); ${noOverride} — admitting it is the owner's decision`);
     else if (typeof table[key] === 'string') spdx = table[key];
     else problems.push(`${where}: has rendered code, no license field and no row in ${LICENCE_IDS} — classify it there`);
     if (spdx === undefined) continue;
     if (!ALLOWED_LICENCES.includes(spdx)) {
-      problems.push(`${where}: ${spdx} is outside the licence allowlist (${ALLOWED_LICENCES.join(', ')}) — adding to it is the owner's decision`);
+      const from = declared === spdx ? ` (its license field; ${noOverride})` : '';
+      problems.push(`${where}: ${spdx} is outside the licence allowlist (${ALLOWED_LICENCES.join(', ')})${from} — adding to it is the owner's decision`);
       continue;
     }
     const text = licenceText(root, pkg, spdx, problems, where);
@@ -10094,7 +10305,11 @@ export function rpcWebsocketsViolations(maps) {
       out.push(`INCONCLUSIVE: ${name} has no rendered section — what rpc-websockets renders is unknown`);
       continue;
     }
-    for (const [chunk, ids] of Object.entries(map.chunks ?? {})) {
+    if (map.chunks === null || typeof map.chunks !== 'object') {
+      out.push(`INCONCLUSIVE: ${name} has no chunks section — whether rpc-websockets is in a chunk is unknown`);
+      continue;
+    }
+    for (const [chunk, ids] of Object.entries(map.chunks)) {
       for (const id of Array.isArray(ids) ? ids : []) if (RPC_WEBSOCKETS.test(id)) out.push(`${name}: ${chunk} carries ${JSON.stringify(id)} — rpc-websockets must resolve to ${RPC_WEBSOCKETS_STUB} (the alias)`);
     }
     for (const [chunk, modules] of Object.entries(map.rendered)) {
@@ -10161,7 +10376,8 @@ export const URL_LITERAL = /\b(?:https?|wss?|ftp):\/\/[^\s"'`<>)\\;]*/g;
 const INTERPOLATION = /\$\{[\w$]*\}/g;
 /** The one page the gate does not read (N1). */
 export const SKIPPED = ['licenses.html'];
-const READ = /\.(?:js|html|css|json)$/;
+/** The text files a package may carry a URL in — an SVG document too (`<a xlink:href>`), though none ships today (review M5). */
+const READ = /\.(?:js|html|css|json|svg)$/;
 
 const MANIFEST = path => path === 'manifest.json';
 const BACKGROUND = path => path === 'background.js';
@@ -10546,7 +10762,7 @@ Modify `extension/unlock.html`, `extension/src/app/screens/About.tsx`, `extensio
 
 ```diff
 diff --git a/extension/unlock.html b/extension/unlock.html
-index 709f073..bce0248 100644
+index 86f6aca..d4dd8a2 100644
 --- a/extension/unlock.html
 +++ b/extension/unlock.html
 @@ -45,7 +45,8 @@
@@ -10685,9 +10901,9 @@ index b4e451e..4c9717c 100644
 
 - [ ] **Step 4: Run — green, the whole suite, both builds, the gates, the affected E2E.**
 
-Run: the Step 2 command — `Test Files  10 passed (10)` · `Tests  561 passed (561)`.
+Run: the Step 2 command — `Test Files  10 passed (10)` · `Tests  564 passed (564)` (rev 2: licences +2, check-links +1).
 
-Run (in `extension/`): `npx tsc --noEmit; echo $?` — `0`. `TZ=UTC npm run verify` — exit 0: `Test Files  239 passed (239)` · `Tests  5217 passed (5217)` (Task 5's 234 / 5141: +5 files, +76 — licences 21, check-links 17, rpcWebsockets 4, rpId 3, about 7, check-vault-isolation +15, presaleBuilds +7, welcome +1, links +1); the no-presale run `Test Files  22 passed (22)` · `Tests  531 passed | 25 skipped (556)` (unchanged); `CSP ok` for both; the secrets gate; `npm run gates` with, for `dist` and `dist-nopresale`:
+Run (in `extension/`): `npx tsc --noEmit; echo $?` — `0`. `TZ=UTC npm run verify` — exit 0: `Test Files  239 passed (239)` · `Tests  5247 passed (5247)` (rev 2; Task 5's 234 / 5168: +5 files, +79 — licences 23, check-links 18, rpcWebsockets 4, rpId 3, about 7, check-vault-isolation +15, presaleBuilds +7, welcome +1, links +1); the no-presale run `Test Files  22 passed (22)` · `Tests  531 passed | 25 skipped (556)` (unchanged); `CSP ok` for both; the secrets gate; `npm run gates` with, for `dist` and `dist-nopresale`:
 - `vault isolation ok (…): … every page is an entry or the static licenses.html, which links, loads and runs nothing; …`
 - `links ok (…): every URL string in chrome/ and firefox/ is one of the link table's, in a file it allows, and the four links the user is given are present (licenses.html skipped by name — the static-page rule holds there)`
 - `licences ok (…): rpc-websockets resolves to its stub and renders 0 bytes; app/, chrome/ and firefox/ carry the licence page of the code this build renders`
@@ -10738,12 +10954,28 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 | M-welcome-target | `unlock.html`: the Privacy Policy link without `target="_blank"` | tsc 0 · WT RED `1 failed \| 6 passed (7)` (the same row) |
 | M-scheme-relative (Review Focus 2) | LNK: ``export const URL_LITERAL = /\b(?:https?\|wss?\|ftp):\/\/[^\s"'`<>)\\;]*/g;`` → ``export const URL_LITERAL = /(?:\b(?:https?\|wss?\|ftp):)?\/\/[^\s"'`<>)\\;]*/g;`` (the extraction also takes a scheme-relative `//host`) | tsc 0 · KT RED `1 failed \| 16 passed (17)` — “the link gate (B1e §4.3) › a known limit, not a pass (plan Review Focus 2): a URL never written whole is not seen — the scheme split from its "://", a scheme-relative //host, a base64 text” — the limit row reads the gate's real pattern: a gate that saw more would turn it red, and the row would be rewritten with the gate |
 
-24 rows (23 from the dry run, M-scheme-relative from the assembly's Review Focus row), all counted, all run on the final commit (M-no-wrap and M-wrap-drops on the amended one, after the coordinator's wrap ruling; the other 21 rows touch nothing the wrap changed, and their counts are the first commit's — LT 19 rows, PB 18 — before the wrap ruling added two and one): every mutant `tsc` 0; 22 red in each named test or gate; **M-missing-target is red in its two unit files and green in the link gate, by design** — the gate checks that the string is in the package, the unit tests check that the rows and links carrying it exist; M-missing-target-pkg is the gate's own control. The sweep: `b1e1-t6/mut.py` (scratch).
+Rev 2's rows (review M1, M5, M6), observed on the rebuilt 5c9cbd3 (`LT` now 23 rows, `KT` 18):
+
+| id | the change | named test → observed |
+|---|---|---|
+| M-chunks-vacuous (M1) | GL: the new `if (map.chunks === null \|\| typeof map.chunks !== 'object') { … continue; }` removed and `Object.entries(map.chunks)` → `Object.entries(map.chunks ?? {})` (rev 1's loop) | tsc 0 · LT RED `1 failed \| 22 passed (23)` — “the licence gate (B1e §4.2, E16) › a map without its chunks section is INCONCLUSIVE — never a vacuous "in no chunk" (review M1)” |
+| M-svg (M5) | LNK: `const READ = /\.(?:js\|html\|css\|json\|svg)$/;` → `const READ = /\.(?:js\|html\|css\|json)$/;` | tsc 0 · KT RED `1 failed \| 17 passed (18)` — “the link gate (B1e §4.3) › reads an SVG document too: a link planted in one fails (review M5); a .txt or a font is still not read” |
+| M-ids-override (M6) | LIC: the table consulted first — `if (typeof table[key] === 'string') spdx = table[key];` inserted before `if (typeof declared === 'string' && declared !== '') spdx = declared;` (made an `else if`) | tsc 0 · LT RED `1 failed \| 22 passed (23)` — “the licence page (B1e §4.2) › licence-ids.json cannot override a license field the package has: an SPDX expression or a {type} object still fails, and says so” |
+| M-ids-message (M6) | LIC: ``const from = declared === spdx ? ` (its license field; ${noOverride})` : '';`` → `const from = '';` | tsc 0 · LT RED `2 failed \| 21 passed (23)` — “the licence page (B1e §4.2) › a rendered LGPL package fails the build; a package rendered 0 is never judged”; the M6 row above |
+
+Rev 1's 24 rows re-run on 5c9cbd3 with the same outcomes: every one `tsc` 0; red in its named tests or gates (LT counts now of 23, e.g. M-plant-a `2 failed \| 21 passed (23)`, M-rendered `11 failed \| 12 passed (23)`; KT of 18, M-inert-char `9 failed \| 9 passed (18)`, M-scheme-relative `1 failed \| 17 passed (18)`); M-missing-target red in AB and WT and green in the link gate, by design, as in rev 1. (The sweep's `H2` edit had to be rewritten to the wrapped form, `${escapeHtml(wrapText(e.text))}` — rev 1 ran the four `H2` rows on the commit before the wrap ruling; the change column above is unchanged.)
+
+28 rows (23 from the dry run, M-scheme-relative from the assembly's Review Focus row, rev 2's M-chunks-vacuous, M-svg, M-ids-override and M-ids-message — and, rev 2, every row re-run on the rebuilt 5c9cbd3: every one `tsc` 0 with rev 1's outcome, the four new red), all counted, all run on the final commit (M-no-wrap and M-wrap-drops on the amended one, after the coordinator's wrap ruling; the other 21 rows touch nothing the wrap changed, and their counts are the first commit's — LT 19 rows, PB 18 — before the wrap ruling added two and one): every mutant `tsc` 0; 22 red in each named test or gate; **M-missing-target is red in its two unit files and green in the link gate, by design** — the gate checks that the string is in the package, the unit tests check that the rows and links carrying it exist; M-missing-target-pkg is the gate's own control. The sweep: `b1e1-t6/mut.py` (scratch).
 
 What the sweep found, fixed or recorded before the final commit: **M-missing-target first ran against the gate only and survived** (the table object `NOCTURA_PAGES` keeps the string in the chunk when a row goes) — it is now run against AB and WT, which turn red, and the gate's presence rule got its own package-copy control (§4.3's "removed → fails"). The E2E's first "licenses.html loads nothing" check (Playwright `request` events, then resource timing) was **vacuous** — its positive control found zero entries for `popup.html` too — and was replaced by the DevTools network log (Notes for the executor). The first real-package run of the link gate inside vitest found `presaleBuilds.test.mjs`'s builds were React's development build (`NODE_ENV=test`), fixed in that file.
 
 #### Notes for the executor (Task 6)
 
+- **Rev 2 — review M1: a map without `chunks` is INCONCLUSIVE.** `rpcWebsocketsViolations` read `map.chunks ?? {}`, so a map with no (or a non-object) `chunks` section passed the "in no chunk" half vacuously (the review: `check-licences` printed "licences ok" with `chunks` deleted). It now answers `INCONCLUSIVE: <map> has no chunks section — whether rpc-websockets is in a chunk is unknown`, as it already did for `rendered`; a row checks `undefined`, `null` and a string, with the same map's positive control; M-chunks-vacuous (the old `?? {}` back) is red.
+- **Rev 2 — review M5: the link gate reads `.svg`.** `READ` gains `svg` (an SVG document can carry `<a xlink:href>`); none ships today. A row plants one in `icons/x.svg` (its link and its namespace URL fail) and shows a `.txt` and a `.woff2` with the same text are still unread; M-svg is red.
+- **Rev 2 — review M6: the licence failure says the table cannot override a present field.** `licences.mjs` names the source: a `license` field that is not a string, or names a licence outside the allowlist, fails with "release/licence-ids.json cannot override a license field the package has"; a table-sourced licence keeps the old message. A row gives `zeta` a `licence-ids.json` row AND an SPDX expression `MIT OR Apache-2.0`, then a `{type}` object (both fail, saying so), then no field (the same row classifies it — the positive control). M-ids-override (the table consulted first) and M-ids-message (the note dropped) are red. The comment "a license field the package has wins" is that row's claim.
+- **Rev 2 — Review Focus 2 / review M4 and Q6:** spec §4.3 (rev 2.3) now says the gate is a review aid, not a security boundary. The review's optional strengthening (a source rule that every `href` / `window.open` / `openPage` argument is an import from `links.ts` / `explorer.ts` or a page-local literal) is **not built** — the owner's ruling asked for the sentence only; it would be a new gate with its own controls, beyond this plan's scope.
+- Rev 2 totals: `239 / 5247` under `TZ=UTC` (Task 5's +27, this task's +3), the no-presale run unchanged; gates and both builds 0.
 - **Rolldown, not Rollup.** Vite 8 bundles with Rolldown; `chunk.modules[id].renderedLength` is there (`RenderedModule`), and a module tree-shaken to nothing is still a key of `chunk.modules` — at 0 — when it has side effects (rpc-websockets without the alias), but disappears from the chunk entirely when it has none (the stub): so "the stub is in no chunk" is today's normal, and the gate's positive control that the alias took is the other side — the real package is in **no** map, where without the alias it is in `background.js`'s at 0 bytes (M-alias).
 - **`presaleBuilds.test.mjs` built React's development build until now.** vitest sets `NODE_ENV=test` and Vite keeps a `NODE_ENV` it finds; the two builds that file makes carried React's development warnings (`https://reactjs.org/link/…` and web3.js's `https://sola.na/web3invariant` in the link gate's first run). The file now strips `NODE_ENV` from their environment and asserts production (React's error decoder present, no `reactjs.org/link/`). Every assertion that file already had still passes.
 - **Playwright reports no `chrome-extension://` request, and resource timing has no entries on an extension page.** The E2E's "licenses.html loads nothing" reads the browser's own network log through a DevTools session (`Network.requestWillBeSent`) on a fresh tab; its positive control is the same log of `popup.html`, which sees its scripts. Both earlier forms were found vacuous by their positive controls in this dry run and are not used.
@@ -10777,7 +11009,7 @@ What the sweep found, fixed or recorded before the final commit: **M-missing-tar
 - Next task must know: Task 7 — `e2e/links.spec.ts` covers §10's "the links and `licenses.html`" E2E in both builds (normal and `unshare -rn` done here); the rev 2.2 list gains: the presale-only referral row and the `${}` fold, the stricter rpc-websockets rule, the tag/attribute allowlist, the page-matches-maps rule, the fonts' digests and `fonts/LICENSE.txt` in the package (28 files), the no-file header lines, the "142 packages" omission, #1's line above the buttons, the screen-reader suffix, the RP ID test's `rp-id.json` half moved to B1e-2, the licence texts wrapped at 100 columns.
 
 
-### Task 7: Gates, E2E and the visual pass — the anti-phishing phrase on the six screens end to end in both builds (none, set, as text, R9, #48's F12 Reject-only with the region gate closed, the locked window), set by onboarding's step and #35, changed and removed through #10; the phrase wiped by the damaged-vault removal; Send.test's "last 12 days ago" row made time-zone proof; the visual pass of every undrawn element (§9) in a committed `e2e/visual-b1e.spec.ts`; the spec's rev 2.2 change list; the whole suite normally and under `unshare -rn`
+### Task 7: Gates, E2E and the visual pass — the anti-phishing phrase on the six screens end to end in both builds (none, set, as text, R9, #48's F12 Reject-only with the region gate closed, the locked window), set by onboarding's step and #35, changed and removed through #10; the phrase wiped by the damaged-vault removal; Send.test's "last 12 days ago" row made time-zone proof; the visual pass of every undrawn element (§9) in a committed `e2e/visual-b1e.spec.ts`; the spec's rev 2.2 change list and (rev 2) its rev 2.3 lines; the whole suite normally and under `unshare -rn`
 
 **Spec:** B1e §1.6 (the phrase on all six screens in both builds; nothing when unset; R9's line when the read fails; `<b>x</b>` as text; onboarding's phrase survives the first write; wiped by §2's removal), the E2E part of §2.6 / §2.3 / §10 (removal of an unreadable vault, its refusal for a wallet and for a refused vault, the save download), §3's tests end to end (#37's checkbox path), §4.4 (the links, `licenses.html`), §9 (the undrawn elements shown in a visual pass), §10 (every E2E normally and under `unshare -rn`; the visual pass at the popup's 412 × 600 and the windows' real size). **Ledger:** Task 3's ruling — `Send.test.tsx`' "last 12 days ago" row fails in local time across a DST change and is fixed here, test only; every "→ rev 2.2" departure of Tasks 1–6 goes into the spec's change list.
 
@@ -10799,12 +11031,14 @@ What the sweep found, fixed or recorded before the final commit: **M-missing-tar
 | vault page | `b1e-rd-idle`, `-matched`, `-understood` | the removal: the card, the first account, Save + its note, the typed DELETE; the checkbox row directly above the hold; checked: "Remove damaged wallet", caption gone |
 | approval window 412 × 720 | `b1e-47-phrase`, `b1e-46-phrase`, `b1e-48-phrase`, `b1e-48-f12-phrase`, `b1e-window-locked-phrase`, `-failed` | the line directly under each window's top bar (#47 unknown site, #46, #48 a transfer, #48 F12 with only Reject), first in the locked window's body; R9 there |
 
-**Findings of the pass:** no defect needing a code change. Recorded for the owner (each a judgement, not a bug): (1) the refused state's heading is the spec's sentence ("This version of Noctura can't open this wallet's data.") at `noc-h2`, three lines at 412 px — long for a heading, but it is §2.2's copy; (2) #37's bar with the checkbox row is about a third of the popup's 600 px, so the funded-wallet warning scrolls under it (the copy is reachable by scrolling; the bar and every control in it are wholly in the frame); (3) #35's row says Off in the plain tone (Passkey's Off is the warning tone) — Task 5's ruling, owner to confirm; (4) the onboarding step has no step count in its top bar (it follows #6's "5 / 5", which the design draws as the last step). The phrase's colour is the same `--shield-300` on the popup and the vault page (checked at 2×: `sheets/C-line-compare.png`).
+**Rev 2:** the owner answered the four judgements below — (1) E19, the short heading "Update Noctura to open this wallet" with the sentence as the first body line (Task 2); (2) and (3) E22, kept; (4) E20, the overline "Optional" (Task 5). The visual spec asserts both new strings (`b1e-09-refused`: the heading and the first body line, both wholly in the frame; `b1e-step-empty`: the overline); the shots of the rev 2 run were viewed: `b1e-09-refused` — the heading on two lines in the danger card, the sentence as the body's first line, Save alone in the bar; `b1e-step-empty` and `visual-vault`'s `06b-anti-phishing` — the overline OPTIONAL (upper case by `noc-overline`), no count.
+
+**Findings of the pass (rev 1):** no defect needing a code change. Recorded for the owner (each a judgement, not a bug): (1) the refused state's heading is the spec's sentence ("This version of Noctura can't open this wallet's data.") at `noc-h2`, three lines at 412 px — long for a heading, but it is §2.2's copy; (2) #37's bar with the checkbox row is about a third of the popup's 600 px, so the funded-wallet warning scrolls under it (the copy is reachable by scrolling; the bar and every control in it are wholly in the frame); (3) #35's row says Off in the plain tone (Passkey's Off is the warning tone) — Task 5's ruling, owner to confirm; (4) the onboarding step has no step count in its top bar (it follows #6's "5 / 5", which the design draws as the last step). The phrase's colour is the same `--shield-300` on the popup and the vault page (checked at 2×: `sheets/C-line-compare.png`).
 
 **Files:**
 - Create (tests): `extension/e2e/phrase.spec.ts` (4 tests: 2 per build), `extension/e2e/visual-b1e.spec.ts` (3 tests, store build)
 - Modify (tests): `extension/e2e/damaged.spec.ts` (the removal also wipes `v1_phishing_phrase`; present until the full hold), `extension/src/app/__tests__/Send.test.tsx` (the DST row)
-- Modify (docs): `docs/superpowers/specs/2026-10-30-extension-b1e-chrome-release-design.md` (rev 2.2: the status line, the change list, the passages)
+- Modify (docs): `docs/superpowers/specs/2026-10-30-extension-b1e-chrome-release-design.md` (rev 2.2: the status line, the change list, the passages; rev 2 of this plan adds rev 2.3's status line, its nine change lines, E19–E22 in §0 and the passages they name)
 - No product code changes.
 
 **Interfaces:**
@@ -11394,6 +11628,7 @@ test('visual · B1e vault page (412 × 916): #1 with the terms line; #9 with the
     await setPassword(p, E2E_PASSWORD);
     await expect(p.locator('#v-anti-phishing')).toBeVisible({timeout: 60_000});
     await expect(p.locator('#v-anti-phishing h1')).toHaveText('Set an anti-phishing phrase');
+    await expect(p.locator('#v-anti-phishing .top-bar .noc-overline')).toHaveText('Optional');
     await expect(p.locator('#ap-helper')).toHaveText('3–32 characters: letters, numbers, symbols and simple emoji.');
     await expect(p.locator('#ap-help')).toHaveText('Never type it into a website. Anyone who uses this browser profile can see it.');
     await expect(p.locator('#ap-set')).toBeDisabled();
@@ -11468,10 +11703,13 @@ test('visual · B1e vault page (412 × 916): #1 with the terms line; #9 with the
     await frame(p, 'b1e-01-unreadable', p.locator('#dmg-unreadable'), {bars: 1, ready: p.locator('#dmg-remove')});
     await set(d.sw, {v1_vault: {...env, v: 2}});
     await p.goto(`chrome-extension://${d.id}/unlock.html`);
-    await expect(p.locator('#dmg-refused')).toHaveText("This version of Noctura can't open this wallet's data.", {timeout: 60_000});
+    // E19: the short heading, the sentence that says why as the body's first line — both in the frame.
+    await expect(p.locator('#dmg-refused')).toHaveText('Update Noctura to open this wallet', {timeout: 60_000});
+    await expect(p.locator('#dmg-refused-body p').first()).toHaveText("This version of Noctura can't open this wallet's data.");
     await expect(p.locator('#dmg-remove')).toBeHidden();
     await expect(save).toHaveCSS('text-decoration-line', 'none');
     await frame(p, 'b1e-09-refused', p.locator('#dmg-refused'), {bars: 1, ready: save});
+    await expect(p.locator('#dmg-refused-body p').first()).toBeInViewport({ratio: 1});
 
     // The removal: idle, DELETE typed (the checkbox directly above the hold), checked (one activation).
     await set(d.sw, {v1_vault: {...env, password: {wrapped: 'AAAA'}}});
@@ -11568,7 +11806,7 @@ Modify `extension/e2e/damaged.spec.ts` — the removal also wipes the phrase (pr
 
 ```diff
 diff --git a/extension/e2e/damaged.spec.ts b/extension/e2e/damaged.spec.ts
-index 7302dbf..ad8b624 100644
+index e08c9c7..2145af5 100644
 --- a/extension/e2e/damaged.spec.ts
 +++ b/extension/e2e/damaged.spec.ts
 @@ -45,8 +45,8 @@ test('damaged vaults: the unreadable state, its saved bytes, the removal; a refu
@@ -11582,15 +11820,15 @@ index 7302dbf..ad8b624 100644
      const text = await storedText(sw);
      let p = await vaultPage(ctx, id, 'unlock.html');
      await expect(p.locator('#dmg-unreadable')).toHaveText('Wallet data is damaged', {timeout: 60_000});
-@@ -77,6 +77,7 @@ test('damaged vaults: the unreadable state, its saved bytes, the removal; a refu
-     // Released before the full second: nothing removed.
-     await hold(p, HOLD_MS - 300);
+@@ -81,6 +81,7 @@ test('damaged vaults: the unreadable state, its saved bytes, the removal; a refu
+     await p.clock.runFor(HOLD_MS);
+     await expect(p.locator('#rd-hold')).toBeEnabled();
      expect(await storedText(sw)).toBe(text);
 +    expect((await sw.evaluate(() => chrome.storage.local.get('v1_phishing_phrase'))).v1_phishing_phrase).toBe('Blue horse 42');
      // Held mid-way: the count and the fill, shot under the paused clock.
      await p.locator('#rd-hold').hover();
      await p.mouse.down();
-@@ -88,7 +89,7 @@ test('damaged vaults: the unreadable state, its saved bytes, the removal; a refu
+@@ -92,7 +93,7 @@ test('damaged vaults: the unreadable state, its saved bytes, the removal; a refu
      await expect(p).toHaveURL(/unlock\.html\?mode=welcome$/, {timeout: 30_000});
      await expect(p.locator('#wel-create')).toBeVisible();
      const left = await sw.evaluate(() => chrome.storage.local.get(null));
@@ -11641,28 +11879,47 @@ done; done
 
 Observed (`scratchpad/b1e1-t7/dst-proof.log`): the new row `2 passed | 32 skipped` at all four instants; **the old row RED at 2026-11-01T22:30Z** (23:30 CET) — `expected 'Verified · sent before · last 11 days ago' to be 'Verified · sent before · last 12 days ago'` — and green at the other three (the negative control: the old row fails exactly where the ledger said). The new row also passed under `TZ` = UTC, Pacific/Auckland, America/Los_Angeles, Asia/Kolkata, Pacific/Kiritimati, America/Sao_Paulo at 2026-11-01T22:30Z, and the whole file `34 passed (34)` in Ljubljana at that instant.
 
-- [ ] **Step 3: Implement.** Nothing beyond the tests: the specs are written to the product as built (Tasks 2–6). The spec's text is edited (rev 2.2) — the diff below.
+- [ ] **Step 3: Implement.** Nothing beyond the tests: the specs are written to the product as built (Tasks 2–6). The spec's text is edited (rev 2.2, and rev 2.3 for this plan's rev 2) — the diff below, from rev 2.1.
 
 `docs/superpowers/specs/2026-10-30-extension-b1e-chrome-release-design.md`:
 
 ```diff
 diff --git a/docs/superpowers/specs/2026-10-30-extension-b1e-chrome-release-design.md b/docs/superpowers/specs/2026-10-30-extension-b1e-chrome-release-design.md
-index f8807fd..457049a 100644
+index f8807fd..e33c590 100644
 --- a/docs/superpowers/specs/2026-10-30-extension-b1e-chrome-release-design.md
 +++ b/docs/superpowers/specs/2026-10-30-extension-b1e-chrome-release-design.md
-@@ -1,6 +1,7 @@
+@@ -1,6 +1,9 @@
  # Noctura Extension B1e — the first Chrome Web Store release
  
 -**Status:** draft rev 2.1, 2026-10-30. Rev 1 (70e691d): the owner approved the design in conversation section by section
-+**Status:** rev 2.2, 2026-11-02 — text only: the departures the B1e-1 plan's dry run made from rev 2.1 (each one line
++**Status:** rev 2.3, 2026-11-02 — the B1e-1 plan's Fable review 1 (`.superpowers/sdd/b1e1-plan-review-1.md`: I1 and
++its Minors) and the owner's answers E19–E22, each one line under "Rev 2.3", the passages they name edited to match.
++Rev 2.2, 2026-11-02 — text only: the departures the B1e-1 plan's dry run made from rev 2.1 (each one line
 +under "Rev 2.2", the passages they name edited to match); no owner decision changed. Rev 2.1, 2026-10-30. Rev 1 (70e691d): the owner approved the design in conversation section by section
  (2026-10-30: the release target, the presale decision, the hardening scope, where the legal pages live, D10, D31, then
  the four design sections). Rev 2 applies Fable review 1 (`.superpowers/sdd/b1e-spec-review-1.md`: C1, C2, I1–I9 and
  the twelve Minors) and the owner's answers to its six questions (`.superpowers/sdd/b1e-owner-decisions.md`, E9–E14).
-@@ -10,6 +11,50 @@ Parent specs: B1 (`2026-09-27-extension-b1-design.md` §5 "Build, gates, release
+@@ -10,6 +13,67 @@ Parent specs: B1 (`2026-09-27-extension-b1-design.md` §5 "Build, gates, release
  D31), B1c §6.5, B1d §6.5 and §7. Binding design: `/home/user/Downloads/index.html` (+ `screen.md`) — it contains the
  TGE date; nothing is copied from it.
  
++**Rev 2.3** (the B1e-1 plan's review 1 and the owner's E19–E22, 2026-11-02; the passages named are edited to match):
++- §1.5 (I1, E21): a phrase that renders blank or draws out of its line is refused — every Default_Ignorable code point
++  (the Hangul fillers U+115F, U+1160, U+3164, U+FFA0 and U+17B4 / U+17B5 among them), the Braille blank U+2800, the
++  replacement characters U+FFFC / U+FFFD, and more than three combining marks in a row; a phrase must hold at least one
++  letter, number, symbol or punctuation character. Rev 2.2's "printable" line was not the whole rule.
++- §1.3 (E20): onboarding's step stays count-less; its overline is "Optional", not "Onboarding".
++- §2.2 (E19): the refused state's heading is "Update Noctura to open this wallet"; "This version of Noctura can't open
++  this wallet's data." is its first body line.
++- §0: E19–E22 added to the owner decisions.
++- §4.2 (review M1): the `rpc-websockets` gate calls a map without a `chunks` section INCONCLUSIVE (it passed vacuously).
++- §4.2 (review M6): `licence-ids.json` classifies only a package with no `license` field; a present field outside the
++  allowlist (an SPDX expression, a `{type}` object) fails, and the failure says the table cannot override it.
++- §4.3 (review M4, the controller's ruling on Q6): the link gate is a review aid, not a security boundary.
++- §4.3 (review M5): the gate reads `.svg` files too.
++- §10 (review M7): `presaleBuilds.test.mjs` builds with `NODE_ENV` removed — it is the only test that runs
++  `build.mjs`, and `verify` and CI run it with no `NODE_ENV`, so it now checks the build that ships.
++
 +**Rev 2.2** (the B1e-1 plan, 2026-11-02; every line is a departure of the built code from rev 2.1's text, ruled in the
 +plan and recorded in its ledger — the passages named are edited to match):
 +- §1.2: R9's line also covers a `phrase` field that is missing or not a phrase the background would store — the screen
@@ -11710,7 +11967,18 @@ index f8807fd..457049a 100644
  **Rev 2.1** (review 2; §12 maps each finding):
  - §4.3 + §4.2 (N1): the link gate skips `licenses.html` by name; the static-page rule there now refuses `<a`, `href=`,
    `<script`, `<link`, `<style`, `style=`, `on…=`, `<iframe`, `<form`, with mutations.
-@@ -111,10 +156,15 @@ One line under the screen's header: a shield icon + the phrase as plain text (`t
+@@ -70,6 +134,10 @@ B1e is cut down to **the first release: Chrome Web Store, presale off**. It is o
+ | E16 | Keep the **`rpc-websockets` alias stub** as a precaution **and** the licence page / gate on **modules with rendered code** (`renderedLength > 0`) (N3) | §4.2 |
+ | E17 | The passkey **RP ID stays `wallet.noc-tura.io`**; 1.0.0 freezes it for every enrolled passkey (a pre-upload gate records it); a test pins `RP_ID` to `HOST_PERMISSIONS` (N4) | §5.6, §6, §7 |
+ | E18 | **Confirmed: R1** (the first phrase is set while unlocked without a password re-check; change / remove behind #10) **and R4** ("Save the damaged data" on both damaged states) — owner decisions now, no longer spec rulings | §1.3, §2.3 |
++| E19 | (2026-11-02, plan review 1) The **refused-by-this-version** screen gets the short heading "Update Noctura to open this wallet"; the sentence it had becomes the first body line | §2.2 |
++| E20 | (2026-11-02) Onboarding's phrase step stays **count-less**; its overline is **"Optional"**, not "Onboarding" | §1.3 |
++| E21 | (2026-11-02) Phrases that **render blank or draw out of their line are refused**: Default_Ignorable code points, U+2800 and the other blank-rendering characters (the Hangul fillers U+115F / U+1160 / U+3164 / U+FFA0, U+17B4 / U+17B5), stacked combining marks beyond a cap; a phrase holds at least one visible non-mark L / N / S / P character | §1.5 |
++| E22 | (2026-11-02) Keep #37's taller bar with the checkbox, and #35's plain-tone "Off" for the phrase | §3, §1.3 |
+ 
+ **Spec rulings (rev 2).** Decisions the review asked the spec to take that need no owner: each is the most secure
+ default, with its reason where it is applied. The owner may overturn any. **R1 and R4 are confirmed by the owner
+@@ -111,10 +179,15 @@ One line under the screen's header: a shield icon + the phrase as plain text (`t
  - the vault page's unlock screen (`src/unlock/screens/unlock.ts`) **before** the password is typed, read in its
    `reading` phase, and the popup's locked screen (`src/app/screens/Locked.tsx`);
  - every approval window: #46 sign message (`src/approve/Sign.tsx`), #47 connect (`Connect.tsx`), #48 transaction
@@ -11728,7 +11996,7 @@ index f8807fd..457049a 100644
  phrase may be set: the line says "Anti-phishing phrase could not be read — don't type your password until it shows"
  (R9: silence would look exactly like a phishing window and like "no phrase"; the failure is rare — the background
  answers these reads locked or unlocked).
-@@ -139,11 +189,14 @@ value is cleaned (§1.5); stored none + a value + a session → written, `set`;
+@@ -139,23 +212,28 @@ value is cleaned (§1.5); stored none + a value + a session → written, `set`;
  equal to the stored value → `unchanged`; otherwise a challenge of a new shared kind **`phrase`**
  (`{kind: 'phrase', phrase: string | null}`, exactly two keys, added to `isAbout`, `reauthChallenges.ts`) is issued and
  the answer is `reauth-required {challengeId}`, exactly as `setSettings` does it (the lock-race handling included).
@@ -11744,7 +12012,13 @@ index f8807fd..457049a 100644
  
  **Onboarding.** A skippable last step: "Set an anti-phishing phrase", with one sentence on why. It runs **after
  `commitWallet`** (`onboarding.ts:148`), never before: the first write, `storeEnvelope(null, …)`, calls
-@@ -155,7 +208,8 @@ the commit would be wiped by it. Placement:
+ `removeWalletData` (defined at `accountsStore.ts:57`; its call in the first write at `:260`), which removes every `WALLET_DATA_KEYS` key — a phrase written before
+ the commit would be wiped by it. Placement:
+ - create: after #6 passkey's `done` (`createRun.ts:129`), before `wallet.html#/created` — not before #6, which would
+-  hold the typed password longer (#6 holds it, §3.5 of B1b-2a);
++  hold the typed password longer (#6 holds it, §3.5 of B1b-2a). The step has no count of its own after #6's "5 / 5";
++  its overline is "Optional" (E20, rev 2.3);
+ - import: after `created`, before `wallet.html#/imported` (`importRun.ts:62`);
  - `created-locked` (the keys did not reach the background): the step is skipped — `set` would answer `locked`; #35
    offers it.
  
@@ -11754,7 +12028,7 @@ index f8807fd..457049a 100644
  
  ### 1.4 Storage and reads (I2, R2)
  
-@@ -165,6 +219,7 @@ the commit would be wiped by it. Placement:
+@@ -165,6 +243,7 @@ the commit would be wiped by it. Placement:
    `src/background/` may even name it, so no page can write it around the proof. A plain `ext.local.remove` (not in
    `LOCKED_DATA_KEYS`): a `settings.phrase` write racing a delete's cleanup can leave it behind, and the next first
    write's `removeWalletData` is the backstop — the same accepted race as `v1_settings` (`forgetWallet` step 7 comment).
@@ -11762,17 +12036,22 @@ index f8807fd..457049a 100644
  - Not encrypted, on purpose: it must show before unlock, and it is no secret from the user's own machine, only from
    websites.
  - **Reads ride on existing answers; no new read type:**
-@@ -180,7 +235,8 @@ the commit would be wiped by it. Placement:
+@@ -180,7 +259,13 @@ the commit would be wiped by it. Placement:
  - NFC-normalised, then trimmed; **3–32 UTF-16 code units** (as `cleanName` counts, `envelopeRules.ts:46`); no
    character of `FORBIDDEN_IN_NAME` (`envelopeRules.ts:43`: controls, format characters, line and paragraph
    separators, bidi embeddings / overrides / isolates, zero-width joiners, the combining grapheme joiner, variation
 -  selectors) — so a bidi override cannot restyle the line. This also refuses emoji written with a ZWJ or a variation
 +  selectors) — so a bidi override cannot restyle the line — and, for "printable", no lone surrogate, private-use or
-+  unassigned code point (Cs, Co, Cn; rev 2.2). Look-alike letters of another script are accepted. This also refuses emoji written with a ZWJ or a variation
++  unassigned code point (Cs, Co, Cn; rev 2.2). **Nothing that renders blank or draws out of its line (E21, rev 2.3):**
++  no Default_Ignorable code point (among them the Hangul fillers U+115F, U+1160, U+3164, U+FFA0 and the Khmer U+17B4,
++  U+17B5), no Braille blank U+2800, no U+FFFC / U+FFFD (they stand for a character that could not be shown), at most
++  **three combining marks in a row** (`PHRASE_MAX_MARKS`: Thai needs two, pointed Hebrew and Tibetan stacks three; a
++  fourth only builds a tower over the header above the line), and at least one letter, number, symbol or punctuation
++  character — so no phrase shows as an empty or broken banner a phishing page could copy. Look-alike letters of another script are accepted. This also refuses emoji written with a ZWJ or a variation
    selector (family emoji, ❤️ with VS16) — accepted, and the input's helper says "letters, numbers, symbols and simple
    emoji". The cleaner is `cleanPhrase` in `src/shared/envelopeRules.ts`, beside `cleanName`, sharing the regex.
  - `null` (or an empty string after trimming) means "remove".
-@@ -260,7 +316,10 @@ AES-GCM IV and tag, AES-KW of a 32-byte key, the PRF salt), fixed by `v: 1` itse
+@@ -260,7 +345,10 @@ AES-GCM IV and tag, AES-KW of a 32-byte key, the PRF salt), fixed by `v: 1` itse
  change `v`, which this predicate then refuses to judge.
  
  **Partition, as a test:** for every value the predicate calls unreadable, `envelopeShape` returns `null` and
@@ -11784,7 +12063,17 @@ index f8807fd..457049a 100644
  
  **Out of the predicate, said loudly:** a vault that is readable and accepted, whose password unwraps the data key but
  whose seed ciphertext then fails AES-GCM (`unlockFlow.ts` answers `damaged` after the unwrap), is neither unreadable
-@@ -284,17 +343,24 @@ promise about repair tools) + "Your funds are on Solana. After you remove this c
+@@ -274,7 +362,8 @@ Both entry points that show the damaged notice today get the new states: #9 (`sc
+ phase) and #1 welcome (`screens/welcome.ts:95`). The page decides which with `storedVault` and `unreadableV1` on its
+ own read of `v1_vault` (`readLocal`); the background re-judges at removal (§2.4).
+ 
+-**Refused by this version** — "This version of Noctura can't open this wallet's data." + "Update Noctura (in Chrome:
++**Refused by this version** — the heading "Update Noctura to open this wallet" (E19, rev 2.3), then "This version of
++Noctura can't open this wallet's data." as the first body line + "Update Noctura (in Chrome:
+ Extensions → Update). If it is up to date, the data may have been changed. Nothing was removed." + today's
+ `damagedHelp` as the last resort. Buttons: **Save the damaged data** (§2.3). No removal.
+ 
+@@ -284,17 +373,24 @@ promise about repair tools) + "Your funds are on Solana. After you remove this c
  wording, `DeleteWallet.tsx` `fundedTail`) — said **before** the typed word (Minor 6), never "funds are safe".
  Buttons: **Save the damaged data**, **Remove damaged wallet**.
  
@@ -11814,7 +12103,7 @@ index f8807fd..457049a 100644
  
  ### 2.3 Save the damaged data (E10, R4)
  
-@@ -331,7 +397,8 @@ Buttons: **Save the damaged data**, **Remove damaged wallet**.
+@@ -331,7 +427,8 @@ Buttons: **Save the damaged data**, **Remove damaged wallet**.
    `accountsStore.ts:472-538`):
    1. `expectedDigest` not 64 lowercase hex → `malformed`;
    2. inside `serial`: read `v1_vault`; `undefined` → `no-wallet`; **`unreadableV1(raw)` false → `not-unreadable`**
@@ -11824,7 +12113,7 @@ index f8807fd..457049a 100644
    3. `lock(ext)`;
    4. check-and-clear `v1_pending` in ONE `updatePending`: an open record → `send-open` (E12; nothing removed, the
       wallet stays locked, as E5);
-@@ -349,7 +416,8 @@ browser profile — who can also uninstall the extension. It can remove only a v
+@@ -349,7 +446,8 @@ browser profile — who can also uninstall the extension. It can remove only a v
  
  - **R3:** `vault.setKeys` (`messages.ts:184`) binds the keys through `readWalletView` (`accountsStore.ts:77`), which
    checks only the scheme and the account shape, so today a session could be created over an envelope `envelopeShape`
@@ -11834,7 +12123,7 @@ index f8807fd..457049a 100644
    Every flow that sends `setKeys` has already stored or read an envelope both sides accept (onboarding, #39, add
    account, unlock — the comment at `messages.ts:186-193`), so no legitimate path changes. Test: a stored envelope with
    `kdf.m = 32768` (refused) and a valid key set → `setKeys` refused; mutation: the old `readWalletView`-only binding →
-@@ -384,7 +452,9 @@ readable, refused by neither opener, and `not-unreadable`: a `cli` wallet; 100 a
+@@ -384,7 +482,9 @@ readable, refused by neither opener, and `not-unreadable`: a `cli` wallet; 100 a
  `rewrapPassword`; the output of `reencryptForAccounts` (an account added); `addPasskeyWrap` with a 1-byte and a 64-byte
  credential ID; odd names (`''`, an emoji sequence, a bidi override, 5 000 characters). And one more fixture committed
  verbatim: the output of the **first encoder, at 458dfcd** (the oldest vault a developer profile could hold),
@@ -11845,7 +12134,7 @@ index f8807fd..457049a 100644
  
  **Deletable controls — at least one per clause of U1–U3 (review 2 Minor 1),** each `→ forgotten`, `v1_vault` absent,
  the phrase gone: U1 `null`, `[]`, `"x"`; U2 no `v`, `v: "1"`, `v: 0`, `v: 1.5`; U3 `scheme: 1`; `kdf.alg: 'scrypt'`;
-@@ -412,15 +482,21 @@ only `@scure/base`.
+@@ -412,15 +512,21 @@ only `@scure/base`.
  - M-scheme: U3 requires `scheme ∈ {slip10, cli}` → F8 deleted → RED;
  - M-iv: the `seed.iv` length check dropped → the 11-byte-IV control kept → RED (the negative direction);
  - M-digest: step 5's digest re-check dropped → the replaced-value control removes → RED;
@@ -11872,7 +12161,7 @@ index f8807fd..457049a 100644
  - **Enter does not confirm (Minor 7, B1's rule):** Enter in the DELETE field activates nothing — neither the hold nor
    the checkbox path. Test.
  - **Checkbox state (Minor 8):** unchecked on every entry to the screen; cleared whenever the typed word stops
-@@ -436,9 +512,13 @@ only `@scure/base`.
+@@ -436,9 +542,13 @@ only `@scure/base`.
  
  ### 4.1 In the extension
  
@@ -11889,7 +12178,7 @@ index f8807fd..457049a 100644
  - Terms, Privacy and Help open in a new tab: `https://noc-tura.io/extension/terms`, `/extension/privacy`,
    `/extension/help`, as `<a target="_blank" rel="noopener noreferrer">` — the pattern of the explorer link
    (`TxDetail.tsx:65`). Links the browser opens, never a fetch: CSP `connect-src` stays exactly
-@@ -457,8 +537,11 @@ and the OFL's own) — as **escaped text**, never navigable. The gates are taugh
+@@ -457,8 +567,11 @@ and the OFL's own) — as **escaped text**, never navigable. The gates are taugh
    of `ENTRIES` or a member of `STATIC_PAGES` (an unknown page fails — today `bundleViolations`, line 896, follows the
    scripts of every root `.html` and refuses nothing for a script-less unknown page). **The static-page rule (N1):** the
    file contains none of `<a`, `href=`, `<script`, `<link`, `<style`, `style=`, an `on…=` attribute, `<iframe`,
@@ -11903,7 +12192,7 @@ index f8807fd..457049a 100644
  - `check-links.mjs` (§4.3) **skips `licenses.html` by name**; the static-page rule is what holds there instead.
  - `check-csp.mjs` reads every `.html` under the package (`checkHtml`): it covers the file unchanged.
  - `check-page-bundles.mjs` covers the two content scripts only; it is unaffected.
-@@ -487,7 +570,8 @@ and the OFL's own) — as **escaped text**, never navigable. The gates are taugh
+@@ -487,17 +600,22 @@ and the OFL's own) — as **escaped text**, never navigable. The gates are taugh
  4. **Licence text:** the package directory's `LICENSE*`, `LICENCE*` or `COPYING*` files (all of them, sorted by name —
     `borsh` ships `LICENSE-APACHE` and `LICENSE-MIT.txt`), CRLF folded to LF. No such file → the SPDX id from
     `package.json` `license`, with that licence's standard text from a committed table
@@ -11913,7 +12202,12 @@ index f8807fd..457049a 100644
     fails** (no silent "unknown"). Probe: `bs58` 4.0.1 (twice) and `qrcode-generator` 2.0.4 ship no licence file and
     say MIT. **The SPDX id (N2, E15):** the `license` field when present; otherwise the committed table
     `extension/release/licence-ids.json` (`name@version → SPDX`), consulted for every package with rendered code and no
-@@ -497,7 +581,9 @@ and the OFL's own) — as **escaped text**, never navigable. The gates are taugh
+-   `license` field; **a package in neither → the build fails**. Today the table has one row:
++   `license` field; **a package in neither → the build fails**. The table never overrides a `license` field the
++   package has: a field outside the allowlist (an SPDX expression such as `MIT OR Apache-2.0`, a `{type}` object) fails
++   the build, and the failure says so — admitting it is an owner decision (rev 2.3). Today the table has one row:
+    `text-encoding-utf-8@1.0.2 → Unlicense` (8 526 rendered bytes in `background.js`, web3.js's TextEncoder polyfill;
+    its `LICENSE.md` is the Unlicense dedication). Controls: the row removed → fails; the row set to `LGPL-3.0-only` →
     fails (item 6).
  5. **Non-module assets:** the two Geist fonts in `public/fonts/` (copied as files, never modules) — an entry from a
     committed `extension/public/fonts/LICENSE.txt` taken from the Geist release the files came from; any file under
@@ -11924,7 +12218,7 @@ index f8807fd..457049a 100644
  6. **Allowlist (R7, the owner's list, E15):** a rendered package whose SPDX id is outside {MIT, ISC, BSD-2-Clause,
     BSD-3-Clause, Apache-2.0, 0BSD, OFL-1.1, Unlicense, and ours} fails the build; adding to the list is an owner
     decision, never a plan edit. **`rpc-websockets` (N3, E16):** 9.3.9, LGPL-3.0-only, is in the dependency graph
-@@ -505,8 +591,9 @@ and the OFL's own) — as **escaped text**, never navigable. The gates are taugh
+@@ -505,8 +623,10 @@ and the OFL's own) — as **escaped text**, never navigable. The gates are taugh
     `class RpcWebSocketClient extends CommonClient` at top level, `lib/index.browser.esm.js:12`), but its rendered
     length is **0** — `Connection` and the WebSocket path are tree-shaken; no LGPL code ships today (rev 2 said
     otherwise; it read the ids, not the rendered code). Kept anyway, **as a precaution**:
@@ -11932,11 +12226,12 @@ index f8807fd..457049a 100644
 -     `new Connection(...)` planted in the background → fails);
 +   - a gate: no module under `node_modules/rpc-websockets/` is in any chunk of any map (with the alias the package
 +     never enters the graph), and the stub renders 0 bytes (mutation: a `new Connection(...)` planted in the
-+     background → the stub renders code → fails) — stricter than "rendered 0", which the stub would pass (rev 2.2);
++     background → the stub renders code → fails) — stricter than "rendered 0", which the stub would pass (rev 2.2); a
++     map without its `chunks` or `rendered` section is INCONCLUSIVE, never a pass (rev 2.3);
     - an alias of the bare specifier `rpc-websockets` to a local stub with exactly two named exports — `CommonClient`, a
       class (an `extends` of a non-constructor would throw at module evaluation), and `WebSocket`, a function — each
       throwing if ever constructed or called. Only `Connection`'s constructor makes a `RpcWebSocketClient`, and no file
-@@ -515,7 +602,8 @@ and the OFL's own) — as **escaped text**, never navigable. The gates are taugh
+@@ -515,7 +635,8 @@ and the OFL's own) — as **escaped text**, never navigable. The gates are taugh
       test imports `@solana/web3.js` under the alias and uses what the extension uses (`PublicKey`,
       `VersionedTransaction`, `TransactionMessage`, `SystemProgram`) without a throw.
  7. **Order and determinism:** "Noctura" first, then entries sorted by name, then version (C collation); texts
@@ -11946,7 +12241,17 @@ index f8807fd..457049a 100644
     file with the rest of the package. The package carries no licence notice today (the minifier drops `@license`
     comments — probe: none in any built file); this page is where the notices MIT and Apache-2.0 ask for live.
  
-@@ -553,7 +641,13 @@ licence texts carry URLs as escaped text; §4.2's static-page rule holds there)
+@@ -542,7 +663,8 @@ Coordinator routes the `--no-presale` `background.js` names (relevant to §6): `
+ `/referral-stats` (B1d's record and referral routes are presale-only).
+ 
+ **The rule.** A new `scripts/check-links.mjs`, run in `gates:build` for both builds' `chrome/` and `firefox/`
+-packages. It reads every `.js`, `.html`, `.css` and `.json` file **except `licenses.html`, skipped by name** (N1: its
++packages. It reads every `.js`, `.html`, `.css`, `.json` and `.svg` file (rev 2.3: an SVG document can carry
++`<a xlink:href>`; none ships today) **except `licenses.html`, skipped by name** (N1: its
+ licence texts carry URLs as escaped text; §4.2's static-page rule holds there) and extracts every match of
+ `\b(?:https?|wss?|ftp)://[^\s"'`<>)\\;]*`. Each match must equal, **as a whole string**, one entry of:
+ - **Coordinator:** `https://api.noc-tura.io/*` and `https://api.noc-tura.io` (in `manifest.json` only);
+@@ -553,7 +675,13 @@ licence texts carry URLs as escaped text; §4.2's static-page rule holds there)
    `https://noc-tura.io/extension/privacy`, `https://noc-tura.io/extension/help`;
  - **Inert library strings**, each with its package and reason in the gate: the React error decoder, the `uuid`
    message, the five W3C namespaces. Inert means never fetched — `connect-src` admits only the coordinator — and never
@@ -11961,7 +12266,19 @@ index f8807fd..457049a 100644
  
  Anything else fails, naming the file. Zero matches in a package → `INCONCLUSIVE` (the extraction broke).
  
-@@ -649,7 +743,8 @@ this product. Nothing in the extension connects to it: `connect-src` admits only
+@@ -563,6 +691,11 @@ planted in a page chunk → fails; one inert entry changed by one character →
+ `wss://evil.example` → fails. A library update that changes an inert string fails the gate until a reviewer adds the
+ new string with its reason.
+ 
++**What the gate is (rev 2.3, the controller's ruling on review Q6 / M4).** A review aid, **not a security boundary**: a
++URL never written whole — split from its scheme, scheme-relative (`//host`), or encoded — passes it (a test pins that
++limit). The runtime boundary for fetches is CSP `connect-src` (`npm run csp`); navigation is bounded by every link the
++user is given being a whole string from `src/shared/links.ts`, and by review.
++
+ ### 4.4 Tests
+ 
+ The four rows on #38 and the two links on #1 (href, `target`, `rel`); `licenses.html` generated, deterministic (two
+@@ -649,7 +782,8 @@ this product. Nothing in the extension connects to it: `connect-src` admits only
    and records `{rpId: 'wallet.noc-tura.io', confirmedBy: 'owner', decision: 'E17'}`, and its `rpId` equals `RP_ID`;
    §7 step 3 restates it.
  - **Pinned (test + mutation).** A new test (`src/vault/__tests__/rpId.test.ts`) asserts
@@ -11971,17 +12288,26 @@ index f8807fd..457049a 100644
    removed from `HOST_PERMISSIONS` → RED (a later "tidy" of a seemingly unused host permission would otherwise silently
    break every passkey). Today only the origin derivation is tested (`ext.test.ts`).
  
-@@ -818,7 +913,9 @@ Unit tests for every rule above with positive and negative controls and named mu
+@@ -818,12 +952,16 @@ Unit tests for every rule above with positive and negative controls and named mu
  permissions (version, `key`), the `RP_ID` pin (§5.6), the licence page's rendered-code and allowlist rules (§4.2), classes, no-presale, links and reproducible gates green; E2E for the phrase on the six
  screens, both damaged states (removal of an unreadable vault, its refusal for F0, the save download), #37's checkbox
  path, the links and `licenses.html`; every E2E normally and under `unshare -rn`; a visual pass of the undrawn elements
 -at the popup's 412 × 600 and the window's real size. No test contacts `*.noc-tura.io`; only the release script's live
+-check does.
 +at the popup's 412 × 600 and the window's real size — rev 2.2: in the store build, the popup at 412 × 600, the vault
 +page at 412 × 916 and the approval window at 412 × 720. R9's E2E strips the `phrase` field inside the page: the real
-+background always sends a valid one (rev 2.2). No test contacts `*.noc-tura.io`; only the release script's live
- check does.
++background always sends a valid one (rev 2.2). `scripts/__tests__/presaleBuilds.test.mjs` runs `build.mjs` with
++`NODE_ENV` removed (rev 2.3, review M7): it is the only test that runs the build, and `verify` and CI run it with no
++`NODE_ENV`, so the test checks the production build that ships — nothing else changes. No test contacts
++`*.noc-tura.io`; only the release script's live check does.
  
  ## 11. Open questions for the owner
+ 
+-None open after E15–E18. Rev 2's Q1 (LGPL) dissolved: no LGPL code ships (N3, E16). Rev 2's Q2 (the decrypt-damaged
++None open after E15–E22. Rev 2's Q1 (LGPL) dissolved: no LGPL code ships (N3, E16). Rev 2's Q2 (the decrypt-damaged
+ vault) is a later step in §8.
+ 
+ Not the owner's, but blocking the release: ICO's §6.2 answers and P1.
 ```
 
 Check the spec for the date (the gate's own `dateViolations` over the spec file, with a control built from parts that must fail):
@@ -12001,9 +12327,9 @@ Expected: `0` (observed `0`; the control assembled from parts gave `1`). `npm ru
 ```bash
 cd extension
 npx tsc --noEmit; echo $?                                                        # 0
-TZ=UTC npx vitest run                                                            # Test Files 239 passed (239) · Tests 5217 passed (5217)
+TZ=UTC npx vitest run                                                            # Test Files 239 passed (239) · Tests 5247 passed (5247)
 TZ=UTC npx vitest run --config vitest.nopresale.config.ts                        # Test Files 22 passed (22) · Tests 531 passed | 25 skipped (556)
-npx vitest run                                                                   # local time (Europe/Ljubljana, 2026-11-02): 5217 passed (5217)
+npx vitest run                                                                   # local time (Europe/Ljubljana, 2026-11-02): 5247 passed (5247)
 npx vitest run --config vitest.nopresale.config.ts                               # local time: 531 passed | 25 skipped (556)
 node scripts/build.mjs; echo $?                                                  # 0
 node scripts/build.mjs --no-presale; echo $?                                     # 0
@@ -12018,9 +12344,9 @@ npx playwright test --reporter=line                                             
 unshare -rn sh -c 'ip link set lo up && npx playwright test --reporter=line'
 ```
 
-Observed in the dry run (407213f — whose `e2e/` tree and product code are this task's rebuilt commit d68cce1's byte for byte): **normally `117 passed (31.1m)`, `2 failed` — `presaleSwitch.spec.ts` ×2** (on and off build): its `vault.status` expectation predated Task 4's `phrase` field (`+ "phrase": null`); no task's Playwright subset had included it. With that file changed: `2 passed (7.0s)`. **Under `unshare -rn` (with the change): `119 passed (30.5m)`.** Logs: `scratchpad/b1e1-t7/full-normal.log`, `full-unshare.log`. **Rev 1:** that change is Task 4's now (the controller's ruling — a test changes in the task that changes its answer), and Tasks 4 and 6 run the whole suite in their Step 4; this task's tree gets it from Task 4. Expected here: `119 passed` normally and under `unshare -rn`.
+Observed in the dry run (407213f — whose `e2e/` tree and product code are this task's rebuilt commit d68cce1's byte for byte): **normally `117 passed (31.1m)`, `2 failed` — `presaleSwitch.spec.ts` ×2** (on and off build): its `vault.status` expectation predated Task 4's `phrase` field (`+ "phrase": null`); no task's Playwright subset had included it. With that file changed: `2 passed (7.0s)`. **Under `unshare -rn` (with the change): `119 passed (30.5m)`.** Logs: `scratchpad/b1e1-t7/full-normal.log`, `full-unshare.log`. **Rev 1:** that change is Task 4's now (the controller's ruling — a test changes in the task that changes its answer), and Tasks 4 and 6 run the whole suite in their Step 4; this task's tree gets it from Task 4. Expected here: `119 passed` normally and under `unshare -rn`. **Rev 2, observed on the rebuilt a636405** (launched detached with a status file, waited for with a bounded poll): **`119 passed (30.7m)`** normally; **`119 passed (30.4m)`** under `unshare -rn sh -c 'ip link set lo up && npx playwright test --reporter=line'`.
 
-`npm run verify` (after the Playwright runs — it deletes `dist*`): exit **0** (build + both vitest runs in local time + csp + secrets + gates + reproducible: 28 files per package, each package's two builds one digest).
+`npm run verify` (after the Playwright runs — it deletes `dist*`): exit **0** (rev 2, on a636405: exit 0 — the build, `239 / 5247` and `22 / 531 + 25` in local time, csp, secrets, gates, reproducible 28 files per package; build + both vitest runs in local time + csp + secrets + gates + reproducible: 28 files per package, each package's two builds one digest).
 
 - [ ] **Step 5: Commit.**
 
@@ -12046,10 +12372,18 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 **The DST row's control** (Step 2): **M-dst-old** — the old row (`Date.now() - 12 * DAY`) restored, `TZ=Europe/Ljubljana`, `Date` fixed at 2026-11-01T22:30Z → **RED** (`last 11 days ago`); green at three other instants. The new row: green at all four, in seven zones.
 
-8 mutations, all red (one first form replaced and recorded). Clean-up: each copy removed by its exact path by the sweep; the scratch DST files removed from `extension/` by exact name.
+Rev 2's rows (E19, E20), observed on the rebuilt a636405:
+
+| id | the change | observed |
+|---|---|---|
+| M-vis-refused-heading | `unlock.html`: the refused state's `<h1>` back to rev 1's sentence | tsc 0 · build 0 · **RED** `1 failed \| 2 passed` — the vault test: `#dmg-refused` `toHaveText('Update Noctura to open this wallet')` (rev 1's three-line sentence received) |
+| M-vis-overline | `unlock.html`: the step's overline `Optional` → `Onboarding` | tsc 0 · build 0 · **RED** `1 failed \| 2 passed` — the vault test: the overline expected "Optional", received "Onboarding" |
+
+8 mutations, all red (one first form replaced and recorded). **Rev 2:** M-vis-refused-heading and M-vis-overline added (E19, E20); all 10 run on the rebuilt a636405: every one `tsc` 0, build 0 and red (`1 failed | 2 passed`, M-vis-r9 `2 failed | 1 passed`), each at its own assertion. Clean-up: each copy removed by its exact path by the sweep; the scratch DST files removed from `extension/` by exact name.
 
 #### Notes for the executor (Task 7)
 
+- **Rev 2:** the visual spec asserts E19's heading and first body line and E20's overline; the spec diff below carries rev 2.3 (from rev 2.1, as rev 1's carried rev 2.2). Rev 1's chain carried that spec at rev 2.2; the repository commits rev 2.3 on its own before this plan.
 - **Ruling: the six-screen E2E sets the phrase two ways** — test 1 writes `v1_phishing_phrase` through the service worker (as the background would leave it) to reach every screen quickly in both builds; test 2 sets it the user's way (onboarding's step, #35, #10) and reads it back. The key is named only in `e2e/` (outside the vault-isolation gate's scope, as the other specs' keys) — cost if wrong: none.
 - **Ruling: R9 is induced inside the page** (an init script removes `phrase` from the one answer: `wallet.state` on the popup, `vault.status` on #9 and #10, `dapp.pending` in the window) — the real background always sends a valid field, so the only real-browser way to the line is a page that cannot trust the field it got. Task 5's scratch check did the same.
 - **Ruling: the locked window is reached by a site asking to connect while locked** (`jup.ag`, raw Wallet Standard); a signing request from an already connected site while locked opens no window in this flow, and between windows the C14 limits are reset (`v1_dapp_limits`), because the spec rejects more requests in a minute than the cooldown allows, by its own design (as `visual-dapp.spec.ts`' `fresh`).
@@ -12071,13 +12405,14 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ## Self-review
 
 - **Spec coverage — every B1e-1 section of §0's first row, item by item.**
-  - **§1 The anti-phishing phrase:** §1.1 (what it protects against — the help text, never typed into a website, visible to the profile) → Task 5 (the step's and #35's help, flagged copy); §1.2 (where it shows: #9 before the password, the popup's locked screen, #46, #47, #48 in every state incl. F12's Reject-only screen, #10; plain text; nothing when unset; R9) → Task 5 (`PhraseLine`, `phraseLine.ts`, `WindowTop`'s required prop, `phraseRead`), end to end in Task 7 (`phrase.spec.ts`, both builds, R9 induced in the page); §1.3 (the operations table, `settings.phrase`, the `phrase` challenge, `vault.reauthOk` applying it, the last proof wins, #10 never showing the value; onboarding after `commitWallet`, skipped on `created-locked`; #35's row) → Task 4 (the background, `PhraseStep`) and Task 5 (the step's screen, #35, `describeChallenge`, `runReauth`'s `applied: 'phrase'`); §1.4 (the key in `WALLET_DATA_KEYS` and `BACKGROUND_OWNED_KEYS`, the three answers) → Task 4; §1.5 (the rules) → Task 4 (`cleanPhrase`, M-nfc … M-printable); §1.6 (tests and gates: six screens in both builds, `<b>x</b>` as text, the sender partition, onboarding surviving the first write, wiped / kept, the built-content-script `storage` gate) → Tasks 4, 5 and 7.
+  - **§1 The anti-phishing phrase:** §1.1 (what it protects against — the help text, never typed into a website, visible to the profile) → Task 5 (the step's and #35's help, flagged copy); §1.2 (where it shows: #9 before the password, the popup's locked screen, #46, #47, #48 in every state incl. F12's Reject-only screen, #10; plain text; nothing when unset; R9) → Task 5 (`PhraseLine`, `phraseLine.ts`, `WindowTop`'s required prop, `phraseRead`), end to end in Task 7 (`phrase.spec.ts`, both builds, R9 induced in the page); §1.3 (the operations table, `settings.phrase`, the `phrase` challenge, `vault.reauthOk` applying it, the last proof wins, #10 never showing the value; onboarding after `commitWallet`, skipped on `created-locked`; #35's row) → Task 4 (the background, `PhraseStep`) and Task 5 (the step's screen, #35, `describeChallenge`, `runReauth`'s `applied: 'phrase'`); §1.4 (the key in `WALLET_DATA_KEYS` and `BACKGROUND_OWNED_KEYS`, the three answers) → Task 4; §1.5 (the rules; rev 2.3's E21 rules) → Task 4 (`cleanPhrase`, M-nfc … M-printable, rev 2's M-dicp … M-visible-spaces); §1.6 (tests and gates: six screens in both builds, `<b>x</b>` as text, the sender partition, onboarding surviving the first write, wiped / kept, the built-content-script `storage` gate) → Tasks 4, 5 and 7.
   - **§2 Damaged vaults:** §2.1 (three readings, the frozen predicate U1–U3, the partition, out of the predicate) → Task 1; §2.2 (the screens: unreadable and refused on #9 and #1, the removal screen, the address line) → Task 2; §2.3 (Save the damaged data, both states, R4) → Task 2 (`saveDamaged.ts`; the bytes read back from Playwright's download in `damaged.spec.ts`); §2.4 (`vault.forgetDamaged`, E5's order, E12) → Task 2, with Review Focus 1's row; §2.5 (sessions over a refused envelope, R3) → Task 1; §2.6 (the F table both ways, the deletable controls, the breadth and the 458dfcd fixture, the invariance test, the source test; M-version, M-kdf, M-policy, M-scheme, M-iv, M-digest, M-lock and the E2E) → Task 1 (the predicate's half) and Task 2 (the message's half and the E2E), extended by Task 7 (the phrase wiped by the removal).
   - **§3 #37 without holding, and §2's removal (E6, E11, D31):** → Task 3 (both pages, unit rows and E2E normally and under `unshare -rn`), shot in Task 7.
   - **§4 Links:** §4.1 (#1's line and #38's rows, a new tab, never fetched) → Task 6 (`links.ts`, `About.tsx`, `unlock.html`, `links.spec.ts` in both builds); §4.2 (`licenses.html`: N1–N3, E15, E16, inputs 1–7, the static-page rule, the rpc-websockets gate and stub) → Task 6 (`licences.mjs`, `check-licences.mjs`, `rpcWebsockets.mjs`, the stub, `STATIC_PAGES`); §4.3 (the link gate, its URL table, the skip by name, its controls) → Task 6 (`check-links.mjs`), with Review Focus 2's row; §4.4 (tests) → Task 6. §5.6's code half (E17: `RP_ID` pinned to `HOST_PERMISSIONS`) → Task 6 (`rpId.test.ts`); the `rp-id.json` half → B1e-2.
   - **§9 Undrawn elements:** each built from the design system's components (Tasks 2, 3, 5, 6) and shot in Task 7's committed visual pass (`visual-b1e.spec.ts`, 32 shots at 412 × 600, 412 × 916 and 412 × 720, compared with `index.html` on rendered images); the owner's four judgements and the flagged copy are in Task 7's notes.
-  - **§10 Tests and gates (B1e-1's half):** both vitest runs and both builds at every task; every new gate in `npm run gates` once per build (vault isolation incl. `contentStorageViolations` and `STATIC_PAGES`, links, licences, classes); every E2E normally and under `unshare -rn`; the whole Playwright suite at Tasks 4, 6 and 7; `npm run verify` at Tasks 6 and 7 (reproducible: 28 files per package).
+  - **§10 Tests and gates (B1e-1's half):** both vitest runs and both builds at every task; every new gate in `npm run gates` once per build (vault isolation incl. `contentStorageViolations` and `STATIC_PAGES`, links, licences, classes); every E2E normally and under `unshare -rn`; the whole Playwright suite at Tasks 4, 6 and 7 (rev 2: at Task 7 on the rebuilt chain, Tasks 4 and 6 as rev 1 ran them); `npm run verify` at Tasks 6 and 7 (reproducible: 28 files per package).
 - **Placeholder scan:** no `TODO`, `TBD`, `FIXME`, "fill in", "similar to Task N" or elided code in any step (checked by `grep` over this file: none in a step; the words occur only inside the rules that forbid them); every new file is given in full and every changed file as the diff committed in the dry run, but the two files "How to read the steps" names (the 458dfcd fixture verbatim, geist@1.7.2's `LICENSE.txt` fetched and pinned). Every commit step carries the trailer `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`, the dry run's model; the executor writes its own model there (the Global Constraints' truthful trailer). Task 7's commit step had no trailer in its part; rev 1 adds it.
 - **Type consistency across the tasks' Interfaces:** Task 1's `VaultReading` (`none` / `unreadable` / `refused` / `wallet`), the exported `envelopeShape` and the shared controls (`F`, `DELETABLE`, `breadth()`, `firstEncoder()`, `edited()`) are what Task 2's `forgetDamaged` and its tests consume, and the page's `vaultReading` is what `damaged.ts`, `removeDamaged.ts` and `damagedFlow.ts` judge with; Task 2's seam `mountDeleteConfirm(parts, o)` is the one Task 3 extends (`ConfirmParts` gains the required `name`, `understood`, `understoodRow`; `o.onceName`), and `removeDamaged.ts` passes only those; `HoldButton`'s new `once` / `describedBy` are used by #37 alone. Task 4's wire contract — `phrase: string | null` on `wallet.state`, `vault.status` and `dapp.pending`; `settings.phrase → {outcome: 'set' | 'unchanged'} | reauth-required {challengeId} | locked | malformed | failed`; `vault.challengeInfo → {kind: 'phrase', action: 'change' | 'remove'}`; `vault.reauthOk → {applied: 'phrase'}`; `PhraseStep = (o: {path: 'create' | 'import'; then(): void}) => void` — is exactly what Task 5 parses (`phraseRead` → `PhraseRead`, `PhraseDescription`, `runReauth`) and mounts (`mountAntiPhishing(deps): PhraseStep`, passed by `modes.ts` to both runs); `presaleSwitch.spec.ts`' expectation of `vault.status` changes with that contract, in Task 4. Task 5's `.app-sr` is what Task 6's link rows use for " (opens in a new tab)"; Task 5's and Task 6's selectors are Task 7's inputs (Task 7's Interfaces). No task after Task 4 adds `contentStorageViolations` again. Mechanically: the replay below compiles nothing itself, but every tree it reproduces is a rebuilt commit on which `tsc` exited 0.
+- **Consistency replay (rev 2, 2026-11-02):** the same procedure as rev 1's below (`git archive 9562c5c`; task-1 … task-7's new files and diff blocks from THIS file, in order, each diff block alone with `git apply --recount`; Task 1's fixture as given; Task 6's `fonts/LICENSE.txt` from 5c9cbd3, checked against its sha256 `930853ee…`), compared with `diff -rq` against `git archive` of each commit of `dry/b1e1-r2` — **IDENTICAL for every task:** Task 1 (9c9b8db; 5 new files, 6 diff blocks), Task 2 (2876fea; 11 + 19), Task 3 (be35060; 0 + 13), Task 4 (a982e28; 4 + 15), Task 5 (a6d3923; 8 + 5), Task 6 (5c9cbd3; 14 + 14, and `fonts/LICENSE.txt`), Task 7 (a636405; 2 + 3). Negative control: the final replayed tree against rev 1's chain end `dry/b1e1-rf` d68cce1 differs in exactly the 19 files rev 2 changed: the spec; `e2e/damaged.spec.ts`, `visual-b1e.spec.ts`, `visual-vault.spec.ts`; `scripts/check-licences.mjs`, `check-links.mjs`, `licences.mjs`, `check-links.test.mjs`, `licences.test.mjs`; `accountsStore.ts`, `stored.ts`, `envelopeRules.ts`, `unlock.html`; and the tests `envelopeRules.test.ts`, the background's `phrase.test.ts`, the popup's `phrase.test.tsx`, `phraseRead.test.ts`, `phraseScreens.test.ts`, `damagedScreens.test.ts`. The replay directory was removed by its exact path.
 - **Consistency replay (rev 1, 2026-11-02):** `git archive 9562c5c`, then task-1 … task-7's new files and diff blocks taken from THIS file, in order, each diff block alone with `git apply --recount` (Task 1's fixture as given; Task 6's `fonts/LICENSE.txt` taken from a5d3918 and checked against its pinned sha256 `930853ee…9137` — its Step 3 fetches it from npm), compared with `diff -rq` against `git archive` of each commit of `dry/b1e1-rf` — **IDENTICAL for every task:** Task 1 (e9b0c63; 5 new files, 6 diff blocks), Task 2 (8864b4e; 11 + 19), Task 3 (38ceea0; 0 + 13), Task 4 (236ef45; 4 + 15), Task 5 (09e6730; 8 + 5), Task 6 (a5d3918; 14 + 14, and `fonts/LICENSE.txt`), Task 7 (d68cce1; 2 + 3). Negative control: the final replayed tree against the dry run's first chain end, `dry/b1e1` 407213f, differs in exactly the two Review Focus files (`check-links.test.mjs`, `forgetDamaged.test.ts`) — `presaleSwitch.spec.ts` is the same file at the end of both chains, now reached through Task 4. The replay directory was removed by its exact path.
 - **Review Focus:** five lines; two have their rows (1: Task 2's two-tab row, M-serial red; 2: Task 6's limit row with its two controls, M-scheme-relative red), three are known limitations with their reasons (the live pages — B1e-2's live check; the Firefox package — E1; a real screen reader — no harness).
