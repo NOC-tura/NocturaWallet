@@ -5,6 +5,7 @@ import {decryptMnemonic, unlockWithPassword, unlockWithPrf, type EnvelopeV1} fro
 import {envelopeShape, vaultReading as backgroundReading} from '../../background/accountsStore';
 import {storedVault, vaultReading as pageReading} from '../../unlock/stored';
 import {unreadableV1} from '../unreadable';
+import {base64} from '@scure/base';
 import {DELETABLE, F, F_WALLETS, PASSWORD, breadth, edited, firstEncoder, type Json} from './vaultControls';
 
 // B1e §2.1, §2.6: the frozen predicate, and the readings both sides build on it.
@@ -75,7 +76,7 @@ describe('unreadableV1 (§2.1 U1–U3)', () => {
     expect(unreadableV1(raw)).toBe(false);
   });
 
-  it('every readable F control is a wallet (F0, F1, F9) or refused by this version (F2–F8), the same on both sides', () => {
+  it('every readable F control is a wallet (F0, F1, F9, F10, F11) or refused by this version (F2–F8), the same on both sides', () => {
     for (const [name, raw] of F) {
       const expected = F_WALLETS.includes(name.split(' ')[0] ?? '') ? 'wallet' : 'refused';
       expect([name, ...kinds(raw)]).toEqual([name, expected, expected]);
@@ -120,12 +121,29 @@ describe('the partition (§2.1): the four readings never overlap', () => {
 });
 
 describe('breadth (§2.6, review 2 Minor 4): everything a v1 writer ever produced is readable and accepted', () => {
-  it('the real encoder: cli, 100 accounts, the KDF cap, odd names, rewrapPassword, reencryptForAccounts, passkeys of 1 and 64 bytes', async () => {
+  it('the real encoder: cli, 100 accounts, the KDF cap, odd names, rewrapPassword, reencryptForAccounts, passkeys of 1, 64 and 1023 bytes, the shortest and the longest seed', async () => {
     const all = await breadth();
-    expect(all).toHaveLength(9);
+    expect(all).toHaveLength(12);
     for (const [name, raw] of all) {
       expect([name, unreadableV1(raw), envelopeShape(raw) !== null, storedVault(raw).kind, ...kinds(raw)]).toEqual([name, false, true, 'wallet', 'wallet', 'wallet']);
     }
+  }, 60_000);
+
+  it('the extreme controls sit at the extremes of the open-ended clauses (fix round 1, review I1): seed.ct of 17, 63 and 231 bytes, a credentialId of 1023', async () => {
+    const len = (x: unknown): number => base64.decode(String(x)).length;
+    const byName = new Map<string, Json>([...F, ...(await breadth())]);
+    const at = (name: string): Json => {
+      const raw = byName.get(name);
+      if (raw === undefined) throw new Error(`no control named ${name}`);
+      return raw;
+    };
+    expect([
+      len((at('F10 seed.ct of exactly 17 bytes (the smallest v1 ciphertext)').seed as Json).ct),
+      len((at('createEnvelope 12 three-letter words (seed.ct 63 bytes)').seed as Json).ct),
+      len((at('createEnvelope 24 eight-letter words (seed.ct 231 bytes)').seed as Json).ct),
+      len((at('F11 a credentialId of 1023 bytes (the WebAuthn maximum)').passkey as Json).credentialId),
+      len((at('addPasskeyWrap, a 1023-byte credential ID').passkey as Json).credentialId),
+    ]).toEqual([17, 63, 231, 1023, 1023]);
   }, 60_000);
 
   it('the first encoder (458dfcd), with and without a passkey', () => {

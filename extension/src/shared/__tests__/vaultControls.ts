@@ -14,6 +14,11 @@ import {derivePublicKeys} from '../../vault/accounts';
 export type Json = Record<string, unknown>;
 export const MNEMONIC = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 export const PASSWORD = 'correct horse battery staple';
+/** A checksum-valid 12-word phrase of three-letter words: the shortest seed a real wallet holds (a 63-byte seed.ct). */
+export const SHORT12 = 'act add age aim air all any arm art ask bag bus';
+/** A checksum-valid 24-word phrase of eight-letter words: the longest seed a real wallet holds (a 231-byte seed.ct). */
+export const LONG24 =
+  'abstract accident acoustic announce artefact attitude bachelor broccoli business category champion cinnamon congress consider convince cupboard daughter december decorate decrease describe dinosaur accident bachelor';
 /** Account 0 of MNEMONIC (slip10), the fixture's only account. */
 export const FIXTURE_ACCOUNT = 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk';
 
@@ -34,8 +39,13 @@ export function edited(edit: (env: Json) => void): Json {
   return env;
 }
 const account = (index: number): Json => ({index, name: `Account ${index + 1}`, publicKey: FIXTURE_ACCOUNT});
+const bytes = (n: number): string => base64.encode(new Uint8Array(n).fill(0x5a));
 
-/** §2.6 F0–F9: readable — never deletable. F0, F1 and F9 are wallets both openers accept; F2–F8 are refused by both. */
+/**
+ * §2.6 F0–F9, and F10–F11 (fix round 1, review I1): readable — never deletable. F0, F1, F9, F10 and F11 are wallets both
+ * openers accept; F2–F8 are refused by both. F10 and F11 sit on the predicate's open-ended clauses at their extremes —
+ * the smallest v1 ciphertext and the largest WebAuthn credential ID — so a tightening of either is red.
+ */
 export const F: readonly (readonly [string, Json])[] = [
   ['F0 the fixture verbatim', fixtureEnvelope()],
   ['F1 without passkey', edited(e => delete e.passkey)],
@@ -47,11 +57,12 @@ export const F: readonly (readonly [string, Json])[] = [
   ['F7 accounts: []', edited(e => (e.accounts = []))],
   ['F8 scheme: bip44', edited(e => (e.scheme = 'bip44'))],
   ['F9 an unknown field', edited(e => (e.memo = 'kept by a later version'))],
+  ['F10 seed.ct of exactly 17 bytes (the smallest v1 ciphertext)', edited(e => (obj(e.seed).ct = bytes(17)))],
+  ['F11 a credentialId of 1023 bytes (the WebAuthn maximum)', edited(e => (obj(e.passkey).credentialId = bytes(1023)))],
 ];
-export const F_WALLETS = ['F0', 'F1', 'F9'];
+export const F_WALLETS = ['F0', 'F1', 'F9', 'F10', 'F11'];
 
 const fixtureSalt = (): string => String(obj(fixtureEnvelope().kdf).salt);
-const bytes = (n: number): string => base64.encode(new Uint8Array(n).fill(0x5a));
 const firstAccount = (e: Json): Json => obj((e.accounts as unknown[])[0]);
 
 /** §2.6 deletable controls: at least one per clause of U1–U3; each U3 control is F0 with that one clause broken. */
@@ -112,12 +123,12 @@ export function firstEncoder(): readonly (readonly [string, Json])[] {
 
 // The encoder computes a tiny Argon2id cost while the envelope declares the production one (envelopeBounds.test.ts).
 const cheapKdf: Kdf = (pw, salt) => argon2idAsync(pw, salt, {m: 64, t: 1, p: 1, dkLen: 32});
-const named = async (scheme: 'slip10' | 'cli', names: string[]): Promise<EnvelopeV1['accounts']> => {
-  const keys = await derivePublicKeys(MNEMONIC, scheme, names.map((_, i) => i));
+const named = async (scheme: 'slip10' | 'cli', names: string[], mnemonic: string): Promise<EnvelopeV1['accounts']> => {
+  const keys = await derivePublicKeys(mnemonic, scheme, names.map((_, i) => i));
   return names.map((name, i) => ({index: i, name, publicKey: keys[i] ?? ''}));
 };
-const create = async (scheme: 'slip10' | 'cli', names: string[], params?: typeof KDF_CAP): Promise<EnvelopeV1> =>
-  createEnvelope({mnemonic: MNEMONIC, password: PASSWORD, scheme, accounts: await named(scheme, names), kdf: cheapKdf, ...(params === undefined ? {} : {params})});
+const create = async (scheme: 'slip10' | 'cli', names: string[], params?: typeof KDF_CAP, mnemonic = MNEMONIC): Promise<EnvelopeV1> =>
+  createEnvelope({mnemonic, password: PASSWORD, scheme, accounts: await named(scheme, names, mnemonic), kdf: cheapKdf, ...(params === undefined ? {} : {params})});
 
 /** Odd account names (review 2's probe): each a string, so readable; storeEnvelope's name policy is not the predicate's. */
 export const ODD_NAMES: readonly string[] = [
@@ -131,7 +142,10 @@ export const ODD_NAMES: readonly string[] = [
   'a\u0001b',
 ];
 
-/** §2.6 breadth: what the real encoder writes, each through a storage round trip. */
+/**
+ * §2.6 breadth: what the real encoder writes, each through a storage round trip. The last three (fix round 1, review
+ * I1) are the extremes of the predicate's open-ended clauses: the shortest and the longest seed, the largest credential ID.
+ */
 export async function breadth(): Promise<(readonly [string, Json])[]> {
   const slip10 = await create('slip10', ['Account 1']);
   const dataKey = await unlockWithPassword(slip10, PASSWORD, cheapKdf);
@@ -148,6 +162,9 @@ export async function breadth(): Promise<(readonly [string, Json])[]> {
     ['after reencryptForAccounts (account 7 added)', await reencryptForAccounts(slip10, dataKey.slice(), [{index: 0, name: 'Account 1'}, {index: 7, name: 'Account 8'}])],
     ['addPasskeyWrap, a 1-byte credential ID', await addPasskeyWrap(slip10, dataKey.slice(), prf.slice(), new Uint8Array([9]), prfSalt())],
     ['addPasskeyWrap, a 64-byte credential ID', await addPasskeyWrap(slip10, dataKey.slice(), prf.slice(), new Uint8Array(64).fill(9), prfSalt())],
+    ['createEnvelope 12 three-letter words (seed.ct 63 bytes)', await create('slip10', ['Account 1'], undefined, SHORT12)],
+    ['createEnvelope 24 eight-letter words (seed.ct 231 bytes)', await create('slip10', ['Account 1'], undefined, LONG24)],
+    ['addPasskeyWrap, a 1023-byte credential ID', await addPasskeyWrap(slip10, dataKey.slice(), prf.slice(), new Uint8Array(1023).fill(9), prfSalt())],
   ];
   dataKey.fill(0);
   return out.map(([name, env]) => [name, obj(stored(env))] as const);

@@ -8,6 +8,9 @@ import {base64} from '@scure/base';
  * opener's policy never touches this file. It imports only @scure/base (a source test pins the list), so it can never
  * reach the opener's bounds (src/shared/envelopeRules.ts, src/vault/envelope.ts). Its constants are v1's algorithms:
  * the Argon2id salt, the AES-GCM IV and tag, AES-KW of a 32-byte key, the PRF salt.
+ *
+ * The limit of that source test: it reads module specifiers as text. Code that reaches the opener's bounds without
+ * naming a module — through globalThis, say — passes it; only this file being frozen guards against that.
  */
 const FROZEN_VERSION = 1;
 const FROZEN_KDF_ALG = 'argon2id';

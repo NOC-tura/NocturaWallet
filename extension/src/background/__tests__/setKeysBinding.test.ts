@@ -4,7 +4,7 @@ import {handleMessage} from '../messages';
 import {VAULT_KEY} from '../accountsStore';
 import {SESSION_KEY} from '../session';
 import {fakeExt} from './fakeExt';
-import {DELETABLE, F, FIXTURE_ACCOUNT, MNEMONIC, edited, fixtureEnvelope} from '../../shared/__tests__/vaultControls';
+import {DELETABLE, F, F_WALLETS, FIXTURE_ACCOUNT, MNEMONIC, edited, fixtureEnvelope} from '../../shared/__tests__/vaultControls';
 import {deriveSessionAccounts} from '../../vault/accounts';
 
 // Review H1: vault.setKeys binds to the stored envelope — keys of no stored wallet never reach the session.
@@ -69,15 +69,15 @@ describe('vault.setKeys binds through envelopeShape (B1e §2.5, R3)', () => {
     expect(await ext.session.get(SESSION_KEY)).toBeUndefined();
   });
 
-  it.each(F.filter(([name]) => !['F0', 'F1', 'F7', 'F9'].includes(name.split(' ')[0] ?? '')))('%s, whose accounts still record the key: malformed, no session', async (_, raw) => {
+  it.each(F.filter(([name]) => ![...F_WALLETS, 'F7'].includes(name.split(' ')[0] ?? '')))('%s, whose accounts still record the key: malformed, no session', async (_, raw) => {
     const ext = fakeExt();
     await ext.local.set(VAULT_KEY, raw);
     expect(await setKeys(ext, await fixtureKeys())).toEqual({ok: false, error: 'malformed'});
     expect(await ext.session.get(SESSION_KEY)).toBeUndefined();
   });
 
-  it('F1 and F9 (wallets both sides accept) bind; F7 (no accounts) is refused', async () => {
-    for (const [name, raw] of F.filter(([n]) => ['F1', 'F7', 'F9'].includes(n.split(' ')[0] ?? ''))) {
+  it('F1, F9, F10 and F11 (wallets both sides accept) bind; F7 (no accounts) is refused', async () => {
+    for (const [name, raw] of F.filter(([n]) => [...F_WALLETS.filter(w => w !== 'F0'), 'F7'].includes(n.split(' ')[0] ?? ''))) {
       const ext = fakeExt();
       await ext.local.set(VAULT_KEY, raw);
       expect([name, await setKeys(ext, await fixtureKeys())]).toEqual([name, name.startsWith('F7') ? {ok: false, error: 'malformed'} : {ok: true}]);
