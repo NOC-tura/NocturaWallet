@@ -7,7 +7,7 @@ export const CONFIRM_WORD = 'DELETE';
 export const HOLD_MS = 1_000;
 export const HOLD_TICK_MS = 30;
 
-/** The elements of one typed-word-and-hold confirmation in unlock.html. */
+/** The elements of one typed-word-and-hold-or-checkbox confirmation in unlock.html. */
 export interface ConfirmParts {
   field: HTMLInputElement;
   /** The "Type DELETE to confirm" eyebrow, and the "Confirmation matched" one that replaces it. */
@@ -18,8 +18,13 @@ export interface ConfirmParts {
   help: HTMLElement;
   caption: HTMLElement;
   button: HTMLButtonElement;
+  /** The button's words: its accessible name — the hold's, or `onceName` while the checkbox is checked. */
+  name: HTMLElement;
   fill: HTMLElement;
   count: HTMLElement;
+  /** B1e §3: the native checkbox directly above the button (before it in tab order), and its labelled row. */
+  understood: HTMLInputElement;
+  understoodRow: HTMLElement;
 }
 
 export interface DeleteConfirm {
@@ -40,9 +45,11 @@ function holdShare(share: number): string {
  * button (repeats ignored); pointer up, leave or cancel, keyup and blur release it, and a release before HOLD_MS confirms
  * nothing. Enter in the field activates nothing. `onConfirmed` runs once per completed hold, and never again until
  * `reset()`. `allowed()` is the screen's own phase and the page's gate: while it is false the button refuses a press.
- * B1e §3's checkbox path (Task 3) joins here, beside the hold.
+ * B1e §3 (E6, E11): or, with the checkbox above the button checked, ONE activation — a click, or Space / Enter pressed on
+ * the button — confirms, and a press starts no hold. The checkbox shows only while the word matches, clears whenever
+ * it stops matching and on every `reset()`; unchecked, the hold is the way again. `way()` is the rule, in one place.
  */
-export function mountDeleteConfirm(parts: ConfirmParts, timers: Timers, o: {allowed(): boolean; onConfirmed(): void; onPressing?(pressing: boolean): void}): DeleteConfirm {
+export function mountDeleteConfirm(parts: ConfirmParts, timers: Timers, o: {allowed(): boolean; onConfirmed(): void; onPressing?(pressing: boolean): void; onceName: string}): DeleteConfirm {
   let stop: (() => void) | null = null;
   let done = false;
   /** The press in progress (0: none); a tick of a press that already ended completes nothing (HoldButton's M4). */
@@ -50,6 +57,8 @@ export function mountDeleteConfirm(parts: ConfirmParts, timers: Timers, o: {allo
   let presses = 0;
 
   const matched = () => parts.field.value === CONFIRM_WORD;
+  /** B1e §3: DELETE typed exactly, and then the hold — or the checkbox and one activation. Null: neither may confirm. */
+  const way = (): 'hold' | 'once' | null => (!matched() || done || !o.allowed() ? null : parts.understood.checked ? 'once' : 'hold');
   const paintHold = (share: number | null) => {
     parts.fill.style.setProperty('--vlt-hold', holdShare(share ?? 0));
     const left = share === null ? null : Math.max(0, HOLD_MS - share * HOLD_MS) / 1000;
@@ -72,7 +81,6 @@ export function mountDeleteConfirm(parts: ConfirmParts, timers: Timers, o: {allo
     shown(parts.check, ok);
     parts.box.classList.toggle('vlt-pw-ok', ok);
     parts.box.classList.toggle('vlt-pw-active', partial);
-    shown(parts.caption, ok);
     if (typed === '') {
       setText(parts.help, TYPED_DELETE.caseSensitive);
       parts.help.classList.remove('vlt-danger');
@@ -84,12 +92,17 @@ export function mountDeleteConfirm(parts: ConfirmParts, timers: Timers, o: {allo
       parts.help.classList.add('vlt-danger');
     }
     shown(parts.help, !ok);
-    const armed = ok && !done && o.allowed();
-    if (!armed && stop !== null) release();
-    parts.button.disabled = !armed;
+    if (!ok) parts.understood.checked = false;
+    const checked = parts.understood.checked;
+    shown(parts.understoodRow, ok);
+    setText(parts.name, checked ? o.onceName : TYPED_DELETE.hold);
+    shown(parts.caption, ok && !checked);
+    const now = way();
+    if (now !== 'hold' && stop !== null) release();
+    parts.button.disabled = now === null;
   };
   const press = () => {
-    if (!matched() || done || stop !== null || !o.allowed()) return;
+    if (way() !== 'hold' || stop !== null) return;
     const started = timers.now();
     presses += 1;
     const id = presses;
@@ -111,8 +124,17 @@ export function mountDeleteConfirm(parts: ConfirmParts, timers: Timers, o: {allo
     }, HOLD_TICK_MS);
     stop = () => timers.clearInterval(interval);
   };
+  const once = () => {
+    if (way() !== 'once') return;
+    release();
+    done = true;
+    render();
+    o.onConfirmed();
+  };
 
   parts.field.addEventListener('input', render);
+  parts.understood.addEventListener('change', render);
+  parts.button.addEventListener('click', once);
   parts.button.addEventListener('pointerdown', e => {
     if (e.button === 0) press();
   });
@@ -120,7 +142,9 @@ export function mountDeleteConfirm(parts: ConfirmParts, timers: Timers, o: {allo
   parts.button.addEventListener('keydown', e => {
     if (e.key !== ' ' && e.key !== 'Enter') return;
     e.preventDefault();
-    if (!e.repeat) press();
+    if (e.repeat) return;
+    if (way() === 'once') once();
+    else press();
   });
   parts.button.addEventListener('keyup', e => {
     if (e.key === ' ' || e.key === 'Enter') release();

@@ -663,3 +663,154 @@ describe('#37 delete wallet', () => {
     });
   });
 });
+
+// B1e §3 (E6, D31): the checkbox trades the hold for one activation; the typed DELETE and the vault tab's proof stay.
+describe('#37 without holding: the checkbox (B1e §3)', () => {
+  const UNDERSTOOD = 'I understand this permanently removes this wallet from this browser';
+  const box = () => screen.getByRole('checkbox', {name: UNDERSTOOD}) as HTMLInputElement;
+  const tick = () => fireEvent.click(box());
+
+  it('a native checkbox directly above the button (before it in tab order), labelled; absent until the word matches; unchecked on entry', async () => {
+    await shown();
+    expect(screen.queryByRole('checkbox')).toBeNull();
+    typeIn('DELETE');
+    const b = box();
+    expect([b.tagName, b.type, b.checked]).toEqual(['INPUT', 'checkbox', false]);
+    expect(b.closest('label')?.textContent).toBe(UNDERSTOOD);
+    // Directly above the button, in the bar: the box is reached before the action it unlocks (controller ruling, D31).
+    expect(b.closest('.sticky-bar')).not.toBeNull();
+    expect(b.closest('label')?.nextElementSibling).toBe(holdCta());
+    expect(unstyledClasses(document.querySelector('.screen')!, SELECTORS)).toEqual([]);
+  });
+
+  it('the hold alone still opens the proof: unchecked, a click opens nothing; the full second does', async () => {
+    const w = await shown();
+    typeIn('DELETE');
+    fireEvent.click(holdCta());
+    expect(w.platform.opened).toEqual([]);
+    fireEvent.pointerDown(holdCta(), {button: 0});
+    w.advance(1_020);
+    expect(w.platform.opened).toEqual(['unlock.html?mode=delete']);
+  });
+
+  it('checkbox + one click opens the proof at once — no hold, and no delete from the popup: the proof is still asked for', async () => {
+    const h = hold('never');
+    const w = await shown({gate: h.gate});
+    typeIn('DELETE');
+    tick();
+    expect(box().checked).toBe(true);
+    fireEvent.click(holdCta());
+    expect(w.platform.opened).toEqual(['unlock.html?mode=delete']);
+    expect(w.platform.closed).toBe(1);
+    expect(field().value).toBe('');
+    await settle();
+    // The popup only opens the vault tab: no forget message of any kind, and the vault untouched.
+    expect(h.count('vault.forgetWallet') + h.count('vault.forgetDamaged')).toBe(0);
+    expect(await w.ext.local.get('v1_vault')).toEqual(ENV);
+  });
+
+  it.each([' ', 'Enter'])('checkbox + one %j on the button (pressed and released) opens the proof', async key => {
+    const w = await shown();
+    typeIn('DELETE');
+    tick();
+    const b = holdCta();
+    fireEvent.keyDown(b, {key});
+    fireEvent.keyUp(b, {key});
+    expect(w.platform.opened).toEqual(['unlock.html?mode=delete']);
+  });
+
+  it('one activation is one call: a second click or key after it calls nothing more (HoldButton `once`)', async () => {
+    let held = 0;
+    render(<HoldButton label="Delete wallet" holdMs={1_000} disabled={false} once onHeld={() => void (held += 1)} />);
+    const b = screen.getByRole('button', {name: 'Delete wallet'}) as HTMLButtonElement;
+    fireEvent.click(b);
+    fireEvent.click(b);
+    fireEvent.keyDown(b, {key: 'Enter'});
+    fireEvent.keyDown(b, {key: ' '});
+    expect(held).toBe(1);
+  });
+
+  it('neither the hold nor the checkbox: a click, a tapped Space and a tapped Enter open nothing', async () => {
+    const w = await shown();
+    typeIn('DELETE');
+    const b = holdCta();
+    fireEvent.click(b);
+    for (const key of [' ', 'Enter']) {
+      fireEvent.keyDown(b, {key});
+      fireEvent.keyUp(b, {key});
+    }
+    w.advance(1_500);
+    expect(w.platform.opened).toEqual([]);
+  });
+
+  it('the checkbox without the word: the word edited clears it, and typed again it is unchecked — a click opens nothing', async () => {
+    const w = await shown();
+    typeIn('DELETE');
+    tick();
+    typeIn('DELET');
+    expect(screen.queryByRole('checkbox')).toBeNull();
+    typeIn('DELETE');
+    expect(box().checked).toBe(false);
+    fireEvent.click(holdCta());
+    expect(w.platform.opened).toEqual([]);
+  });
+
+  it('unchecking after checking restores the hold: its name and caption back, a click opens nothing, the hold does', async () => {
+    const w = await shown();
+    typeIn('DELETE');
+    tick();
+    tick();
+    expect(box().checked).toBe(false);
+    expect(holdCta().textContent).toBe('Hold to delete');
+    expect(screen.getByText('Hold the red button to delete · release to cancel')).toBeTruthy();
+    fireEvent.click(holdCta());
+    fireEvent.keyDown(holdCta(), {key: 'Enter'});
+    fireEvent.keyUp(holdCta(), {key: 'Enter'});
+    expect(w.platform.opened).toEqual([]);
+    fireEvent.pointerDown(holdCta(), {button: 0});
+    w.advance(1_020);
+    expect(w.platform.opened).toEqual(['unlock.html?mode=delete']);
+  });
+
+  it("the button's name says what happens: \"Hold to delete\", checked \"Delete wallet\"; both described by \"Confirmation opens in a new tab.\"; the hold's instructions go when checked", async () => {
+    await shown();
+    typeIn('DELETE');
+    const described = () => document.getElementById(holdCta().getAttribute('aria-describedby') ?? '')?.textContent;
+    expect(screen.getByRole('button', {name: 'Hold to delete'})).toBe(holdCta());
+    expect(described()).toBe('Confirmation opens in a new tab.');
+    tick();
+    expect(screen.getByRole('button', {name: 'Delete wallet'})).toBe(holdCta());
+    expect(holdCta().hasAttribute('aria-label')).toBe(false);
+    expect(described()).toBe('Confirmation opens in a new tab.');
+    expect(screen.queryByText('Hold the red button to delete · release to cancel')).toBeNull();
+    expect(screen.queryByText('Hold the red button below — release to cancel, hold for the full second to delete.')).toBeNull();
+    expect(document.querySelector('.app-delete-card .noc-body')?.textContent).toBe('This removes all encrypted keys and local data from this browser.');
+  });
+
+  it('keys on the checkbox and in the field open nothing: Space and Enter on the checkbox, Enter in the DELETE field', async () => {
+    const w = await shown();
+    typeIn('DELETE');
+    tick();
+    for (const key of [' ', 'Enter']) {
+      fireEvent.keyDown(box(), {key});
+      fireEvent.keyUp(box(), {key});
+    }
+    fireEvent.keyDown(field(), {key: 'Enter'});
+    fireEvent.keyUp(field(), {key: 'Enter'});
+    w.advance(1_500);
+    expect(w.platform.opened).toEqual([]);
+  });
+
+  it('a send open: checked, the button stays disabled — with `disabled` lifted a click opens nothing', async () => {
+    const open = pendingRecord({account: ACCOUNT.publicKey, signature: '5'.repeat(88), intent: {token: 'SOL', recipient: RECIPIENT, amount: '1'}});
+    const w = await shown({before: async ext => ext.local.set(PENDING_KEY, [open])});
+    await sendOpenBanner();
+    typeIn('DELETE');
+    tick();
+    expect(holdCta().disabled).toBe(true);
+    holdCta().disabled = false;
+    fireEvent.click(holdCta());
+    fireEvent.keyDown(holdCta(), {key: 'Enter'});
+    expect(w.platform.opened).toEqual([]);
+  });
+});

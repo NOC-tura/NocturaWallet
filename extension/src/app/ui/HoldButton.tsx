@@ -26,6 +26,8 @@ export const HOLD_TICK_MS = 30;
  * restarts nor doubles it). While held the label counts the seconds left with `decimals` places — #37's one ("Hold to delete · 0.4 s"),
  * #49's two;
  * `prefers-reduced-motion` hides the fill (app.css), the count still runs.
+ * `once` (B1e §3: #37's checkbox checked): one activation — a click, or Space / Enter pressed on the button — calls
+ * `onHeld` at once, and a press starts no hold; once is once, as a completed hold. Turned off, the hold is back.
  */
 export function HoldButton({
   label,
@@ -35,6 +37,8 @@ export function HoldButton({
   disabled,
   onHeld,
   onPressing,
+  once = false,
+  describedBy,
   clock = realClock,
 }: {
   label: string;
@@ -46,6 +50,8 @@ export function HoldButton({
   disabled: boolean;
   onHeld: () => void;
   onPressing?: (pressing: boolean) => void;
+  once?: boolean;
+  describedBy?: string;
   clock?: HoldClock;
 }) {
   const [share, setShare] = useState<number | null>(null);
@@ -58,8 +64,8 @@ export function HoldButton({
    */
   const pressId = useRef(0);
   const presses = useRef(0);
-  const latest = useRef({onHeld, onPressing, disabled});
-  latest.current = {onHeld, onPressing, disabled};
+  const latest = useRef({onHeld, onPressing, disabled, once});
+  latest.current = {onHeld, onPressing, disabled, once};
 
   const release = () => {
     pressId.current = 0;
@@ -70,7 +76,7 @@ export function HoldButton({
     latest.current.onPressing?.(false);
   };
   const press = () => {
-    if (latest.current.disabled || done.current || stop.current !== null) return;
+    if (latest.current.disabled || latest.current.once || done.current || stop.current !== null) return;
     const started = clock.now();
     presses.current += 1;
     const id = presses.current;
@@ -89,6 +95,12 @@ export function HoldButton({
       latest.current.onPressing?.(false);
       latest.current.onHeld();
     });
+  };
+  const activate = () => {
+    if (latest.current.disabled || !latest.current.once || done.current) return;
+    release();
+    done.current = true;
+    latest.current.onHeld();
   };
   // Unmounted mid-press: the tick stops, and the owner hears the press ended (fix round 1, M3: #37's Cancel is not left
   // disabled when the hold goes while pressed).
@@ -109,7 +121,9 @@ export function HoldButton({
   const onKeyDown = (e: KeyboardEvent<HTMLButtonElement>) => {
     if (e.key !== ' ' && e.key !== 'Enter') return;
     e.preventDefault();
-    if (!e.repeat) press();
+    if (e.repeat) return;
+    if (latest.current.once) activate();
+    else press();
   };
   const onKeyUp = (e: KeyboardEvent<HTMLButtonElement>) => {
     if (e.key === ' ' || e.key === 'Enter') release();
@@ -124,6 +138,8 @@ export function HoldButton({
       type="button"
       className="btn btn-primary s7-longpress app-hold"
       disabled={disabled}
+      aria-describedby={describedBy}
+      onClick={activate}
       onPointerDown={onPointerDown}
       onPointerUp={release}
       onPointerLeave={release}

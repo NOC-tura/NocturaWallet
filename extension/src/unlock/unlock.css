@@ -566,3 +566,15 @@
     display: none;
   }
 }
+/* B1e §3 (undrawn, §9): the checkbox directly above the hold — #47's ack row (.s9-ack-row, its grid and label) around a native
+   checkbox in the row's 20 px box column, the accent its checked colour (as the popup's #37, app.css). */
+.vlt-col .s9-ack-row.vlt-understood {
+  margin-top: 0;
+}
+.vlt-understood input {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}

@@ -36,7 +36,7 @@ type Action = 'again' | 'setup' | 'close';
  * B1e §2.2, §2.4 (E9, E11, E12): `unlock.html?mode=remove-damaged`, the one screen that removes a wallet without its
  * password — and only a value the frozen predicate calls unreadable. It reads v1_vault itself and shows what it finds:
  * unreadable → the lines, the address (readableAddress), "Save the damaged data" (the value's exact text) and #37's typed
- * DELETE + hold (view/deleteConfirm.ts); refused by this version → the refused state (no removal); a wallet → "A wallet
+ * DELETE + (the hold, or the checkbox and one activation — B1e §3, view/deleteConfirm.ts); refused by this version → the refused state (no removal); a wallet → "A wallet
  * already exists", nothing offered; no wallet → set up. The confirmation hands over to damagedFlow's removeDamaged, which
  * reads again and sends only for the value shown (its digest); the background re-judges. Removed → #1, as #37.
  */
@@ -60,8 +60,11 @@ export function mountRemoveDamaged(deps: PageDeps, damaged: DamagedScreen): {sho
       help: byId('rd-help'),
       caption: byId('rd-caption'),
       button: byId<HTMLButtonElement>('rd-hold'),
+      name: byId('rd-name'),
       fill: byId('rd-fill'),
       count: byId('rd-count'),
+      understood: byId<HTMLInputElement>('rd-understood'),
+      understoodRow: byId('rd-understood-row'),
     },
     deps.timers,
     {
@@ -75,6 +78,7 @@ export function mountRemoveDamaged(deps: PageDeps, damaged: DamagedScreen): {sho
         cancel.disabled = pressing;
         x.disabled = pressing;
       },
+      onceName: DAMAGED.remove,
     },
   );
 

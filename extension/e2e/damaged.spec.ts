@@ -129,3 +129,64 @@ test('damaged vaults: the unreadable state, its saved bytes, the removal; a refu
     rmSync(profile, {recursive: true, force: true});
   }
 });
+
+test('the removal without holding (B1e §3, E11): DELETE, the checkbox by the keyboard (Enter on it nothing, Space checks it), one click removes; unchecked again a click removes nothing', async () => {
+  const {ctx, profile} = await launchContained('noctura-e2e-damaged-checkbox-');
+  const nocTura = await containNocTura(ctx);
+  const solscan = await containSolscan(ctx);
+  try {
+    await expectContained(ctx);
+    const sw = ctx.serviceWorkers()[0] ?? (await ctx.waitForEvent('serviceworker'));
+    const id = new URL(sw.url()).host;
+    const env = await makeEnvelope();
+    await sw.evaluate(v => chrome.storage.local.set({v1_vault: v}), {...env, password: {wrapped: 'AAAA'}});
+    const text = await storedText(sw);
+    const p = await vaultPage(ctx, id, 'unlock.html?mode=remove-damaged');
+    await expect(p.locator('#rd-entry')).toBeVisible({timeout: 60_000});
+    const box = p.getByRole('checkbox', {name: 'I understand this permanently removes this wallet from this browser'});
+    await expect(box).toBeHidden();
+    await p.fill('#rd-word', 'DELETE');
+    await expect(box).toBeVisible();
+    await expect(box).not.toBeChecked();
+    const button = p.locator('#rd-hold');
+    // Unchecked: a click is not a hold. A confirmation would have disabled the button inside the click's own handler.
+    await expect(p.getByRole('button', {name: 'Hold to delete'})).toBeEnabled();
+    await button.click();
+    await expect(button).toBeEnabled();
+    await expect(p.locator('#rd-word')).toHaveValue('DELETE');
+    // Keys on the checkbox: Enter changes nothing and removes nothing; Space checks it.
+    await box.focus();
+    await p.keyboard.press('Enter');
+    await expect(box).not.toBeChecked();
+    await expect(button).toBeEnabled();
+    await p.keyboard.press(' ');
+    await expect(box).toBeChecked();
+    await expect(button).toBeEnabled();
+    await expect(p.getByRole('button', {name: 'Remove damaged wallet'})).toBeEnabled();
+    await expect(p.locator('#rd-caption')).toBeHidden();
+    // The box comes before the button in tab order: Tab from the box lands on it.
+    await p.keyboard.press('Tab');
+    await expect(button).toBeFocused();
+    await box.focus();
+    await shot(p, 'damaged-remove-understood', {ready: p.locator('#rd-cancel')});
+    // Unchecked again: the hold is back, a click removes nothing.
+    await p.keyboard.press(' ');
+    await expect(box).not.toBeChecked();
+    await expect(p.getByRole('button', {name: 'Hold to delete'})).toBeEnabled();
+    await expect(p.locator('#rd-caption')).toBeVisible();
+    await button.click();
+    await expect(button).toBeEnabled();
+    expect(await storedText(sw)).toBe(text);
+    // Checked: one click removes it.
+    await box.check();
+    await p.getByRole('button', {name: 'Remove damaged wallet'}).click();
+    await expect(p).toHaveURL(/unlock\.html\?mode=welcome$/, {timeout: 30_000});
+    expect(await storedText(sw)).toBeUndefined();
+
+    expect(nocTura.hits).toEqual([]);
+    expect(solscan.hits).toEqual([]);
+  } finally {
+    await ctx.close();
+    rmSync(profile, {recursive: true, force: true});
+  }
+});

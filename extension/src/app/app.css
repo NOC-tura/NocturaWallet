@@ -1121,6 +1121,18 @@ a.btn {
     display: none;
   }
 }
+/* B1e §3 (undrawn, §9): #37's checkbox directly above the hold — #47's ack row (.s9-ack-row, its grid and label) around a native
+   checkbox in the row's 20 px box column, the accent its checked colour. */
+.s9-ack-row.app-understood {
+  margin-top: 0;
+}
+.app-understood input {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
 /* 37c: Cancel at the design's .45 while the CTA is pressed. */
 .app-delete .sticky-bar .btn-secondary:disabled {
   opacity: 0.45;

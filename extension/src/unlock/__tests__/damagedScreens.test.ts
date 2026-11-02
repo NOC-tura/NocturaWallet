@@ -14,8 +14,8 @@ import {mountDamaged} from '../screens/damaged';
 import {mountRemoveDamaged, readableAddress} from '../screens/removeDamaged';
 import {mountUnlock} from '../screens/unlock';
 import {mountWelcome} from '../screens/welcome';
-import {TYPED_DELETE} from '../strings';
-import {CONFIRM_WORD, HOLD_MS, HOLD_TICK_MS} from '../view/deleteConfirm';
+import {DAMAGED, TYPED_DELETE} from '../strings';
+import {CONFIRM_WORD, HOLD_MS, HOLD_TICK_MS, mountDeleteConfirm, type ConfirmParts} from '../view/deleteConfirm';
 import {click, el, harness, loadPage, testKdf, text, type, unstyled, visible, type Harness} from './pageHarness';
 
 // B1e §2.2–§2.4 against the REAL background: #9's and #1's damaged states, "Save the damaged data", and the removal.
@@ -382,11 +382,197 @@ describe('#37’s words and hold, as the popup has them (E11)', () => {
   it('the word, the hold and its tick are the popup’s; the copy is DELETE_TEXT’s', () => {
     expect([CONFIRM_WORD, HOLD_MS, HOLD_TICK_MS]).toEqual([WORD, POPUP_HOLD_MS, POPUP_TICK_MS]);
     expect([TYPED_DELETE.caseSensitive, TYPED_DELETE.notAPrefix, TYPED_DELETE.keepGoing(3)]).toEqual([DELETE_TEXT.caseSensitive, DELETE_TEXT.notAPrefix, DELETE_TEXT.keepGoing(3)]);
+    expect([TYPED_DELETE.hold, TYPED_DELETE.understood]).toEqual([DELETE_TEXT.hold, DELETE_TEXT.understood]);
     loadPage();
     expect(el<HTMLInputElement>('rd-word').placeholder).toBe(DELETE_TEXT.placeholder);
     expect(text(el('rd-eyebrow'))).toBe(`${DELETE_TEXT.typeLead}${DELETE_TEXT.typeWord}${DELETE_TEXT.typeTail}`);
     expect(text(el('rd-matched'))).toBe(DELETE_TEXT.matched);
     expect(text(el('rd-caption'))).toBe(DELETE_TEXT.holdCaption);
     expect(text(el('rd-hold'))).toBe(DELETE_TEXT.hold);
+    expect(text(el('rd-understood-row'))).toBe(DELETE_TEXT.understood);
+  });
+});
+
+// B1e §3 (E11): the removal's confirmation is #37's — typed DELETE + (the hold, or the checkbox and one activation).
+describe('the removal without holding: the checkbox (B1e §3, E11)', () => {
+  const understood = () => el<HTMLInputElement>('rd-understood');
+  const tick = () => understood().click();
+  const key = (target: HTMLElement, k: string) => {
+    target.dispatchEvent(new KeyboardEvent('keydown', {key: k, bubbles: true, cancelable: true}));
+    target.dispatchEvent(new KeyboardEvent('keyup', {key: k, bubbles: true, cancelable: true}));
+  };
+  /** Lets every answer in flight land: the page's gate idle and the background's queue drained. */
+  const idle = async (h: Harness) => {
+    await h.until(() => !h.deps.gate.isBusy());
+    await new Promise(r => setTimeout(r, 0));
+    await h.until(() => !h.deps.gate.isBusy());
+  };
+
+  it('a native checkbox directly above the button (before it in tab order), labelled with §3’s words; hidden and unchecked until the word matches', async () => {
+    await removal(UNREADABLE);
+    expect([understood().tagName, understood().type]).toEqual(['INPUT', 'checkbox']);
+    expect(understood().labels?.length).toBe(1);
+    expect(text(understood().labels?.[0] as HTMLElement)).toBe(DELETE_TEXT.understood);
+    // Directly above the button: the box is reached before the action it unlocks (controller ruling, D31).
+    expect(el('rd-understood-row').nextElementSibling).toBe(el('rd-hold'));
+    expect(visible(understood())).toBe(false);
+    type(el<HTMLInputElement>('rd-word'), 'DELETE');
+    expect(visible(understood())).toBe(true);
+    expect(understood().checked).toBe(false);
+    expect(unstyled('v-remove-damaged')).toEqual([]);
+  });
+
+  it('the hold alone still removes: unchecked, a click removes nothing; the full second does', async () => {
+    const h = await removal(UNREADABLE);
+    type(el<HTMLInputElement>('rd-word'), 'DELETE');
+    click(el('rd-hold'));
+    await idle(h);
+    expect(forgets(h)).toEqual([]);
+    press();
+    h.timers.advance(HOLD_MS + HOLD_TICK_MS);
+    await h.until(() => h.went.length > 0);
+    expect(forgets(h)).toEqual([{type: 'vault.forgetDamaged', expectedDigest: digestOf(UNREADABLE)}]);
+  });
+
+  it('checkbox + one click removes it at once: one forgetDamaged, the wallet data gone, then #1 — no hold, no tick', async () => {
+    const h = await removal(UNREADABLE);
+    for (const k of WALLET_DATA_KEYS) await h.ext.local.set(k, ['x']);
+    type(el<HTMLInputElement>('rd-word'), 'DELETE');
+    tick();
+    expect(understood().checked).toBe(true);
+    click(el('rd-hold'));
+    await h.until(() => h.went.length > 0);
+    expect(forgets(h)).toEqual([{type: 'vault.forgetDamaged', expectedDigest: digestOf(UNREADABLE)}]);
+    expect(await h.ext.local.get(VAULT_KEY)).toBeUndefined();
+    for (const k of WALLET_DATA_KEYS) expect(await h.ext.local.get(k)).toBeUndefined();
+    expect(h.went).toEqual(['unlock.html?mode=welcome']);
+  });
+
+  it.each([' ', 'Enter'])('checkbox + one %j on the button (pressed and released) removes it', async k => {
+    const h = await removal(UNREADABLE);
+    type(el<HTMLInputElement>('rd-word'), 'DELETE');
+    tick();
+    key(el('rd-hold'), k);
+    await h.until(() => h.went.length > 0);
+    expect(forgets(h)).toHaveLength(1);
+  });
+
+  it('one activation is one removal: a second click and a key after it send nothing more', async () => {
+    const h = await removal(UNREADABLE);
+    type(el<HTMLInputElement>('rd-word'), 'DELETE');
+    tick();
+    click(el('rd-hold'));
+    click(el('rd-hold'));
+    key(el('rd-hold'), 'Enter');
+    await h.until(() => h.went.length > 0);
+    expect(forgets(h)).toHaveLength(1);
+  });
+
+  it('one activation is one confirmation in mountDeleteConfirm itself (not only the page gate behind it)', async () => {
+    const h = await harness({vault: UNREADABLE});
+    let confirmed = 0;
+    const ids = {field: 'rd-word', eyebrow: 'rd-eyebrow', matched: 'rd-matched', box: 'rd-box', check: 'rd-check', help: 'rd-help', caption: 'rd-caption', button: 'rd-hold', name: 'rd-name', fill: 'rd-fill', count: 'rd-count', understood: 'rd-understood', understoodRow: 'rd-understood-row'};
+    const parts = Object.fromEntries(Object.entries(ids).map(([k, id]) => [k, el(id)])) as unknown as ConfirmParts;
+    const confirm = mountDeleteConfirm(parts, h.timers, {allowed: () => true, onConfirmed: () => void (confirmed += 1), onceName: DAMAGED.remove});
+    confirm.reset();
+    type(el<HTMLInputElement>('rd-word'), 'DELETE');
+    tick();
+    click(el('rd-hold'));
+    el<HTMLButtonElement>('rd-hold').disabled = false;
+    click(el('rd-hold'));
+    key(el('rd-hold'), 'Enter');
+    expect(confirmed).toBe(1);
+    // reset() arms it again: the word and the box asked for anew.
+    confirm.reset();
+    click(el('rd-hold'));
+    expect(confirmed).toBe(1);
+  });
+
+  it('neither the hold nor the checkbox: a click, a tapped Space and a tapped Enter remove nothing', async () => {
+    const h = await removal(UNREADABLE);
+    type(el<HTMLInputElement>('rd-word'), 'DELETE');
+    click(el('rd-hold'));
+    key(el('rd-hold'), ' ');
+    key(el('rd-hold'), 'Enter');
+    h.timers.advance(HOLD_MS * 2);
+    await idle(h);
+    expect(forgets(h)).toEqual([]);
+    expect(await h.ext.local.get(VAULT_KEY)).toEqual(UNREADABLE);
+  });
+
+  it('the checkbox without the word: the word edited clears it, typed again it is unchecked; checked under a wrong word a click removes nothing', async () => {
+    const h = await removal(UNREADABLE);
+    type(el<HTMLInputElement>('rd-word'), 'DELETE');
+    tick();
+    type(el<HTMLInputElement>('rd-word'), 'DELET');
+    expect([understood().checked, visible(understood())]).toEqual([false, false]);
+    type(el<HTMLInputElement>('rd-word'), 'DELETE');
+    expect(understood().checked).toBe(false);
+    click(el('rd-hold'));
+    await idle(h);
+    expect(forgets(h)).toEqual([]);
+    // The rule, not only the clearing: a box checked by any other means under a word that does not match removes nothing.
+    for (const typed of ['DELET', 'delete', 'DELETE ']) {
+      type(el<HTMLInputElement>('rd-word'), typed);
+      understood().checked = true;
+      el<HTMLButtonElement>('rd-hold').disabled = false;
+      click(el('rd-hold'));
+      key(el('rd-hold'), 'Enter');
+    }
+    await idle(h);
+    expect(forgets(h)).toEqual([]);
+    expect(await h.ext.local.get(VAULT_KEY)).toEqual(UNREADABLE);
+  });
+
+  it('unchecking after checking restores the hold: its name and caption back, a click removes nothing, the hold does', async () => {
+    const h = await removal(UNREADABLE);
+    type(el<HTMLInputElement>('rd-word'), 'DELETE');
+    tick();
+    tick();
+    expect(understood().checked).toBe(false);
+    expect(text(el('rd-hold'))).toBe('Hold to delete');
+    expect(visible(el('rd-caption'))).toBe(true);
+    click(el('rd-hold'));
+    key(el('rd-hold'), 'Enter');
+    await idle(h);
+    expect(forgets(h)).toEqual([]);
+    press();
+    h.timers.advance(HOLD_MS + HOLD_TICK_MS);
+    await h.until(() => h.went.length > 0);
+    expect(forgets(h)).toHaveLength(1);
+  });
+
+  it("the button's name says what happens: \"Hold to delete\", checked \"Remove damaged wallet\"; the hold's caption goes when checked", async () => {
+    await removal(UNREADABLE);
+    type(el<HTMLInputElement>('rd-word'), 'DELETE');
+    expect(text(el('rd-hold'))).toBe('Hold to delete');
+    expect(visible(el('rd-caption'))).toBe(true);
+    tick();
+    expect(text(el('rd-hold'))).toBe('Remove damaged wallet');
+    expect(el('rd-hold').hasAttribute('aria-label')).toBe(false);
+    expect(visible(el('rd-caption'))).toBe(false);
+  });
+
+  it('keys on the checkbox and in the field remove nothing: Space and Enter on the checkbox, Enter in the DELETE field', async () => {
+    const h = await removal(UNREADABLE);
+    type(el<HTMLInputElement>('rd-word'), 'DELETE');
+    tick();
+    key(understood(), ' ');
+    key(understood(), 'Enter');
+    key(el('rd-word'), 'Enter');
+    h.timers.advance(HOLD_MS * 2);
+    await idle(h);
+    expect(forgets(h)).toEqual([]);
+  });
+
+  it('every entry to the screen starts unchecked: after a `changed` re-read the word is empty and the box clear', async () => {
+    const h = await removal(UNREADABLE);
+    await h.ext.local.set(VAULT_KEY, OTHER_UNREADABLE);
+    type(el<HTMLInputElement>('rd-word'), 'DELETE');
+    tick();
+    click(el('rd-hold'));
+    await h.until(() => text(el('rd-helper')) === 'The stored data changed — check it again');
+    expect(forgets(h)).toEqual([]);
+    expect([el<HTMLInputElement>('rd-word').value, understood().checked, visible(understood())]).toEqual(['', false, false]);
   });
 });
