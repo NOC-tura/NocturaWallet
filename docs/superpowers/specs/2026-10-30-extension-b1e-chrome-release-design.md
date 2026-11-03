@@ -1,7 +1,10 @@
 # Noctura Extension B1e — the first Chrome Web Store release
 
-**Status:** rev 2.5, 2026-11-03 — the B1e-1 plan's Task 4 review (I1, the controller's ruling: the mark cap counts
-nonspacing / enclosing marks only), under "Rev 2.5". Rev 2.4, 2026-11-02 — the B1e-1 plan's Fable review 2 (`.superpowers/sdd/b1e1-plan-review-2.md`: N1, N4)
+**Status:** rev 2.6, 2026-11-03 — the owner-facing departures the B1e-1 fix rounds of Tasks 2, 3 and 5
+made after rev 2.5 (the final review's Important 1, `.superpowers/sdd/2026-11-02-extension-b1e-plan1/final-review.md`)
+and the changes of the final fix wave (its Minors 1, 3, 5, 6, the ledger's four fix-now rows, the controller's rulings),
+each one line under "Rev 2.6", the passages they name edited to match. Rev 2.5, 2026-11-03 — the B1e-1 plan's Task 4
+review (I1, the controller's ruling: the mark cap counts nonspacing / enclosing marks only), under "Rev 2.5". Rev 2.4, 2026-11-02 — the B1e-1 plan's Fable review 2 (`.superpowers/sdd/b1e1-plan-review-2.md`: N1, N4)
 and the controller's rulings on its owner questions, under "Rev 2.4". Rev 2.3, 2026-11-02 — the B1e-1 plan's Fable review 1 (`.superpowers/sdd/b1e1-plan-review-1.md`: I1 and
 its Minors) and the owner's answers E19–E22, each one line under "Rev 2.3", the passages they name edited to match.
 Rev 2.2, 2026-11-02 — text only: the departures the B1e-1 plan's dry run made from rev 2.1 (each one line
@@ -14,6 +17,37 @@ the owner's answers E15–E18.
 Parent specs: B1 (`2026-09-27-extension-b1-design.md` §5 "Build, gates, release" and its release gates), B1b-2b (D10,
 D31), B1c §6.5, B1d §6.5 and §7. Binding design: `/home/user/Downloads/index.html` (+ `screen.md`) — it contains the
 TGE date; nothing is copied from it.
+
+**Rev 2.6** (the B1e-1 final review and its fix wave, 2026-11-03; every line is a departure from rev 2.5's text, ruled
+by the controller and recorded in the plan's ledger — the passages named are edited to match):
+- §2.2 (Task 2's ruling): the removal's `no-wallet` outcome shows "No wallet on this browser yet." with [Set up a wallet].
+- §3 (Task 3 fix round 1, I1): a refusal notice on the removal resets the confirmation — the box unchecked, the hold
+  released — so no notice keeps a checked box standing.
+- §3 (Task 3 fix round 1, M2): #37's checkbox is disabled while a send is open.
+- §3 (Task 3 fix round 1, M1): checking the box while a hold is in progress ends the hold; the button then waits for
+  its one activation (the vault page already did).
+- §1.4 (Task 5 fix round 1, Minor 1, a controller ruling): `dapp.pending` answers `phrase: null` when no envelope is
+  stored — the accepted apply-vs-delete race can leave a phrase behind with no wallet, and a no-wallet state draws no line.
+- §1.4 (the final review's Minor 1, a controller ruling): one reading of "a wallet is stored" on the phrase path —
+  `wallet.state`'s `phrase` and `dapp.pending`'s are null unless the stored vault is a wallet this version accepts
+  (`envelopeShape`); a vault this version refuses (§2.1) shows no phrase on the popup either, as no approval window
+  draws one and #9 shows the update screen without one. `wallet.state`'s `hasWallet` (the popup's routing) is unchanged.
+- §1.3 (Task 5 fix round 1, Minor 2): #10 reads the phrase again once a change or a removal is applied, so its line
+  shows what is now stored.
+- §1.2 (Task 5 fix round 1, Minor 4): the phrase is its own bidi run (`dir="auto"`) on every surface — an RTL phrase
+  keeps its own order whatever the line's direction.
+- §4.3 (the ledger's T6 M1): the gate matches the scheme in any case (`HTTPS://…` is navigated like `https://…`); the
+  table compare stays exact, so an upper-case string fails.
+- §4.3 (the ledger's T6 M2): the gate also reads `.mjs` and `.txt` files; `fonts/LICENSE.txt` (the Geist fonts' OFL
+  text, which names its licence's home page) is skipped by its exact path, beside `licenses.html`.
+- §4.2 (the ledger's T6 M3): the stub's test checks its export list exactly (`CommonClient`, `WebSocket`, no other).
+- §9 (the final review's Minor 5, ledger T7 D1–D3, a controller ruling — the design system's gutter and spacing are
+  binding): in the approval window the phrase line spans the body's 20 px content gutter — under the top bar on #46,
+  #47, #48 (F12 too), and on the locked window first in the body, 20 px from the window top; on onboarding's step the
+  helper and the help are the design system's --space-2 apart and a refused write's line sits directly under the field;
+  #35's card keeps its own --space-3 between the field, the helper, the actions and the help.
+- §2.3 (the final review's Minor 6, ledger T2 M1, a controller ruling): on the damaged states the save note sits
+  directly under Save (in the bar, with Save, above Remove), as it does on the removal.
 
 **Rev 2.5** (the B1e-1 plan's Task 4 review, I1, the controller's ruling, 2026-11-03; §1.5 edited to match):
 - §1.5 (I1): the cap counts only nonspacing / enclosing marks (Mn, Me) — the ones that stack over or under a letter;
@@ -198,7 +232,11 @@ One line under the screen's header: a shield icon + the phrase as plain text (`t
 - #10 re-authentication (`src/unlock/screens/reauth.ts`).
 
 On the vault page the line shows only once the stored vault is a wallet: the no-wallet and damaged states have no
-password field and no line. Every line starts with a screen-reader label "Anti-phishing phrase: " (rev 2.2).
+password field and no line. On the popup and in every approval window it shows only when the stored vault is a wallet
+this version accepts (rev 2.6, §1.4). Every line starts with a screen-reader label "Anti-phishing phrase: " (rev 2.2),
+and the phrase is its own bidi run (`dir="auto"`, rev 2.6). In the approval window the line spans the body's 20 px
+content gutter, under the top bar on every request screen and, on the locked window (no top bar), first in the body
+20 px from the window top (rev 2.6).
 
 **No phrase set:** nothing shows; the extension behaves as today. **A read that fails** (no answer, an error, a
 `phrase` field missing or not exactly a phrase the background would store — the screen re-judges it with `cleanPhrase`;
@@ -234,7 +272,8 @@ background (rev 2.2).
 `applySettingsChallenge` (`walletApi.ts:261`) — and the stored value is re-compared at apply time, under the mutex
 (the last confirmed proof wins, as review M6 ruled for settings). #10's "what this is for" line says "Change the
 anti-phishing phrase" or "Remove the anti-phishing phrase" — never the new value (the phrase line on #10 shows the
-current one; two phrases on one screen invite confusion). #10's end states are the settings kind's (rev 2.2).
+current one; two phrases on one screen invite confusion). #10's end states are the settings kind's (rev 2.2); once a
+change or a removal is applied #10 reads the phrase again, so its line shows what is now stored (rev 2.6).
 
 **Onboarding.** A skippable last step: "Set an anti-phishing phrase", with one sentence on why. It runs **after
 `commitWallet`** (`onboarding.ts:148`), never before: the first write, `storeEnvelope(null, …)`, calls
@@ -248,7 +287,8 @@ the commit would be wiped by it. Placement:
   offers it.
 
 **Settings → Security (#35):** a row "Anti-phishing phrase · On / Off"; set, change, remove. Its card never shows the
-stored phrase; the onboarding step answers a refusal with the common "try again" line and keeps [Skip] (rev 2.2).
+stored phrase; the onboarding step answers a refusal with the common "try again" line and keeps [Skip] (rev 2.2) — the
+line directly under the field, then the helper and the help, each the design system's --space-2 apart (rev 2.6).
 
 ### 1.4 Storage and reads (I2, R2)
 
@@ -263,11 +303,14 @@ stored phrase; the onboarding step answers a refusal with the common "try again"
   websites.
 - **Reads ride on existing answers; no new read type:**
   - `wallet.state` gains `phrase: string | null` — the popup and the UI tab (answered locked or unlocked:
-    `walletState`, `walletApi.ts:117`);
+    `walletState`, `walletApi.ts:117`); null unless the stored vault is a wallet this version accepts (`envelopeShape`)
+    — the same reading as `dapp.pending`'s (rev 2.6; `hasWallet` keeps its own, wider reading for the popup's routing);
   - `vault.status` gains `phrase` — the vault page's #9 and #10 (`vault.status` is already sent by `reauthFlow.ts`;
     the unlock screen adds one call in its `reading` phase);
   - `dapp.pending`'s answer gains a top-level `phrase` in every state (`pending()`, `dapp/decide.ts:159`) — the
-    approval window, whose inclusive list (`dapp.pending`, `dapp.decide`) is unchanged.
+    approval window, whose inclusive list (`dapp.pending`, `dapp.decide`) is unchanged; `null` when no envelope is
+    stored or the stored one is not a wallet this version accepts (rev 2.6: the accepted apply-vs-delete race can leave a
+    phrase behind with no wallet, and a refused vault is no wallet either).
 
 ### 1.5 Rules (Minors 1, 2)
 
@@ -409,7 +452,9 @@ takes no URL parameter, so the digest it sends is that of the value it showed (r
   [Unlock]: an unreadable vault cannot be unlocked (rev 2.2); `busy` → "The stored data changed — check it
   again", and the screen re-reads — the page's own digest compare at the click is the same outcome (rev 2.2);
   `not-unreadable` → the screen re-reads and shows the state it now finds (refused, or a wallet: "A wallet already
-  exists in this browser. Nothing was changed."); `unlocked` → "Noctura was unlocked meanwhile — try again".
+  exists in this browser. Nothing was changed."); `unlocked` → "Noctura was unlocked meanwhile — try again";
+  `no-wallet` → "No wallet on this browser yet." with [Set up a wallet] (rev 2.6). Every notice resets the
+  confirmation (§3, rev 2.6).
 
 ### 2.3 Save the damaged data (E10, R4)
 
@@ -422,7 +467,8 @@ takes no URL parameter, so the digest it sends is that of the value it showed (r
   (`MARKUP_EVASIONS`), and a `data:application/json` URL passes it.
 - Copy: "This file is your wallet's data exactly as this browser holds it. If it contains your encrypted wallet,
   anyone with the file and your password could try to open it — keep it private." (It may hold no ciphertext at all;
-  the copy does not promise one.)
+  the copy does not promise one.) It sits directly under Save on every screen that offers it — on the damaged states
+  in the bar, between Save and Remove (rev 2.6).
 - Test: E2E clicks it and reads Playwright's download: the file's bytes are `JSON.stringify` of the stored value and
   their sha256 is the digest the page sent; R4: the button exists on the refused state, the removal button does not.
 
@@ -549,7 +595,9 @@ only `@scure/base`.
 - **Enter does not confirm (Minor 7, B1's rule):** Enter in the DELETE field activates nothing — neither the hold nor
   the checkbox path. Test.
 - **Checkbox state (Minor 8):** unchecked on every entry to the screen; cleared whenever the typed word stops
-  matching; never remembered.
+  matching; never remembered. Rev 2.6: a refusal notice on the removal resets the confirmation (the box unchecked, a
+  hold released); #37's box is disabled while a send is open; checking the box while a hold is in progress ends the
+  hold, and the button then waits for its one activation.
 - On #37 the typed **DELETE** and the password / passkey proof in the vault tab stay required; the checkbox only
   trades the hold. On §2's removal (no proof exists) the typed word + (hold or checkbox and one activation) **is** the
   gate (E11); the vault page builds both in plain DOM, with the same rules.
@@ -646,7 +694,8 @@ and the OFL's own) — as **escaped text**, never navigable. The gates are taugh
      never enters the graph), and the stub renders 0 bytes (mutation: a `new Connection(...)` planted in the
      background → the stub renders code → fails) — stricter than "rendered 0", which the stub would pass (rev 2.2); a
      map without its `chunks` or `rendered` section is INCONCLUSIVE, never a pass (rev 2.3);
-   - an alias of the bare specifier `rpc-websockets` to a local stub with exactly two named exports — `CommonClient`, a
+   - an alias of the bare specifier `rpc-websockets` to a local stub with exactly two named exports (its test checks the
+     export list exactly, rev 2.6) — `CommonClient`, a
      class (an `extends` of a non-constructor would throw at module evaluation), and `WebSocket`, a function — each
      throwing if ever constructed or called. Only `Connection`'s constructor makes a `RpcWebSocketClient`, and no file
      the extension bundles constructs a `Connection` (`new Connection` exists only in `web/src/lib/solana.ts`, which
@@ -682,10 +731,12 @@ Coordinator routes the `--no-presale` `background.js` names (relevant to §6): `
 `/referral-stats` (B1d's record and referral routes are presale-only).
 
 **The rule.** A new `scripts/check-links.mjs`, run in `gates:build` for both builds' `chrome/` and `firefox/`
-packages. It reads every `.js`, `.html`, `.css`, `.json` and `.svg` file (rev 2.3: an SVG document can carry
-`<a xlink:href>`; none ships today) **except `licenses.html`, skipped by name** (N1: its
-licence texts carry URLs as escaped text; §4.2's static-page rule holds there) and extracts every match of
-`\b(?:https?|wss?|ftp)://[^\s"'`<>)\\;]*`. Each match must equal, **as a whole string**, one entry of:
+packages. It reads every `.js`, `.mjs`, `.html`, `.css`, `.json`, `.svg` and `.txt` file (rev 2.3: an SVG document can
+carry `<a xlink:href>`; none ships today; rev 2.6: `.mjs` and `.txt`) **except `licenses.html` and `fonts/LICENSE.txt`,
+skipped by their exact paths** (N1: the licence texts carry URLs as escaped text; §4.2's static-page rule holds there;
+rev 2.6: `fonts/LICENSE.txt` is the Geist fonts' OFL text, which names its licence's home page, and no page) and
+extracts every match of `\b(?:https?|wss?|ftp)://[^\s"'`<>)\\;]*`, the scheme in any case (rev 2.6: a browser navigates
+`HTTPS://…` as `https://…`). Each match must equal, **as a whole string**, one entry of:
 - **Coordinator:** `https://api.noc-tura.io/*` and `https://api.noc-tura.io` (in `manifest.json` only);
   `https://api.noc-tura.io/api/v1` and `https://api.noc-tura.io/api/v1/rpc` (in `background.js` only) — a page
   naming the coordinator fails (pages reach it only through the background);
@@ -707,7 +758,9 @@ Anything else fails, naming the file. Zero matches in a package → `INCONCLUSIV
 **Controls.** Positive: both real packages pass. Negative, each on a copy: a planted `https://evil.example/` in a page
 chunk → fails; `https://noc-tura.io/extension/privacy` removed → fails (presence); `https://api.noc-tura.io/api/v1`
 planted in a page chunk → fails; one inert entry changed by one character → the real package fails; a planted
-`wss://evil.example` → fails. A library update that changes an inert string fails the gate until a reviewer adds the
+`wss://evil.example` → fails; rev 2.6: a planted `HTTPS://evil.example/` or an upper-case `HTTPS://` navigable link
+→ fails; a URL in an `.mjs` or a `.txt` file → fails; `fonts/LICENSE.txt` unskipped → fails (the skip is the only
+reason it passes). A library update that changes an inert string fails the gate until a reviewer adds the
 new string with its reason.
 
 **What the gate is (rev 2.3, the controller's ruling on review Q6 / M4).** A review aid, **not a security boundary**: a
@@ -962,7 +1015,10 @@ The anti-phishing phrase line (and R9's "could not be read" line), its onboardin
 damaged states, "Save the damaged data" and the removal screen; #37's checkbox (and the same on the removal screen);
 `licenses.html`; the screenshot backdrop. Each is built from the design system's existing components (B1b's banner,
 input and row styles; `licenses.html` has no stylesheet at all) and shown to the owner in the visual pass of B1e-1
-(B1e-2 for the backdrop).
+(B1e-2 for the backdrop). Rev 2.6: the design system's gutter and spacing are binding on them, and the visual pass
+asserts the geometry — the window's phrase line at the body's 20 px content gutter (and 20 px from the locked window's
+top), the step's field / refused line / helper / help --space-2 apart, #35's card's own --space-3, and the save note
+directly under Save.
 
 ## 10. Tests and gates (both plans)
 
