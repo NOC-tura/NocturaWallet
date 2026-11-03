@@ -45,8 +45,8 @@ test('damaged vaults: the unreadable state, its saved bytes, the removal; a refu
     const id = new URL(sw.url()).host;
     const env = await makeEnvelope();
 
-    // Unreadable (U3: a 3-byte password wrap), with the wallet's settings and address book beside it.
-    await sw.evaluate(v => chrome.storage.local.set({v1_vault: v, v1_settings: {autoLockMinutes: 5}, v1_contacts: [{address: 'x', name: 'y'}]}), {...env, password: {wrapped: 'AAAA'}});
+    // Unreadable (U3: a 3-byte password wrap), with the wallet's settings, address book and anti-phishing phrase beside it.
+    await sw.evaluate(v => chrome.storage.local.set({v1_vault: v, v1_settings: {autoLockMinutes: 5}, v1_contacts: [{address: 'x', name: 'y'}], v1_phishing_phrase: 'Blue horse 42'}), {...env, password: {wrapped: 'AAAA'}});
     const text = await storedText(sw);
     let p = await vaultPage(ctx, id, 'unlock.html');
     await expect(p.locator('#dmg-unreadable')).toHaveText('Wallet data is damaged', {timeout: 60_000});
@@ -81,6 +81,7 @@ test('damaged vaults: the unreadable state, its saved bytes, the removal; a refu
     await p.clock.runFor(HOLD_MS);
     await expect(p.locator('#rd-hold')).toBeEnabled();
     expect(await storedText(sw)).toBe(text);
+    expect((await sw.evaluate(() => chrome.storage.local.get('v1_phishing_phrase'))).v1_phishing_phrase).toBe('Blue horse 42');
     // Held mid-way: the count and the fill, shot under the paused clock.
     await p.locator('#rd-hold').hover();
     await p.mouse.down();
@@ -92,7 +93,7 @@ test('damaged vaults: the unreadable state, its saved bytes, the removal; a refu
     await expect(p).toHaveURL(/unlock\.html\?mode=welcome$/, {timeout: 30_000});
     await expect(p.locator('#wel-create')).toBeVisible();
     const left = await sw.evaluate(() => chrome.storage.local.get(null));
-    expect(Object.keys(left).filter(k => ['v1_vault', 'v1_settings', 'v1_contacts'].includes(k))).toEqual([]);
+    expect(Object.keys(left).filter(k => ['v1_vault', 'v1_settings', 'v1_contacts', 'v1_phishing_phrase'].includes(k))).toEqual([]);
 
     // Refused by this version (v: 2): the state says "update", offers Save and no removal; the removal URL offers none.
     const refused = {...env, v: 2};
