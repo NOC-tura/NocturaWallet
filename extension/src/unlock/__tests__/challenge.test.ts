@@ -415,3 +415,38 @@ describe('readChallenge against the real background', () => {
     expect(await discardPrepared(async () => ({ok: false, error: 'malformed'}), ACCOUNT.publicKey)).toBe(false);
   });
 });
+
+// B1e §1.3: a phrase challenge reaches #10 as the background's redacted description — what it is for, never the value.
+describe('describeChallenge: the anti-phishing phrase (B1e §1.3)', () => {
+  it('change and remove, exactly as the background describes them (positive control)', () => {
+    expect(describeChallenge({kind: 'phrase', action: 'change'})).toEqual({kind: 'phrase', action: 'change'});
+    expect(describeChallenge({kind: 'phrase', action: 'remove'})).toEqual({kind: 'phrase', action: 'remove'});
+  });
+
+  it('fails closed: another action, a key more (the value itself included) or less', () => {
+    for (const bad of [{kind: 'phrase', action: 'set'}, {kind: 'phrase'}, {kind: 'phrase', action: 'change', phrase: 'Green fox 7'}, {kind: 'phrase', phrase: 'Green fox 7'}, {kind: 'phrase', phrase: null}, {kind: 'phrase', action: null}]) {
+      expect([bad, describeChallenge(bad)]).toEqual([bad, null]);
+    }
+  });
+
+  it('through the real background: settings.phrase’s challenge reads as described, its value nowhere in the answer', async () => {
+    const ext = fakeExt();
+    const deps = fakeDeps();
+    await unlocked(ext);
+    const popup = {id: 'abcdefghijklmnopabcdefghijklmnop', origin: 'chrome-extension://abcdefghijklmnopabcdefghijklmnop', url: 'chrome-extension://abcdefghijklmnopabcdefghijklmnop/popup.html'};
+    const page = {...popup, url: 'chrome-extension://abcdefghijklmnopabcdefghijklmnop/unlock.html'};
+    expect(await handleMessage(ext, {type: 'settings.phrase', phrase: 'Blue horse 42'}, popup, deps)).toEqual({ok: true, data: {outcome: 'set'}});
+    for (const [value, action] of [['Green fox 7', 'change'], [null, 'remove']] as const) {
+      const r = await handleMessage(ext, {type: 'settings.phrase', phrase: value}, popup, deps);
+      const id = (r.data as {challengeId: string}).challengeId;
+      const answers: unknown[] = [];
+      const send: Send = async m => {
+        const a = (await handleMessage(ext, m, page, deps)) as {ok: boolean; error?: string; data?: unknown};
+        answers.push(a);
+        return a;
+      };
+      expect(await readChallenge(send, id)).toEqual({state: 'described', description: {kind: 'phrase', action}});
+      expect(JSON.stringify(answers)).not.toContain('Green');
+    }
+  });
+});

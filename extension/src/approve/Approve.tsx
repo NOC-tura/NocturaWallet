@@ -16,7 +16,8 @@ export const POLL_MS = 1_000;
  * leave the window blank forever, so polling does not wait for a first successful read either) — so an unlock, an
  * expiry or a new head reaches it within a second. `none` closes the window. A decision runs through `dapp.decide`;
  * the background validates it as if this page were untrusted (C13), and the window then asks again. Only the newest
- * answer counts (a slower, older one sets nothing), and nothing is set after the window unmounts.
+ * answer counts (a slower, older one sets nothing), and nothing is set after the window unmounts. B1e §1.2: every screen
+ * is given the newest answer's anti-phishing phrase, which it shows under its header in every state.
  */
 export function Approve({client, close}: {client: ApproveClient; close: () => void}) {
   const [view, setView] = useState<PendingView | null>(null);
@@ -98,12 +99,12 @@ export function Approve({client, close}: {client: ApproveClient; close: () => vo
   );
 
   if (view === null || view.state === 'none' || request === null) return <div className="screen app-approve" aria-busy="true" />;
-  if (view.state === 'locked') return <Locked request={request} waiting={view.waiting} notice={noticeSeen} onReject={() => decide({decision: 'reject'})} />;
+  if (view.state === 'locked') return <Locked request={request} waiting={view.waiting} notice={noticeSeen} onReject={() => decide({decision: 'reject'})} phrase={view.phrase} />;
   const inProgress = busy || view.state === 'deciding';
   // A new head is a new screen: its gates, scope, account and confirm start over (keyed by request).
-  if (request.type === 'signMessage') return <Sign key={request.requestId} request={request} waiting={view.waiting} notice={noticeSeen} busy={inProgress} onDecide={decide} />;
+  if (request.type === 'signMessage') return <Sign key={request.requestId} request={request} waiting={view.waiting} notice={noticeSeen} busy={inProgress} onDecide={decide} phrase={view.phrase} />;
   // B1c-2: #48 for a transaction request; its origin-mismatch notice.
-  if (request.type === 'signTransaction' || request.type === 'signAndSendTransaction') return <Tx key={request.requestId} request={request} waiting={view.waiting} notice={noticeSeen} busy={inProgress} onDecide={decide} />;
-  if (request.type === 'mismatch') return <Mismatch key={request.requestId} request={request} waiting={view.waiting} notice={noticeSeen} busy={inProgress} onDecide={decide} />;
-  return <Connect key={request.requestId} request={request} waiting={view.waiting} notice={noticeSeen} busy={inProgress} onDecide={decide} />;
+  if (request.type === 'signTransaction' || request.type === 'signAndSendTransaction') return <Tx key={request.requestId} request={request} waiting={view.waiting} notice={noticeSeen} busy={inProgress} onDecide={decide} phrase={view.phrase} />;
+  if (request.type === 'mismatch') return <Mismatch key={request.requestId} request={request} waiting={view.waiting} notice={noticeSeen} busy={inProgress} onDecide={decide} phrase={view.phrase} />;
+  return <Connect key={request.requestId} request={request} waiting={view.waiting} notice={noticeSeen} busy={inProgress} onDecide={decide} phrase={view.phrase} />;
 }

@@ -138,6 +138,11 @@ test('visual: the create run — #1, #2, #3, #4, #5, #6 and #7', async () => {
     await expect(text(p, '#pk-line')).toHaveText('This device cannot unlock the wallet with a passkey; your password still works.', {timeout: 60_000});
     await shot(p, '06-unsupported', {ready: p.locator('#pk-continue')});
     await p.locator('#pk-continue').click();
+    // B1e §1.3 (undrawn, §9): the anti-phishing step, then skipped.
+    await expect(p.locator('#v-anti-phishing')).toBeVisible({timeout: 60_000});
+    await expect(p.locator('#v-anti-phishing .top-bar .noc-overline')).toHaveText('Optional');
+    await shot(p, '06b-anti-phishing', {ready: p.locator('#ap-skip')});
+    await p.locator('#ap-skip').click();
 
     await p.waitForURL(/wallet\.html#\/created$/);
     await expect(p.getByText('Wallet created')).toBeVisible();
@@ -208,6 +213,8 @@ test('visual: import — #8’s states, #5 import, and #40', async () => {
     await expect(text(p, '#pw-step')).toHaveText('Import · 2 / 2');
     await shot(p, '05-import-enter', {ready: p.locator('#pw-back')});
     await setPassword(p, PASSWORD);
+    await expect(p.locator('#v-anti-phishing')).toBeVisible({timeout: 60_000});
+    await p.locator('#ap-skip').click();
     await p.waitForURL(/wallet\.html#\/imported$/, {timeout: 60_000});
     await expect(p.getByText('1 account · 1 token recovered. Welcome back.')).toBeVisible();
     await expect(p.getByText('Copying puts the address on your clipboard. Noctura does not clear it afterwards.')).toBeVisible();

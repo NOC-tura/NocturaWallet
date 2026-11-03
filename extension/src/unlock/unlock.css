@@ -578,3 +578,14 @@
   accent-color: var(--accent);
   cursor: pointer;
 }
+
+/* B1e §1.2 (undrawn, §9): the anti-phishing phrase line — B1b's `.banner` (shield, or warning for R9's line), its text
+   from the start of the line even inside #9's centred pin-head; the user's own phrase wraps, never cut. */
+.vlt-phrase-line {
+  align-self: stretch;
+  text-align: start;
+}
+.vlt-phrase-line > .noc-body-sm {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}

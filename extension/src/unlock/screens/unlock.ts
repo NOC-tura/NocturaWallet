@@ -9,6 +9,7 @@ import {COMMON, UNLOCK, cooldownLabel} from '../strings';
 import {unlockFlow} from '../unlockFlow';
 import {byId, closeOrHide, setText, showScreen, shown} from '../view/dom';
 import {startCooldown} from '../view/cooldown';
+import {readPhraseLine, showPhraseLine} from '../view/phraseLine';
 import {mountDamaged} from './damaged';
 
 export interface UnlockScreen {
@@ -33,7 +34,8 @@ type Phase = 'off' | 'reading' | 'entry' | 'unlocked' | 'no-wallet' | 'damaged' 
  * a damaged vault → B1e §2.2's state (screens/damaged.ts: unreadable, or refused by this version), never the password
  * field (and never charged to the backoff). An attempt that ends `damaged` reads again: a value that now reads as one of
  * the two states shows it; a wallet whose seed then failed to open (B1e §2.1, out of the predicate) keeps the damaged
- * notice and its help.
+ * notice and its help. B1e §1.2: the anti-phishing phrase is read in the `reading` phase, before the field shows — the
+ * field never appears without the line's state (the phrase, R9's line, or nothing when none is set).
  *
  * The password: taken out of the field at the click and handed to the attempt in the same turn, so the
  * screen holds no copy while Argon2id runs or the cooldown counts down; a hidden tab or `pagehide` empties
@@ -269,6 +271,7 @@ export function mountUnlock(deps: PageDeps): UnlockScreen {
       }
       if (vaultReading(raw).kind === 'none') return notice('no-wallet', COMMON.noWallet, '');
       if (showDamaged(raw)) return;
+      showPhraseLine('unl', await readPhraseLine(deps.send));
       pk = passkeyOf(raw) ?? null;
       phase = 'entry';
       render();

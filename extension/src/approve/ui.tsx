@@ -1,7 +1,9 @@
 import {useEffect, useState, type ReactNode} from 'react';
 import {ExtIcon} from '../app/ui/ExtIcon';
 import {LockedButton} from '../app/ui/LockedButton';
+import {PhraseLine} from '../app/ui/PhraseLine';
 import {Sheet} from '../app/ui/Sheet';
+import type {PhraseRead} from '../shared/phraseRead';
 import type {Site} from './client';
 import {WINDOW_TEXT} from './strings';
 import {ARM_MS, useArmed} from './useArmed';
@@ -13,15 +15,19 @@ import {ARM_MS, useArmed} from './useArmed';
  */
 
 /** The top bar: ✕ is Reject (C4); its overline names the state, coloured by tier (`--fg-tertiary` → `--warning` → `--danger`). */
-export function WindowTop({overline, tone, onClose, disabled}: {overline: string; tone: 'neutral' | 'warning' | 'danger'; onClose: () => void; disabled: boolean}) {
+export function WindowTop({overline, tone, onClose, disabled, phrase}: {overline: string; tone: 'neutral' | 'warning' | 'danger'; onClose: () => void; disabled: boolean; phrase: PhraseRead}) {
   return (
-    <div className="top-bar">
-      <LockedButton className="icon-btn" label={WINDOW_TEXT.close} onPress={onClose} disabled={disabled}>
-        <ExtIcon name="close" size={22} />
-      </LockedButton>
-      <span className={tone === 'danger' ? 'title noc-overline noc-danger' : tone === 'warning' ? 'title noc-overline noc-warning' : 'title noc-overline app-dim'}>{overline}</span>
-      <span />
-    </div>
+    <>
+      <div className="top-bar">
+        <LockedButton className="icon-btn" label={WINDOW_TEXT.close} onPress={onClose} disabled={disabled}>
+          <ExtIcon name="close" size={22} />
+        </LockedButton>
+        <span className={tone === 'danger' ? 'title noc-overline noc-danger' : tone === 'warning' ? 'title noc-overline noc-warning' : 'title noc-overline app-dim'}>{overline}</span>
+        <span />
+      </div>
+      {/* B1e §1.2: the anti-phishing phrase under the header, on every state of every request screen. */}
+      <PhraseLine phrase={phrase} />
+    </>
   );
 }
 

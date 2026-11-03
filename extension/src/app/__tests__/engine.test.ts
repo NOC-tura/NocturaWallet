@@ -73,7 +73,7 @@ describe('the B1b-2b plan 2 client calls (E17) against the real background', () 
 describe('the message client against the real background', () => {
   it('state, settings, ping, lock', async () => {
     const {engine} = await wired();
-    expect(await engine.state()).toEqual({ok: true, data: {hasWallet: true, unlocked: true, scheme: 'slip10', accounts: ENV.accounts, selected: 0, passkey: false}});
+    expect(await engine.state()).toEqual({ok: true, data: {hasWallet: true, unlocked: true, scheme: 'slip10', accounts: ENV.accounts, selected: 0, passkey: false, phrase: {state: 'none'}}});
     expect(await engine.settings()).toEqual({ok: true, data: {autoLockMinutes: 5, reauthUsdCents: 10_000, selectedAccount: 0, accountOrder: null, phraseVerifiedAt: null, passwordChangedAt: null}});
     expect(await engine.ping()).toEqual({ok: true, data: null});
     expect(await engine.lock()).toEqual({ok: true, data: null});
@@ -191,8 +191,8 @@ describe('shape checks: a reply of the wrong shape is failed', () => {
   });
 
   it('B1b-2b: state requires a boolean passkey; settings requires the three new fields', async () => {
-    const good = {hasWallet: true, unlocked: true, scheme: 'slip10', accounts: [{index: 0, name: 'A', publicKey: acc}], selected: 0, passkey: true};
-    expect(await engineAnswering({ok: true, data: good}).state()).toEqual({ok: true, data: good});
+    const good = {hasWallet: true, unlocked: true, scheme: 'slip10', accounts: [{index: 0, name: 'A', publicKey: acc}], selected: 0, passkey: true, phrase: null};
+    expect(await engineAnswering({ok: true, data: good}).state()).toEqual({ok: true, data: {...good, phrase: {state: 'none'}}});
     const {passkey: _p, ...missing} = good;
     expect(await engineAnswering({ok: true, data: missing}).state()).toEqual({ok: false, error: 'failed'});
     expect(await engineAnswering({ok: true, data: {...good, passkey: 'yes'}}).state()).toEqual({ok: false, error: 'failed'});

@@ -36,6 +36,7 @@ export const SCREENS = [
   'v-confirm',
   'v-password',
   'v-passkey',
+  'v-anti-phishing',
   'v-import',
   'v-retry',
   'v-unlock',

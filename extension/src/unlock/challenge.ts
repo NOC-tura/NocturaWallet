@@ -35,6 +35,8 @@ export const F5_WORDS: readonly string[] = ['NOC', 'USDC', 'USDT', 'UNLIMITED', 
 const MAX_FLAGS = 50;
 const OUTGOING_KEYS = ['amount', 'decimals', 'mint', 'symbol'];
 const SETTINGS_KEYS = ['autoLockMinutes', 'kind', 'reauthUsdCents'];
+/** B1e §1.3: the background's redacted description of a phrase challenge (its value never leaves the background). */
+const PHRASE_KEYS = ['action', 'kind'];
 const own = (o: object, k: string): boolean => Object.prototype.hasOwnProperty.call(o, k);
 
 export interface FeeLine {
@@ -88,7 +90,12 @@ export interface OtherDescription {
   reasons: string[];
   cancelled: string;
 }
-export type Description = SendDescription | SettingsDescription | DappDescription | OtherDescription;
+/** B1e §1.3: a change or a removal of the anti-phishing phrase — what it is, never the new value. */
+export interface PhraseDescription {
+  kind: 'phrase';
+  action: 'change' | 'remove';
+}
+export type Description = SendDescription | SettingsDescription | DappDescription | OtherDescription | PhraseDescription;
 
 const sol = (lamports: string): string => `${formatAmount(BigInt(lamports), 9, {min: 0, max: 9})} SOL`;
 const dollars = (cents: number): string => formatAmount(BigInt(cents), 2, cents % 100 === 0 ? {min: 0, max: 0} : {min: 2, max: 2});
@@ -158,6 +165,11 @@ function describeSettings(a: Record<string, unknown>): SettingsDescription | nul
     lines.push(REAUTH.threshold(dollars(reauthUsdCents)));
   }
   return lines.length === 0 ? null : {kind: 'settings', lines};
+}
+
+function describePhrase(a: Record<string, unknown>): PhraseDescription | null {
+  if (!hasExactly(a, PHRASE_KEYS)) return null;
+  return a.action === 'change' || a.action === 'remove' ? {kind: 'phrase', action: a.action} : null;
 }
 
 /** One reason's line (#10's own table; `approval` is B1c-2's, `override` B1c-3's). */
@@ -240,6 +252,7 @@ export function describeChallenge(about: unknown): Description | null {
   if (a.kind === 'send') return describeSend(a);
   if (a.kind === 'settings') return describeSettings(a);
   if (a.kind === 'dapp') return describeDapp(a);
+  if (a.kind === 'phrase') return describePhrase(a);
   return describePresale(a);
 }
 

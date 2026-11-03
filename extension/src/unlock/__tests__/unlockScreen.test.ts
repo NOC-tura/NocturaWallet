@@ -40,6 +40,9 @@ async function shown(vault: unknown, o: {returnTo?: 'created' | 'imported' | nul
   const h = await harness({vault, holdSleep: o.holdSleep, credentials: o.credentials});
   const screen = mountUnlock(h.deps);
   await screen.show(o.returnTo ?? null);
+  // B1e §1.2: the reading phase's one vault.status (the anti-phishing phrase) is the show's — what a test then counts is
+  // what its own action sent (phraseScreens.test.ts pins the read itself).
+  h.sent.splice(0);
   return Object.assign(h, {screen});
 }
 const submit = (password: string) => {

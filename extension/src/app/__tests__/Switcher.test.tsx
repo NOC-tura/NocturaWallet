@@ -10,13 +10,14 @@ import {walletReader} from './harness';
 import {BALANCE_CACHE_KEY} from '../../background/balanceCache';
 import {RequestUnreachable} from '../../../../core/solana/rpc';
 import {WalletProvider, useWallet} from '../WalletContext';
+import {PHRASE_NONE} from '../../shared/phraseRead';
 import type {Account, Engine} from '../engine';
 import type {Platform} from '../platform';
 
 /** A fully self-contained Engine (no background involved): full control over the account list and every reply. */
 function stubEngine(accounts: Account[], selected: number): Engine {
   return {
-    state: async () => ({ok: true, data: {hasWallet: true, unlocked: true, scheme: 'slip10', accounts, selected, passkey: false}}),
+    state: async () => ({ok: true, data: {hasWallet: true, unlocked: true, scheme: 'slip10', accounts, selected, passkey: false, phrase: PHRASE_NONE}}),
     balances: async () => ({ok: true, data: {sol: 62_482_100_000n, noc: 4_200_000_000_000n, usdc: 740_210_000n, usdt: 0n}}),
     prices: async () => ({ok: true, data: {sol: 150, usdc: 1, usdt: 1, noc: 0.1501, at: 1}}),
     cached: async () => ({ok: true, data: {balances: null, prices: null}}),

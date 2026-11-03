@@ -101,7 +101,7 @@ describe('#10 for a purchase (§4.2)', () => {
     click(el('ra-confirm'));
     await h.until(() => h.went.length > 0);
     expect(h.went).toEqual([`wallet.html#/send/resume?account=${K0}`]);
-    expect(h.sent.map(m => m.type)).toEqual(['vault.challengeInfo', 'vault.status', 'vault.reauthOk']);
+    expect(h.sent.map(m => m.type)).toEqual(['vault.status', 'vault.challengeInfo', 'vault.status', 'vault.reauthOk']);
     expect(broadcasts).toEqual([]);
   });
 

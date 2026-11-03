@@ -1,4 +1,5 @@
 import {send as runtimeSend} from '../ui/send';
+import {phraseRead, type PhraseRead} from '../shared/phraseRead';
 
 /**
  * The approval window's one way to the background (spec §1.4, §2.3, §4.3): `dapp.pending` and `dapp.decide`, nothing
@@ -175,7 +176,8 @@ export interface RequestView {
   tx: TxDetail | null;
   mismatch: {granted: string} | null;
 }
-export type PendingView = {state: 'none'} | {state: 'locked' | 'deciding' | 'request'; request: RequestView; waiting: number; windowNotice: boolean};
+/** B1e §1.2, §1.4: `phrase` — the anti-phishing phrase, read from the answer's top-level field (`failed` when it cannot be). */
+export type PendingView = {state: 'none'} | {state: 'locked' | 'deciding' | 'request'; request: RequestView; waiting: number; windowNotice: boolean; phrase: PhraseRead};
 /** B1c-3: an approval's `overrides` — the typed word of each blocked (transaction, kind), `tx` the 0-based index in the batch. */
 export type Decision =
   | {decision: 'reject' | 'report' | 'block'}
@@ -492,7 +494,8 @@ export function pendingOf(x: unknown): PendingView | null {
   if (o.state !== 'locked' && o.state !== 'deciding' && o.state !== 'request') return null;
   const request = requestOf(o.request);
   if (request === undefined || !isInt(o.waiting) || !isBool(o.windowNotice)) return null;
-  return {state: o.state, request, waiting: o.waiting, windowNotice: o.windowNotice};
+  // B1e §1.2 (R9): a phrase field this window cannot read is `failed` — the request still shows, with R9's line.
+  return {state: o.state, request, waiting: o.waiting, windowNotice: o.windowNotice, phrase: phraseRead(o.phrase)};
 }
 
 export type Transport = (m: unknown) => Promise<unknown>;

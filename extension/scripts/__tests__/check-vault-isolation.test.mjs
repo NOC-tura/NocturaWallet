@@ -1840,10 +1840,10 @@ describe('plan 2: the real vault page reaches every screen it builds (positive c
     const named = ['welcome', 'seed', 'confirm', 'password', 'passkey', 'createRun', 'importScreen', 'importRun', 'restoreRun', 'retryRun', 'forgot', 'unlock', 'reauth', 'accounts', 'reveal',
       // B1b-2b plan 1.
       'changePassword', 'delete', 'passkeyManage',
-      // B1e-1: the damaged states and their removal.
-      'damaged', 'removeDamaged'];
+      // B1e-1: the damaged states and their removal; the anti-phishing step.
+      'damaged', 'removeDamaged', 'antiPhishing'];
     expect([...screens].sort()).toEqual(named.map(n => `src/unlock/screens/${n}.ts`).sort());
-    expect([...views].sort()).toEqual(['dom', 'words', 'hold', 'meter', 'cooldown', 'deleteConfirm', 'saveDamaged'].map(n => `src/unlock/view/${n}.ts`).sort());
+    expect([...views].sort()).toEqual(['dom', 'words', 'hold', 'meter', 'cooldown', 'deleteConfirm', 'saveDamaged', 'phraseLine'].map(n => `src/unlock/view/${n}.ts`).sort());
     expect(resolved).toEqual(
       expect.arrayContaining([
         ...screens,
@@ -1852,6 +1852,7 @@ describe('plan 2: the real vault page reaches every screen it builds (positive c
         'src/unlock/forgetFlow.ts',
         'src/unlock/damagedFlow.ts',
         'src/shared/storedDigest.ts',
+        'src/shared/phraseRead.ts',
         'src/unlock/challenge.ts',
         'src/unlock/stored.ts',
         'src/unlock/page.ts',

@@ -475,4 +475,7 @@ export const REAUTH = {
   dappNotUnlocked: "The wallet locked while you were confirming. The site's request was declined — ask the site to try again.",
   autoLock: (minutes: number): string => `Auto-lock → ${minutes} ${minutes === 1 ? 'minute' : 'minutes'}`,
   threshold: (dollars: string): string => `Re-authentication threshold → $${dollars}`,
+  /** B1e §1.3: what a phrase challenge is for — never the new value. */
+  phraseChange: 'Change the anti-phishing phrase',
+  phraseRemove: 'Remove the anti-phishing phrase',
 } as const;

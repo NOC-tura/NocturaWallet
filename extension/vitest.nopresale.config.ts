@@ -24,6 +24,10 @@ export const NOPRESALE_TESTS = [
   'src/background/geo/__tests__/gate.test.ts',
   'src/background/dapp/__tests__/presaleRegion.test.ts',
   'src/approve/__tests__/presaleRegion.test.tsx',
+  // B1e §1.6: the anti-phishing phrase on the six screens, in both builds.
+  'src/app/__tests__/phrase.test.tsx',
+  'src/approve/__tests__/phrase.test.tsx',
+  'src/unlock/__tests__/phraseScreens.test.ts',
   '../core/geo/**/*.test.ts',
 ];
 

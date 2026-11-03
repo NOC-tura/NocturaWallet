@@ -6,6 +6,7 @@ import type {Decision, RequestView} from './client';
 import {BlockSite, BudgetNotice, ConfirmButton, LookalikeBanner, OriginCard, RiskConfirm, Spinner, Waiting, WindowTop} from './ui';
 import {useArmed} from './useArmed';
 import {CONNECT_TEXT, WINDOW_TEXT} from './strings';
+import type {PhraseRead} from '../shared/phraseRead';
 
 /**
  * #47 dapp-connect (spec §3.1; index.html ix:17686-18261), every state the spec builds:
@@ -26,12 +27,14 @@ export function Connect({
   notice,
   busy,
   onDecide,
+  phrase,
 }: {
   request: RequestView;
   waiting: number;
   notice: boolean;
   busy: boolean;
   onDecide: (d: Decision) => Promise<unknown>;
+  phrase: PhraseRead;
 }) {
   const detail = request.connect;
   const kind = request.site.kind;
@@ -148,7 +151,7 @@ export function Connect({
 
   return (
     <div className="screen app-approve">
-      <WindowTop overline={overline} tone={kind === 'verified' ? 'neutral' : kind === 'unknown' ? 'warning' : 'danger'} onClose={reject} disabled={disabled} />
+      <WindowTop overline={overline} tone={kind === 'verified' ? 'neutral' : kind === 'unknown' ? 'warning' : 'danger'} onClose={reject} disabled={disabled} phrase={phrase} />
       <div className="scroll-area app-approve-scroll">
         {notice ? <BudgetNotice /> : null}
         <h1 className="noc-h1 app-approve-title">{title}</h1>
