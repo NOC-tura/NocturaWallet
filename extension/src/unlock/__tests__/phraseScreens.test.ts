@@ -27,6 +27,8 @@ const NEW_PW = 'a long enough password';
 const BLUE = 'Blue horse 42';
 const GREEN = 'Green fox 7';
 const MARKUP = '<b>x</b>';
+/** An RTL phrase (Hebrew, then digits): \u escapes. */
+const RTL = '\u05e9\u05dc\u05d5\u05dd \u05e2\u05d5\u05dc\u05dd 42';
 const HELD = HOLD_MS + TICK_MS;
 const POPUP = {id: 'abcdefghijklmnopabcdefghijklmnop', origin: 'chrome-extension://abcdefghijklmnopabcdefghijklmnop', url: 'chrome-extension://abcdefghijklmnopabcdefghijklmnop/popup.html'};
 
@@ -62,6 +64,12 @@ describe('#9: the phrase line, read before the password field shows (B1e §1.2)'
     expect(el('unl-phrase').querySelector('.vlt-sr')?.textContent).toBe(`${PHRASE_TEXT.label}: `);
     expect(el('unl-phrase').compareDocumentPosition(el('unl-password')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(unstyled('v-unlock')).toEqual([]);
+  });
+
+  // Task 5 fix round 1 (Minor 4): the phrase is its own bidi run — an RTL phrase keeps its order inside the LTR line.
+  it('an RTL phrase: its own isolated run (dir="auto"), as text — on #9 and #10 alike', async () => {
+    await unlockShown(RTL);
+    expect([line('unl'), el('unl-phrase-text').getAttribute('dir'), el('ra-phrase-text').getAttribute('dir')]).toEqual([{phrase: RTL, failed: false}, 'auto', 'auto']);
   });
 
   it('a phrase that looks like markup renders as its own text — no element is made of it', async () => {
@@ -179,6 +187,19 @@ describe('#10: the current phrase; a phrase challenge described without its valu
     await h.until(() => visible(el('ra-notice')));
     expect(text(el('ra-notice-line'))).toBe(REAUTH.settingsApplied);
     expect(await stored(h)).toBeNull();
+  });
+
+  // Task 5 fix round 1 (Minor 2): applied, the line reads again — it shows what is now stored, never the old phrase.
+  it.each([
+    ['change', GREEN, {phrase: GREEN, failed: false}],
+    ['remove', null, {phrase: null, failed: false}],
+  ] as const)('%s applied: the line shows what is now stored beside "Confirmed" — never the old phrase', async (_op, value, after) => {
+    const {h} = await reauthShown(BLUE, phraseChallenge(value));
+    expect(line('ra')).toEqual({phrase: BLUE, failed: false});
+    confirmWith(PW);
+    await h.until(() => visible(el('ra-notice')));
+    expect([text(el('ra-notice-line')), line('ra'), await stored(h)]).toEqual([REAUTH.settingsApplied, after, value]);
+    expect(text(el('v-reauth'))).not.toContain(BLUE);
   });
 
   it('a phrase proof the background did not say it applied is never "Confirmed" (fail closed); Cancel only closes the tab', async () => {

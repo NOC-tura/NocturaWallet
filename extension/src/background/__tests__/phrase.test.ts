@@ -376,6 +376,22 @@ describe('the phrase rides on three answers only (I2, R2)', () => {
     expect(await handleMessage(none.ext, {type: 'dapp.pending'}, approve, none.deps)).toEqual({ok: true, data: {state: 'none', phrase: null}});
   });
 
+  // Task 5 fix round 1 (Minor 1, a controller ruling — M3's principle): the accepted apply-vs-delete race can leave a phrase
+  // behind with no wallet. dapp.pending then answers null — the window draws no line — in every state; an envelope this
+  // background refuses is no wallet either.
+  it('no envelope stored, a phrase left behind (the accepted race): dapp.pending answers null in every state', async () => {
+    for (const vault of [undefined, {v: 1}]) {
+      const c = await setup({unlocked: false, phrase: BLUE});
+      if (vault === undefined) await c.ext.local.remove(VAULT_KEY);
+      else await c.ext.local.set(VAULT_KEY, vault);
+      // The race's state: the phrase is stored, and wallet.state says there is no wallet.
+      expect([await stored(c), await handleMessage(c.ext, {type: 'wallet.state'}, popup, c.deps)]).toMatchObject([BLUE, {ok: true, data: {hasWallet: false}}]);
+      expect(await handleMessage(c.ext, {type: 'dapp.pending'}, approve, c.deps)).toEqual({ok: true, data: {state: 'none', phrase: null}});
+      await openPage(c.ext, c.deps, 'https://dapp.test').ask({type: 'page.connect', id: 'c1', silent: false});
+      expect(await handleMessage(c.ext, {type: 'dapp.pending'}, approve, c.deps)).toMatchObject({ok: true, data: {state: 'locked', phrase: null}});
+    }
+  });
+
   it('no wallet: wallet.state and vault.status still answer the field (null)', async () => {
     const ext = fakeExt();
     const deps = fakeDeps();

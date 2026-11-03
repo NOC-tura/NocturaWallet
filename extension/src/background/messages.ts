@@ -7,7 +7,7 @@ import {armAutolock, lock} from './autolock';
 import {readSettings, settingsMutex, writeSettings} from './settings';
 import type {WalletDeps} from './deps';
 import {CHALLENGE_ID, challengeInfo, satisfyChallenge} from './reauthChallenges';
-import {VAULT_KEY, changePassword, forgetDamaged, forgetWallet, provenRevisionIsStored, removePasskey, storeEnvelope, vaultReading} from './accountsStore';
+import {VAULT_KEY, changePassword, envelopeShape, forgetDamaged, forgetWallet, provenRevisionIsStored, removePasskey, storeEnvelope, vaultReading} from './accountsStore';
 import {isOpen, readPending} from './pendingStore';
 import {startPoller} from './pending';
 import {WALLET_TYPES, applySettingsChallenge, handleWallet, isWalletType, type Result} from './walletApi';
@@ -341,9 +341,15 @@ export async function handleMessage(ext: Ext, msg: unknown, sender: Sender, deps
         return {ok: false, error: 'failed'};
       }
     }
-    case 'dapp.pending':
-      // B1e §1.4: the approval window's one read of the anti-phishing phrase, a top-level field in every state.
-      return deps === undefined ? {ok: false, error: 'unavailable'} : {ok: true, data: {...(await pending(ext, deps)), phrase: await readPhrase(ext)}};
+    case 'dapp.pending': {
+      // B1e §1.4: the approval window's one read of the anti-phishing phrase, a top-level field in every state. With no
+      // envelope stored it is null (Task 5 fix round 1, Minor 1, a controller ruling — M3's principle): the accepted
+      // apply-vs-delete race can leave a phrase behind with no wallet, and a no-wallet state draws no line.
+      if (deps === undefined) return {ok: false, error: 'unavailable'};
+      const view = await pending(ext, deps);
+      const phrase = envelopeShape(await ext.local.get(VAULT_KEY)) === null ? null : await readPhrase(ext);
+      return {ok: true, data: {...view, phrase}};
+    }
     case 'dapp.decide': {
       if (deps === undefined) return {ok: false, error: 'unavailable'};
       const d = decideRequestOf(msg as Record<string, unknown>);

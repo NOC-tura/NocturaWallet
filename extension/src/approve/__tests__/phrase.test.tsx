@@ -3,6 +3,7 @@ import {fireEvent, render, screen} from '@testing-library/react';
 import {UI_SHEETS, selectorsOf, unstyledClasses} from '../../__tests__/styled';
 import {PHRASE_TEXT} from '../../app/ui/PhraseLine';
 import {PHRASE_KEY} from '../../background/phraseKey';
+import {VAULT_KEY} from '../../background/accountsStore';
 import {handleMessage} from '../../background/messages';
 import {setSession} from '../../background/session';
 import {GRANTS_KEY} from '../../background/dapp/grants';
@@ -22,6 +23,8 @@ import {SECOND, acted, elapse, onHarnessClock, openWindow, settled} from './wind
 const SELECTORS = selectorsOf(UI_SHEETS);
 const BLUE = 'Blue horse 42';
 const MARKUP = '<b>x</b>';
+/** An RTL phrase (Hebrew, then digits): \u escapes. */
+const RTL = '\u05e9\u05dc\u05d5\u05dd \u05e2\u05d5\u05dc\u05dd 42';
 type Window = Awaited<ReturnType<typeof openWindow>>;
 onHarnessClock();
 
@@ -216,6 +219,33 @@ describe('#46, #47, the locked window, #48’s origin mismatch: the phrase (B1e 
     expect(document.querySelector('.app-approve-scroll')?.firstElementChild?.classList.contains('app-phrase-line')).toBe(true);
     expect(document.querySelectorAll('input, select, textarea, a')).toHaveLength(0);
     expect(unstyledClasses(document.querySelector('.app-approve') as HTMLElement, SELECTORS)).toEqual([]);
+  });
+
+  // Task 5 fix round 1 (Minor 1, a controller ruling — M3's principle): the reviewer's probe — the accepted
+  // apply-vs-delete race left the phrase with no wallet stored, and a site asks to connect. The locked window opens with
+  // no line; the row above is the control (the same window, the wallet stored, draws it).
+  it('a phrase left behind with no wallet stored (the accepted race): the locked window draws no line', async () => {
+    const w = await opened(BLUE, {unlocked: false});
+    await w.ext.local.remove(VAULT_KEY);
+    expect(await w.ext.local.get(PHRASE_KEY)).toBe(BLUE);
+    await w.connect('https://dapp.test');
+    w.show();
+    await settled(() => screen.getByText('Noctura is locked'));
+    expect(lines()).toEqual([]);
+  });
+
+  // Task 5 fix round 1 (Minor 4): the phrase is its own bidi run — an RTL phrase keeps its order inside the LTR line.
+  it.each([
+    ['a request window (#47)', false, 'Connection request'],
+    ['the locked window', true, 'Noctura is locked'],
+  ] as const)('an RTL phrase in %s: its own isolated run (dir="auto"), as text', async (_where, locked, shows) => {
+    const w = await opened(RTL, {unlocked: !locked});
+    await w.connect('https://jup.ag');
+    w.show();
+    await settled(() => screen.getByText(shows));
+    expect(lines()).toEqual(shield(RTL));
+    const copy = document.querySelector('.app-phrase-line .copy') as HTMLElement;
+    expect([copy.getAttribute('dir'), copy.textContent]).toEqual(['auto', RTL]);
   });
 
   it('a phrase that looks like markup renders as its own text — no element is made of it', async () => {

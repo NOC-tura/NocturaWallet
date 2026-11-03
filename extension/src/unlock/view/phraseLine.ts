@@ -1,4 +1,4 @@
-import {PHRASE_FAILED, phraseRead, type PhraseRead} from '../../shared/phraseRead';
+import {phraseFailed, phraseRead, type PhraseRead} from '../../shared/phraseRead';
 import type {Send} from '../types';
 import {byId, setText, shown} from './dom';
 
@@ -9,9 +9,9 @@ import {byId, setText, shown} from './dom';
 export async function readPhraseLine(send: Send): Promise<PhraseRead> {
   try {
     const r = await send({type: 'vault.status'});
-    return r.ok && typeof r.data === 'object' && r.data !== null ? phraseRead((r.data as {phrase?: unknown}).phrase) : PHRASE_FAILED;
+    return r.ok && typeof r.data === 'object' && r.data !== null ? phraseRead((r.data as {phrase?: unknown}).phrase) : phraseFailed();
   } catch {
-    return PHRASE_FAILED;
+    return phraseFailed();
   }
 }
 

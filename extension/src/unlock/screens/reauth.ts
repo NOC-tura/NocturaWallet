@@ -299,6 +299,14 @@ export function mountReauth(deps: PageDeps): ReauthScreen {
   };
   const open = () => view === 'entry' && stopCooldown === null;
   const flow = () => ({readEnvelope: deps.store.readEnvelope, send: deps.send});
+  /**
+   * Task 5 fix round 1 (Minor 2): a phrase change or removal the background applied changes what the line shows — it
+   * reads again before the end state, so the line is the CURRENT phrase (§1.3): the new one, or none after a removal.
+   */
+  const proven = async (out: ReauthPageOutcome): Promise<void> => {
+    if (described?.kind === 'phrase' && out === 'applied') showPhraseLine('ra', await readPhraseLine(deps.send));
+    settle(out);
+  };
 
   const proveWithPassword = () => {
     if (!open() || field.value === '') return;
@@ -312,7 +320,7 @@ export function mountReauth(deps: PageDeps): ReauthScreen {
         typed = null;
         return runReauth(flow(), challengeId, {password, kdf: deps.kdf});
       }, cooldown);
-      settle(out);
+      await proven(out);
     });
   };
   const proveWithPasskey = () => {
@@ -331,7 +339,7 @@ export function mountReauth(deps: PageDeps): ReauthScreen {
       const proof = {prfOutput};
       helper(REAUTH.checking, false);
       // runReauth zeroes the PRF output on every path (reauthFlow.ts).
-      settle(await backoff.run(() => runReauth(flow(), challengeId, proof), cooldown));
+      await proven(await backoff.run(() => runReauth(flow(), challengeId, proof), cooldown));
     });
   };
   /** [Cancel send], and the X while there is something to cancel. */

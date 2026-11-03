@@ -19,6 +19,8 @@ const SELECTORS = selectorsOf(UI_SHEETS);
 const BLUE = 'Blue horse 42';
 const GREEN = 'Green fox 7';
 const MARKUP = '<b>x</b>';
+/** An RTL phrase (Hebrew, then digits): \u escapes. */
+const RTL = '\u05e9\u05dc\u05d5\u05dd \u05e2\u05d5\u05dc\u05dd 42';
 const withPhrase =
   (phrase: unknown): NonNullable<WalletOptions['before']> =>
   async ext => {
@@ -50,6 +52,15 @@ describe('the locked screen: the phrase under the header (B1e §1.2)', () => {
     expect(lines()).toEqual([{tone: 'shield', text: `${PHRASE_TEXT.label}: ${MARKUP}`}]);
     expect(document.querySelector('.app-phrase-line .copy')?.childElementCount).toBe(0);
     expect(document.querySelector('.app-phrase-line b')).toBeNull();
+  });
+
+  // Task 5 fix round 1 (Minor 4): the phrase is its own bidi run — an RTL phrase keeps its order inside the LTR line.
+  it('an RTL phrase: its own isolated run (dir="auto"), as text', async () => {
+    await renderApp({unlocked: false, before: withPhrase(RTL)});
+    await screen.findByText('Welcome back');
+    expect(lines()).toEqual([{tone: 'shield', text: `${PHRASE_TEXT.label}: ${RTL}`}]);
+    const copy = document.querySelector('.app-phrase-line .copy') as HTMLElement;
+    expect([copy.getAttribute('dir'), copy.textContent]).toEqual(['auto', RTL]);
   });
 
   it.each([

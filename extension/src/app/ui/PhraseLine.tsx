@@ -10,8 +10,9 @@ export const PHRASE_TEXT = {
 /**
  * B1e §1.2 (undrawn, §9): the anti-phishing phrase under a screen's header — the design's `.banner.shield` with its
  * shield icon and the phrase as a React text child (never markup); nothing when none is set; R9's warning line when the
- * read failed. Used by the popup's locked screen and every approval window (#46, #47, #48, the locked window, #48's
- * origin mismatch).
+ * read failed. The phrase is its own bidi run (`dir="auto"`, isolated): an RTL phrase keeps its own order, whatever the
+ * line's direction (Task 5 fix round 1, Minor 4). Used by the popup's locked screen and every approval window (#46, #47,
+ * #48, the locked window, #48's origin mismatch).
  */
 export function PhraseLine({phrase}: {phrase: PhraseRead}) {
   if (phrase.state === 'none') return null;
@@ -28,7 +29,7 @@ export function PhraseLine({phrase}: {phrase: PhraseRead}) {
       <ExtIcon name="shield-lock" size={16} />
       <p className="noc-body-sm">
         <span className="app-sr">{PHRASE_TEXT.label}: </span>
-        <span className="copy">{phrase.phrase}</span>
+        <span className="copy" dir="auto">{phrase.phrase}</span>
       </p>
     </div>
   );

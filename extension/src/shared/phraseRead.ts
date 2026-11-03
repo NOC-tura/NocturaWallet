@@ -9,11 +9,20 @@ import {cleanPhrase} from './envelopeRules';
  */
 export type PhraseRead = {state: 'none'} | {state: 'set'; phrase: string} | {state: 'failed'};
 
-export const PHRASE_NONE: PhraseRead = {state: 'none'};
-export const PHRASE_FAILED: PhraseRead = {state: 'failed'};
+/** For comparisons only, and frozen: a read never hands these out (Task 5 fix round 1, Minor 3 — readers return fresh objects). */
+export const PHRASE_NONE: PhraseRead = Object.freeze({state: 'none'});
+export const PHRASE_FAILED: PhraseRead = Object.freeze({state: 'failed'});
 
-/** The field as an answer carries it: null is none; a string that is exactly a clean phrase is the phrase; anything else failed. */
+/** A read that failed, as a fresh object (what a screen makes of no answer, a refusal or an unreadable field). */
+export function phraseFailed(): PhraseRead {
+  return {state: 'failed'};
+}
+
+/**
+ * The field as an answer carries it: null is none; a string that is exactly a clean phrase is the phrase; anything else
+ * failed. Every call returns a fresh object.
+ */
 export function phraseRead(field: unknown): PhraseRead {
-  if (field === null) return PHRASE_NONE;
-  return typeof field === 'string' && cleanPhrase(field) === field ? {state: 'set', phrase: field} : PHRASE_FAILED;
+  if (field === null) return {state: 'none'};
+  return typeof field === 'string' && cleanPhrase(field) === field ? {state: 'set', phrase: field} : phraseFailed();
 }
