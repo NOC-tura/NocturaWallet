@@ -801,18 +801,32 @@ describe('#37 without holding: the checkbox (B1e §3)', () => {
     expect(w.platform.opened).toEqual([]);
   });
 
-  it('a send open: checked, the button stays disabled — with `disabled` lifted a click opens nothing', async () => {
+  // Task 3 fix round 1 (M2; rewritten — the box can no longer be checked while a send is open): the box is disabled with
+  // the CTA, no click or key checks it, nothing opens; the send settled, the box checks again (the negative control).
+  it('a send open: the checkbox is disabled with the CTA — a click or Space leaves it unchecked, nothing opens; the send settled, it checks again', async () => {
     const open = pendingRecord({account: ACCOUNT.publicKey, signature: '5'.repeat(88), intent: {token: 'SOL', recipient: RECIPIENT, amount: '1'}});
     const w = await shown({before: async ext => ext.local.set(PENDING_KEY, [open])});
     await sendOpenBanner();
     typeIn('DELETE');
+    expect([box().disabled, holdCta().disabled]).toEqual([true, true]);
     tick();
+    fireEvent.keyDown(box(), {key: ' '});
+    fireEvent.keyUp(box(), {key: ' '});
+    expect(box().checked).toBe(false);
     expect(holdCta().disabled).toBe(true);
+    expect(holdCta().textContent).toBe('Hold to delete');
     holdCta().disabled = false;
     fireEvent.click(holdCta());
     fireEvent.keyDown(holdCta(), {key: 'Enter'});
     expect(w.platform.opened).toEqual([]);
-  });
+    // The send settled: the box is enabled and checks again, the CTA one activation.
+    await w.ext.local.set(PENDING_KEY, [{...open, state: 'confirmed'}]);
+    await waitFor(() => expect(box().disabled).toBe(false), {timeout: 4_000});
+    tick();
+    expect(box().checked).toBe(true);
+    expect(holdCta().disabled).toBe(false);
+    expect(screen.getByRole('button', {name: 'Delete wallet'})).toBe(holdCta());
+  }, 10_000);
 
   // Task 3 fix round 1 (M1): as the vault page — the box checked during a hold ends that hold; nothing completes it.
   it('checked mid-hold: the hold ends there (no fill, no count, Cancel back) and its second completes nothing; one click then opens the proof', async () => {
@@ -831,18 +845,5 @@ describe('#37 without holding: the checkbox (B1e §3)', () => {
     fireEvent.pointerUp(holdCta(), {button: 0});
     fireEvent.click(holdCta());
     expect(w.platform.opened).toEqual(['unlock.html?mode=delete']);
-  });
-
-  // Task 3 fix round 1 (M2): a send open disables the box as it disables the CTA.
-  it('a send open: the checkbox is disabled with the CTA, and a click leaves it unchecked', async () => {
-    const open = pendingRecord({account: ACCOUNT.publicKey, signature: '5'.repeat(88), intent: {token: 'SOL', recipient: RECIPIENT, amount: '1'}});
-    const w = await shown({before: async ext => ext.local.set(PENDING_KEY, [open])});
-    await sendOpenBanner();
-    typeIn('DELETE');
-    expect([box().disabled, holdCta().disabled]).toEqual([true, true]);
-    tick();
-    expect(box().checked).toBe(false);
-    expect(holdCta().textContent).toBe('Hold to delete');
-    expect(w.platform.opened).toEqual([]);
   });
 });
