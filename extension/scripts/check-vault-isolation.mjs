@@ -100,9 +100,10 @@ const withoutPortListeners = text => PORT_LISTENER_SPELLINGS.reduce((t, re) => t
 // B1c (spec §2.1, review 1 L4): the dApp grants, blocked sites and limits — a page writing a grant would connect a site.
 // B1c-2: the transactions sites had signed here (v1_dapp_txs) — a page writing one would badge a row as a dApp's.
 // B1d-2: the presale records (v1_presale_records) — a page writing one would hide #27's Q34 or POST a forged record.
+// B1e §1.4 (R2): the anti-phishing phrase (v1_phishing_phrase) — a page writing it would change it around #10's proof.
 export const BACKGROUND_OWNED_KEYS = [
   'v1_settings', 'v1_known_recipients', 'v1_pending', 'v1_forbidden_until', 'v1_balance_cache', 'v1_price_cache', 'v1_contacts',
-  'v1_dapp_grants', 'v1_dapp_blocked', 'v1_dapp_limits', 'v1_dapp_txs', 'v1_presale_records',
+  'v1_dapp_grants', 'v1_dapp_blocked', 'v1_dapp_limits', 'v1_dapp_txs', 'v1_presale_records', 'v1_phishing_phrase',
 ];
 const BACKGROUND_OWNED_ALLOWED = /^src\/background\//;
 // The vault page renders only fixed strings and the user's own words, as text (B1b-2a §1.2 item 3):
@@ -967,6 +968,25 @@ export function bundleViolations(distApp) {
   return [...out, ...problems];
 }
 
+// B1e §1.6 (I2): the two content scripts run in every web page; as BUILT, neither may name extension storage — the
+// spellings of TOUCHES_STORAGE (`.storage`, `?.storage`, a quoted bracket, a destructuring key) in the minified file.
+// The source rule above refuses them in src/relay and src/provider already; this one holds if that rule is ever
+// loosened or the bundler brings storage in from elsewhere. localStorage / sessionStorage are the page's, not ours.
+export const CONTENT_SCRIPTS = ['relay.js', 'provider.js'];
+export function contentStorageViolations(distApp) {
+  const out = [];
+  for (const name of CONTENT_SCRIPTS) {
+    const path = join(distApp, name);
+    if (!existsSync(path)) {
+      out.push(`INCONCLUSIVE: ${name} is missing — the content-script storage rule would pass trivially`);
+      continue;
+    }
+    const hit = TOUCHES_STORAGE.exec(readFileSync(path, 'utf8'));
+    if (hit) out.push(`${name} touches extension storage (${hit[0].trim()}) — a content script reaches none`);
+  }
+  return out;
+}
+
 // ── What the bundler put in the vault page (fix round 2, the authoritative backstop) ──────────────
 // vite.config.ts's chunkModules plugin writes dist/app.modules.json: for every built chunk (the KDF
 // worker's too), the source modules it carries, package-relative. However a module got in — a comment
@@ -1237,6 +1257,7 @@ if (isMain(import.meta.url)) {
   const problems = [...sourceViolations(files), ...htmlViolations(pages), ...vaultPageViolations(readRel, rel => readRel(rel) !== undefined)];
   for (const d of ['app', 'chrome', 'firefox']) {
     for (const p of bundleViolations(join(ROOT, DIST, d))) problems.push(`${DIST}/${d}: ${p}`);
+    for (const p of contentStorageViolations(join(ROOT, DIST, d))) problems.push(`${DIST}/${d}: ${p}`);
   }
   // dist/chrome and dist/firefox are copies of dist/app (scripts/build.mjs): one module map covers all three.
   const mapPath = join(ROOT, DIST, 'app.modules.json');
@@ -1262,5 +1283,5 @@ if (isMain(import.meta.url)) {
     for (const p of problems) console.error(p);
     process.exit(1);
   }
-  console.log(`vault isolation ok (${DIST}): sources, built popup/background and both manifests carry no path to the vault; no chunk outside the vault page carries src/vault, src/unlock or core/keys, and no module bundled outside it reads WebAuthn (module map); no page reaches storage.session; every module bundled into the vault page is vault-page code or one of its five packages, and its stylesheets are the three named sheets, importing nothing and loading only the Geist faces; its HTML carries no inline CSS and links only its built sheets, and its code builds no CSS at run time`);
+  console.log(`vault isolation ok (${DIST}): sources, built popup/background and both manifests carry no path to the vault; no chunk outside the vault page carries src/vault, src/unlock or core/keys, and no module bundled outside it reads WebAuthn (module map); no page reaches storage.session, and neither built content script names extension storage; every module bundled into the vault page is vault-page code or one of its five packages, and its stylesheets are the three named sheets, importing nothing and loading only the Geist faces; its HTML carries no inline CSS and links only its built sheets, and its code builds no CSS at run time`);
 }

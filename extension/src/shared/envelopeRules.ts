@@ -50,6 +50,44 @@ export function cleanName(x: unknown): string | null {
   return name;
 }
 
+/** B1e §1.5: the anti-phishing phrase's length, in UTF-16 code units (as cleanName counts). */
+export const PHRASE_LENGTH = {min: 3, max: 32} as const;
+/**
+ * B1e §1.5 (E21): the most combining marks one character may carry in a row, counted on the canonical decomposition
+ * (NFD), so a precomposed letter's own marks count. Thai (a vowel and a tone mark) needs two, pointed Hebrew (a dagesh,
+ * a vowel and a shin dot), Tibetan stacks and polytonic Greek three; a fourth mark only builds a tower that draws above
+ * or below the line — over the header the line sits under.
+ */
+export const PHRASE_MAX_MARKS = 3;
+// B1e §1.5 ("printable only"): on top of FORBIDDEN_IN_NAME, a phrase may not hold a lone surrogate (Cs), a private-use
+// character (Co) or an unassigned code point (Cn) — none of them prints as the text the user typed.
+const NOT_PRINTABLE = /[\p{Cs}\p{Co}\p{Cn}]/u;
+// B1e §1.5 (E21): nor a character that renders blank — every Default_Ignorable code point (the Hangul fillers U+115F,
+// U+1160, U+3164, U+FFA0, the Khmer inherent vowels U+17B4, U+17B5, the Mongolian and supplementary variation selectors
+// among them) and the Braille blank U+2800 — nor the two that stand in for a character that could not be shown (U+FFFC,
+// U+FFFD): a phishing page draws an empty or a broken line as easily as it draws none.
+const BLANK = /[\p{Default_Ignorable_Code_Point}\u2800\ufffc\ufffd]/u;
+const STACKED = new RegExp(`\\p{M}{${PHRASE_MAX_MARKS + 1}}`, 'u');
+// B1e §1.5 (E21): at least one character that draws itself — a letter, number, symbol or punctuation (never a mark).
+const VISIBLE = /[\p{L}\p{N}\p{S}\p{P}]/u;
+
+/**
+ * B1e §1.5: the anti-phishing phrase as stored — NFC-normalised, then trimmed; PHRASE_LENGTH code units; no character of
+ * FORBIDDEN_IN_NAME (so a bidi override cannot restyle the line, and no invisible character makes two phrases look
+ * alike), none that does not print or renders blank, no more than PHRASE_MAX_MARKS combining marks in a row (counted
+ * after NFD), and at least one visible character (E21). `null`: no phrase (null, or a string empty after trimming —
+ * "remove"). `undefined`: refused.
+ */
+export function cleanPhrase(x: unknown): string | null | undefined {
+  if (x === null) return null;
+  if (typeof x !== 'string') return undefined;
+  const phrase = x.normalize('NFC').trim();
+  if (phrase.length === 0) return null;
+  if (phrase.length < PHRASE_LENGTH.min || phrase.length > PHRASE_LENGTH.max || FORBIDDEN_IN_NAME.test(phrase) || NOT_PRINTABLE.test(phrase)) return undefined;
+  if (BLANK.test(phrase) || STACKED.test(phrase.normalize('NFD')) || !VISIBLE.test(phrase)) return undefined;
+  return phrase;
+}
+
 /**
  * The POLICY rules an envelope's account list must obey, on top of being well-shaped (an index is a
  * safe non-negative integer, a publicKey is a string — each side's own job: the vault's checkEnvelope,

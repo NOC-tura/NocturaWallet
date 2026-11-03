@@ -1,7 +1,7 @@
 import {detectImport, finishOnboarding, indexesFor, type Candidate, type ProbeResult} from '../onboarding';
 import type {PageDeps} from '../page';
 import {IMPORT, PASSWORD} from '../strings';
-import {existsLines, type Storing} from './createRun';
+import {existsLines, type PhraseStep, type Storing} from './createRun';
 import {mountImport, type Scheme} from './importScreen';
 import type {PasswordScreen} from './password';
 
@@ -28,7 +28,7 @@ export interface ImportRun {
  * another try. `storing` is the page's store tracker (createRun.ts): #1, restored while this store runs,
  * offers nothing until it lands.
  */
-export function createImportRun(deps: PageDeps, o: {password: PasswordScreen; back(): void; storing?: Storing}): ImportRun {
+export function createImportRun(deps: PageDeps, o: {password: PasswordScreen; back(): void; storing?: Storing; phraseStep?: PhraseStep}): ImportRun {
   const pw = o.password;
   const storing: Storing = o.storing ?? (work => work());
   let phrase: string | null = null;
@@ -58,8 +58,14 @@ export function createImportRun(deps: PageDeps, o: {password: PasswordScreen; ba
         if (out === 'created' || out === 'created-locked' || out === 'exists') phrase = null;
         // The page was left (pagehide) while this ran: the run was dropped; a restored page shows #1.
         if (started !== generation) return null;
+        const toImported = () => deps.go('wallet.html#/imported');
+        // B1e §1.3: stored and its keys in the session — the phrase step, then #40; created-locked goes straight on.
+        if (out === 'created' && o.phraseStep !== undefined) {
+          o.phraseStep({path: 'import', then: toImported});
+          return null;
+        }
         if (out === 'created' || out === 'created-locked') {
-          deps.go('wallet.html#/imported');
+          toImported();
           return null;
         }
         if (out === 'exists') return existsLines(deps);

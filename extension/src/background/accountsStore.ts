@@ -14,6 +14,7 @@ import {LIMITS_KEY} from './dapp/limits';
 import {DAPP_TXS_KEY} from './dapp/dappTxs';
 import {wipeDappStores} from './dapp/store';
 import {PRESALE_RECORDS_KEY, wipePresaleRecords} from './presaleRecordsKey';
+import {PHRASE_KEY} from './phraseKey';
 import {ENVELOPE_BYTES, ENVELOPE_KDF_MAX, ENVELOPE_KDF_MIN, MAX_ACCOUNTS, accountsPolicyOk, b64Length, cleanName} from '../shared/envelopeRules';
 import {envelopeRevision} from '../shared/envelopeRevision';
 import {unreadableV1} from '../shared/unreadable';
@@ -49,9 +50,11 @@ const serial = createMutex();
  * delete (vault.forgetWallet without a replacement, E5 step 7 / B1b-2b E11) and by a first write. The one list, with
  * the address book (B1b-2b E17, D20: wiped on delete, kept on restore — a replacement does not come here), and B1c's
  * dApp grants, blocked sites and rejection limits (spec C11, C14: wiped by a delete, kept by a restore), and B1d §2.4's
- * presale records (both builds). `v1_forbidden_until` is not the wallet's (the coordinator's verdict) and is kept.
+ * presale records (both builds), and B1e §1.4's anti-phishing phrase (a plain remove: a settings.phrase write racing a
+ * delete can leave it behind, and the next first write removes it — the same accepted race as v1_settings).
+ * `v1_forbidden_until` is not the wallet's (the coordinator's verdict) and is kept.
  */
-export const WALLET_DATA_KEYS: readonly string[] = [KNOWN_RECIPIENTS_KEY, SETTINGS_KEY, CONTACTS_KEY, GRANTS_KEY, BLOCKED_KEY, LIMITS_KEY, DAPP_TXS_KEY, PRESALE_RECORDS_KEY];
+export const WALLET_DATA_KEYS: readonly string[] = [KNOWN_RECIPIENTS_KEY, SETTINGS_KEY, CONTACTS_KEY, GRANTS_KEY, BLOCKED_KEY, LIMITS_KEY, DAPP_TXS_KEY, PRESALE_RECORDS_KEY, PHRASE_KEY];
 /** The keys among WALLET_DATA_KEYS removed only behind their own writers' lock (fix round 1, IMPORTANT 1) — never by a
  * plain ext.local.remove, which a write-back in flight could undo: the dApp keys (wipeDappStores; B1c-2: v1_dapp_txs
  * too) and the presale records, whose retry writes on its own schedule (wipePresaleRecords). */

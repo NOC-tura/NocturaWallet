@@ -147,10 +147,10 @@ describe('message partitions', () => {
 
   it('vault.status reports locked/unlocked without keys', async () => {
     const ext = vaultExt();
-    expect(await handleMessage(ext, {type: 'vault.status'}, popup)).toEqual({ok: true, data: {unlocked: false, accounts: []}});
+    expect(await handleMessage(ext, {type: 'vault.status'}, popup)).toEqual({ok: true, data: {unlocked: false, accounts: [], phrase: null}});
     await handleMessage(ext, {type: 'vault.setKeys', accounts: ACC}, unlockPage);
     const r = await handleMessage(ext, {type: 'vault.status'}, popup);
-    expect(r).toEqual({ok: true, data: {unlocked: true, accounts: [{index: 0, publicKey: ACC[0]?.publicKey}]}});
+    expect(r).toEqual({ok: true, data: {unlocked: true, accounts: [{index: 0, publicKey: ACC[0]?.publicKey}], phrase: null}});
     expect(JSON.stringify(r)).not.toContain('secretKey');
   });
 
@@ -212,6 +212,8 @@ describe('message partitions (B1b-1 types)', () => {
     'vault.setKeys', 'vault.lock', 'vault.status', 'vault.reauthOk', 'vault.storeEnvelope', 'vault.challengeInfo', 'vault.forgetWallet', 'vault.changePassword', 'vault.removePasskey', 'vault.phraseVerified', 'vault.forgetDamaged', 'activity.ping',
     'wallet.state', 'wallet.balances', 'wallet.probeBalances', 'wallet.prepareSend', 'wallet.send', 'wallet.resend',
     'wallet.pending', 'wallet.preparedFor', 'wallet.history', 'wallet.prices', 'wallet.cached', 'wallet.recipientInfo', 'wallet.discardPrepared', 'accounts.rename', 'accounts.select', 'accounts.order', 'settings.get', 'settings.set',
+    // B1e §1.3: the anti-phishing phrase's one write.
+    'settings.phrase',
     'contacts.list', 'contacts.set', 'contacts.remove',
     // B1c §1.4: the approval window's and #49's; B1c-2: the popup's offer of #10 for a site's transaction (D11).
     'dapp.pending', 'dapp.decide', 'dapp.grants.list', 'dapp.grants.revoke', 'dapp.grants.undo', 'dapp.grants.revokeAll', 'dapp.blocked.list', 'dapp.blocked.remove', 'dapp.reauth',

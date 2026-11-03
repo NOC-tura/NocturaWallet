@@ -17,6 +17,7 @@ import {runUnlockHook} from './dapp/queue';
 import {dropAccountGrants, listBlocked, listGrants, revokeAll, revokeGrant, undoRevoke, unblock} from './dapp/grantsApi';
 import {reauthWaiting} from './dapp/signTx';
 import {PRESALE_MESSAGE_TYPES} from './presale/api';
+import {applyPhraseChallenge, readPhrase} from './phrase';
 import type {PresaleHandler} from './presaleHost';
 
 /** What the browser reports about a message's origin (runtime.MessageSender). */
@@ -223,7 +224,8 @@ export async function handleMessage(ext: Ext, msg: unknown, sender: Sender, deps
       return {ok: true};
     case 'vault.status': {
       const s = await getSession(ext);
-      return {ok: true, data: {unlocked: s !== null, accounts: (s ?? []).map(a => ({index: a.index, publicKey: a.publicKey}))}};
+      // B1e §1.4: the anti-phishing phrase for the vault page's #9 and #10, locked or unlocked.
+      return {ok: true, data: {unlocked: s !== null, accounts: (s ?? []).map(a => ({index: a.index, publicKey: a.publicKey})), phrase: await readPhrase(ext)}};
     }
     case 'activity.ping':
       if ((await getSession(ext)) !== null) await armAutolock(ext);
@@ -237,6 +239,8 @@ export async function handleMessage(ext: Ext, msg: unknown, sender: Sender, deps
       // message carries only the id. A send challenge (or an unknown one) is satisfied as before (D38).
       const about = await challengeInfo(ext, deps.now(), challengeId);
       if (about?.kind === 'settings') return applySettingsChallenge(ext, deps, challengeId);
+      // B1e §1.3: so is a phrase challenge, from the value it bound.
+      if (about?.kind === 'phrase') return applyPhraseChallenge(ext, deps, challengeId);
       return (await satisfyChallenge(ext, deps.now(), challengeId)) ? {ok: true} : {ok: false, error: 'unknown-challenge'};
     }
     case 'vault.challengeInfo': {
@@ -246,7 +250,9 @@ export async function handleMessage(ext: Ext, msg: unknown, sender: Sender, deps
       if ((await getSession(ext)) === null) return {ok: false, error: 'locked'};
       // The description comes only from here, never from the vault page's URL (E3).
       const about = await challengeInfo(ext, deps.now(), challengeId);
-      return about === null ? {ok: false, error: 'unknown-challenge'} : {ok: true, data: about};
+      if (about === null) return {ok: false, error: 'unknown-challenge'};
+      // B1e §1.3: #10 says "Change …" or "Remove the anti-phishing phrase" — never the value, so the value never comes.
+      return {ok: true, data: about.kind === 'phrase' ? {kind: 'phrase', action: about.phrase === null ? 'remove' : 'change'} : about};
     }
     case 'vault.forgetWallet': {
       if (deps === undefined) return {ok: false, error: 'unavailable'};
@@ -336,7 +342,8 @@ export async function handleMessage(ext: Ext, msg: unknown, sender: Sender, deps
       }
     }
     case 'dapp.pending':
-      return deps === undefined ? {ok: false, error: 'unavailable'} : {ok: true, data: await pending(ext, deps)};
+      // B1e §1.4: the approval window's one read of the anti-phishing phrase, a top-level field in every state.
+      return deps === undefined ? {ok: false, error: 'unavailable'} : {ok: true, data: {...(await pending(ext, deps)), phrase: await readPhrase(ext)}};
     case 'dapp.decide': {
       if (deps === undefined) return {ok: false, error: 'unavailable'};
       const d = decideRequestOf(msg as Record<string, unknown>);

@@ -4,7 +4,7 @@ import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {
   ENTRIES,
-  bundleViolations, htmlViolations, listSourceFiles, manifestViolations, nonVaultModuleViolations, bundledWebAuthnViolations, sourceViolations, vaultPageModuleViolations, vaultPageViolations, webAuthnViolations,
+  bundleViolations, contentStorageViolations, htmlViolations, listSourceFiles, manifestViolations, nonVaultModuleViolations, bundledWebAuthnViolations, sourceViolations, vaultPageModuleViolations, vaultPageViolations, webAuthnViolations,
   BIP39_MARKER, DERIVATION_MARKER, KDF_MARKER, PASSKEY_MARKER, REACT_MARKER, VAULT_MARKER, WEBAUTHN_MARKER, WORDLIST_MARKER,
 } from '../check-vault-isolation.mjs';
 import {render} from '../../manifest/source.mjs';
@@ -405,6 +405,15 @@ describe('vault isolation (storage, and what may import src/ext.ts)', () => {
     expect(sourceViolations([f('src/background/presaleRecordsKey.ts', "export const PRESALE_RECORDS_KEY = 'v1_presale_records';")])).toEqual([]);
     expect(sourceViolations([f('src/app/presale/client.ts', "const k = 'v1_presale_records';")])).toEqual([OWNED('src/app/presale/client.ts', 'v1_presale_records')]);
     expect(sourceViolations([f('src/unlock/presale.ts', '// v1_presale_records')])).toEqual([OWNED('src/unlock/presale.ts', 'v1_presale_records')]);
+  });
+  // B1e §1.4 (R2): the anti-phishing phrase is the background's — a page naming v1_phishing_phrase could write it around
+  // #10's proof.
+  it('lets only the background name the anti-phishing phrase key (v1_phishing_phrase)', () => {
+    const OWNED = (path, key) => `${path}: names ${key}, which only the background may write`;
+    expect(sourceViolations([f('src/background/phraseKey.ts', "export const PHRASE_KEY = 'v1_phishing_phrase';")])).toEqual([]);
+    expect(sourceViolations([f('src/unlock/screens/unlock.ts', "const k = 'v1_phishing_phrase';")])).toEqual([OWNED('src/unlock/screens/unlock.ts', 'v1_phishing_phrase')]);
+    expect(sourceViolations([f('src/app/screens/Security.tsx', '// v1_phishing_phrase')])).toEqual([OWNED('src/app/screens/Security.tsx', 'v1_phishing_phrase')]);
+    expect(sourceViolations([f('src/approve/Sign.tsx', "const k = 'v1_phishing_phrase';")])).toEqual([OWNED('src/approve/Sign.tsx', 'v1_phishing_phrase')]);
   });
   // B1c §1.7 (review L13): src/approve is held like src/app — no storage, no runtime listener, no ext.ts — and its page
   // may load only its own entry.
@@ -1216,6 +1225,44 @@ describe('vault isolation (built output)', () => {
     baseline();
     rmSync(join(dir, 'popup.html'));
     expect(bundleViolations(dir)).toEqual(['popup.html is missing']);
+  });
+});
+
+// B1e §1.6 (I2): the two content scripts as BUILT reach no extension storage — the source rule (TOUCHES_STORAGE outside
+// src/background and src/ext.ts) is the first line, this the second.
+describe('vault isolation (the built content scripts carry no storage)', () => {
+  let dir;
+  const write = (name, text) => writeFileSync(join(dir, name), text);
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'vault-iso-content-'));
+    // What the build gives today (shapes of the real files): the relay reaches runtime.connect only, the provider no API.
+    write('relay.js', '(function(){var t=globalThis,n=t.browser??t.chrome;n.runtime.connect({name:`noctura-page`});})();');
+    write('provider.js', '(function(){window.addEventListener(`message`,e=>e);var s=window.localStorage,u=window.sessionStorage;})();');
+  });
+  afterEach(() => rmSync(dir, {recursive: true, force: true}));
+
+  it('passes the two files as built today (localStorage / sessionStorage are not extension storage)', () => {
+    expect(contentStorageViolations(dir)).toEqual([]);
+  });
+
+  it.each([
+    ['a property access', 'n.storage.local.get(`v1_vault`)', '.storage'],
+    ['an optional access', 'n?.storage?.local', '?.storage'],
+    ['a bracket', 'n[`storage`].local', '[`storage`]'],
+    ['a quoted bracket', "n['storage'].local", "['storage']"],
+    ['a destructuring key', 'var{storage:s}=n;', '{storage:'],
+    ['a shorthand destructuring', 'var{runtime:r,storage}=n;', ',storage}'],
+  ])('refuses %s in relay.js and in provider.js', (_, code, hit) => {
+    for (const name of ['relay.js', 'provider.js']) {
+      write(name, `(function(){var n=globalThis.chrome;${code}})();`);
+      expect(contentStorageViolations(dir)).toEqual([`${name} touches extension storage (${hit}) — a content script reaches none`]);
+      write(name, '(function(){})();');
+    }
+  });
+
+  it('a missing file is INCONCLUSIVE, never a pass', () => {
+    rmSync(join(dir, 'relay.js'));
+    expect(contentStorageViolations(dir)).toEqual(['INCONCLUSIVE: relay.js is missing — the content-script storage rule would pass trivially']);
   });
 });
 

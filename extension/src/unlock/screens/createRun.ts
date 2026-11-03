@@ -15,6 +15,15 @@ import {mountIntro, mountWelcome} from './welcome';
  */
 export type Storing = <T>(work: () => Promise<T>) => Promise<T>;
 
+/**
+ * B1e §1.3 (I6): onboarding's anti-phishing step, shown by the create and import runs only once the new wallet is
+ * stored AND its keys are in the session (`created`) — after commitWallet, whose first write removes every
+ * WALLET_DATA_KEYS key, the phrase's among them. `path` says which run; `then()` continues it (to #7 or #40). Never
+ * shown on `created-locked` (settings.phrase would answer `locked`; #35 offers it). The page passes one; without it
+ * the runs go straight on.
+ */
+export type PhraseStep = (o: {path: 'create' | 'import'; then(): void}) => void;
+
 export interface CreateRun {
   /** Shows #1 (`welcome`) or #2 (`intro`, `?mode=create`). */
   start(at: 'welcome' | 'intro'): void;
@@ -38,7 +47,7 @@ export interface CreateRun {
  * Mounted once per page (Task 9): #5 is the page's one PasswordScreen, shared with the import run, and #1's
  * "I have a wallet" hands over to that run in the same page — dropping the phrase a #3 visit generated first.
  */
-export function createCreateRun(deps: PageDeps, o: {password: PasswordScreen; importRun(): void}): CreateRun {
+export function createCreateRun(deps: PageDeps, o: {password: PasswordScreen; importRun(): void; phraseStep?: PhraseStep}): CreateRun {
   let mnemonic: string | null = null;
   let password: string | null = null;
   let storing = false;
@@ -95,7 +104,9 @@ export function createCreateRun(deps: PageDeps, o: {password: PasswordScreen; im
   const seed = mountSeed(deps, {back: () => intro.show(), done: () => confirm.show(words())});
   const confirm = mountConfirm(deps, {back: () => seed.show(words()), done: () => passwordStep()});
   const pw = o.password;
-  const passkey = mountPasskey(deps, {done: () => deps.go('wallet.html#/created')});
+  const toCreated = () => deps.go('wallet.html#/created');
+  // B1e §1.3: #6 ends (Skip, added, …) with the wallet stored and its keys in the session — the phrase step, then #7.
+  const passkey = mountPasskey(deps, {done: () => (o.phraseStep === undefined ? toCreated() : o.phraseStep({path: 'create', then: toCreated}))});
 
   const passwordStep = () =>
     pw.show({
@@ -130,7 +141,7 @@ export function createCreateRun(deps: PageDeps, o: {password: PasswordScreen; im
           return null;
         }
         if (out === 'created-locked') {
-          deps.go('wallet.html#/created');
+          toCreated();
           return null;
         }
         if (out === 'exists') return existsLines(deps);
