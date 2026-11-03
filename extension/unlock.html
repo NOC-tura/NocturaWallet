@@ -259,10 +259,10 @@
         </div>
         <form id="ap-form" class="vlt-pad vlt-gap-top-5">
           <input id="ap-field" class="vlt-input" type="text" autocomplete="off" spellcheck="false" maxlength="64" aria-label="Anti-phishing phrase" aria-describedby="ap-helper ap-help" />
+          <p id="ap-line" class="noc-body-sm vlt-danger vlt-gap-top-2" role="status" hidden></p>
           <p id="ap-helper" class="noc-caption vlt-muted vlt-gap-top-2">3–32 characters: letters, numbers, symbols and simple emoji.</p>
-          <p id="ap-help" class="noc-caption vlt-muted vlt-gap-top-1">Never type it into a website. Anyone who uses this browser profile can see it.</p>
+          <p id="ap-help" class="noc-caption vlt-muted vlt-gap-top-2">Never type it into a website. Anyone who uses this browser profile can see it.</p>
         </form>
-        <p id="ap-line" class="noc-body-sm vlt-danger vlt-pad vlt-gap-top-3" role="status" hidden></p>
         <div class="vlt-grow"></div>
         <div class="sticky-bar">
           <button id="ap-set" type="button" class="btn btn-primary" disabled>Set phrase</button>
@@ -760,7 +760,8 @@
         </div>
       </section>
 
-      <!-- B1e §2.2 (E9, R4): the two damaged states (#9 and #1 show them from their own read); undrawn, built from #37's card. -->
+      <!-- B1e §2.2 (E9, R4): the two damaged states (#9 and #1 show them from their own read); undrawn, built from #37's card.
+           The save note sits directly under Save, in the bar, as it sits under Save on the removal (rev 2.6). -->
       <section id="v-damaged" class="screen s-pin" hidden>
         <div class="vlt-damaged">
           <div class="vlt-danger-card">
@@ -783,11 +784,13 @@
               <p id="dmg-help" class="noc-body-sm vlt-lede"></p>
             </div>
           </div>
-          <p class="noc-caption vlt-muted">This file is your wallet's data exactly as this browser holds it. If it contains your encrypted wallet, anyone with the file and your password could try to open it — keep it private.</p>
         </div>
         <div class="vlt-grow"></div>
         <div class="sticky-bar">
-          <a id="dmg-save" class="btn btn-secondary" download>Save the damaged data</a>
+          <div id="dmg-save-group" class="vlt-stack-1">
+            <a id="dmg-save" class="btn btn-secondary" download>Save the damaged data</a>
+            <p id="dmg-save-note" class="noc-caption vlt-muted">This file is your wallet's data exactly as this browser holds it. If it contains your encrypted wallet, anyone with the file and your password could try to open it — keep it private.</p>
+          </div>
           <button id="dmg-remove" type="button" class="btn btn-destructive"><svg width="18" height="18" aria-hidden="true"><use href="#i-trash" /></svg>Remove damaged wallet</button>
         </div>
       </section>

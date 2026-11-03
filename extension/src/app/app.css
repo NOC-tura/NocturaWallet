@@ -2384,12 +2384,19 @@ body:has(.app-window) {
 }
 /* B1e §1.2 (undrawn, §9): the anti-phishing phrase line under a screen's header — B1b's `.banner` (shield, or warning
    for R9's line) at the screen's gutter, never scrolled away with the body below it. The phrase wraps whole words and
-   breaks a long one anywhere: it is the user's own text, never cut. */
+   breaks a long one anywhere: it is the user's own text, never cut. Rev 2.6 (D2): under a request window's top bar the
+   line spans the body's content box — the design system's 20 px gutter (`.scroll-area`'s --space-5), not the top
+   bar's 12 px + icon inset. */
 .app-phrase-line {
   flex: 0 0 auto;
   align-self: stretch;
-  margin: 0 var(--space-4) var(--space-3);
+  margin: 0 var(--space-5) var(--space-3);
   text-align: start;
+}
+/* Rev 2.6 (D1): inside the locked window's scroll area, which already carries the 20 px gutter, the line takes none of
+   its own; and it sits the gutter's 20 px from the window top (the area's --space-2 + --space-3), as from either side. */
+.app-approve-scroll > .app-phrase-line {
+  margin: var(--space-3) 0 var(--space-3);
 }
 .app-phrase-line > .noc-body-sm {
   margin: 0;

@@ -22,7 +22,9 @@ beforeAll(async () => {
     [
       `import {Connection, Keypair, PublicKey, SystemProgram, TransactionMessage, VersionedTransaction} from ${JSON.stringify(WEB3)};`,
       `import {CommonClient, WebSocket} from 'rpc-websockets';`,
-      'export {Connection, Keypair, PublicKey, SystemProgram, TransactionMessage, VersionedTransaction, CommonClient, WebSocket};',
+      // The whole namespace too, so the stub's export list is checked exactly (final review, ledger T6 M3).
+      `import * as stub from 'rpc-websockets';`,
+      'export {Connection, Keypair, PublicKey, SystemProgram, TransactionMessage, VersionedTransaction, CommonClient, WebSocket, stub};',
     ].join('\n'),
   );
   await build({
@@ -62,6 +64,10 @@ describe('rpc-websockets resolves to the stub (B1e §4.2, E16)', () => {
   });
 
   it('exactly two exports: CommonClient a class that throws when constructed, WebSocket a function that throws when called', () => {
+    // Exactly these two names and no other: a third export would fail here (M-A).
+    expect(Object.keys(probe.stub).sort()).toEqual(['CommonClient', 'WebSocket']);
+    expect(probe.stub.CommonClient).toBe(probe.CommonClient);
+    expect(probe.stub.WebSocket).toBe(probe.WebSocket);
     const {CommonClient, WebSocket} = probe;
     expect(Function.prototype.toString.call(CommonClient)).toMatch(/^class\b/);
     class Sub extends CommonClient {}

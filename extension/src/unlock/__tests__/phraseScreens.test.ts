@@ -316,6 +316,8 @@ describe('onboarding’s anti-phishing step, as the page mounts it (B1e §1.3)',
     await press(h, 'ap-set');
     await h.until(() => visible(el('ap-line')) && !h.deps.gate.isBusy());
     expect([text(el('ap-line')), h.went, visible(el('v-anti-phishing'))]).toEqual([COMMON.failedTryAgain, [], true]);
+    // Rev 2.6 (D3): the refused line directly under the field it refers to, then the helper, then the help.
+    expect([...el('ap-form').children].map(e => e.id)).toEqual(['ap-field', 'ap-line', 'ap-helper', 'ap-help']);
     await press(h, 'ap-skip');
     await h.until(() => h.went.length === 1);
     expect(h.went).toEqual(['wallet.html#/created']);

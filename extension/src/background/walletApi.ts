@@ -20,7 +20,7 @@ import {readCachedBalances, readCachedPrices, writeCachedBalances, writeCachedPr
 import {readWalletBalances, WALLET_TOKENS} from '../../../core/solana/balances';
 import {RequestUnreachable, RpcForbidden} from '../../../core/solana/rpc';
 import {dappTxSignatures} from './dapp/dappTxs';
-import {readPhrase, setPhrase} from './phrase';
+import {readPhraseBesideWallet, setPhrase} from './phrase';
 
 export type Result = {ok: true; data?: unknown} | {ok: false; error: string; data?: unknown};
 
@@ -118,8 +118,9 @@ export function displayOrder<T extends {index: number}>(accounts: readonly T[], 
 }
 
 async function walletState(ext: Ext) {
-  const [view, session, settings, phrase] = await Promise.all([readWalletView(ext), getSession(ext), readSettings(ext), readPhrase(ext)]);
-  // B1e §1.4: the anti-phishing phrase rides on this answer (locked or unlocked) — the popup's and the UI tab's one read of it.
+  const [view, session, settings, phrase] = await Promise.all([readWalletView(ext), getSession(ext), readSettings(ext), readPhraseBesideWallet(ext)]);
+  // B1e §1.4: the anti-phishing phrase rides on this answer (locked or unlocked) — the popup's and the UI tab's one read of
+  // it; null unless the stored vault is a wallet this version accepts, as dapp.pending answers it (rev 2.6).
   if (view === null) return {hasWallet: false, unlocked: false, scheme: null, accounts: [], selected: null, passkey: false, phrase};
   const accounts = displayOrder(view.accounts, settings.accountOrder);
   // The selection is only ever an account that exists: in the envelope, and — while unlocked — in the

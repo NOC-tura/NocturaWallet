@@ -7,7 +7,7 @@ import {armAutolock, lock} from './autolock';
 import {readSettings, settingsMutex, writeSettings} from './settings';
 import type {WalletDeps} from './deps';
 import {CHALLENGE_ID, challengeInfo, satisfyChallenge} from './reauthChallenges';
-import {VAULT_KEY, changePassword, envelopeShape, forgetDamaged, forgetWallet, provenRevisionIsStored, removePasskey, storeEnvelope, vaultReading} from './accountsStore';
+import {VAULT_KEY, changePassword, forgetDamaged, forgetWallet, provenRevisionIsStored, removePasskey, storeEnvelope, vaultReading} from './accountsStore';
 import {isOpen, readPending} from './pendingStore';
 import {startPoller} from './pending';
 import {WALLET_TYPES, applySettingsChallenge, handleWallet, isWalletType, type Result} from './walletApi';
@@ -17,7 +17,7 @@ import {runUnlockHook} from './dapp/queue';
 import {dropAccountGrants, listBlocked, listGrants, revokeAll, revokeGrant, undoRevoke, unblock} from './dapp/grantsApi';
 import {reauthWaiting} from './dapp/signTx';
 import {PRESALE_MESSAGE_TYPES} from './presale/api';
-import {applyPhraseChallenge, readPhrase} from './phrase';
+import {applyPhraseChallenge, readPhrase, readPhraseBesideWallet} from './phrase';
 import type {PresaleHandler} from './presaleHost';
 
 /** What the browser reports about a message's origin (runtime.MessageSender). */
@@ -344,10 +344,11 @@ export async function handleMessage(ext: Ext, msg: unknown, sender: Sender, deps
     case 'dapp.pending': {
       // B1e §1.4: the approval window's one read of the anti-phishing phrase, a top-level field in every state. With no
       // envelope stored it is null (Task 5 fix round 1, Minor 1, a controller ruling — M3's principle): the accepted
-      // apply-vs-delete race can leave a phrase behind with no wallet, and a no-wallet state draws no line.
+      // apply-vs-delete race can leave a phrase behind with no wallet, and a no-wallet state draws no line. The same
+      // reading as wallet.state's (rev 2.6): a vault this version refuses is no wallet either.
       if (deps === undefined) return {ok: false, error: 'unavailable'};
       const view = await pending(ext, deps);
-      const phrase = envelopeShape(await ext.local.get(VAULT_KEY)) === null ? null : await readPhrase(ext);
+      const phrase = await readPhraseBesideWallet(ext);
       return {ok: true, data: {...view, phrase}};
     }
     case 'dapp.decide': {

@@ -6,6 +6,7 @@ import {issueChallenge, takePhraseChallenge} from './reauthChallenges';
 import {digestOf} from './digest';
 import {cleanPhrase} from '../shared/envelopeRules';
 import {PHRASE_KEY} from './phraseKey';
+import {VAULT_KEY, envelopeShape} from './accountsStore';
 import type {Result} from './walletApi';
 
 const MALFORMED: Result = {ok: false, error: 'malformed'};
@@ -18,6 +19,16 @@ const LOCKED: Result = {ok: false, error: 'locked'};
 export async function readPhrase(ext: Ext): Promise<string | null> {
   const raw = await ext.local.get(PHRASE_KEY);
   return typeof raw === 'string' && cleanPhrase(raw) === raw ? raw : null;
+}
+
+/**
+ * B1e §1.4 (rev 2.6, the final review's Minor 1): the phrase as wallet.state and dapp.pending answer it — one reading of
+ * "a wallet is stored" for both: null unless the stored vault is a wallet this version accepts (envelopeShape). A vault
+ * this version refuses (a KDF cost or an account policy outside today's bounds) shows no phrase in the popup either, as
+ * no approval window draws one over it; nor does a phrase the accepted apply-vs-delete race left behind with no vault.
+ */
+export async function readPhraseBesideWallet(ext: Ext): Promise<string | null> {
+  return envelopeShape(await ext.local.get(VAULT_KEY)) === null ? null : readPhrase(ext);
 }
 
 async function writePhrase(ext: Ext, phrase: string | null): Promise<void> {

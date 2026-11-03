@@ -9,7 +9,8 @@ import {PhraseLine} from '../ui/PhraseLine';
  * Both are LockedButtons (cardinal rule 6): a double click opens one tab. B1e §1.2: the anti-phishing phrase under the
  * header, from `wallet.state` (nothing when none is set; R9's line when it could not be read) — and only for a stored
  * wallet: after the accepted apply-vs-delete race (§1.4) `wallet.state` can carry a phrase with `hasWallet: false`, and
- * the no-wallet state draws no line (§1.2; Task 4 review M3).
+ * the no-wallet state draws no line (§1.2; Task 4 review M3). Rev 2.6: the background now answers the phrase only beside a
+ * wallet this version accepts, so a vault it refuses (routed here by `hasWallet`) draws no line either.
  */
 export function Locked() {
   const {platform, surface, wallet} = useWallet();

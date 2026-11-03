@@ -157,14 +157,16 @@ describe('the licence page and the link gate on the real builds (B1e §4.2–§4
     }
   });
 
-  it('the link gate passes the real packages; with its skip removed it fails on the real licenses.html, and only there', () => {
+  it('the link gate passes the real packages; with a skip removed it fails on that file, and only there — licenses.html, and (rev 2.6) fonts/LICENSE.txt', () => {
     for (const b of Object.values(builds)) {
       for (const browser of ['chrome', 'firefox']) {
         const files = packageFiles(join(b.dir, browser));
         expect([b.features.presale, browser, linkViolations(files, b.features.presale)]).toEqual([b.features.presale, browser, []]);
-        const unskipped = linkViolations(files, b.features.presale, {skipped: []});
+        const unskipped = linkViolations(files, b.features.presale, {skipped: ['fonts/LICENSE.txt']});
         expect(unskipped.length).toBeGreaterThan(0);
         expect(unskipped.filter(p => !p.startsWith('licenses.html names '))).toEqual([]);
+        // The fonts' licence text names its licence's home page: read now (.txt), it passes only by its skip.
+        expect([browser, linkViolations(files, b.features.presale, {skipped: ['licenses.html']})]).toEqual([browser, ['fonts/LICENSE.txt names "http://scripts.sil.org/OFL" — a URL the link table does not name']]);
       }
     }
   });

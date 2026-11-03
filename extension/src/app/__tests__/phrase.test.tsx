@@ -6,7 +6,9 @@ import {Locked} from '../screens/Locked';
 import {createEngine} from '../engine';
 import {Security, SECURITY_TEXT} from '../screens/Security';
 import {PHRASE_TEXT} from '../ui/PhraseLine';
+import {base64} from '@scure/base';
 import {PHRASE_KEY} from '../../background/phraseKey';
+import {VAULT_KEY} from '../../background/accountsStore';
 import {REAUTH_KEY} from '../../background/session';
 import {UI_SHEETS, selectorsOf, unstyledClasses} from '../../__tests__/styled';
 import {renderApp} from './appHarness';
@@ -21,7 +23,25 @@ const GREEN = 'Green fox 7';
 const MARKUP = '<b>x</b>';
 /** An RTL phrase (Hebrew, then digits): \u escapes. */
 const RTL = '\u05e9\u05dc\u05d5\u05dd \u05e2\u05d5\u05dc\u05dd 42';
+const B = (n: number, fill: number) => base64.encode(new Uint8Array(n).fill(fill));
+/** A v1 envelope's sealed fields, in the shapes envelopeShape accepts (the bytes are filler: nothing here opens it). */
+const SEALED = {kdf: {alg: 'argon2id', m: 65536, t: 3, p: 1, salt: B(16, 1)}, seed: {iv: B(12, 2), ct: B(48, 3)}, password: {wrapped: B(40, 4)}};
+/**
+ * Rev 2.6 (the final review's Minor 1): wallet.state carries the phrase only beside a wallet this version accepts
+ * (envelopeShape). The harness's ENV is a skeleton — scheme and accounts, which is all hasWallet reads — so the rows
+ * here complete it with the sealed fields; the skeleton itself is a vault this version refuses (its own row below).
+ */
+const accepted: NonNullable<WalletOptions['before']> = async ext => {
+  const env = await ext.local.get(VAULT_KEY);
+  if (typeof env === 'object' && env !== null) await ext.local.set(VAULT_KEY, {...env, ...SEALED});
+};
 const withPhrase =
+  (phrase: unknown): NonNullable<WalletOptions['before']> =>
+  async ext => {
+    await accepted(ext);
+    await ext.local.set(PHRASE_KEY, phrase);
+  };
+const storedOnly =
   (phrase: unknown): NonNullable<WalletOptions['before']> =>
   async ext => {
     await ext.local.set(PHRASE_KEY, phrase);
@@ -41,7 +61,7 @@ describe('the locked screen: the phrase under the header (B1e §1.2)', () => {
   });
 
   it('none set: nothing — the screen is as before', async () => {
-    await renderApp({unlocked: false});
+    await renderApp({unlocked: false, before: accepted});
     await screen.findByText('Welcome back');
     expect(lines()).toEqual([]);
   });
@@ -98,8 +118,18 @@ describe('the locked screen: the phrase under the header (B1e §1.2)', () => {
       await waitFor(() => expect(screen.getByTestId('seen').textContent).toBe(seen));
       await screen.findByText('Welcome back');
     };
-    const raced = await setupWallet({wallet: false, before: withPhrase(BLUE)});
-    // The race's state, from the real background: no wallet, the phrase readable.
+    const stored = await setupWallet({wallet: false, before: withPhrase(BLUE)});
+    // The race's state, from the real background: no wallet, and (rev 2.6) no phrase — wallet.state reads it only beside
+    // a wallet this version accepts. The line's own guard is still pinned: the answer below carries the phrase anyway (an
+    // answer from before rev 2.6's reading), and the no-wallet state still draws none.
+    expect(await stored.engine.state()).toMatchObject({ok: true, data: {hasWallet: false, unlocked: false, phrase: {state: 'none'}}});
+    const raced = {
+      ...stored,
+      engine: createEngine(async m => {
+        const r = (await stored.transport(m)) as {ok: boolean; data?: unknown};
+        return (m as {type?: unknown}).type === 'wallet.state' && r.ok ? {...r, data: {...(r.data as Record<string, unknown>), phrase: BLUE}} : r;
+      }, async () => undefined),
+    };
     expect(await raced.engine.state()).toMatchObject({ok: true, data: {hasWallet: false, unlocked: false, phrase: {state: 'set', phrase: BLUE}}});
     render(<App surface="tab" engine={raced.engine} platform={raced.platform} hash="" />);
     await screen.findByText('No wallet on this browser yet.');
@@ -112,12 +142,36 @@ describe('the locked screen: the phrase under the header (B1e §1.2)', () => {
     await lockedGiven(await setupWallet({unlocked: false, before: withPhrase(BLUE)}), 'hasWallet true');
     await waitFor(() => expect(lines()).toEqual([{tone: 'shield', text: `${PHRASE_TEXT.label}: ${BLUE}`}]));
   });
+
+  // Rev 2.6 (the final review's Minor 1, its probe P1 on the popup): a vault this version refuses still routes to the
+  // locked screen (hasWallet reads scheme and accounts only), and the line is not drawn there — as no approval window
+  // draws it over the same vault (dapp.pending, background phrase.test). Positive control: the same store accepted.
+  it.each([
+    ['the harness skeleton (no sealed fields)', (env: Record<string, unknown>) => env],
+    ['a later format (v: 2)', (env: Record<string, unknown>) => ({...env, ...SEALED, v: 2})],
+    ['a KDF cost below the floor (F2)', (env: Record<string, unknown>) => ({...env, ...SEALED, kdf: {...SEALED.kdf, m: 32768}})],
+  ] as const)('a vault this version refuses (%s), a phrase stored: the locked screen, and no line', async (_why, refuse) => {
+    const w = await renderApp({
+      unlocked: false,
+      before: async ext => {
+        await storedOnly(BLUE)(ext);
+        await ext.local.set(VAULT_KEY, refuse((await ext.local.get(VAULT_KEY)) as Record<string, unknown>));
+      },
+    });
+    await screen.findByText('Welcome back');
+    expect(await w.engine.state()).toMatchObject({ok: true, data: {hasWallet: true, unlocked: false, phrase: {state: 'none'}}});
+    expect(lines()).toEqual([]);
+    cleanup();
+    await renderApp({unlocked: false, before: withPhrase(BLUE)});
+    await screen.findByText('Welcome back');
+    await waitFor(() => expect(lines()).toEqual([{tone: 'shield', text: `${PHRASE_TEXT.label}: ${BLUE}`}]));
+  });
 });
 
 describe('#35: the anti-phishing row and its card (B1e §1.3, R1 = E18)', () => {
   async function shown(phrase?: unknown, surface: 'popup' | 'tab' = 'popup') {
     const calls = {back: 0};
-    const w = await renderInWallet(<Security onBack={() => void calls.back++} onPasskey={() => undefined} onDelete={() => undefined} />, {surface, ...(phrase === undefined ? {} : {before: withPhrase(phrase)})});
+    const w = await renderInWallet(<Security onBack={() => void calls.back++} onPasskey={() => undefined} onDelete={() => undefined} />, {surface, before: phrase === undefined ? accepted : withPhrase(phrase)});
     await waitFor(() => expect(document.querySelector('.s7-score-card')).not.toBeNull());
     return w;
   }

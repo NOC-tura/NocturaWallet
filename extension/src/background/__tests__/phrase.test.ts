@@ -11,7 +11,7 @@ import {lock} from '../autolock';
 import {CHALLENGE_TTL_MS, challengeInfo, isAbout, issueChallenge, takePhraseChallenge, takeSettingsChallenge} from '../reauthChallenges';
 import {runUnlockHook} from '../dapp/queue';
 import {envelopeRevision} from '../../shared/envelopeRevision';
-import {edited} from '../../shared/__tests__/vaultControls';
+import {F, F_WALLETS, edited} from '../../shared/__tests__/vaultControls';
 import {openPage} from '../dapp/__tests__/pageHarness';
 import {fakeDeps, fakeReader} from './fakeDeps';
 import {fakeExt} from './fakeExt';
@@ -390,6 +390,42 @@ describe('the phrase rides on three answers only (I2, R2)', () => {
       await openPage(c.ext, c.deps, 'https://dapp.test').ask({type: 'page.connect', id: 'c1', silent: false});
       expect(await handleMessage(c.ext, {type: 'dapp.pending'}, approve, c.deps)).toMatchObject({ok: true, data: {state: 'locked', phrase: null}});
     }
+  });
+
+  // Rev 2.6 (the final review's Minor 1 and its probe P1; ledger T5): one reading of "a wallet is stored" on the phrase
+  // path — wallet.state's phrase and dapp.pending's are null unless the stored vault is a wallet this version accepts
+  // (envelopeShape). A later format (v: 2) still reads as a wallet to wallet.state's hasWallet (scheme + accounts only),
+  // so the popup routes to its locked screen — and draws no phrase there, as no approval window draws one.
+  it('a later format ({...ENV, v: 2}): hasWallet still true, and wallet.state and dapp.pending both answer phrase null', async () => {
+    for (const unlocked of [false, true]) {
+      const c = await setup({unlocked, phrase: BLUE});
+      await c.ext.local.set(VAULT_KEY, {...STORED, v: 2});
+      expect(await stored(c)).toBe(BLUE);
+      for (const sender of [popup, tab]) expect(await handleMessage(c.ext, {type: 'wallet.state'}, sender, c.deps)).toMatchObject({ok: true, data: {hasWallet: true, phrase: null}});
+      expect(await handleMessage(c.ext, {type: 'dapp.pending'}, approve, c.deps)).toEqual({ok: true, data: {state: 'none', phrase: null}});
+      // Positive control: the same store with v: 1 answers the phrase on both.
+      await c.ext.local.set(VAULT_KEY, STORED);
+      expect(await handleMessage(c.ext, {type: 'wallet.state'}, popup, c.deps)).toMatchObject({ok: true, data: {hasWallet: true, phrase: BLUE}});
+      expect(await handleMessage(c.ext, {type: 'dapp.pending'}, approve, c.deps)).toEqual({ok: true, data: {state: 'none', phrase: BLUE}});
+    }
+  });
+
+  const idOf = (name: string): string => name.slice(0, name.indexOf(' '));
+  it('probe P1: every F control stored with a phrase, locked — the popup (wallet.state) and the window (dapp.pending) agree; only F_WALLETS show it', async () => {
+    const seen: [string, unknown, unknown][] = [];
+    for (const [name, vault] of F) {
+      const c = await setup({unlocked: false, phrase: BLUE});
+      await c.ext.local.set(VAULT_KEY, vault);
+      const state = await handleMessage(c.ext, {type: 'wallet.state'}, popup, c.deps);
+      const pend = await handleMessage(c.ext, {type: 'dapp.pending'}, approve, c.deps);
+      const id = idOf(name);
+      seen.push([id, (state.data as {phrase: unknown}).phrase, (pend.data as {phrase: unknown}).phrase]);
+    }
+    expect(seen).toEqual(F.map(([name]) => idOf(name)).map(id => [id, ...(F_WALLETS.includes(id) ? [BLUE, BLUE] : [null, null])]));
+    // The refused controls the review's probe found drawing the phrase in the popup: still routed as a wallet (hasWallet).
+    const refused = await setup({unlocked: false, phrase: BLUE});
+    await refused.ext.local.set(VAULT_KEY, F.find(([n]) => n.startsWith('F2 '))?.[1]);
+    expect(await handleMessage(refused.ext, {type: 'wallet.state'}, popup, refused.deps)).toMatchObject({ok: true, data: {hasWallet: true, unlocked: false, phrase: null}});
   });
 
   it('no wallet: wallet.state and vault.status still answer the field (null)', async () => {

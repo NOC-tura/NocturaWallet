@@ -113,6 +113,59 @@ async function boxAbove(box: Locator, button: Locator): Promise<void> {
   expect((b?.y ?? Infinity) + (b?.height ?? 0), 'the checkbox row ends above the button').toBeLessThanOrEqual(c?.y ?? -Infinity);
   expect(await box.evaluate((e, x) => e.parentElement === x?.parentElement && e.nextElementSibling === x, await button.elementHandle()), 'the box is the button\'s previous sibling in the bar').toBe(true);
 }
+/** A box, or a failure naming what has none. */
+async function boxOf(l: Locator, what: string): Promise<{x: number; y: number; width: number; height: number}> {
+  const b = await l.boundingBox();
+  expect(b, `${what}: a box`).not.toBeNull();
+  return b ?? {x: NaN, y: NaN, width: NaN, height: NaN};
+}
+const near = (a: number, b: number) => Math.abs(a - b) < 0.5;
+/** A design-system token's value in px, read from the page (`--space-5` → 20). */
+const token = (p: Page, name: string) => p.evaluate(n => parseFloat(getComputedStyle(document.documentElement).getPropertyValue(n)), name);
+/**
+ * Rev 2.6 (final review Minor 5, ledger T7 D1 / D2): the window's line spans exactly the body's content box — the
+ * scroll area's padding each side, which is the design system's 20 px gutter (--space-5) — as the cards and the title do.
+ */
+async function atBodyGutter(win: Page, line: Locator, name: string): Promise<void> {
+  const gutter = await token(win, '--space-5');
+  expect(gutter, `${name}: the design system's gutter`).toBe(20);
+  const body = await win.locator('.app-approve-scroll').evaluate(s => {
+    const r = s.getBoundingClientRect();
+    const cs = getComputedStyle(s);
+    return {x: r.left, left: r.left + s.clientLeft + parseFloat(cs.paddingLeft), right: r.left + s.clientLeft + s.clientWidth - parseFloat(cs.paddingRight)};
+  });
+  expect([body.x, body.left - body.x], `${name}: the body at the window's edge, its content box at the gutter`).toEqual([0, gutter]);
+  const b = await boxOf(line, name);
+  expect([near(b.x, body.left), near(b.x + b.width, body.right)], `${name}: the line's x-extent ${b.x}–${b.x + b.width} is the body's ${body.left}–${body.right}`).toEqual([true, true]);
+}
+/** Rev 2.6 (D2): under a request window's top bar — the top bar, then the line, then the body, in the DOM and on screen. */
+async function underTopBar(win: Page, name: string): Promise<void> {
+  const line = win.locator('.app-phrase-line');
+  expect(await line.evaluate(e => [e.previousElementSibling?.classList.contains('top-bar') === true, e.nextElementSibling?.classList.contains('app-approve-scroll') === true]), `${name}: top bar, line, body`).toEqual([true, true]);
+  const bar = await boxOf(win.locator('.top-bar'), `${name}: the top bar`);
+  const b = await boxOf(line, name);
+  const body = await boxOf(win.locator('.app-approve-scroll'), `${name}: the body`);
+  expect([b.y >= bar.y + bar.height - 0.5, b.y + b.height <= body.y + 0.5], `${name}: the line between the top bar and the body`).toEqual([true, true]);
+  await atBodyGutter(win, line, name);
+}
+/** Rev 2.6 (D1): the locked window has no top bar — the line first in the body, the gutter's 20 px from the window top, above the centred group. */
+async function lockedTop(win: Page, name: string): Promise<void> {
+  const line = win.locator('.app-phrase-line');
+  expect(await line.evaluate(e => e.parentElement?.classList.contains('app-approve-scroll') === true && e.previousElementSibling === null), `${name}: the body's first element`).toBe(true);
+  const b = await boxOf(line, name);
+  const center = await boxOf(win.locator('.app-approve-locked-center'), `${name}: the centred group`);
+  expect([near(b.y, await token(win, '--space-5')), b.y + b.height <= center.y + 0.5], `${name}: the line ${b.y} px from the window top, above the centred group`).toEqual([true, true]);
+  await atBodyGutter(win, line, name);
+}
+/** Rev 2.6 (D3 and the save note): `items` top to bottom, each `gap` px under the one before it, none overlapping. */
+async function stacked(name: string, items: readonly (readonly [string, Locator])[], gap: number): Promise<void> {
+  const boxes = await Promise.all(items.map(([what, l]) => boxOf(l, `${name}: ${what}`)));
+  const gaps = boxes.slice(1).map((b, i) => {
+    const above = boxes[i] ?? b;
+    return Math.round((b.y - (above.y + above.height)) * 2) / 2;
+  });
+  expect(gaps, `${name}: ${items.map(([w]) => w).join(' → ')}, ${gap} px apart`).toEqual(gaps.map(() => gap));
+}
 /** A vault-page tab at its frame (412 × 916). */
 async function tab(h: Harness, path: string): Promise<Page> {
   const p = await h.ctx.newPage();
@@ -185,6 +238,12 @@ test('visual · B1e popup (412 × 600): the locked screen with the phrase, a 32-
     await expect(card.getByRole('button', {name: 'Remove phrase'})).toHaveCount(0);
     await expect(card).toContainText('3–32 characters: letters, numbers, symbols and simple emoji.');
     await expect(card).toContainText('Never type it into a website. Anyone who uses this browser profile can see it.');
+    // Rev 2.6 (D3): the field, its helper, the actions and the help, each the card's own gap (--space-3) apart — never run together.
+    const cardGap = await token(p, '--space-3');
+    expect(await card.evaluate(e => getComputedStyle(e).rowGap)).toBe(`${cardGap}px`);
+    const captions = card.locator('p.noc-caption');
+    await stacked('b1e-35-card-set', [['the field', card.getByRole('textbox', {name: 'Anti-phishing phrase'})], ['the helper', captions.nth(0)], ['the actions', card.locator('.app-phrase-actions')], ['the help', captions.nth(1)]], cardGap);
+    await expect(captions.nth(0)).toHaveText('3–32 characters: letters, numbers, symbols and simple emoji.');
     await frame(p, 'b1e-35-card-set', card.getByRole('button', {name: 'Set phrase'}), {bars: 0});
     await card.getByRole('button', {name: 'Set phrase'}).click();
     await expect(row.locator('.s7-meta')).toHaveText('On', {timeout: 30_000});
@@ -193,6 +252,7 @@ test('visual · B1e popup (412 × 600): the locked screen with the phrase, a 32-
     await expect(p.getByRole('textbox', {name: 'New anti-phishing phrase'})).toHaveValue('');
     await p.getByRole('textbox', {name: 'New anti-phishing phrase'}).fill(GREEN);
     await expect(card).toContainText('A change or a removal asks for your password in a new tab.');
+    await stacked('b1e-35-card-change', [['the field', p.getByRole('textbox', {name: 'New anti-phishing phrase'})], ['the helper', captions.nth(0)], ['the actions', card.locator('.app-phrase-actions')], ['the help', captions.nth(1)], ['the note', captions.nth(2)]], cardGap);
     await frame(p, 'b1e-35-card-change', card.getByRole('button', {name: 'Remove phrase'}), {bars: 0});
     await card.locator('.app-picker-head').click();
 
@@ -251,6 +311,10 @@ test('visual · B1e vault page (412 × 916): #1 with the terms line; #9 with the
     await expect(p.locator('#ap-helper')).toHaveText('3–32 characters: letters, numbers, symbols and simple emoji.');
     await expect(p.locator('#ap-help')).toHaveText('Never type it into a website. Anyone who uses this browser profile can see it.');
     await expect(p.locator('#ap-set')).toBeDisabled();
+    // Rev 2.6 (D3): the helper and the help the design system's --space-2 apart, as the helper is from the field.
+    const lineGap = await token(p, '--space-2');
+    expect(lineGap).toBe(8);
+    await stacked('b1e-step-empty', [['the field', p.locator('#ap-field')], ['the helper', p.locator('#ap-helper')], ['the help', p.locator('#ap-help')]], lineGap);
     await frame(p, 'b1e-step-empty', p.locator('#ap-field'), {bars: 1, ready: p.locator('#ap-skip')});
     await p.locator('#ap-field').fill(BLUE);
     await frame(p, 'b1e-step-typed', p.locator('#ap-field'), {bars: 1, ready: p.locator('#ap-set')});
@@ -261,6 +325,8 @@ test('visual · B1e vault page (412 × 916): #1 with the terms line; #9 with the
     });
     await p.locator('#ap-set').click();
     await expect(p.locator('#ap-line')).toBeVisible();
+    // Rev 2.6 (D3): the refused line directly under the field it refers to, then the helper and the help.
+    await stacked('b1e-step-refused', [['the field', p.locator('#ap-field')], ['the refused line', p.locator('#ap-line')], ['the helper', p.locator('#ap-helper')], ['the help', p.locator('#ap-help')]], lineGap);
     await frame(p, 'b1e-step-refused', p.locator('#ap-line'), {bars: 1, ready: p.locator('#ap-skip')});
     await p.locator('#ap-skip').click();
     await p.waitForURL(/\/wallet\.html#\/imported$/, {timeout: 60_000});
@@ -315,7 +381,11 @@ test('visual · B1e vault page (412 × 916): #1 with the terms line; #9 with the
     await expect(save).toHaveText('Save the damaged data');
     await expect(save).toHaveAttribute('download', /^noctura-damaged-wallet-[0-9a-f]{8}\.json$/);
     await expect(save).toHaveCSS('text-decoration-line', 'none');
-    expect(await save.evaluate(e => e.nextElementSibling?.id)).toBe('dmg-remove');
+    // Rev 2.6 (T2 M1): the save note directly under Save — the removal's own Save-and-note gap (--space-1) — then Remove.
+    const noteGap = await token(p, '--space-1');
+    expect(await save.evaluate(e => [e.nextElementSibling?.id, e.parentElement?.nextElementSibling?.id])).toEqual(['dmg-save-note', 'dmg-remove']);
+    await stacked('b1e-09-unreadable', [['Save', save], ['the save note', p.locator('#dmg-save-note')]], noteGap);
+    expect((await boxOf(p.locator('#dmg-save-note'), 'the save note')).y).toBeLessThan((await boxOf(p.locator('#dmg-remove'), 'Remove')).y);
     await frame(p, 'b1e-09-unreadable', p.locator('#dmg-unreadable'), {bars: 1, ready: p.locator('#dmg-remove')});
     await p.goto(`chrome-extension://${d.id}/unlock.html?mode=welcome`);
     await expect(p.locator('#dmg-unreadable')).toHaveText('Wallet data is damaged', {timeout: 60_000});
@@ -327,6 +397,7 @@ test('visual · B1e vault page (412 × 916): #1 with the terms line; #9 with the
     await expect(p.locator('#dmg-refused-body p').first()).toHaveText("This version of Noctura can't open this wallet's data.");
     await expect(p.locator('#dmg-remove')).toBeHidden();
     await expect(save).toHaveCSS('text-decoration-line', 'none');
+    await stacked('b1e-09-refused', [['Save', save], ['the save note', p.locator('#dmg-save-note')]], noteGap);
     await frame(p, 'b1e-09-refused', p.locator('#dmg-refused'), {bars: 1, ready: save});
     await expect(p.locator('#dmg-refused-body p').first()).toBeInViewport({ratio: 1});
 
@@ -335,6 +406,7 @@ test('visual · B1e vault page (412 × 916): #1 with the terms line; #9 with the
     await p.goto(`chrome-extension://${d.id}/unlock.html?mode=remove-damaged`);
     await expect(p.locator('#rd-entry')).toBeVisible({timeout: 60_000});
     await expect(p.locator('#rd-save')).toHaveCSS('text-decoration-line', 'none');
+    await stacked('b1e-rd-idle', [['Save', p.locator('#rd-save')], ['the save note', p.locator('#rd-save + p')]], noteGap);
     await frame(p, 'b1e-rd-idle', p.locator('#rd-save'), {bars: 1, ready: p.locator('#rd-cancel')});
     await p.locator('#rd-word').fill('DELETE');
     const row = p.locator('#rd-understood-row');
@@ -368,7 +440,7 @@ test('visual · B1e approval window (412 × 720): the phrase on #47, #46, #48, #
     let win = await windowFor(h, () => (c = adapter.connect(page)));
     await expect(win.getByRole('button', {name: 'Connect for this session'})).toBeVisible({timeout: 15_000});
     await phraseLine(win.locator('.app-phrase-line'), BLUE);
-    expect(await win.locator('.app-phrase-line').evaluate(e => e.previousElementSibling?.classList.contains('top-bar') === true)).toBe(true);
+    await underTopBar(win, 'b1e-47-phrase');
     await frame(win, 'b1e-47-phrase', win.locator('.app-phrase-line'), {bars: 1});
     await win.getByRole('checkbox', {name: 'I understand this domain is not on the verified list'}).click();
     await win.getByRole('checkbox', {name: /I've read these permissions/}).click();
@@ -380,12 +452,14 @@ test('visual · B1e approval window (412 × 720): the phrase on #47, #46, #48, #
     win = await windowFor(h, () => (request = sign(page, 'Sign in to the test dApp')));
     await expect(win.getByText('Sign in to the test dApp')).toBeVisible({timeout: 15_000});
     await phraseLine(win.locator('.app-phrase-line'), BLUE);
+    await underTopBar(win, 'b1e-46-phrase');
     await frame(win, 'b1e-46-phrase', win.locator('.app-phrase-line'), {bars: 1});
     await reject(win, request);
 
     win = await windowFor(h, () => (request = adapter.sign(page, BLOCKHASH)));
     await expect(win.getByText('Balance changes (post-simulation)').first()).toBeVisible({timeout: 15_000});
     await phraseLine(win.locator('.app-phrase-line'), BLUE);
+    await underTopBar(win, 'b1e-48-phrase');
     await frame(win, 'b1e-48-phrase', win.locator('.app-phrase-line'), {bars: 1});
     await reject(win, request);
 
@@ -394,6 +468,7 @@ test('visual · B1e approval window (412 × 720): the phrase on #47, #46, #48, #
     await expect(win.locator('.s9-flag-banner.danger .head')).toHaveText('Presale purchase blocked', {timeout: 15_000});
     expect(await win.locator('.sticky-bar button').allTextContents()).toEqual(['Reject']);
     await phraseLine(win.locator('.app-phrase-line'), BLUE);
+    await underTopBar(win, 'b1e-48-f12-phrase');
     await frame(win, 'b1e-48-f12-phrase', win.locator('.app-phrase-line'), {bars: 1});
     await reject(win, request);
 
@@ -402,6 +477,7 @@ test('visual · B1e approval window (412 × 720): the phrase on #47, #46, #48, #
     win = await windowFor(h, () => (request = connect(other)));
     await expect(win.getByText('Noctura is locked')).toBeVisible({timeout: 15_000});
     await phraseLine(win.locator('.app-phrase-line'), BLUE);
+    await lockedTop(win, 'b1e-window-locked-phrase');
     await frame(win, 'b1e-window-locked-phrase', win.locator('.app-phrase-line'), {bars: 1});
     await reject(win, request);
 
@@ -409,6 +485,7 @@ test('visual · B1e approval window (412 × 720): the phrase on #47, #46, #48, #
     win = await windowFor(h, () => (request = connect(other)));
     await expect(win.getByText('Noctura is locked')).toBeVisible({timeout: 15_000});
     await failedLine(win.locator('.app-phrase-line'));
+    await lockedTop(win, 'b1e-window-locked-failed');
     await frame(win, 'b1e-window-locked-failed', win.locator('.app-phrase-line'), {bars: 1});
     await reject(win, request);
 

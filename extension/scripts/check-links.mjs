@@ -3,7 +3,8 @@
 // http, https, ws, wss and ftp alike — in the file kind the table allows; the four links a user is given must be
 // present. Run for one build's chrome/ and firefox/ packages (NOCTURA_DIST). licenses.html is skipped by name (N1): its
 // licence texts carry URLs as escaped text, and check-vault-isolation.mjs's static-page rule holds there instead (no
-// <a, no href=). A library update that changes an inert string fails here until a reviewer adds the new string with
+// <a, no href=). fonts/LICENSE.txt is skipped by name too (rev 2.6): the Geist fonts' OFL text (public/fonts/LICENSE.txt,
+// copied as is), which names its licence's home page and is no page. A library update that changes an inert string fails here until a reviewer adds the new string with
 // its reason.
 import {existsSync, readdirSync, readFileSync, statSync} from 'node:fs';
 import {dirname, join, relative, resolve, sep} from 'node:path';
@@ -11,14 +12,20 @@ import {fileURLToPath} from 'node:url';
 import {isMain} from './isMain.mjs';
 import {distDir} from './distDir.mjs';
 
-/** Every URL literal: the spec's extraction, as written in §4.3. */
-export const URL_LITERAL = /\b(?:https?|wss?|ftp):\/\/[^\s"'`<>)\\;]*/g;
+/**
+ * Every URL literal: the spec's extraction, as written in §4.3 — the scheme matched in any case (rev 2.6): a browser
+ * navigates `HTTPS://…` as it does `https://…`. The table compare stays exact, so an upper-case string fails.
+ */
+export const URL_LITERAL = /\b(?:https?|wss?|ftp):\/\/[^\s"'`<>)\\;]*/gi;
 /** A template literal's interpolation inside a match, folded so a minifier's renaming (`${e}`, `${t}`) is one string. */
 const INTERPOLATION = /\$\{[\w$]*\}/g;
-/** The one page the gate does not read (N1). */
-export const SKIPPED = ['licenses.html'];
-/** The text files a package may carry a URL in — an SVG document too (`<a xlink:href>`), though none ships today (review M5). */
-const READ = /\.(?:js|html|css|json|svg)$/;
+/** The two files the gate does not read, by their exact package path: the licence page (N1) and the fonts' licence text (rev 2.6). */
+export const SKIPPED = ['licenses.html', 'fonts/LICENSE.txt'];
+/**
+ * The text files a package may carry a URL in — an SVG document too (`<a xlink:href>`), though none ships today (review
+ * M5); `.mjs` and `.txt` too (rev 2.6).
+ */
+export const READ = /\.(?:js|mjs|html|css|json|svg|txt)$/;
 
 const MANIFEST = path => path === 'manifest.json';
 const BACKGROUND = path => path === 'background.js';
@@ -119,5 +126,5 @@ if (isMain(import.meta.url)) {
     for (const p of problems) console.error(p);
     process.exit(1);
   }
-  console.log(`links ok (${DIST}): every URL string in chrome/ and firefox/ is one of the link table's, in a file it allows, and the four links the user is given are present (licenses.html skipped by name — the static-page rule holds there)`);
+  console.log(`links ok (${DIST}): every URL string in chrome/ and firefox/ is one of the link table's, in a file it allows, and the four links the user is given are present (licenses.html and fonts/LICENSE.txt skipped by name)`);
 }

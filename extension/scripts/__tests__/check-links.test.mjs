@@ -35,6 +35,13 @@ describe('the link gate (B1e §4.3)', () => {
       'https://r.example/e',
     ]);
     expect(urlStrings('`https://noc-tura.io?ref=${e}`, `https://noc-tura.io?ref=${tn}`')).toEqual(['https://noc-tura.io?ref=${}', 'https://noc-tura.io?ref=${}']);
+    // Rev 2.6: the scheme in any case, kept as written.
+    expect(urlStrings('a="HTTPS://x.example/a"b`WsS://y.example/b`c<FTP://z.example/c>d(Http://q.example/d)')).toEqual([
+      'HTTPS://x.example/a',
+      'WsS://y.example/b',
+      'FTP://z.example/c',
+      'Http://q.example/d',
+    ]);
   });
 
   it.each([
@@ -46,6 +53,15 @@ describe('the link gate (B1e §4.3)', () => {
     ['a navigable link with a dynamic suffix', {'assets/mount-1.js': `${PACKAGE['assets/mount-1.js']};x(\`https://noc-tura.io/extension/terms\${q}\`)`}, 'assets/mount-1.js names "https://noc-tura.io/extension/terms${}" — a URL the link table does not name'],
     ['a planted http:// URL in CSS', {'assets/mount-1.css': '.a{background:url(http://evil.example/x.png)}'}, 'assets/mount-1.css names "http://evil.example/x.png" — a URL the link table does not name'],
     ['the same licenses.html below the root (skipped by name at the root only)', {'sub/licenses.html': PACKAGE['licenses.html']}, 'sub/licenses.html names "http://www.apache.org/licenses/LICENSE-2.0" — a URL the link table does not name'],
+    // Rev 2.6 (final review, ledger T6 M1): the scheme is matched in any case — Chrome navigates HTTPS:// as https://.
+    ['a planted upper-case HTTPS://evil.example/ in a page chunk', {'assets/mount-1.js': `${PACKAGE['assets/mount-1.js']};open("HTTPS://evil.example/")`}, 'assets/mount-1.js names "HTTPS://evil.example/" — a URL the link table does not name'],
+    ['a mixed-case Wss://evil.example in a page chunk', {'assets/mount-1.js': `${PACKAGE['assets/mount-1.js']};new WebSocket("Wss://evil.example")`}, 'assets/mount-1.js names "Wss://evil.example" — a URL the link table does not name'],
+    ['a navigable link written with an upper-case scheme (the table compare stays exact)', {'assets/mount-1.js': `${PACKAGE['assets/mount-1.js']};x("HTTPS://noc-tura.io/extension/terms")`}, 'assets/mount-1.js names "HTTPS://noc-tura.io/extension/terms" — a URL the link table does not name'],
+    // Rev 2.6 (ledger T6 M2): .mjs and .txt files are read.
+    ['a planted URL in an .mjs file', {'assets/x.mjs': 'export const u="https://evil.example/m"'}, 'assets/x.mjs names "https://evil.example/m" — a URL the link table does not name'],
+    ['a planted URL in a .txt file', {'notes.txt': 'see https://evil.example/t'}, 'notes.txt names "https://evil.example/t" — a URL the link table does not name'],
+    ['the fonts’ licence text anywhere but fonts/LICENSE.txt (skipped by its exact path only)', {'fonts/LICENSE2.txt': PACKAGE['fonts/LICENSE.txt']}, 'fonts/LICENSE2.txt names "http://scripts.sil.org/OFL" — a URL the link table does not name'],
+    ['the fonts’ licence text at the root', {'LICENSE.txt': PACKAGE['fonts/LICENSE.txt']}, 'LICENSE.txt names "http://scripts.sil.org/OFL" — a URL the link table does not name'],
   ])('fails %s', (_, over, problem) => {
     expect(linkViolations(files(over), false)).toContain(problem);
   });
@@ -71,22 +87,31 @@ describe('the link gate (B1e §4.3)', () => {
     expect(linkViolations(files(referral), false)).toEqual(['assets/referral-1.js names "https://noc-tura.io?ref=${}" — a URL the link table does not name']);
   });
 
-  it('licenses.html is skipped by name — the skip is the only reason it passes; .txt files are not read', () => {
-    expect(SKIPPED).toEqual(['licenses.html']);
-    expect(linkViolations(files(), false, {skipped: []})).toEqual([
+  it('licenses.html is skipped by name — the skip is the only reason it passes', () => {
+    expect(SKIPPED).toEqual(['licenses.html', 'fonts/LICENSE.txt']);
+    expect(linkViolations(files(), false, {skipped: ['fonts/LICENSE.txt']})).toEqual([
       'licenses.html names "http://www.apache.org/licenses/LICENSE-2.0" — a URL the link table does not name',
       'licenses.html names "https://paulmillr.com" — a URL the link table does not name',
     ]);
     expect(linkViolations(files({'licenses.html.copy.html': PACKAGE['licenses.html']}), false)).toHaveLength(2);
   });
 
-  it('reads an SVG document too: a link planted in one fails (review M5); a .txt or a font is still not read', () => {
+  it('fonts/LICENSE.txt is skipped by name (rev 2.6) — the skip is the only reason it passes', () => {
+    expect(linkViolations(files(), false, {skipped: ['licenses.html']})).toEqual(['fonts/LICENSE.txt names "http://scripts.sil.org/OFL" — a URL the link table does not name']);
+    expect(linkViolations(files(), false, {skipped: []})).toEqual([
+      'licenses.html names "http://www.apache.org/licenses/LICENSE-2.0" — a URL the link table does not name',
+      'licenses.html names "https://paulmillr.com" — a URL the link table does not name',
+      'fonts/LICENSE.txt names "http://scripts.sil.org/OFL" — a URL the link table does not name',
+    ]);
+  });
+
+  it('reads an SVG document too: a link planted in one fails (review M5); a font is still not read', () => {
     const svg = '<svg xmlns="http://www.w3.org/2000/svg"><a xlink:href="https://evil.example/">x</a></svg>';
     expect(linkViolations(files({'icons/x.svg': svg}), false)).toEqual([
       'icons/x.svg names "http://www.w3.org/2000/svg" — inert: react-dom and React elements, an XML namespace identifier, not allowed in this file',
       'icons/x.svg names "https://evil.example/" — a URL the link table does not name',
     ]);
-    expect(linkViolations(files({'icons/x.txt': svg, 'fonts/x.woff2': svg}), false)).toEqual([]);
+    expect(linkViolations(files({'fonts/x.woff2': svg}), false)).toEqual([]);
   });
 
   it('the table is a parameter for the controls: one inert string changed by one character → the package fails', () => {

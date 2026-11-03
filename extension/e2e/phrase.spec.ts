@@ -319,4 +319,59 @@ for (const [name, ext, presale] of [
       await h.close();
     }
   });
+  // Rev 2.6 (the final review's Minor 1, its probe P1): one reading of "a wallet is stored" on the phrase path. A vault
+  // this version refuses (§2.1: here a KDF cost below today's floor — what a later release raising the floor makes of
+  // every older wallet) with a phrase stored: the popup's locked screen draws no line, as the approval window draws none
+  // and #9 shows the update screen without one. Positive control: the same store with the wallet put back draws it on
+  // both surfaces.
+  test(`phrase · ${name}: a vault this version refuses — no line on the popup's locked screen, none on the locked window, none on #9; the wallet put back → both draw it`, async () => {
+    test.setTimeout(300_000);
+    const {h, server, csp} = await scene(`noctura-e2e-phrase-refused-${presale ? 'on' : 'off'}-`, ext);
+    try {
+      const wallet = await local(h.sw, 'v1_vault');
+      const refused = {...(wallet as Record<string, unknown>), kdf: {...((wallet as {kdf: Record<string, unknown>}).kdf), m: 32768}};
+      await h.sw.evaluate(({v, p}) => chrome.storage.local.set({v1_vault: v, v1_phishing_phrase: p}), {v: refused, p: MARKUP});
+      const other = await openDapp(h.ctx, 'https://jup.ag');
+      let request!: Promise<unknown>;
+      for (const [vault, drawn] of [[refused, false], [wallet, true]] as const) {
+        await h.sw.evaluate(v => chrome.storage.local.set({v1_vault: v}), vault);
+        const popup = await h.openPopup();
+        await expect(popup.getByText('Welcome back')).toBeVisible({timeout: 30_000});
+        if (drawn) await popupLine(popup, MARKUP);
+        else {
+          // The answer has arrived (the screen is the locked one, routed by hasWallet) and carries no phrase.
+          expect(await popup.evaluate(() => chrome.runtime.sendMessage({type: 'wallet.state'}))).toMatchObject({ok: true, data: {hasWallet: true, phrase: null}});
+          await expect(popup.locator('.app-phrase-line')).toHaveCount(0);
+        }
+        await popup.close();
+        await fresh(h.sw);
+        const win = await approvalWindow(h.ctx, () => (request = connect(other)));
+        await expect(win.getByText('Noctura is locked')).toBeVisible({timeout: 15_000});
+        if (drawn) await popupLine(win, MARKUP);
+        else await expect(win.locator('.app-phrase-line')).toHaveCount(0);
+        await win.getByRole('button', {name: 'Reject'}).click();
+        expect(((await request) as {ok: boolean}).ok).toBe(false);
+        await windowClosed(win);
+        if (!drawn) {
+          const v = await h.ctx.newPage();
+          await v.goto(`chrome-extension://${h.id}/unlock.html`);
+          await expect(v.getByText('Update Noctura to open this wallet')).toBeVisible({timeout: 60_000});
+          await expect(v.locator('#unl-phrase')).toBeHidden();
+          await expect(v.locator('#unl-phrase-failed')).toBeHidden();
+          await v.close();
+        }
+      }
+      expect(await local(h.sw, 'v1_phishing_phrase')).toBe(MARKUP);
+      // The wallet put back opens with its password, and the popup reads its balances through the fake coordinator.
+      await unlockWith(await h.ctx.newPage(), h.id, E2E_PASSWORD);
+      const popup = await h.openPopup();
+      await expect(popup.getByText('10.0000 SOL', {exact: true}).first()).toBeVisible({timeout: 30_000});
+      await popup.close();
+      expect(csp).toEqual([]);
+      contained(h);
+      expect(server.unexpected).toEqual([]);
+    } finally {
+      await h.close();
+    }
+  });
 }

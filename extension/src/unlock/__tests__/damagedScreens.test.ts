@@ -70,8 +70,11 @@ describe('the damaged states on #9 and #1 (B1e §2.2)', () => {
     expect(visible(el('dmg-save'))).toBe(true);
     expect(visible(el('dmg-remove'))).toBe(true);
     expect(text(el('dmg-remove'))).toBe('Remove damaged wallet');
-    // Save comes before Remove (§2.3).
-    expect([...el('v-damaged').querySelectorAll('.sticky-bar > *')].map(e => e.id)).toEqual(['dmg-save', 'dmg-remove']);
+    // Save comes before Remove (§2.3), and its note directly under it (rev 2.6), in the bar beside it.
+    expect([...el('v-damaged').querySelectorAll('.sticky-bar > *')].map(e => e.id)).toEqual(['dmg-save-group', 'dmg-remove']);
+    expect([...el('dmg-save-group').children].map(e => e.id)).toEqual(['dmg-save', 'dmg-save-note']);
+    expect(text(el('dmg-save-note'))).toBe("This file is your wallet's data exactly as this browser holds it. If it contains your encrypted wallet, anyone with the file and your password could try to open it — keep it private.");
+    expect(visible(el('dmg-save-note'))).toBe(true);
     click(el('dmg-remove'));
     expect(h.went).toEqual(['unlock.html?mode=remove-damaged']);
     expect(h.sent).toEqual([]);
