@@ -2,6 +2,7 @@
 import {createEnvelope} from '../../vault/envelope';
 import {mountIntro, mountWelcome} from '../screens/welcome';
 import {click, el, harness, loadPage, testKdf, text, unstyled, visible} from './pageHarness';
+import {NOCTURA_PAGES} from '../../shared/links';
 
 const M = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const K0 = 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk';
@@ -9,7 +10,7 @@ const K0 = 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk';
 beforeEach(loadPage);
 
 describe('#1 welcome (spec §3.1)', () => {
-  it('idle: the design’s copy, two trust chips (no "ZK-private", D6), plain-text terms, both CTAs in design order', async () => {
+  it('idle: the design’s copy, two trust chips (no "ZK-private", D6), the terms line with its two links, both CTAs in design order', async () => {
     const h = await harness();
     const calls: string[] = [];
     await mountWelcome(h.deps, {create: () => calls.push('create'), import: () => calls.push('import')}).show();
@@ -21,8 +22,12 @@ describe('#1 welcome (spec §3.1)', () => {
     expect(text(screen)).not.toContain('ZK-private');
     expect(visible(el('wel-terms'))).toBe(true);
     expect(text(screen.querySelector('.terms'))).toBe('By continuing you agree to the Terms and Privacy Policy.');
-    // "Terms" and "Privacy Policy" are text until the privacy policy exists (release gate, B1e).
-    expect(screen.querySelectorAll('a')).toHaveLength(0);
+    // B1e §4.1: "Terms" and "Privacy Policy" are the line's two links, and the screen's only ones.
+    expect([...screen.querySelectorAll('a')].map(a => [a.textContent, a.getAttribute('href'), a.getAttribute('target'), a.getAttribute('rel')])).toEqual([
+      ['Terms', NOCTURA_PAGES.terms, '_blank', 'noopener noreferrer'],
+      ['Privacy Policy', NOCTURA_PAGES.privacy, '_blank', 'noopener noreferrer'],
+    ]);
+    expect([...el('wel-terms').querySelectorAll('a')].map(a => a.id)).toEqual(['wel-terms-link', 'wel-privacy-link']);
     expect(visible(el('wel-actions'))).toBe(true);
     // Fix round 1 item 6: primary (Create) first, as in the design (index.html:4511-4512).
     expect([...el('wel-actions').querySelectorAll('button')].map(b => b.id)).toEqual(['wel-create', 'wel-import']);
@@ -36,6 +41,12 @@ describe('#1 welcome (spec §3.1)', () => {
     expect(calls).toEqual(['create', 'import']);
     expect(text(document.body)).not.toMatch(/Screenshots disabled|auto-clears/);
     expect(unstyled('v-welcome')).toEqual([]);
+  });
+
+  it('B1e §4.1: the two links are the shared table’s, literally — what the link gate (§4.3) requires present', () => {
+    expect(NOCTURA_PAGES).toEqual({terms: 'https://noc-tura.io/extension/terms', privacy: 'https://noc-tura.io/extension/privacy', help: 'https://noc-tura.io/extension/help'});
+    expect(el<HTMLAnchorElement>('wel-terms-link').getAttribute('href')).toBe('https://noc-tura.io/extension/terms');
+    expect(el<HTMLAnchorElement>('wel-privacy-link').getAttribute('href')).toBe('https://noc-tura.io/extension/privacy');
   });
 
   it('rule 6 (spec §7.6): a second click on Create, or on Import, inside 500 ms does nothing', async () => {

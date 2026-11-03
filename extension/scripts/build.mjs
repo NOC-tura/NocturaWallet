@@ -12,6 +12,7 @@ import {cpSync, mkdirSync, rmSync, writeFileSync} from 'node:fs';
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {render} from '../manifest/source.mjs';
+import {LICENCE_PAGE, buildLicencePage} from './licences.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
@@ -30,6 +31,9 @@ execFileSync('npx', ['vite', 'build', '--outDir', app, '--emptyOutDir'], {cwd: R
 for (const content of ['provider', 'relay']) {
   execFileSync('npx', ['vite', 'build', '--config', 'vite.content.config.ts', '--outDir', app], {cwd: ROOT, stdio: 'inherit', env: {...env, NOCTURA_CONTENT: content}});
 }
+// B1e §4.2: licenses.html, from the module maps the three builds wrote — before the per-browser copies, so both carry
+// the same file. A package whose licence cannot be named, or is outside the allowlist, throws: the build fails.
+writeFileSync(join(app, LICENCE_PAGE), buildLicencePage(ROOT, outRoot));
 
 for (const browser of ['chrome', 'firefox']) {
   const dir = join(outRoot, browser);

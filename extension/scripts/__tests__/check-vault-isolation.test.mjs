@@ -3,8 +3,8 @@ import {tmpdir} from 'node:os';
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {
-  ENTRIES,
-  bundleViolations, contentStorageViolations, htmlViolations, listSourceFiles, manifestViolations, nonVaultModuleViolations, bundledWebAuthnViolations, sourceViolations, vaultPageModuleViolations, vaultPageViolations, webAuthnViolations,
+  ENTRIES, STATIC_PAGES, STATIC_PAGE_REFUSED,
+  bundleViolations, contentStorageViolations, htmlViolations, pageViolations, staticPageViolations, listSourceFiles, manifestViolations, nonVaultModuleViolations, bundledWebAuthnViolations, sourceViolations, vaultPageModuleViolations, vaultPageViolations, webAuthnViolations,
   BIP39_MARKER, DERIVATION_MARKER, KDF_MARKER, PASSKEY_MARKER, REACT_MARKER, VAULT_MARKER, WEBAUTHN_MARKER, WORDLIST_MARKER,
 } from '../check-vault-isolation.mjs';
 import {render} from '../../manifest/source.mjs';
@@ -1860,5 +1860,63 @@ describe('plan 2: the real vault page reaches every screen it builds (positive c
         'src/unlock/passkeyFlow.ts',
       ]),
     );
+  });
+});
+
+// B1e §4.2 (I9, N1): every page of a package is an entry or a static page at the root; a static page (licenses.html)
+// links, loads and runs nothing.
+describe('vault isolation (the pages of a package; the static page)', () => {
+  let dir;
+  const write = (name, text) => {
+    mkdirSync(dirname(join(dir, name)), {recursive: true});
+    writeFileSync(join(dir, name), text);
+  };
+  const PAGE = '<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<title>Open-source licenses · Noctura</title>\n</head>\n<body>\n<h1>Open-source licenses</h1>\n<p>x</p>\n<h2>a 1.0.0</h2>\n<p>MIT</p>\n<pre>&lt;http://unlicense.org/&gt; one = two, based on a</pre>\n</body>\n</html>\n';
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'vault-iso-pages-'));
+    for (const page of Object.keys(ENTRIES)) write(page, '<html></html>');
+    write('licenses.html', PAGE);
+  });
+  afterEach(() => rmSync(dir, {recursive: true, force: true}));
+
+  it('passes the four entries and the licence page as the generator writes it (escaped text, prose with "on" and "=")', () => {
+    expect(STATIC_PAGES).toEqual(['licenses.html']);
+    expect(STATIC_PAGE_REFUSED).toEqual(['<a', 'href=', '<script', '<link', '<style', 'style=', '<iframe', '<form']);
+    expect(pageViolations(dir)).toEqual([]);
+  });
+
+  it('a second, unknown page in the package fails; so does a page below the root', () => {
+    write('extra.html', '<p>x</p>');
+    write('assets/x.html', '<p>x</p>');
+    expect(pageViolations(dir)).toEqual([
+      'assets/x.html is a page below the package root — every page is an entry (ENTRIES) or a static page (STATIC_PAGES) at the root',
+      'extra.html is an unknown page — neither an entry (popup.html, wallet.html, unlock.html, approve.html) nor a static page (licenses.html)',
+    ]);
+  });
+
+  it('a missing licenses.html is INCONCLUSIVE, never a pass', () => {
+    rmSync(join(dir, 'licenses.html'));
+    expect(pageViolations(dir)).toEqual(['INCONCLUSIVE: licenses.html is missing — the static-page rule would pass trivially']);
+  });
+
+  it.each([
+    ['<script src="x.js"></script>', ['licenses.html contains <script — a static page links, loads and runs nothing', 'licenses.html has a <script> — a static page is headings, paragraphs and <pre> text only']],
+    ['<style>body{color:red}</style>', ['licenses.html contains <style — a static page links, loads and runs nothing', 'licenses.html has a <style> — a static page is headings, paragraphs and <pre> text only']],
+    ['<a href="https://evil.example/">x</a>', ['licenses.html contains <a — a static page links, loads and runs nothing', 'licenses.html contains href= — a static page links, loads and runs nothing', 'licenses.html has a <a> — a static page is headings, paragraphs and <pre> text only']],
+    ['<LINK REL=stylesheet HREF=x.css>', ['licenses.html contains href= — a static page links, loads and runs nothing', 'licenses.html contains <link — a static page links, loads and runs nothing', 'licenses.html has a <link> — a static page is headings, paragraphs and <pre> text only']],
+    ['<p style="color:red">x</p>', ['licenses.html contains style= — a static page links, loads and runs nothing', 'licenses.html: <p> has a style attribute — not one plain text needs']],
+    ['<p onclick="x()">x</p>', ['licenses.html has an on…= attribute — a static page runs nothing', 'licenses.html: <p> has a onclick attribute — not one plain text needs']],
+    ['<pre/onmouseover=x>y</pre>', ['licenses.html has an on…= attribute — a static page runs nothing', 'licenses.html: <pre> has a onmouseover attribute — not one plain text needs']],
+    ['<iframe src="x"></iframe>', ['licenses.html contains <iframe — a static page links, loads and runs nothing', 'licenses.html has a <iframe> — a static page is headings, paragraphs and <pre> text only']],
+    ['<form action="x"></form>', ['licenses.html contains <form — a static page links, loads and runs nothing', 'licenses.html has a <form> — a static page is headings, paragraphs and <pre> text only']],
+    ['<meta http-equiv="refresh" content="0;url=https://evil.example/">', ['licenses.html: <meta> has a http-equiv attribute — not one plain text needs', 'licenses.html: <meta> has a content attribute — not one plain text needs', 'licenses.html: a <meta> other than charset="utf-8"']],
+    ['<img src="x.png">', ['licenses.html has a <img> — a static page is headings, paragraphs and <pre> text only']],
+  ])('refuses %s planted in licenses.html', (planted, problems) => {
+    write('licenses.html', PAGE.replace('<p>x</p>', planted));
+    expect(pageViolations(dir)).toEqual(problems);
+  });
+
+  it('the rule is the same function the page gate applies', () => {
+    expect(staticPageViolations('licenses.html', PAGE)).toEqual([]);
   });
 });

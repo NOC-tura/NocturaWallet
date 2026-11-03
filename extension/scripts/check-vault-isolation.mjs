@@ -990,6 +990,49 @@ export function contentStorageViolations(distApp) {
   return out;
 }
 
+// B1e §4.2 (I9, N1): the root pages a package may carry beyond the four ENTRIES — pages the build writes itself, with
+// no script of their own. Every .html in a package is an ENTRIES key or one of these, at the root; anything else is an
+// unknown page (bundleViolations follows the scripts of every page, and refuses nothing for a page with none). A static
+// page links, loads and runs nothing: the spec's strings refused over the raw file, case-insensitive (every `<` of a
+// licence text is escaped by scripts/licences.mjs, so none can come from one), an on…= attribute in any tag, and
+// only the tags and attributes plain text needs.
+export const STATIC_PAGES = ['licenses.html'];
+export const STATIC_PAGE_REFUSED = ['<a', 'href=', '<script', '<link', '<style', 'style=', '<iframe', '<form'];
+const STATIC_PAGE_TAGS = {html: ['lang'], head: [], meta: ['charset'], title: [], body: [], h1: [], h2: [], p: [], pre: []};
+const ON_ATTRIBUTE = /<[a-z][^>]*[\s/'"]on[a-z]+\s*=/i;
+
+export function staticPageViolations(path, html) {
+  const out = [];
+  const raw = html.toLowerCase();
+  for (const s of STATIC_PAGE_REFUSED) if (raw.includes(s)) out.push(`${path} contains ${s} — a static page links, loads and runs nothing`);
+  if (ON_ATTRIBUTE.test(html)) out.push(`${path} has an on…= attribute — a static page runs nothing`);
+  for (const tag of htmlTags(html)) {
+    const allowed = STATIC_PAGE_TAGS[tag.name];
+    if (allowed === undefined) {
+      out.push(`${path} has a <${tag.name}> — a static page is headings, paragraphs and <pre> text only`);
+      continue;
+    }
+    for (const name of tag.attrs.keys()) if (!allowed.includes(name)) out.push(`${path}: <${tag.name}> has a ${name} attribute — not one plain text needs`);
+    if (tag.name === 'meta' && (tag.attrs.get('charset') ?? '').toLowerCase() !== 'utf-8') out.push(`${path}: a <meta> other than charset="utf-8"`);
+  }
+  return out;
+}
+
+/** Every page of one package directory: an entry or a static page, at the root; each static page plain text. */
+export function pageViolations(distApp) {
+  const out = [];
+  const pages = listFiles(distApp, /\.x?html?$/i).map(p => toPosix(relative(distApp, p)));
+  for (const page of pages) {
+    if (page.includes('/')) out.push(`${page} is a page below the package root — every page is an entry (ENTRIES) or a static page (STATIC_PAGES) at the root`);
+    else if (!(page in ENTRIES) && !STATIC_PAGES.includes(page)) out.push(`${page} is an unknown page — neither an entry (${Object.keys(ENTRIES).join(', ')}) nor a static page (${STATIC_PAGES.join(', ')})`);
+  }
+  for (const page of STATIC_PAGES) {
+    if (!pages.includes(page)) out.push(`INCONCLUSIVE: ${page} is missing — the static-page rule would pass trivially`);
+    else out.push(...staticPageViolations(page, readFileSync(join(distApp, page), 'utf8')));
+  }
+  return out;
+}
+
 // ── What the bundler put in the vault page (fix round 2, the authoritative backstop) ──────────────
 // vite.config.ts's chunkModules plugin writes dist/app.modules.json: for every built chunk (the KDF
 // worker's too), the source modules it carries, package-relative. However a module got in — a comment
@@ -1261,6 +1304,7 @@ if (isMain(import.meta.url)) {
   for (const d of ['app', 'chrome', 'firefox']) {
     for (const p of bundleViolations(join(ROOT, DIST, d))) problems.push(`${DIST}/${d}: ${p}`);
     for (const p of contentStorageViolations(join(ROOT, DIST, d))) problems.push(`${DIST}/${d}: ${p}`);
+    for (const p of pageViolations(join(ROOT, DIST, d))) problems.push(`${DIST}/${d}: ${p}`);
   }
   // dist/chrome and dist/firefox are copies of dist/app (scripts/build.mjs): one module map covers all three.
   const mapPath = join(ROOT, DIST, 'app.modules.json');
@@ -1286,5 +1330,5 @@ if (isMain(import.meta.url)) {
     for (const p of problems) console.error(p);
     process.exit(1);
   }
-  console.log(`vault isolation ok (${DIST}): sources, built popup/background and both manifests carry no path to the vault; no chunk outside the vault page carries src/vault, src/unlock or core/keys, and no module bundled outside it reads WebAuthn (module map); no page reaches storage.session, and neither built content script names extension storage; every module bundled into the vault page is vault-page code or one of its five packages, and its stylesheets are the three named sheets, importing nothing and loading only the Geist faces; its HTML carries no inline CSS and links only its built sheets, and its code builds no CSS at run time`);
+  console.log(`vault isolation ok (${DIST}): sources, built popup/background and both manifests carry no path to the vault; no chunk outside the vault page carries src/vault, src/unlock or core/keys, and no module bundled outside it reads WebAuthn (module map); no page reaches storage.session, and neither built content script names extension storage; every page is an entry or the static licenses.html, which links, loads and runs nothing; every module bundled into the vault page is vault-page code or one of its five packages, and its stylesheets are the three named sheets, importing nothing and loading only the Geist faces; its HTML carries no inline CSS and links only its built sheets, and its code builds no CSS at run time`);
 }
