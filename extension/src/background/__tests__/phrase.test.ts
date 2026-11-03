@@ -5,13 +5,12 @@ import {applySettingsChallenge, handleWallet} from '../walletApi';
 import {applyPhraseChallenge} from '../phrase';
 import {PHRASE_KEY} from '../phraseKey';
 import {VAULT_KEY, WALLET_DATA_KEYS, forgetDamaged, forgetWallet, storeEnvelope} from '../accountsStore';
-import {REAUTH_KEY, SESSION_KEY, setSession} from '../session';
+import {REAUTH_KEY, SESSION_KEY, getSession, setSession} from '../session';
 import {readSettings} from '../settings';
 import {lock} from '../autolock';
 import {CHALLENGE_TTL_MS, challengeInfo, isAbout, issueChallenge, takePhraseChallenge, takeSettingsChallenge} from '../reauthChallenges';
 import {runUnlockHook} from '../dapp/queue';
 import {envelopeRevision} from '../../shared/envelopeRevision';
-import {storedDigest} from '../../shared/storedDigest';
 import {edited} from '../../shared/__tests__/vaultControls';
 import {openPage} from '../dapp/__tests__/pageHarness';
 import {fakeDeps, fakeReader} from './fakeDeps';
@@ -43,6 +42,8 @@ const STORED = {
 };
 const REV = envelopeRevision(STORED as Parameters<typeof envelopeRevision>[0]);
 const REPLACEMENT = {...STORED, kdf: {...STORED.kdf, salt: B(16, 9)}, seed: {iv: B(12, 8), ct: B(48, 7)}, password: {wrapped: B(40, 6)}};
+/** C2's digest of a stored value — sha256(utf8(JSON.stringify)) — computed with node:crypto, independently of storedDigest. */
+const digestOfStored = (raw: unknown): string => createHash('sha256').update(Buffer.from(JSON.stringify(raw), 'utf8')).digest('hex');
 const BLUE = 'Blue horse 42';
 const GREEN = 'Green fox 7';
 
@@ -80,6 +81,32 @@ describe('settings.phrase: set when none is set — an unlocked session, no proo
     expect(await stored(c)).toBeUndefined();
     await setSession(c.ext, [ACCOUNT]);
     expect(await phrase(c, BLUE)).toEqual({ok: true, data: {outcome: 'set'}});
+    expect(await stored(c)).toBe(BLUE);
+  });
+
+  it('the session check and the first write are one sessionMutex section: a lock started during the write waits for it', async () => {
+    const c = await setup();
+    const set = c.ext.local.set.bind(c.ext.local);
+    let locking: Promise<void> | null = null;
+    let lockedDuringWrite: boolean | null = null;
+    c.ext.local.set = async (key, value) => {
+      if (key === PHRASE_KEY && locking === null) {
+        let done = false;
+        locking = lock(c.ext).then(() => {
+          done = true;
+        });
+        // A macrotask: a lock not held back by the section has run to its end by now.
+        await new Promise(resolve => setTimeout(resolve, 0));
+        lockedDuringWrite = done || (await getSession(c.ext)) === null;
+      }
+      await set(key, value);
+    };
+    expect(await phrase(c, BLUE)).toEqual({ok: true, data: {outcome: 'set'}});
+    expect(lockedDuringWrite).toBe(false);
+    // Positive control: the lock was started, and lands once the section ends.
+    expect(locking).not.toBeNull();
+    await locking;
+    expect(await getSession(c.ext)).toBeNull();
     expect(await stored(c)).toBe(BLUE);
   });
 
@@ -397,6 +424,21 @@ describe('who may ask: no content-script, provider or relay context reads or wri
     expect(await handleMessage(c.ext, {type: 'dapp.pending'}, popup, c.deps)).toEqual({ok: false, error: 'forbidden'});
   });
 
+  it('the proof route is the vault page\'s alone: vault.reauthOk and vault.challengeInfo on a phrase challenge from the popup, the tab or /approve.html are `forbidden`', async () => {
+    const c = await setup({phrase: BLUE});
+    const id = await challengeFor(c, GREEN);
+    for (const sender of [popup, tab, approve]) {
+      for (const type of ['vault.reauthOk', 'vault.challengeInfo']) {
+        expect(await handleMessage(c.ext, {type, challengeId: id}, sender, c.deps)).toEqual({ok: false, error: 'forbidden'});
+      }
+    }
+    expect(await stored(c)).toBe(BLUE);
+    expect(await challenges(c)).toEqual([id]);
+    // Positive control: the vault page's proof applies it.
+    expect(await reauthOk(c, id)).toEqual({ok: true, data: {applied: 'phrase'}});
+    expect(await stored(c)).toBe(GREEN);
+  });
+
   it("the relay's page port refuses every read and write of it: `invalid-request`, no answer carries it, nothing written", async () => {
     const c = await setup({phrase: BLUE});
     const page = openPage(c.ext, c.deps, 'https://jup.ag');
@@ -434,7 +476,7 @@ describe('wallet data: wiped by a delete, a damaged-vault removal and a first wr
     const unreadable = edited(e => (e.seed = 'damaged'));
     await ext.local.set(VAULT_KEY, unreadable);
     await ext.local.set(PHRASE_KEY, BLUE);
-    expect(await forgetDamaged(ext, {expectedDigest: storedDigest(unreadable)})).toBe('forgotten');
+    expect(await forgetDamaged(ext, {expectedDigest: digestOfStored(await ext.local.get(VAULT_KEY))})).toBe('forgotten');
     expect(await ext.local.get(PHRASE_KEY)).toBeUndefined();
   });
 
@@ -444,8 +486,7 @@ describe('wallet data: wiped by a delete, a damaged-vault removal and a first wr
     const unreadable = edited(e => (e.seed = 'damaged'));
     await ext.local.set(VAULT_KEY, unreadable);
     await ext.local.set(PHRASE_KEY, BLUE);
-    // The digest as the C2 rule defines it, computed here with node:crypto — independently of storedDigest.
-    const digest = createHash('sha256').update(Buffer.from(JSON.stringify(await ext.local.get(VAULT_KEY)), 'utf8')).digest('hex');
+    const digest = digestOfStored(await ext.local.get(VAULT_KEY));
     const forget = (expectedDigest: string) => handleMessage(ext, {type: 'vault.forgetDamaged', expectedDigest}, vaultPage, deps);
     expect(await forget('0'.repeat(64))).toEqual({ok: false, error: 'busy'});
     expect(await ext.local.get(PHRASE_KEY)).toBe(BLUE);

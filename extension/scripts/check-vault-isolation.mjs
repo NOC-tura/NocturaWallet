@@ -972,6 +972,9 @@ export function bundleViolations(distApp) {
 // spellings of TOUCHES_STORAGE (`.storage`, `?.storage`, a quoted bracket, a destructuring key) in the minified file.
 // The source rule above refuses them in src/relay and src/provider already; this one holds if that rule is ever
 // loosened or the bundler brings storage in from elsewhere. localStorage / sessionStorage are the page's, not ours.
+// A known limit (fix round 1, M4): the rule reads text, so a key never written whole — concatenated (`n['stor' + 'age']`)
+// or computed (`n[k]`) — is not seen, here or by the source rule; it catches storage written plainly, not code written to
+// hide it (that is review's). The test file pins the limit beside its control.
 export const CONTENT_SCRIPTS = ['relay.js', 'provider.js'];
 export function contentStorageViolations(distApp) {
   const out = [];

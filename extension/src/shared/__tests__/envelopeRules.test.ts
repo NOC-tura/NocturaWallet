@@ -157,6 +157,7 @@ describe('cleanPhrase: the anti-phishing phrase (B1e §1.5)', () => {
     ['object replacement character U+FFFC inside a word', 'ab\ufffccd'],
     ['a combining tower: a + U+0300 x31 (32 code units)', 'a\u0300\u0300\u0300\u0300\u0300\u0300\u0300\u0300\u0300\u0300\u0300\u0300\u0300\u0300\u0300\u0300\u0300\u0300\u0300\u0300\u0300\u0300\u0300\u0300\u0300\u0300\u0300\u0300\u0300\u0300\u0300'],
     ['four combining marks on one letter (one over the cap)', 'x\u0301\u0302\u0303\u0304yz'],
+    ['four enclosing marks on one letter (Me)', 'x\u20dd\u20dd\u20dd\u20ddyz'],
     ['a + U+0300 x4: NFC makes it a-grave + 3, the cap counts after NFD', 'a\u0300\u0300\u0300\u0300'],
     ['u with diaeresis and acute (U+01D8) + 3 marks: 5 after NFD', '\u01d8\u0300\u0301\u0302xy'],
     ['a with circumflex and dot below (U+1EAD) + 3 marks: 5 after NFD', '\u1ead\u0300\u0301\u0302xy'],
@@ -184,7 +185,26 @@ describe('cleanPhrase: the anti-phishing phrase (B1e §1.5)', () => {
     ['Hebrew and digits', '\u05e9\u05dc\u05d5\u05dd 42'],
     ['16 emoji (32 code units)', '\u{1f600}\u{1f600}\u{1f600}\u{1f600}\u{1f600}\u{1f600}\u{1f600}\u{1f600}\u{1f600}\u{1f600}\u{1f600}\u{1f600}\u{1f600}\u{1f600}\u{1f600}\u{1f600}'],
     ['32 wide letters', 'WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW'],
+    // Fix round 1 (I1): spacing marks (Mc) advance like letters and are not counted; Burmese writes four marks on a consonant.
+    ['Burmese "debt": medials and vowels Mc Mn Mc Mc on one consonant (spacing marks stack nothing)', '\u1000\u103c\u103d\u1031\u1038'],
+    ['Burmese: Mn Mn Mc Mc on one consonant', '\u101b\u103d\u103e\u1031\u1038'],
+    ['Burmese: Mc Mn Mc Mn on one consonant', '\u1001\u103b\u103d\u1031\u1037'],
   ])('accepts (E21 positive control): %s', (_, s) => {
+    expect(cleanPhrase(s)).toBe(s);
+  });
+
+  // Fix round 1 (M5): what trim() does not strip, and what "one visible character" admits — so a change is a decision.
+  it('trim() strips NBSP, U+3000 and BOM but not ZWSP: a ZWSP-padded phrase stays its length and is refused for the ZWSP', () => {
+    expect('\u200b\u200bab'.trim().length).toBe(4);
+    expect(cleanPhrase('\u200b\u200bab')).toBeUndefined();
+    // Long enough without the ZWSP, so the refusal is the character's, not the length's.
+    expect(cleanPhrase('\u200babcd')).toBeUndefined();
+    expect(cleanPhrase('abcd')).toBe('abcd');
+  });
+
+  it('one visible character at each end of 30 no-break spaces (32 code units) is accepted as it is', () => {
+    const s = 'a' + '\u00a0'.repeat(30) + 'b';
+    expect(s.length).toBe(32);
     expect(cleanPhrase(s)).toBe(s);
   });
 

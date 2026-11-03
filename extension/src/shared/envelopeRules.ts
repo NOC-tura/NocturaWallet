@@ -53,10 +53,12 @@ export function cleanName(x: unknown): string | null {
 /** B1e §1.5: the anti-phishing phrase's length, in UTF-16 code units (as cleanName counts). */
 export const PHRASE_LENGTH = {min: 3, max: 32} as const;
 /**
- * B1e §1.5 (E21): the most combining marks one character may carry in a row, counted on the canonical decomposition
- * (NFD), so a precomposed letter's own marks count. Thai (a vowel and a tone mark) needs two, pointed Hebrew (a dagesh,
- * a vowel and a shin dot), Tibetan stacks and polytonic Greek three; a fourth mark only builds a tower that draws above
- * or below the line — over the header the line sits under.
+ * B1e §1.5 (E21): the most nonspacing or enclosing marks (Mn, Me) one character may carry in a row, counted on the
+ * canonical decomposition (NFD), so a precomposed letter's own marks count. Thai (a vowel and a tone mark) needs two,
+ * pointed Hebrew (a dagesh, a vowel and a shin dot), Tibetan stacks and polytonic Greek three; a fourth only builds a
+ * tower that draws above or below the line — over the header the line sits under. Spacing marks (Mc) advance like
+ * letters and stack nothing, so they are not counted and break a run (fix round 1, I1: Burmese writes a consonant's
+ * medials and vowels as Mn / Mc runs four long).
  */
 export const PHRASE_MAX_MARKS = 3;
 // B1e §1.5 ("printable only"): on top of FORBIDDEN_IN_NAME, a phrase may not hold a lone surrogate (Cs), a private-use
@@ -67,15 +69,15 @@ const NOT_PRINTABLE = /[\p{Cs}\p{Co}\p{Cn}]/u;
 // among them) and the Braille blank U+2800 — nor the two that stand in for a character that could not be shown (U+FFFC,
 // U+FFFD): a phishing page draws an empty or a broken line as easily as it draws none.
 const BLANK = /[\p{Default_Ignorable_Code_Point}\u2800\ufffc\ufffd]/u;
-const STACKED = new RegExp(`\\p{M}{${PHRASE_MAX_MARKS + 1}}`, 'u');
+const STACKED = new RegExp(`[\\p{Mn}\\p{Me}]{${PHRASE_MAX_MARKS + 1}}`, 'u');
 // B1e §1.5 (E21): at least one character that draws itself — a letter, number, symbol or punctuation (never a mark).
 const VISIBLE = /[\p{L}\p{N}\p{S}\p{P}]/u;
 
 /**
  * B1e §1.5: the anti-phishing phrase as stored — NFC-normalised, then trimmed; PHRASE_LENGTH code units; no character of
  * FORBIDDEN_IN_NAME (so a bidi override cannot restyle the line, and no invisible character makes two phrases look
- * alike), none that does not print or renders blank, no more than PHRASE_MAX_MARKS combining marks in a row (counted
- * after NFD), and at least one visible character (E21). `null`: no phrase (null, or a string empty after trimming —
+ * alike), none that does not print or renders blank, no more than PHRASE_MAX_MARKS nonspacing / enclosing marks in a
+ * row (counted after NFD), and at least one visible character (E21). `null`: no phrase (null, or a string empty after trimming —
  * "remove"). `undefined`: refused.
  */
 export function cleanPhrase(x: unknown): string | null | undefined {

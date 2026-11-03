@@ -1260,6 +1260,18 @@ describe('vault isolation (the built content scripts carry no storage)', () => {
     }
   });
 
+  // Fix round 1 (M4): the rule reads the built text, so a key never written whole is not seen — a review aid beside the
+  // source rule, not a boundary (the same spellings pass TOUCHES_STORAGE in the sources too).
+  it('a known limit, not a pass: a concatenated or computed key is not seen — the same access spelled whole is', () => {
+    for (const code of ['n[`stor`+`age`].local', 'var k=`storage`;n[k].local']) {
+      write('relay.js', `(function(){var n=globalThis.chrome;${code}})();`);
+      expect(contentStorageViolations(dir)).toEqual([]);
+    }
+    // The control: the same access with the key whole fails.
+    write('relay.js', '(function(){var n=globalThis.chrome;n[`storage`].local})();');
+    expect(contentStorageViolations(dir)).toEqual(['relay.js touches extension storage ([`storage`]) — a content script reaches none']);
+  });
+
   it('a missing file is INCONCLUSIVE, never a pass', () => {
     rmSync(join(dir, 'relay.js'));
     expect(contentStorageViolations(dir)).toEqual(['INCONCLUSIVE: relay.js is missing — the content-script storage rule would pass trivially']);
