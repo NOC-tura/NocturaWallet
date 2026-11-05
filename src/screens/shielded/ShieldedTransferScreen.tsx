@@ -357,8 +357,8 @@ export function ShieldedTransferScreen(): React.JSX.Element {
           <View className="flex-row items-start gap-2 rounded-lg p-3 mb-4 bg-accent-shielded-tint border border-accent-shielded/30">
             <ShieldCheck size={16} color={ACCENT} strokeWidth={2} />
             <Text variant="caption" className="flex-1 text-shield-300">
-              Sender, recipient and amount are unlinkable on-chain. The remainder
-              stays in your private balance.
+              The recipient and the amount stay inside the shielded pool. The
+              remainder stays in your private balance.
             </Text>
           </View>
         </ScrollView>

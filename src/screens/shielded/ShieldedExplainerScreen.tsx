@@ -70,23 +70,23 @@ export function ShieldedExplainerScreen({navigation}: Props) {
           Private SOL, three steps.
         </Text>
         <Text variant="body" className="text-fg-secondary mb-8 max-w-sm">
-          Shielded mode moves SOL into a ZK pool. Senders, recipients, and amounts of future shielded transfers are unlinkable from your public address.
+          Shielded mode moves SOL into a ZK pool. Inside the pool, recipients and amounts are not shown on-chain. Deposits and withdrawals are public and can be linked to your address.
         </Text>
 
         <ExplainerStep
           n={1}
           title="Move into the vault"
-          body="Deposit SOL from your public address. The deposit itself is visible on-chain (it has to be — it's how you fund the vault), but everything from this point onward is private."
+          body="Deposit SOL from your public address. The deposit is visible on-chain, and so is a withdrawal back to a public address."
         />
         <ExplainerStep
           n={2}
           title="Generate a ZK proof"
-          body="For every shielded action, your phone produces a Plonk-style zero-knowledge proof locally. The proof shows you own the funds without revealing which note you're spending."
+          body="For every shielded action, your phone produces a zero-knowledge proof (Groth16) locally. The proof shows you own the funds without revealing which note you're spending."
         />
         <ExplainerStep
           n={3}
           title="Send privately"
-          body="Settled on Solana with the proof attached. Validators verify the proof; nobody — not even Noctura — sees the recipient or the amount."
+          body="Settled on Solana with the proof attached. Validators verify the proof; the recipient and the amount inside the pool are not shown on-chain."
         />
       </ScrollView>
 

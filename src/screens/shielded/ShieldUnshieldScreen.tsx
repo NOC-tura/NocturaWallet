@@ -392,7 +392,7 @@ export function ShieldUnshieldScreen({onBack, initialDirection}: ShieldUnshieldS
         {/* Explanation copy (Make private idle) */}
         {direction === 'private' && !hasAmount ? (
           <Text variant="caption" className="text-fg-tertiary text-center px-2 mt-1">
-            Funds move into your private vault. Recipients of future shielded sends won't be linked to your public address.
+            Funds move into the shielded pool. This deposit is public on-chain, and a later withdrawal to this wallet can be linked to it.
           </Text>
         ) : null}
       </ScrollView>
