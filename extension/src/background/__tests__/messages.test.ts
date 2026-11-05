@@ -22,10 +22,19 @@ const ACC = [{index: 0, publicKey: base58.encode(PUB), secretKey: SECRET64}];
 // 64 × 0x01 is 64 bytes but not a keypair: its "public half" is not what its seed derives.
 const ONES64 = base64.encode(new Uint8Array(64).fill(1));
 const UNRELATED = 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk';
-/** A fake extension whose stored envelope records ACC's key: vault.setKeys binds to it (review H1). */
+const bytes = (n: number, fill: number) => base64.encode(new Uint8Array(n).fill(fill));
+/** A fake extension whose stored envelope records ACC's key: vault.setKeys binds to it (review H1) — a whole envelope,
+ * with the byte lengths a real one has, since the binding goes through envelopeShape (B1e §2.5, R3). */
 function vaultExt() {
   const ext = fakeExt();
-  (ext.local as ReturnType<typeof memKV>).data.set('v1_vault', {v: 1, scheme: 'slip10', accounts: [{index: 0, name: 'Account 1', publicKey: base58.encode(PUB)}]});
+  (ext.local as ReturnType<typeof memKV>).data.set('v1_vault', {
+    v: 1,
+    scheme: 'slip10',
+    kdf: {alg: 'argon2id', m: 65536, t: 3, p: 1, salt: bytes(16, 1)},
+    seed: {iv: bytes(12, 2), ct: bytes(48, 3)},
+    password: {wrapped: bytes(40, 4)},
+    accounts: [{index: 0, name: 'Account 1', publicKey: base58.encode(PUB)}],
+  });
   return ext;
 }
 
@@ -138,10 +147,10 @@ describe('message partitions', () => {
 
   it('vault.status reports locked/unlocked without keys', async () => {
     const ext = vaultExt();
-    expect(await handleMessage(ext, {type: 'vault.status'}, popup)).toEqual({ok: true, data: {unlocked: false, accounts: []}});
+    expect(await handleMessage(ext, {type: 'vault.status'}, popup)).toEqual({ok: true, data: {unlocked: false, accounts: [], phrase: null}});
     await handleMessage(ext, {type: 'vault.setKeys', accounts: ACC}, unlockPage);
     const r = await handleMessage(ext, {type: 'vault.status'}, popup);
-    expect(r).toEqual({ok: true, data: {unlocked: true, accounts: [{index: 0, publicKey: ACC[0]?.publicKey}]}});
+    expect(r).toEqual({ok: true, data: {unlocked: true, accounts: [{index: 0, publicKey: ACC[0]?.publicKey}], phrase: null}});
     expect(JSON.stringify(r)).not.toContain('secretKey');
   });
 
@@ -200,9 +209,11 @@ describe('message partitions (B1b-1 types)', () => {
   // Listed literally, not read from PRIVILEGED: dropping a type from the list must make it
   // 'unknown type' here, which fails, rather than silently shrinking the test.
   const ALL = [
-    'vault.setKeys', 'vault.lock', 'vault.status', 'vault.reauthOk', 'vault.storeEnvelope', 'vault.challengeInfo', 'vault.forgetWallet', 'vault.changePassword', 'vault.removePasskey', 'vault.phraseVerified', 'activity.ping',
+    'vault.setKeys', 'vault.lock', 'vault.status', 'vault.reauthOk', 'vault.storeEnvelope', 'vault.challengeInfo', 'vault.forgetWallet', 'vault.changePassword', 'vault.removePasskey', 'vault.phraseVerified', 'vault.forgetDamaged', 'activity.ping',
     'wallet.state', 'wallet.balances', 'wallet.probeBalances', 'wallet.prepareSend', 'wallet.send', 'wallet.resend',
     'wallet.pending', 'wallet.preparedFor', 'wallet.history', 'wallet.prices', 'wallet.cached', 'wallet.recipientInfo', 'wallet.discardPrepared', 'accounts.rename', 'accounts.select', 'accounts.order', 'settings.get', 'settings.set',
+    // B1e §1.3: the anti-phishing phrase's one write.
+    'settings.phrase',
     'contacts.list', 'contacts.set', 'contacts.remove',
     // B1c §1.4: the approval window's and #49's; B1c-2: the popup's offer of #10 for a site's transaction (D11).
     'dapp.pending', 'dapp.decide', 'dapp.grants.list', 'dapp.grants.revoke', 'dapp.grants.undo', 'dapp.grants.revokeAll', 'dapp.blocked.list', 'dapp.blocked.remove', 'dapp.reauth',

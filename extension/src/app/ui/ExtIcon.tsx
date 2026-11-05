@@ -65,9 +65,19 @@ export type ExtIconName =
   // B1d-1b Task 6: #50b's "Why this matters" row (#i-file-text), from the sprite.
   | 'file-text'
   // B1d-2 Task 4: #24's "Share invite link" (#i-share), from the sprite.
-  | 'share';
+  | 'share'
+  // B1e-1 Task 6: #38's "Help & support" row (#i-help), from the sprite.
+  | 'help';
 
 const PATHS: Record<ExtIconName, ReactNode> = {
+  // B1e-1 Task 6, from the design's sprite: #i-help.
+  help: (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+      <line x1="12" y1="17" x2="12.01" y2="17" />
+    </>
+  ),
   // B1d-1b, from the design's sprite: #i-rocket and #i-buy.
   rocket: (
     <>

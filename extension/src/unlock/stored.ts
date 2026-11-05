@@ -1,5 +1,6 @@
 import {checkEnvelope, type EnvelopeV1} from '../vault/envelope';
 import {accountsPolicyOk} from '../shared/envelopeRules';
+import {unreadableV1} from '../shared/unreadable';
 
 /**
  * What v1_vault holds, as the vault page reads it — the same three answers the background gives
@@ -28,6 +29,21 @@ export function storedVault(raw: unknown): StoredVault {
   }
   if (!accountsPolicyOk(raw.scheme, raw.accounts)) return {kind: 'damaged'};
   return {kind: 'wallet', env: raw};
+}
+
+/**
+ * B1e §2.1: the page's reading of v1_vault — storedVault's `damaged` split in two. `unreadable`: the frozen predicate
+ * (src/shared/unreadable.ts) says no version of Noctura can open it. `refused`: this version's policy refuses it.
+ * Asking storedVault first is not a check of its own today: the predicate calls no value storedVault accepts
+ * unreadable (unreadable.test.ts: the partition and breadth rows), so swapping the two is invisible — those rows are
+ * the guard.
+ */
+export type VaultReading = {kind: 'none'} | {kind: 'unreadable'} | {kind: 'refused'} | {kind: 'wallet'; env: EnvelopeV1};
+
+export function vaultReading(raw: unknown): VaultReading {
+  const stored = storedVault(raw);
+  if (stored.kind !== 'damaged') return stored;
+  return unreadableV1(raw) ? {kind: 'unreadable'} : {kind: 'refused'};
 }
 
 /**

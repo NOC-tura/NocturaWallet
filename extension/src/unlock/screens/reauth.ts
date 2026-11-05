@@ -9,6 +9,7 @@ import {passkeyOf, storedVault} from '../stored';
 import {COMMON, REAUTH, cooldownLabel} from '../strings';
 import {byId, h, setText, showScreen, shown} from '../view/dom';
 import {startCooldown} from '../view/cooldown';
+import {readPhraseLine, showPhraseLine} from '../view/phraseLine';
 import {addressGroups} from '../view/words';
 
 /** What leaves the account, on #10's rows (U+2212, as #48's deltas). */
@@ -48,6 +49,11 @@ type View = 'loading' | 'entry' | 'notice' | 'done';
  *
  * Rule 6 (spec §7.6): every button runs through the page's one `exclusive()` gate, with its phase checked
  * before and inside it.
+ *
+ * B1e §1.2, §1.3: the CURRENT anti-phishing phrase under the top bar, read once a wallet is found and before the
+ * description (so before any field shows); a damaged or missing wallet shows only its notice. A `phrase` challenge
+ * is described as "Change …" or "Remove the anti-phishing phrase" — the background never sends its new value — and ends
+ * like a settings one (applied by the background, or nothing changed).
  */
 export function mountReauth(deps: PageDeps): ReauthScreen {
   const field = byId<HTMLInputElement>('ra-password');
@@ -109,7 +115,7 @@ export function mountReauth(deps: PageDeps): ReauthScreen {
     cancel.disabled = (busy && !cooling) || !canCancel;
     unlock.disabled = busy || !offerUnlock;
     x.disabled = (busy && !(cooling && canCancel)) || !(canCancel || view === 'notice');
-    x.setAttribute('aria-label', canCancel && !closeOnly && described?.kind !== 'settings' && described?.kind !== 'dapp' ? REAUTH.cancel : REAUTH.close);
+    x.setAttribute('aria-label', canCancel && !closeOnly && described?.kind !== 'settings' && described?.kind !== 'phrase' && described?.kind !== 'dapp' ? REAUTH.cancel : REAUTH.close);
   };
   const helper = (text: string, error: boolean) => {
     setText(byId('ra-helper'), text);
@@ -213,6 +219,12 @@ export function mountReauth(deps: PageDeps): ReauthScreen {
       );
       byId('ra-reasons').replaceChildren(...d.reasons.map(r => h('p', 'noc-body-sm vlt-lede', r)));
       setText(cancel, REAUTH.cancel);
+    } else if (d.kind === 'phrase') {
+      setText(byId('ra-about'), REAUTH.aboutChange);
+      shown(byId('ra-amount-row'), false);
+      byId('ra-rows').replaceChildren(row(d.action === 'change' ? REAUTH.phraseChange : REAUTH.phraseRemove, null));
+      byId('ra-reasons').replaceChildren();
+      setText(cancel, REAUTH.cancel);
     } else {
       setText(byId('ra-about'), REAUTH.aboutChange);
       shown(byId('ra-amount-row'), false);
@@ -244,7 +256,8 @@ export function mountReauth(deps: PageDeps): ReauthScreen {
       if (out === 'not-unlocked') return notice(REAUTH.dappNotUnlocked, {unlock: true});
       if (out === 'refused' || out === 'applied') return helper(COMMON.failedTryAgain, false);
     }
-    if (described?.kind === 'settings') {
+    // B1e §1.3: a phrase change or removal ends as a setting does.
+    if (described?.kind === 'settings' || described?.kind === 'phrase') {
       if (out === 'applied') return notice(REAUTH.settingsApplied);
       if (out === 'expired') return notice(REAUTH.settingsExpired, {help: REAUTH.settingsExpiredHelp});
       if (out === 'not-unlocked') return notice(REAUTH.settingsNotUnlocked, {unlock: true});
@@ -286,6 +299,14 @@ export function mountReauth(deps: PageDeps): ReauthScreen {
   };
   const open = () => view === 'entry' && stopCooldown === null;
   const flow = () => ({readEnvelope: deps.store.readEnvelope, send: deps.send});
+  /**
+   * Task 5 fix round 1 (Minor 2): a phrase change or removal the background applied changes what the line shows — it
+   * reads again before the end state, so the line is the CURRENT phrase (§1.3): the new one, or none after a removal.
+   */
+  const proven = async (out: ReauthPageOutcome): Promise<void> => {
+    if (described?.kind === 'phrase' && out === 'applied') showPhraseLine('ra', await readPhraseLine(deps.send));
+    settle(out);
+  };
 
   const proveWithPassword = () => {
     if (!open() || field.value === '') return;
@@ -299,7 +320,7 @@ export function mountReauth(deps: PageDeps): ReauthScreen {
         typed = null;
         return runReauth(flow(), challengeId, {password, kdf: deps.kdf});
       }, cooldown);
-      settle(out);
+      await proven(out);
     });
   };
   const proveWithPasskey = () => {
@@ -318,7 +339,7 @@ export function mountReauth(deps: PageDeps): ReauthScreen {
       const proof = {prfOutput};
       helper(REAUTH.checking, false);
       // runReauth zeroes the PRF output on every path (reauthFlow.ts).
-      settle(await backoff.run(() => runReauth(flow(), challengeId, proof), cooldown));
+      await proven(await backoff.run(() => runReauth(flow(), challengeId, proof), cooldown));
     });
   };
   /** [Cancel send], and the X while there is something to cancel. */
@@ -328,7 +349,7 @@ export function mountReauth(deps: PageDeps): ReauthScreen {
     void exclusive(deps, render, async () => {
       if (!canCancel) return;
       // A setting, or a site's transaction (B1c-2: its request stays in the approval window, which can still reject it).
-      if (described?.kind === 'settings' || described?.kind === 'dapp' || closeOnly) return deps.closeTab();
+      if (described?.kind === 'settings' || described?.kind === 'phrase' || described?.kind === 'dapp' || closeOnly) return deps.closeTab();
       // E7: nothing of this send may outlive the cancel — its prepared send and its challenge go. The account is
       // the one challenge.ts validated (the description's, or the undescribable record's own).
       const account = described?.kind === 'send' || described?.kind === 'other' ? described.account : orphan;
@@ -411,6 +432,8 @@ export function mountReauth(deps: PageDeps): ReauthScreen {
       if (stored.kind === 'none') return notice(COMMON.noWallet);
       if (stored.kind === 'damaged') return notice(COMMON.damaged, {help: COMMON.damagedHelp});
       pk = passkeyOf(raw) ?? null;
+      // B1e §1.2: the line before anything can be typed — read first, while #10 says it is reading the details.
+      showPhraseLine('ra', await readPhraseLine(deps.send));
       const read = await readChallenge(deps.send, id);
       if (read.state === 'undescribable') {
         // Fail closed: what cannot be described is never offered for confirmation — only Cancel, which

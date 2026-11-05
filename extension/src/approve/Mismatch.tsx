@@ -3,6 +3,7 @@ import {LockedButton} from '../app/ui/LockedButton';
 import type {Decision, RequestView} from './client';
 import {BudgetNotice, Waiting, WindowTop, siteLabel} from './ui';
 import {MISMATCH_TEXT} from './strings';
+import type {PhraseRead} from '../shared/phraseRead';
 
 /**
  * #48 "origin-mismatch · auto-reject" (index.html ix:18484-18521; B1 §3: "request origin differs from the granted origin
@@ -12,7 +13,7 @@ import {MISMATCH_TEXT} from './strings';
  * approval window never opens the wallet's pages — D11's rule, as the locked screen), and the caption names Settings →
  * Connected dApps (Q03, D1).
  */
-export function Mismatch({request, waiting, notice, busy, onDecide}: {request: RequestView; waiting: number; notice: boolean; busy: boolean; onDecide: (d: Decision) => Promise<unknown>}) {
+export function Mismatch({request, waiting, notice, busy, onDecide, phrase}: {request: RequestView; waiting: number; notice: boolean; busy: boolean; onDecide: (d: Decision) => Promise<unknown>; phrase: PhraseRead}) {
   // Fix round 1 (promoted minor 4): the same host-display source as the popup's strip and #10 (siteLabel) — never a
   // second, slightly different implementation of the same idea.
   const granted = request.mismatch === null ? '—' : siteLabel(request.mismatch.granted, request.mismatch.granted);
@@ -22,7 +23,7 @@ export function Mismatch({request, waiting, notice, busy, onDecide}: {request: R
   const caption = MISMATCH_TEXT.caption(granted);
   return (
     <div className="screen app-approve">
-      <WindowTop overline={MISMATCH_TEXT.overline} tone="danger" onClose={dismiss} disabled={busy} />
+      <WindowTop overline={MISMATCH_TEXT.overline} tone="danger" onClose={dismiss} disabled={busy} phrase={phrase} />
       <div className="scroll-area app-approve-scroll">
         {notice ? <BudgetNotice /> : null}
         <div className="s9-fail-hero">

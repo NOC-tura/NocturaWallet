@@ -49,7 +49,7 @@ describe('who may ask (§1.4)', () => {
     const tab = {...popup, url: `${ext.extensionOrigin}/wallet.html`};
     const web = {id: ext.runtimeId, origin: DAPP, url: `${DAPP}/approve.html`, tab: {id: 1}, frameId: 0};
     for (const s of [popup, unlock, tab, web]) expect(await handleMessage(ext, {type: 'dapp.pending'}, s, deps)).toEqual({ok: false, error: 'forbidden'});
-    expect(await handleMessage(ext, {type: 'dapp.pending'}, approve, deps)).toEqual({ok: true, data: {state: 'none'}});
+    expect(await handleMessage(ext, {type: 'dapp.pending'}, approve, deps)).toEqual({ok: true, data: {state: 'none', phrase: null}});
     for (const s of [approve, unlock, web]) expect(await handleMessage(ext, {type: 'dapp.grants.list'}, s, deps)).toEqual({ok: false, error: 'forbidden'});
     for (const s of [popup, tab]) expect(await handleMessage(ext, {type: 'dapp.grants.list'}, s, deps)).toEqual({ok: true, data: {grants: []}});
   });
@@ -74,7 +74,7 @@ describe('approve.html may send dapp.pending and dapp.decide only (final review 
     expect(await getSession(ext)).not.toBeNull();
     expect(ext.alarmsSet.size).toBe(0);
     // Positive controls: the window's own two pass; the popup's vault.status is not affected by the window's list.
-    expect(await handleMessage(ext, {type: 'dapp.pending'}, approve, deps)).toEqual({ok: true, data: {state: 'none'}});
+    expect(await handleMessage(ext, {type: 'dapp.pending'}, approve, deps)).toEqual({ok: true, data: {state: 'none', phrase: null}});
     expect(await handleMessage(ext, {type: 'dapp.decide', requestId: 'A'.repeat(22), decision: 'reject'}, approve, deps)).not.toEqual({ok: false, error: 'forbidden'});
     expect(await handleMessage(ext, {type: 'vault.status'}, popup, deps)).toMatchObject({ok: true});
   });
@@ -91,6 +91,8 @@ describe('dapp.pending (§2.3, §4.3)', () => {
       state: 'request',
       waiting: 1,
       windowNotice: false,
+      // B1e §1.4: the anti-phishing phrase, a top-level field in every state (none set here).
+      phrase: null,
       request: {
         requestId,
         type: 'connect',

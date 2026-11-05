@@ -333,6 +333,13 @@ test('visual: #31, #35, the passkey screen, the accounts manager and #37 in the 
     await expect(p.getByText('Confirmation matched')).toBeVisible();
     await barCaptionsFlush(p);
     await pop(p, '37c-matched', p.locator('.app-hold'));
+    // B1e §3 (undrawn, §9): the checkbox checked — the CTA one activation, its hold copy gone.
+    const understood = p.getByRole('checkbox', {name: 'I understand this permanently removes this wallet from this browser'});
+    await understood.check();
+    await expect(p.getByRole('button', {name: 'Delete wallet'})).toBeEnabled();
+    await pop(p, '37c-understood', understood);
+    await understood.uncheck();
+    await expect(p.locator('.app-hold')).toHaveText('Hold to delete');
     // §8.4 item 10: the fill and the countdown at a mid-hold frame (~60 %), the page's clock paused.
     await p.clock.pauseAt(await p.evaluate(() => Date.now() + 1_000));
     await p.locator('.app-hold').hover();

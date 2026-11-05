@@ -6,6 +6,7 @@ import {readDappSession} from '../../background/dapp/store';
 import {ACCOUNT, RECIPIENT} from '../../background/__tests__/fixtures';
 import {presaleIx, transfer, v0} from '../../background/dapp/__tests__/txHarness';
 import {pendingOf, type Flag, type RequestView} from '../client';
+import {PHRASE_NONE} from '../../shared/phraseRead';
 import {bannerInstruction, Tx} from '../Tx';
 import {FLAG_HOLD_MS} from '../useArmed';
 import {acted, elapse, onHarnessClock, openWindow, settled} from './windowHarness';
@@ -189,7 +190,7 @@ describe(`#48 F12 as the window reads it (${off ? 'off' : 'on'} build)`, () => {
     const raw = request([f12]);
     const v = pendingOf({state: 'request', request: {...raw, tx: {...raw.tx, transactions: [{...raw.tx.transactions[0], outcome: {ok: false, error: 'failed', detail: '{"InstructionError":[0,"Custom"]}'}}]}}, waiting: 0, windowNotice: false});
     if (v?.state !== 'request') throw new Error('not read');
-    render(<Tx request={v.request} waiting={0} notice={false} busy={false} onDecide={() => Promise.resolve(undefined)} />);
+    render(<Tx request={v.request} waiting={0} notice={false} busy={false} onDecide={() => Promise.resolve(undefined)} phrase={PHRASE_NONE} />);
     expect([document.querySelector('.top-bar .title')?.textContent, document.querySelector('.top-bar .title')?.className]).toEqual(['Critical · Blocked transaction', 'title noc-overline noc-danger']);
     expect([...document.querySelectorAll('.s9-flag-banner .head')].map(h => h.textContent)).toEqual(["Couldn't simulate", Q49]);
     expect(buttons()).toEqual(['Reject']);
@@ -199,7 +200,7 @@ describe(`#48 F12 as the window reads it (${off ? 'off' : 'on'} build)`, () => {
     const site: RequestView['site'] = {kind: 'lookalike', name: 'jup', imitates: 'jup.ag', rule: 'edit', idn: null, international: false};
     const v = pendingOf({state: 'request', request: request([f12], site), waiting: 0, windowNotice: false});
     if (v?.state !== 'request') throw new Error('not read');
-    render(<Tx request={v.request} waiting={0} notice={false} busy={false} onDecide={() => Promise.resolve(undefined)} />);
+    render(<Tx request={v.request} waiting={0} notice={false} busy={false} onDecide={() => Promise.resolve(undefined)} phrase={PHRASE_NONE} />);
     expect(buttons()).toEqual(['Reject and report', 'Reject']);
     expect(screen.queryByRole('button', {name: /Approve/})).toBeNull();
     expect(banners()[0]?.head).toBe(Q49);

@@ -16,6 +16,7 @@ import {ME, TO, assign, ataCreate, coSigned, mintTo, setAuthorityToNone, tokenAp
 import {U64_MAX, tokenAccountBytes, usdcLikeMint} from '../../background/dapp/__tests__/tokenBytes';
 import {ATA_PROGRAM, TOKEN_2022_PROGRAM, TOKEN_PROGRAM} from '../../background/dapp/decode/decode';
 import {dependsOnStep, pendingOf, type Flag, type RequestView} from '../client';
+import {PHRASE_NONE} from '../../shared/phraseRead';
 import {POLL_MS} from '../Approve';
 import {Tx} from '../Tx';
 import {ARM_MS, FLAG_HOLD_MS} from '../useArmed';
@@ -553,7 +554,7 @@ describe('#48 dapp-tx-approval', () => {
   it('a detail refused for an unknown flag kind: Q26 and only Reject — never the request with the flag dropped', () => {
     const read = pendingOf(batchView({first: [{kind: 'drain', severity: 'warn', word: null, at: 0}]}));
     if (read?.state !== 'request') throw new Error('unread');
-    render(<Tx request={read.request} waiting={0} notice={false} busy={false} onDecide={() => Promise.resolve(undefined)} />);
+    render(<Tx request={read.request} waiting={0} notice={false} busy={false} onDecide={() => Promise.resolve(undefined)} phrase={PHRASE_NONE} />);
     expect(screen.getByText('This request can no longer be signed. Reject it and ask the site to try again.')).toBeTruthy();
     expect(screen.getAllByRole('button').map(b => b.getAttribute('aria-label') ?? b.textContent)).toEqual(['Close', 'Reject']);
   });
@@ -617,7 +618,7 @@ describe('#48 dapp-tx-approval', () => {
         transactions: [{version: 0, feePayer: ACCOUNT.publicKey, instructions: null, unitLimit: null, feeLamports: null, outcome: null, flags: null}],
       },
     };
-    render(<Tx request={request} waiting={0} notice={false} busy={false} onDecide={() => Promise.resolve(undefined)} />);
+    render(<Tx request={request} waiting={0} notice={false} busy={false} onDecide={() => Promise.resolve(undefined)} phrase={PHRASE_NONE} />);
     expect(screen.getByText('Instructions appear once the transaction is simulated.')).toBeTruthy();
   });
 
@@ -647,11 +648,11 @@ describe('#48 dapp-tx-approval', () => {
       },
     };
     const withoutTx: RequestView = {...withTx, tx: null};
-    const view = render(<Tx request={withTx} waiting={0} notice={false} busy={false} onDecide={() => Promise.resolve(undefined)} />);
+    const view = render(<Tx request={withTx} waiting={0} notice={false} busy={false} onDecide={() => Promise.resolve(undefined)} phrase={PHRASE_NONE} />);
     expect(screen.getByText('Simulating transaction…')).toBeTruthy();
-    expect(() => view.rerender(<Tx request={withoutTx} waiting={0} notice={false} busy={false} onDecide={() => Promise.resolve(undefined)} />)).not.toThrow();
+    expect(() => view.rerender(<Tx request={withoutTx} waiting={0} notice={false} busy={false} onDecide={() => Promise.resolve(undefined)} phrase={PHRASE_NONE} />)).not.toThrow();
     expect(screen.getByText('This request can no longer be signed. Reject it and ask the site to try again.')).toBeTruthy();
-    expect(() => view.rerender(<Tx request={withTx} waiting={0} notice={false} busy={false} onDecide={() => Promise.resolve(undefined)} />)).not.toThrow();
+    expect(() => view.rerender(<Tx request={withTx} waiting={0} notice={false} busy={false} onDecide={() => Promise.resolve(undefined)} phrase={PHRASE_NONE} />)).not.toThrow();
     expect(screen.getByText('Simulating transaction…')).toBeTruthy();
   });
 });
@@ -1092,7 +1093,7 @@ describe('#48 red flags (B1c-3)', () => {
       {kind: 'token-2022', severity: 'warn', word: null, at: 4, mint: USDC, settings: null},
       {kind: 'whole-balance', severity: 'warn', word: null, at: null},
     ];
-    render(<Tx request={flagged(flags)} waiting={0} notice={false} busy={false} onDecide={() => Promise.resolve(undefined)} />);
+    render(<Tx request={flagged(flags)} waiting={0} notice={false} busy={false} onDecide={() => Promise.resolve(undefined)} phrase={PHRASE_NONE} />);
     const banners = [...document.querySelectorAll('.s9-flag-banner')].map(b => ({
       tone: b.className.replace('s9-flag-banner ', ''),
       head: b.querySelector('.head')?.textContent,
@@ -1144,7 +1145,7 @@ describe('#48 red flags (B1c-3)', () => {
 
   it('L14 (review 3): a token the wallet cannot name, nearly all of it below u64::MAX — its head says "of this token", the word to type is ALLOWANCE (Q58), never UNLIMITED', () => {
     const flags: Flag[] = [{kind: 'unlimited-approve', severity: 'block', word: 'ALLOWANCE', at: null, approvals: [approval({at: null, symbol: null, decimals: null, mint: MINT, amount: '995'})]}];
-    render(<Tx request={flagged(flags)} waiting={0} notice={false} busy={false} onDecide={() => Promise.resolve(undefined)} />);
+    render(<Tx request={flagged(flags)} waiting={0} notice={false} busy={false} onDecide={() => Promise.resolve(undefined)} phrase={PHRASE_NONE} />);
     expect(text('.top-bar .title')).toBe('Critical · Large spend approval');
     expect(text('.s9-flag-banner.danger .head')).toBe('Spend approval for nearly all of this token');
     expect(text('.s9-typed-confirm .label')).toBe('Type ALLOWANCE to enable Approve');
@@ -1153,11 +1154,11 @@ describe('#48 red flags (B1c-3)', () => {
 
   it('fix round 1 Minor 1: F6’s body (Q45) never doubles the symbol — a named token says the bare amount, an unnamed one "of this token"', () => {
     const named: Flag[] = [{kind: 'bounded-approve', severity: 'warn', word: null, at: null, approvals: [approval({symbol: 'USDC', decimals: 6, amount: '5000000'})]}];
-    render(<Tx request={flagged(named)} waiting={0} notice={false} busy={false} onDecide={() => Promise.resolve(undefined)} />);
+    render(<Tx request={flagged(named)} waiting={0} notice={false} busy={false} onDecide={() => Promise.resolve(undefined)} phrase={PHRASE_NONE} />);
     expect(text('.s9-flag-banner.warn .body')).toBe('This lets a delegate move up to 5 of your USDC until you revoke.');
     cleanup();
     const unnamed: Flag[] = [{kind: 'bounded-approve', severity: 'warn', word: null, at: null, approvals: [approval({symbol: null, decimals: null, mint: MINT, amount: '5000000'})]}];
-    render(<Tx request={flagged(unnamed)} waiting={0} notice={false} busy={false} onDecide={() => Promise.resolve(undefined)} />);
+    render(<Tx request={flagged(unnamed)} waiting={0} notice={false} busy={false} onDecide={() => Promise.resolve(undefined)} phrase={PHRASE_NONE} />);
     expect(text('.s9-flag-banner.warn .body')).toBe('This lets a delegate move up to 5000000 of this token until you revoke.');
   });
 

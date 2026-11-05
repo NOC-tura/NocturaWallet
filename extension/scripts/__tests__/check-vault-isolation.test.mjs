@@ -3,8 +3,8 @@ import {tmpdir} from 'node:os';
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {
-  ENTRIES,
-  bundleViolations, htmlViolations, listSourceFiles, manifestViolations, nonVaultModuleViolations, bundledWebAuthnViolations, sourceViolations, vaultPageModuleViolations, vaultPageViolations, webAuthnViolations,
+  ENTRIES, STATIC_PAGES, STATIC_PAGE_REFUSED,
+  bundleViolations, contentStorageViolations, htmlViolations, pageViolations, staticPageViolations, listSourceFiles, manifestViolations, nonVaultModuleViolations, bundledWebAuthnViolations, sourceViolations, vaultPageModuleViolations, vaultPageViolations, webAuthnViolations,
   BIP39_MARKER, DERIVATION_MARKER, KDF_MARKER, PASSKEY_MARKER, REACT_MARKER, VAULT_MARKER, WEBAUTHN_MARKER, WORDLIST_MARKER,
 } from '../check-vault-isolation.mjs';
 import {render} from '../../manifest/source.mjs';
@@ -405,6 +405,15 @@ describe('vault isolation (storage, and what may import src/ext.ts)', () => {
     expect(sourceViolations([f('src/background/presaleRecordsKey.ts', "export const PRESALE_RECORDS_KEY = 'v1_presale_records';")])).toEqual([]);
     expect(sourceViolations([f('src/app/presale/client.ts', "const k = 'v1_presale_records';")])).toEqual([OWNED('src/app/presale/client.ts', 'v1_presale_records')]);
     expect(sourceViolations([f('src/unlock/presale.ts', '// v1_presale_records')])).toEqual([OWNED('src/unlock/presale.ts', 'v1_presale_records')]);
+  });
+  // B1e §1.4 (R2): the anti-phishing phrase is the background's — a page naming v1_phishing_phrase could write it around
+  // #10's proof.
+  it('lets only the background name the anti-phishing phrase key (v1_phishing_phrase)', () => {
+    const OWNED = (path, key) => `${path}: names ${key}, which only the background may write`;
+    expect(sourceViolations([f('src/background/phraseKey.ts', "export const PHRASE_KEY = 'v1_phishing_phrase';")])).toEqual([]);
+    expect(sourceViolations([f('src/unlock/screens/unlock.ts', "const k = 'v1_phishing_phrase';")])).toEqual([OWNED('src/unlock/screens/unlock.ts', 'v1_phishing_phrase')]);
+    expect(sourceViolations([f('src/app/screens/Security.tsx', '// v1_phishing_phrase')])).toEqual([OWNED('src/app/screens/Security.tsx', 'v1_phishing_phrase')]);
+    expect(sourceViolations([f('src/approve/Sign.tsx', "const k = 'v1_phishing_phrase';")])).toEqual([OWNED('src/approve/Sign.tsx', 'v1_phishing_phrase')]);
   });
   // B1c §1.7 (review L13): src/approve is held like src/app — no storage, no runtime listener, no ext.ts — and its page
   // may load only its own entry.
@@ -1219,6 +1228,56 @@ describe('vault isolation (built output)', () => {
   });
 });
 
+// B1e §1.6 (I2): the two content scripts as BUILT reach no extension storage — the source rule (TOUCHES_STORAGE outside
+// src/background and src/ext.ts) is the first line, this the second.
+describe('vault isolation (the built content scripts carry no storage)', () => {
+  let dir;
+  const write = (name, text) => writeFileSync(join(dir, name), text);
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'vault-iso-content-'));
+    // What the build gives today (shapes of the real files): the relay reaches runtime.connect only, the provider no API.
+    write('relay.js', '(function(){var t=globalThis,n=t.browser??t.chrome;n.runtime.connect({name:`noctura-page`});})();');
+    write('provider.js', '(function(){window.addEventListener(`message`,e=>e);var s=window.localStorage,u=window.sessionStorage;})();');
+  });
+  afterEach(() => rmSync(dir, {recursive: true, force: true}));
+
+  it('passes the two files as built today (localStorage / sessionStorage are not extension storage)', () => {
+    expect(contentStorageViolations(dir)).toEqual([]);
+  });
+
+  it.each([
+    ['a property access', 'n.storage.local.get(`v1_vault`)', '.storage'],
+    ['an optional access', 'n?.storage?.local', '?.storage'],
+    ['a bracket', 'n[`storage`].local', '[`storage`]'],
+    ['a quoted bracket', "n['storage'].local", "['storage']"],
+    ['a destructuring key', 'var{storage:s}=n;', '{storage:'],
+    ['a shorthand destructuring', 'var{runtime:r,storage}=n;', ',storage}'],
+  ])('refuses %s in relay.js and in provider.js', (_, code, hit) => {
+    for (const name of ['relay.js', 'provider.js']) {
+      write(name, `(function(){var n=globalThis.chrome;${code}})();`);
+      expect(contentStorageViolations(dir)).toEqual([`${name} touches extension storage (${hit}) — a content script reaches none`]);
+      write(name, '(function(){})();');
+    }
+  });
+
+  // Fix round 1 (M4): the rule reads the built text, so a key never written whole is not seen — a review aid beside the
+  // source rule, not a boundary (the same spellings pass TOUCHES_STORAGE in the sources too).
+  it('a known limit, not a pass: a concatenated or computed key is not seen — the same access spelled whole is', () => {
+    for (const code of ['n[`stor`+`age`].local', 'var k=`storage`;n[k].local']) {
+      write('relay.js', `(function(){var n=globalThis.chrome;${code}})();`);
+      expect(contentStorageViolations(dir)).toEqual([]);
+    }
+    // The control: the same access with the key whole fails.
+    write('relay.js', '(function(){var n=globalThis.chrome;n[`storage`].local})();');
+    expect(contentStorageViolations(dir)).toEqual(['relay.js touches extension storage ([`storage`]) — a content script reaches none']);
+  });
+
+  it('a missing file is INCONCLUSIVE, never a pass', () => {
+    rmSync(join(dir, 'relay.js'));
+    expect(contentStorageViolations(dir)).toEqual(['INCONCLUSIVE: relay.js is missing — the content-script storage rule would pass trivially']);
+  });
+});
+
 describe('vault isolation (manifest)', () => {
   const withWar = (war, browser = 'chrome') => ({...render(browser), web_accessible_resources: war});
 
@@ -1780,15 +1839,20 @@ describe('plan 2: the real vault page reaches every screen it builds (positive c
     // and views — a module added or removed there is named here too, and each named one must be reached.
     const named = ['welcome', 'seed', 'confirm', 'password', 'passkey', 'createRun', 'importScreen', 'importRun', 'restoreRun', 'retryRun', 'forgot', 'unlock', 'reauth', 'accounts', 'reveal',
       // B1b-2b plan 1.
-      'changePassword', 'delete', 'passkeyManage'];
+      'changePassword', 'delete', 'passkeyManage',
+      // B1e-1: the damaged states and their removal; the anti-phishing step.
+      'damaged', 'removeDamaged', 'antiPhishing'];
     expect([...screens].sort()).toEqual(named.map(n => `src/unlock/screens/${n}.ts`).sort());
-    expect([...views].sort()).toEqual(['dom', 'words', 'hold', 'meter', 'cooldown'].map(n => `src/unlock/view/${n}.ts`).sort());
+    expect([...views].sort()).toEqual(['dom', 'words', 'hold', 'meter', 'cooldown', 'deleteConfirm', 'saveDamaged', 'phraseLine'].map(n => `src/unlock/view/${n}.ts`).sort());
     expect(resolved).toEqual(
       expect.arrayContaining([
         ...screens,
         ...views,
         'src/unlock/strings.ts',
         'src/unlock/forgetFlow.ts',
+        'src/unlock/damagedFlow.ts',
+        'src/shared/storedDigest.ts',
+        'src/shared/phraseRead.ts',
         'src/unlock/challenge.ts',
         'src/unlock/stored.ts',
         'src/unlock/page.ts',
@@ -1796,5 +1860,63 @@ describe('plan 2: the real vault page reaches every screen it builds (positive c
         'src/unlock/passkeyFlow.ts',
       ]),
     );
+  });
+});
+
+// B1e §4.2 (I9, N1): every page of a package is an entry or a static page at the root; a static page (licenses.html)
+// links, loads and runs nothing.
+describe('vault isolation (the pages of a package; the static page)', () => {
+  let dir;
+  const write = (name, text) => {
+    mkdirSync(dirname(join(dir, name)), {recursive: true});
+    writeFileSync(join(dir, name), text);
+  };
+  const PAGE = '<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<title>Open-source licenses · Noctura</title>\n</head>\n<body>\n<h1>Open-source licenses</h1>\n<p>x</p>\n<h2>a 1.0.0</h2>\n<p>MIT</p>\n<pre>&lt;http://unlicense.org/&gt; one = two, based on a</pre>\n</body>\n</html>\n';
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'vault-iso-pages-'));
+    for (const page of Object.keys(ENTRIES)) write(page, '<html></html>');
+    write('licenses.html', PAGE);
+  });
+  afterEach(() => rmSync(dir, {recursive: true, force: true}));
+
+  it('passes the four entries and the licence page as the generator writes it (escaped text, prose with "on" and "=")', () => {
+    expect(STATIC_PAGES).toEqual(['licenses.html']);
+    expect(STATIC_PAGE_REFUSED).toEqual(['<a', 'href=', '<script', '<link', '<style', 'style=', '<iframe', '<form']);
+    expect(pageViolations(dir)).toEqual([]);
+  });
+
+  it('a second, unknown page in the package fails; so does a page below the root', () => {
+    write('extra.html', '<p>x</p>');
+    write('assets/x.html', '<p>x</p>');
+    expect(pageViolations(dir)).toEqual([
+      'assets/x.html is a page below the package root — every page is an entry (ENTRIES) or a static page (STATIC_PAGES) at the root',
+      'extra.html is an unknown page — neither an entry (popup.html, wallet.html, unlock.html, approve.html) nor a static page (licenses.html)',
+    ]);
+  });
+
+  it('a missing licenses.html is INCONCLUSIVE, never a pass', () => {
+    rmSync(join(dir, 'licenses.html'));
+    expect(pageViolations(dir)).toEqual(['INCONCLUSIVE: licenses.html is missing — the static-page rule would pass trivially']);
+  });
+
+  it.each([
+    ['<script src="x.js"></script>', ['licenses.html contains <script — a static page links, loads and runs nothing', 'licenses.html has a <script> — a static page is headings, paragraphs and <pre> text only']],
+    ['<style>body{color:red}</style>', ['licenses.html contains <style — a static page links, loads and runs nothing', 'licenses.html has a <style> — a static page is headings, paragraphs and <pre> text only']],
+    ['<a href="https://evil.example/">x</a>', ['licenses.html contains <a — a static page links, loads and runs nothing', 'licenses.html contains href= — a static page links, loads and runs nothing', 'licenses.html has a <a> — a static page is headings, paragraphs and <pre> text only']],
+    ['<LINK REL=stylesheet HREF=x.css>', ['licenses.html contains href= — a static page links, loads and runs nothing', 'licenses.html contains <link — a static page links, loads and runs nothing', 'licenses.html has a <link> — a static page is headings, paragraphs and <pre> text only']],
+    ['<p style="color:red">x</p>', ['licenses.html contains style= — a static page links, loads and runs nothing', 'licenses.html: <p> has a style attribute — not one plain text needs']],
+    ['<p onclick="x()">x</p>', ['licenses.html has an on…= attribute — a static page runs nothing', 'licenses.html: <p> has a onclick attribute — not one plain text needs']],
+    ['<pre/onmouseover=x>y</pre>', ['licenses.html has an on…= attribute — a static page runs nothing', 'licenses.html: <pre> has a onmouseover attribute — not one plain text needs']],
+    ['<iframe src="x"></iframe>', ['licenses.html contains <iframe — a static page links, loads and runs nothing', 'licenses.html has a <iframe> — a static page is headings, paragraphs and <pre> text only']],
+    ['<form action="x"></form>', ['licenses.html contains <form — a static page links, loads and runs nothing', 'licenses.html has a <form> — a static page is headings, paragraphs and <pre> text only']],
+    ['<meta http-equiv="refresh" content="0;url=https://evil.example/">', ['licenses.html: <meta> has a http-equiv attribute — not one plain text needs', 'licenses.html: <meta> has a content attribute — not one plain text needs', 'licenses.html: a <meta> other than charset="utf-8"']],
+    ['<img src="x.png">', ['licenses.html has a <img> — a static page is headings, paragraphs and <pre> text only']],
+  ])('refuses %s planted in licenses.html', (planted, problems) => {
+    write('licenses.html', PAGE.replace('<p>x</p>', planted));
+    expect(pageViolations(dir)).toEqual(problems);
+  });
+
+  it('the rule is the same function the page gate applies', () => {
+    expect(staticPageViolations('licenses.html', PAGE)).toEqual([]);
   });
 });

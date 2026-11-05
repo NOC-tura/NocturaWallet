@@ -1,5 +1,6 @@
 import {send as runtimeSend} from '../ui/send';
 import {SITE} from '../shared/site';
+import {phraseRead, type PhraseRead} from '../shared/phraseRead';
 
 /**
  * The popup's and the tab's one way to the background (spec B1b-2a §1.5): one typed function per
@@ -26,6 +27,8 @@ export interface WalletState {
   selected: number | null;
   /** B1b-2b E12: the stored envelope has a passkey wrap. */
   passkey: boolean;
+  /** B1e §1.2, §1.4: the anti-phishing phrase — a field this side cannot read is `failed` (R9), never the whole state. */
+  phrase: PhraseRead;
 }
 export interface Balances {
   sol: bigint;
@@ -295,7 +298,7 @@ export function walletStateOf(x: unknown): WalletState | undefined {
   const accounts = all(o.accounts, account);
   const selected = o.selected === null ? null : isInt(o.selected) ? o.selected : undefined;
   if (scheme === undefined || accounts === undefined || selected === undefined || typeof o.passkey !== 'boolean') return undefined;
-  return {hasWallet: o.hasWallet, unlocked: o.unlocked, scheme, accounts, selected, passkey: o.passkey};
+  return {hasWallet: o.hasWallet, unlocked: o.unlocked, scheme, accounts, selected, passkey: o.passkey, phrase: phraseRead(o.phrase)};
 }
 
 function balancesOf(x: unknown): Balances | undefined {

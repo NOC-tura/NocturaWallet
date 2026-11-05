@@ -1,6 +1,7 @@
 import {useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode} from 'react';
 import {useWallet} from '../WalletContext';
 import {formatAmount} from '../../shared/amount';
+import {cleanPhrase} from '../../shared/envelopeRules';
 import {reauthPage, type ExtensionPage} from '../platform';
 import {TopBar} from '../ui/TopBar';
 import {ExtIcon, type ExtIconName} from '../ui/ExtIcon';
@@ -43,7 +44,24 @@ export const SECURITY_TEXT = {
   deleteBody: "Removes the encrypted keys and local data from this browser. To restore, you'll need your recovery phrase.",
   deleteButton: 'Delete wallet',
   minutes: (n: number) => `${n} min`,
+  /** B1e §1.3 (undrawn, §9): the anti-phishing row and its card — the step's copy (unlock.html #v-anti-phishing). */
+  phrase: 'Anti-phishing phrase',
+  phraseCaption: "Noctura shows it on its unlock and approval windows. A window without it is not Noctura's.",
+  phraseNew: 'New anti-phishing phrase',
+  phraseHelper: '3–32 characters: letters, numbers, symbols and simple emoji.',
+  phraseHelp: 'Never type it into a website. Anyone who uses this browser profile can see it.',
+  phraseNote: 'A change or a removal asks for your password in a new tab.',
+  phraseSet: 'Set phrase',
+  phraseChange: 'Change phrase',
+  phraseRemove: 'Remove phrase',
 } as const;
+
+/** settings.phrase's answers (B1e §1.3): written, or the same value again; otherwise a refusal or #10's challenge. */
+const PHRASE_CODES = ['malformed', 'locked', 'reauth-required'] as const;
+const phraseOutcome = (d: unknown): 'set' | 'unchanged' | undefined => {
+  const o = typeof d === 'object' && d !== null ? (d as {outcome?: unknown}).outcome : undefined;
+  return o === 'set' || o === 'unchanged' ? o : undefined;
+};
 
 /** D1: 1 / 5 / 15 / 60 minutes — no "Never" (the engine's range is 1–60, and a short lock is one of B1's few limits). */
 export const AUTOLOCK_OPTIONS = [1, 5, 15, 60].map(value => ({value, label: SECURITY_TEXT.minutes(value)}));
@@ -74,6 +92,11 @@ export function securityTasks(passkey: boolean, phraseVerifiedAt: number | null)
  * every row that opens a page (35b's "Recovery phrase verified" too — pre-flight F9), every row and task that pushes the
  * passkey screen (the final review's m6) and [Delete wallet]. The tab reads the settings again when shown again. A settings.set
  * answered after the screen went or after a lock meanwhile sets, opens and shows nothing.
+ *
+ * B1e §1.3 (R1 = E18): the anti-phishing row, On or Off from `wallet.state`, opens its card in place: a phrase typed there
+ * is set at once when none is set; a change or a removal answers `reauth-required` and #10 applies it, exactly as a
+ * weakening picker choice — the row keeps saying what is stored. The card never shows the stored phrase (the locked
+ * screen and the approval windows do).
  */
 export function Security({onBack, onPasskey, onDelete}: {onBack: () => void; onPasskey: () => void; onDelete: () => void}) {
   const m = useWallet();
@@ -81,7 +104,10 @@ export function Security({onBack, onPasskey, onDelete}: {onBack: () => void; onP
   const [readFailed, setReadFailed] = useState(false);
   const [open, setOpen] = useState<Card>(null);
   const [failed, setFailed] = useState(false);
+  const [typed, setTyped] = useState('');
   const passkey = m.wallet?.passkey === true;
+  const phrase = m.wallet?.phrase ?? null;
+  const phraseOn = phrase?.state === 'set';
 
   /** False once unmounted. */
   const alive = useRef(true);
@@ -129,7 +155,7 @@ export function Security({onBack, onPasskey, onDelete}: {onBack: () => void; onP
   // does something); a focus lost with the replaced row (or the collapsed card) goes to what took its place.
   const card = useRef<HTMLDivElement>(null);
   const cardHead = useRef<HTMLButtonElement>(null);
-  const rows = useRef<Record<Exclude<Card, null>, HTMLButtonElement | null>>({'auto-lock': null, threshold: null});
+  const rows = useRef<Record<Exclude<Card, null>, HTMLButtonElement | null>>({'auto-lock': null, threshold: null, phrase: null});
   const wasOpen = useRef<Card>(null);
   useLayoutEffect(() => {
     const was = wasOpen.current;
@@ -157,6 +183,24 @@ export function Security({onBack, onPasskey, onDelete}: {onBack: () => void; onP
     const r = await m.engine.settingsSet({[key]: value});
     if (!here()) return;
     if (r.ok) return setSettings(r.data);
+    if (r.error === 'reauth-required') {
+      const id = (r.data as {challengeId?: unknown} | undefined)?.challengeId;
+      const page = typeof id === 'string' ? reauthPage(id) : null;
+      if (page !== null) return openPage(page);
+    }
+    if (r.error === 'locked') return m.reload();
+    setFailed(true);
+  };
+  /** settings.phrase (B1e §1.3): set-when-none is written; a change or a removal goes to #10 (null removes). */
+  const savePhrase = async (value: string | null) => {
+    setFailed(false);
+    const r = await m.engine.request({type: 'settings.phrase', phrase: value}, PHRASE_CODES, phraseOutcome);
+    if (!here()) return;
+    if (r.ok) {
+      setTyped('');
+      setOpen(null);
+      return m.reload();
+    }
     if (r.error === 'reauth-required') {
       const id = (r.data as {challengeId?: unknown} | undefined)?.challengeId;
       const page = typeof id === 'string' ? reauthPage(id) : null;
@@ -238,6 +282,37 @@ export function Security({onBack, onPasskey, onDelete}: {onBack: () => void; onP
       <p className="noc-caption app-dim">{note}</p>
     </div>
   );
+  /** B1e §1.3: the anti-phishing card (35c's inline card): the input, B1b's helper and the help line; set, change, remove. */
+  const phraseCard = () => {
+    const clean = cleanPhrase(typed);
+    return (
+      <div className="app-picker-card app-phrase-card" ref={card}>
+        <button type="button" className="app-picker-head" aria-expanded="true" ref={cardHead} onClick={() => toggle('phrase')}>
+          <span className="s7-glyph">
+            <ExtIcon name="shield-lock" size={20} />
+          </span>
+          <span>
+            <span className="noc-body">{SECURITY_TEXT.phrase}</span>
+            <span className="noc-caption app-dim">{SECURITY_TEXT.phraseCaption}</span>
+          </span>
+        </button>
+        <input className="app-input app-phrase-input" aria-label={phraseOn ? SECURITY_TEXT.phraseNew : SECURITY_TEXT.phrase} autoComplete="off" spellCheck={false} maxLength={64} value={typed} onChange={e => setTyped(e.target.value)} />
+        <p className="noc-caption app-dim">{SECURITY_TEXT.phraseHelper}</p>
+        <div className="app-phrase-actions">
+          <LockedButton className="btn btn-primary app-btn-sm" disabled={typeof clean !== 'string'} onPress={() => (typeof clean === 'string' ? savePhrase(clean) : undefined)}>
+            {phraseOn ? SECURITY_TEXT.phraseChange : SECURITY_TEXT.phraseSet}
+          </LockedButton>
+          {phraseOn ? (
+            <LockedButton className="btn btn-secondary app-btn-sm" onPress={() => savePhrase(null)}>
+              {SECURITY_TEXT.phraseRemove}
+            </LockedButton>
+          ) : null}
+        </div>
+        <p className="noc-caption app-dim">{SECURITY_TEXT.phraseHelp}</p>
+        {phraseOn ? <p className="noc-caption app-dim">{SECURITY_TEXT.phraseNote}</p> : null}
+      </div>
+    );
+  };
   const taskRow = (t: SecurityTask) =>
     t === 'passkey' ? (
       <LockedButtonTask key={t} icon="fingerprint" label={SECURITY_TEXT.taskPasskey} onPress={onPasskey} />
@@ -303,6 +378,8 @@ export function Security({onBack, onPasskey, onDelete}: {onBack: () => void; onP
               )
             : row('alert', SECURITY_TEXT.threshold, dollars(settings.reauthUsdCents), null, () => toggle('threshold'), false, b => void (rows.current.threshold = b))}
           {passkeyRow(passkey ? SECURITY_TEXT.on : SECURITY_TEXT.off, passkey ? 'success' : 'warning')}
+          {/* B1e §1.3: On / Off as stored; no meta while wallet.state has not said (or could not be read). */}
+          {open === 'phrase' ? phraseCard() : row('shield-lock', SECURITY_TEXT.phrase, phrase === null || phrase.state === 'failed' ? null : phraseOn ? SECURITY_TEXT.on : SECURITY_TEXT.off, phraseOn ? 'success' : null, () => toggle('phrase'), false, b => void (rows.current.phrase = b))}
           {pageRow('key', SECURITY_TEXT.changePassword, 'unlock.html?mode=password')}
         </div>
         {failed ? (
@@ -329,7 +406,7 @@ export function Security({onBack, onPasskey, onDelete}: {onBack: () => void; onP
 }
 
 /** Which inline picker card is open (35c): at most one. */
-type Card = 'auto-lock' | 'threshold' | null;
+type Card = 'auto-lock' | 'threshold' | 'phrase' | null;
 
 /** An outstanding task that opens a vault page: a LockedButton (rule 6) in `.s7-task`'s chrome. */
 function LockedButtonTask({icon, label, onPress}: {icon: ExtIconName; label: string; onPress: () => void}) {

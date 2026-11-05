@@ -185,7 +185,7 @@ describe('#10 unlock-send (spec §3.10)', () => {
     expect(text(el('ra-helper'))).toBe('Checking…');
     await h.until(() => h.went.length > 0);
     expect(h.went).toEqual([`wallet.html#/send/resume?account=${K0}`]);
-    expect(h.sent.map(m => m.type)).toEqual(['vault.challengeInfo', 'vault.status', 'vault.reauthOk']);
+    expect(h.sent.map(m => m.type)).toEqual(['vault.status', 'vault.challengeInfo', 'vault.status', 'vault.reauthOk']);
     const stored = (await h.ext.session.get('v1_reauth')) as Record<string, {satisfied: boolean}>;
     expect(stored[id]?.satisfied).toBe(true);
     nothingSent(h, broadcast);
@@ -257,7 +257,7 @@ describe('#10 unlock-send (spec §3.10)', () => {
     expect(visible(el('ra-entry'))).toBe(false);
     expect(visible(el('ra-intent'))).toBe(false);
     expect(document.querySelector('#v-reauth button:not([hidden]):not(#ra-cancel):not(#ra-x)')).toBeNull();
-    expect(h.sent.map(m => m.type)).toEqual(['vault.challengeInfo']);
+    expect(h.sent.map(m => m.type)).toEqual(['vault.status', 'vault.challengeInfo']);
   });
 
   it('mismatch: a session that is not this wallet’s is locked, and the page says so', async () => {
@@ -433,7 +433,7 @@ describe('#10: the carried rules (Task 10’s password, passkey, cooldown and ru
     expect(screen.holds()).toBe(true);
     h.leave(why);
     expect([carries(PW), screen.holds()]).toEqual([[], false]);
-    expect(h.sent.map(m => m.type)).toEqual(['vault.challengeInfo']);
+    expect(h.sent.map(m => m.type)).toEqual(['vault.status', 'vault.challengeInfo']);
   });
 
   it('an empty field sends nothing', async () => {
@@ -441,7 +441,7 @@ describe('#10: the carried rules (Task 10’s password, passkey, cooldown and ru
     click(el('ra-confirm'));
     el('ra-form').dispatchEvent(new Event('submit', {bubbles: true, cancelable: true}));
     await new Promise(r => setTimeout(r, 5));
-    expect(h.sent.map(m => m.type)).toEqual(['vault.challengeInfo']);
+    expect(h.sent.map(m => m.type)).toEqual(['vault.status', 'vault.challengeInfo']);
   });
 
   it('[Confirm with passkey] only when the envelope has one: it confirms, hands over, and the PRF output is zeroed', async () => {
@@ -736,7 +736,7 @@ describe('#10: the carried rules (Task 10’s password, passkey, cooldown and ru
     const three = await shown(DAPP);
     click(el('ra-cancel'));
     await three.h.until(() => three.h.closed > 0);
-    expect(three.h.sent.map(m => m.type)).toEqual(['vault.challengeInfo']);
+    expect(three.h.sent.map(m => m.type)).toEqual(['vault.status', 'vault.challengeInfo']);
   });
 
   // Fix round 1 item 5 (global constraints: "#10's dApp refused/applied branch"): vault.reauthOk refusing for any
@@ -757,7 +757,7 @@ describe('#10: the carried rules (Task 10’s password, passkey, cooldown and ru
     const {h} = await shown({kind: 'settings', autoLockMinutes: 5, reauthUsdCents: null});
     click(el('ra-cancel'));
     await h.until(() => h.closed > 0);
-    expect(h.sent.map(m => m.type)).toEqual(['vault.challengeInfo']);
+    expect(h.sent.map(m => m.type)).toEqual(['vault.status', 'vault.challengeInfo']);
     expect(text(document.body)).not.toMatch(/cancelled/i);
   });
 
@@ -829,12 +829,12 @@ describe('#10: the carried rules (Task 10’s password, passkey, cooldown and ru
     force('ra-confirm');
     force('ra-passkey');
     await new Promise(r => setTimeout(r, 5));
-    expect([a.h.sent.map(m => m.type), prfOutputs.length, a.h.went]).toEqual([['vault.challengeInfo'], 0, []]);
+    expect([a.h.sent.map(m => m.type), prfOutputs.length, a.h.went]).toEqual([['vault.status', 'vault.challengeInfo'], 0, []]);
     loadPage();
     const b = await shown(SEND(K0), {unlocked: false});
     force('ra-cancel');
     await new Promise(r => setTimeout(r, 5));
-    expect([b.h.sent.map(m => m.type), b.h.closed]).toEqual([['vault.challengeInfo'], 0]);
+    expect([b.h.sent.map(m => m.type), b.h.closed]).toEqual([['vault.status', 'vault.challengeInfo'], 0]);
   });
 });
 

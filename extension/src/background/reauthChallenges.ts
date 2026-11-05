@@ -6,6 +6,7 @@ import type {DappReauthReason, SendReauthReason} from './reauthPolicy';
 import type {FeeReason} from '../../../core/fees/transferMarkup';
 import {WALLET_TOKENS} from '../../../core/solana/balances';
 import {SITE} from '../shared/site';
+import {cleanPhrase} from '../shared/envelopeRules';
 import {ALLOWANCE_WORD, APPROVAL_SYMBOLS, OVERRIDE_WORDS, type RedFlagKind} from './dapp/redFlags';
 import {intentKind, type KindAbout} from './intents';
 
@@ -43,6 +44,8 @@ export type ChallengeAbout =
       thresholdCents: number;
     }
   | {kind: 'settings'; autoLockMinutes: number | null; reauthUsdCents: number | null}
+  /** B1e §1.3 (R1): a change (the new phrase) or a removal (null) of the anti-phishing phrase, applied by vault.reauthOk. */
+  | {kind: 'phrase'; phrase: string | null}
   /**
    * B1c-2 (spec B1c §3.3): a dApp's transaction request — the site as the window shows it (host, or host:port), how
    * many transactions it signs, what leaves the account per mint (null = SOL; positive base units; decimals when known)
@@ -96,14 +99,15 @@ export const FLAG_ROW: Record<Exclude<RedFlagKind, 'presale-region'>, FlagRow> =
 };
 
 /**
- * What a stored challenge stands for: one of the shared three, or (B1d §1.3) a registered kind's own description —
+ * What a stored challenge stands for: one of the shared four, or (B1d §1.3) a registered kind's own description —
  * `presale-buy` in the build with presale — accepted only through that kind's `isAbout`. In the build without it no
  * other kind is registered, so such a record is dropped as malformed (fail closed).
  */
 export type StoredAbout = ChallengeAbout | KindAbout;
-const SHARED_KINDS: readonly string[] = ['send', 'settings', 'dapp'];
+const SHARED_KINDS: readonly string[] = ['send', 'settings', 'dapp', 'phrase'];
 const sendAbout = (a: StoredAbout): a is Extract<ChallengeAbout, {kind: 'send'}> => a.kind === 'send';
 const settingsAbout = (a: StoredAbout): a is Extract<ChallengeAbout, {kind: 'settings'}> => a.kind === 'settings';
+const phraseAbout = (a: StoredAbout): a is Extract<ChallengeAbout, {kind: 'phrase'}> => a.kind === 'phrase';
 /** A stored about whose kind is `dapp` (isAbout admits no other shape under that name). */
 export const isDappAbout = (a: StoredAbout): a is Extract<ChallengeAbout, {kind: 'dapp'}> => a.kind === 'dapp';
 
@@ -169,6 +173,8 @@ export function isAbout(x: unknown): x is StoredAbout {
     return k?.isAbout !== undefined && k.isAbout(a as KindAbout);
   }
   if (a.kind === 'settings') return isIntOrNull(a.autoLockMinutes) && isIntOrNull(a.reauthUsdCents) && Object.keys(a).length === 3;
+  // B1e §1.3: the value is a phrase exactly as cleanPhrase stores it, or null (remove).
+  if (a.kind === 'phrase') return (a.phrase === null || (typeof a.phrase === 'string' && cleanPhrase(a.phrase) === a.phrase)) && Object.keys(a).length === 2;
   if (a.kind === 'dapp') {
     const outgoing = a.outgoing;
     const reasons = a.reasons;
@@ -450,6 +456,24 @@ export async function takeSettingsChallenge(ext: Ext, now: number, id: string): 
     store.delete(id);
     await save(ext, store);
     return {autoLockMinutes: c.about.autoLockMinutes, reauthUsdCents: c.about.reauthUsdCents};
+  });
+}
+
+/**
+ * B1e §1.3 (R1): takeSettingsChallenge's counterpart for the anti-phishing phrase — under sessionMutex, in ONE section:
+ * an unknown, expired or non-phrase id is `unknown-challenge`; no session is `locked`; otherwise the record is DELETED
+ * (single use) and the value bound at issue returned. Only a `phrase` challenge is ever taken here.
+ */
+export async function takePhraseChallenge(ext: Ext, now: number, id: string): Promise<{phrase: string | null} | 'unknown-challenge' | 'locked'> {
+  if (!CHALLENGE_ID.test(id)) return 'unknown-challenge';
+  return sessionMutex(async () => {
+    const store = live(await load(ext), now);
+    const c = store.get(id);
+    if (c === undefined || !phraseAbout(c.about)) return 'unknown-challenge';
+    if ((await getSession(ext)) === null) return 'locked';
+    store.delete(id);
+    await save(ext, store);
+    return {phrase: c.about.phrase};
   });
 }
 

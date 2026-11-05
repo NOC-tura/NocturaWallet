@@ -445,6 +445,57 @@ test('15 · delete a funded wallet: #37 says so and names the lowest index (not 
   }
 });
 
+test('15 · #37 without holding (B1e §3): DELETE → the checkbox by the keyboard (Enter on it nothing, Space checks it) → one Enter on the CTA → the delete tab, the wallet still there until the proof; the password deletes', async () => {
+  test.setTimeout(300_000);
+  const h = await launchPopup('noctura-e2e-delete-checkbox-');
+  try {
+    await unlockedWallet(h, 1);
+    const popup = await settings(h);
+    await popup.locator('.s7-title', {hasText: 'Delete wallet'}).click();
+    await expect(popup.getByText('Delete this wallet?')).toBeVisible();
+    const field = popup.getByRole('textbox', {name: 'Type DELETE here'});
+    await expect(popup.getByRole('checkbox')).toHaveCount(0);
+    await field.fill('DELETE');
+    const box = popup.getByRole('checkbox', {name: 'I understand this permanently removes this wallet from this browser'});
+    await expect(box).not.toBeChecked();
+    await expect(popup.getByRole('button', {name: 'Hold to delete'})).toBeEnabled();
+    // Keys on the checkbox: Enter changes nothing and opens nothing (the CTA's handler would have emptied the field
+    // before the key's promise resolved); Space checks it, and the CTA's name says one activation now deletes.
+    await box.focus();
+    await popup.keyboard.press('Enter');
+    await expect(box).not.toBeChecked();
+    await expect(field).toHaveValue('DELETE');
+    await popup.keyboard.press(' ');
+    await expect(box).toBeChecked();
+    await expect(field).toHaveValue('DELETE');
+    const cta = popup.getByRole('button', {name: 'Delete wallet'});
+    await expect(cta).toHaveAccessibleDescription('Confirmation opens in a new tab.');
+    // Unchecked again, the hold is back; checked once more for the one activation.
+    await popup.keyboard.press(' ');
+    await expect(popup.getByRole('button', {name: 'Hold to delete'})).toBeEnabled();
+    await popup.keyboard.press(' ');
+    await expect(cta).toBeEnabled();
+    // The box comes before the CTA in tab order: Tab from the box lands on it.
+    await box.focus();
+    await popup.keyboard.press('Tab');
+    await expect(cta).toBeFocused();
+    // One key-down opens the tab (and the popup closes itself: the key-up may land on a closed page).
+    const tab = await opened(h, () => popup.keyboard.down('Enter'));
+    await popup.keyboard.up('Enter').catch(() => undefined);
+    await expect(tab).toHaveURL(/mode=delete$/);
+    // The proof is still the gate: the wallet is there, the tab asks for the password.
+    expect(await envOf(h.sw)).toBeDefined();
+    await expect(tab.locator('#dl-password')).toBeVisible({timeout: 30_000});
+    await tab.locator('#dl-password').fill(E2E_PASSWORD);
+    await tab.locator('#dl-delete').click();
+    await tab.waitForURL(/mode=welcome$/, {timeout: 60_000});
+    expect(await envOf(h.sw)).toBeUndefined();
+    quiet(h);
+  } finally {
+    await h.close();
+  }
+});
+
 test('15 · a send still open: send-open — the vault intact, the wallet locked, [Unlock] → ?mode=unlock', async () => {
   test.setTimeout(300_000);
   const h = await launchPopup('noctura-e2e-delete-open-');

@@ -1,7 +1,8 @@
 import {exclusive, type PageDeps} from '../page';
-import {storedVault} from '../stored';
+import {vaultReading} from '../stored';
 import {COMMON, WELCOME} from '../strings';
 import {byId, setText, showScreen, shown} from '../view/dom';
+import {mountDamaged} from './damaged';
 
 /**
  * #1 welcome (spec §3.1): create or import. What is stored decides first — the page never offers to
@@ -9,8 +10,8 @@ import {byId, setText, showScreen, shown} from '../view/dom';
  *  - nothing stored → the terms line and the CTAs;
  *  - a wallet → `exists`: "A wallet already exists in this browser. Nothing was changed." + "Open the
  *    Noctura icon to use it." — no CTAs;
- *  - a damaged vault (null included: the background calls it stored-invalid) → the damaged line and
- *    what still holds, no CTAs; repairing it is #37's (B1b-2b);
+ *  - a damaged vault (null included: the background calls it stored-invalid) → B1e §2.2's state (screens/damaged.ts:
+ *    unreadable — removable — or refused by this version), no CTAs;
  *  - unreadable (the store itself throws) → COMMON.unreadable, no help line, no CTAs.
  *
  * Fix round 1 item 1 (spec §7.6, rule 6): Create and Import run through the page's one `exclusive()`
@@ -31,6 +32,7 @@ export interface WelcomeScreen {
 export function mountWelcome(deps: PageDeps, next: {create(): void; import(): void}): WelcomeScreen {
   const createBtn = byId<HTMLButtonElement>('wel-create');
   const importBtn = byId<HTMLButtonElement>('wel-import');
+  const damaged = mountDamaged(deps);
   // Fix round 1 item 3: whether the CTAs are offered this show() at all — a hidden parent stops a
   // real pointer click, but nothing stopped a bound listener from still running one; `offered` is the
   // real guard a test (and a stray event) can't bypass, independent of `hidden`/`disabled`.
@@ -86,13 +88,13 @@ export function mountWelcome(deps: PageDeps, next: {create(): void; import(): vo
         return;
       }
       if (mine !== seq) return;
-      const stored = storedVault(raw);
-      if (stored.kind === 'none') {
+      const reading = vaultReading(raw);
+      if (reading.kind === 'none') {
         offered = true;
         showCtas(true);
         render();
-      } else if (stored.kind === 'wallet') notice(COMMON.exists, WELCOME.useIt);
-      else notice(COMMON.damaged, COMMON.damagedHelp);
+      } else if (reading.kind === 'wallet') notice(COMMON.exists, WELCOME.useIt);
+      else damaged.show(reading.kind, raw);
     },
   };
 }

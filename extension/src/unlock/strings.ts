@@ -303,6 +303,28 @@ export const DELETE = {
   failed: 'Something went wrong. Nothing was deleted.',
 } as const;
 
+/** B1e §2.2: the removal of a vault no version can read (screens/removeDamaged.ts). Its static lines are unlock.html's. */
+export const DAMAGED = {
+  /** The address line when no account entry carries a readable address (Minor 5). */
+  noAddress: "The address can't be read",
+  /** `busy`, and the page's own digest compare: the screen reads again. */
+  changed: 'The stored data changed — check it again',
+  /** `unlocked`: a session came back between the lock and the removal. */
+  unlocked: 'Noctura was unlocked meanwhile — try again',
+  /** The removal button's name while the checkbox is checked: one activation removes (B1e §3). */
+  remove: 'Remove damaged wallet',
+} as const;
+
+/** #37's typed confirmation on the vault page (B1e §2.2, E11): the popup's words (DeleteWallet.tsx DELETE_TEXT). */
+export const TYPED_DELETE = {
+  caseSensitive: 'Case-sensitive · must match exactly.',
+  keepGoing: (n: number): readonly [string, string, string, string] => [String(n), ' of ', '6', ' characters · keep going'],
+  notAPrefix: 'Type DELETE exactly — it is case-sensitive.',
+  /** The button's name while the hold is the way, and the checkbox's label (B1e §3). */
+  hold: 'Hold to delete',
+  understood: 'I understand this permanently removes this wallet from this browser',
+} as const;
+
 /** #6 "manage" in the vault tab: add, replace, remove (B1b-2b §3.3, E12, D12, D13, C3, C4). */
 export const MANAGE = {
   addTitle: 'Unlock Noctura with a passkey',
@@ -453,4 +475,7 @@ export const REAUTH = {
   dappNotUnlocked: "The wallet locked while you were confirming. The site's request was declined — ask the site to try again.",
   autoLock: (minutes: number): string => `Auto-lock → ${minutes} ${minutes === 1 ? 'minute' : 'minutes'}`,
   threshold: (dollars: string): string => `Re-authentication threshold → $${dollars}`,
+  /** B1e §1.3: what a phrase challenge is for — never the new value. */
+  phraseChange: 'Change the anti-phishing phrase',
+  phraseRemove: 'Remove the anti-phishing phrase',
 } as const;

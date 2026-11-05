@@ -9,20 +9,28 @@ import {presaleSwitch} from './scripts/presaleSwitch.mjs';
  * ES module) into the main build's output directory: `NOCTURA_CONTENT=provider` → provider.js (MAIN world),
  * `NOCTURA_CONTENT=relay` → relay.js (isolated world). Each build writes what it carries next to the output
  * (`dist/app.<name>.modules.json`), for the page-bundle gate (scripts/check-page-bundles.mjs): a content script runs in
- * every page, so it may carry only its own sources and @wallet-standard.
+ * every page, so it may carry only its own sources and @wallet-standard. The map also records each module's rendered
+ * bytes, for the licence page (B1e §4.2).
  */
 const moduleId = (id: string) => (id.startsWith('\0') ? id : relative(__dirname, id).split(sep).join('/'));
+const byKey = <T,>(m: Iterable<[string, T]>) => Object.fromEntries([...m].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
 function contentModules(name: string): Plugin {
   const chunks = new Map<string, string[]>();
+  // B1e §4.2 (N3): chunk → module → rendered bytes, as vite.config.ts's chunkModules writes it.
+  const rendered = new Map<string, Record<string, number>>();
   return {
     name: 'noctura:content-modules',
     apply: 'build',
     generateBundle(_options, bundle) {
-      for (const file of Object.values(bundle)) if (file.type === 'chunk') chunks.set(file.fileName, file.moduleIds.map(moduleId).sort());
+      for (const file of Object.values(bundle)) {
+        if (file.type !== 'chunk') continue;
+        chunks.set(file.fileName, file.moduleIds.map(moduleId).sort());
+        rendered.set(file.fileName, byKey(Object.entries(file.modules).map(([id, m]) => [moduleId(id), m.renderedLength] as [string, number])));
+      }
     },
     writeBundle(options) {
       if (options.dir === undefined) return;
-      writeFileSync(`${options.dir}.${name}.modules.json`, `${JSON.stringify({chunks: Object.fromEntries([...chunks].sort(([a], [b]) => a.localeCompare(b)))}, null, 2)}\n`);
+      writeFileSync(`${options.dir}.${name}.modules.json`, `${JSON.stringify({chunks: Object.fromEntries([...chunks].sort(([a], [b]) => a.localeCompare(b))), rendered: byKey(rendered)}, null, 2)}\n`);
     },
   };
 }

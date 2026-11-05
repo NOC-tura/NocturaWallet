@@ -2,9 +2,10 @@ import {readFileSync, readdirSync, statSync} from 'node:fs';
 import {dirname, join, relative, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
-// Spec §6.5: Solscan is the ONLY external link. Over every file of src/app (tests aside): an href is a
-// Solscan URL built by explorer.ts or absent; nothing calls window.open; tabs.create is reached only
-// through platform.ts, whose targets are a closed list of extension pages.
+// Spec §6.5: Solscan was the ONLY external link; B1e §4.1 adds #38's Terms, Privacy and Help (noc-tura.io) and the
+// package's licenses.html, from the one table src/shared/links.ts. Over every file of src/app (tests aside): an href is
+// a Solscan URL built by explorer.ts, one of About.tsx's link rows given an entry of that table, or absent; nothing
+// calls window.open; tabs.create is reached only through platform.ts, whose targets are a closed list of extension pages.
 const APP = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 function files(dir: string): string[] {
   return readdirSync(dir).flatMap(e => {
@@ -70,9 +71,21 @@ describe('links out of the UI', () => {
     }
   });
 
-  it('every href is the explorer link', () => {
-    for (const {path, text} of sources) {
-      for (const m of text.matchAll(/\bhref=\{?([^\s>}]+)/g)) expect(`${path}: ${m[1]}`).toBe('screens/TxDetail.tsx: href');
-    }
+  it('every href is the explorer link or one of #38’s link rows (B1e §4.1)', () => {
+    const hrefs = sources.flatMap(({path, text}) => [...text.matchAll(/\bhref=\{?([^\s>}]+)/g)].map(m => `${path}: ${m[1]}`));
+    expect(hrefs.sort()).toEqual([
+      'screens/About.tsx: LICENCES_PAGE',
+      'screens/About.tsx: NOCTURA_PAGES.help',
+      'screens/About.tsx: NOCTURA_PAGES.privacy',
+      'screens/About.tsx: NOCTURA_PAGES.terms',
+      'screens/About.tsx: href',
+      'screens/TxDetail.tsx: href',
+    ]);
+  });
+
+  it('the shared link table names exactly the three noc-tura.io pages and the licence page (B1e §4.1)', () => {
+    const table = readFileSync(resolve(APP, '../shared/links.ts'), 'utf8');
+    expect([...table.matchAll(/https?:\/\/[^\s'"`)]+/g)].map(m => m[0])).toEqual(['https://noc-tura.io/extension/terms', 'https://noc-tura.io/extension/privacy', 'https://noc-tura.io/extension/help']);
+    expect(table).toMatch(/export const LICENCES_PAGE = 'licenses\.html';/);
   });
 });

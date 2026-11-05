@@ -20,7 +20,6 @@ import type {Draft} from '../send/rules';
 // (RECIPIENT) its own second account; 62.4821 SOL, 4 200 NOC, 740.21 USDC; SOL $150.
 const SELECTORS = selectorsOf(UI_SHEETS);
 const nav = {onBack: vi.fn(), onReview: vi.fn(), onViewPending: vi.fn(), onBook: vi.fn()};
-const DAY = 86_400_000;
 
 function renderSend(o: WalletOptions & {draft?: Draft | null; notice?: 'start-again' | null} = {}) {
   return renderInWallet(<Send draft={o.draft ?? null} notice={o.notice ?? null} {...nav} />, o);
@@ -97,7 +96,10 @@ describe('#12 send', () => {
   });
 
   it('sent before (E6): "Verified · sent before · last 12 days ago"; with no date, "Verified · sent before"', async () => {
-    await renderSend(known(COUNTERPARTY, Date.now() - 12 * DAY));
+    // Local calendar days (rules.ts): the provider's clock is fixed, both instants built from local date parts, the span
+    // across Europe's 25 Oct DST change and "now" late in the evening — 12 days in every time zone, on any run date.
+    const now = new Date(2026, 10, 1, 23, 30).getTime();
+    await renderSend({...known(COUNTERPARTY, new Date(2026, 9, 20, 12, 0).getTime()), now: () => now});
     await loaded();
     type('Recipient', COUNTERPARTY);
     expect((await screen.findByText(/Verified · sent before/)).textContent?.trim()).toBe('Verified · sent before · last 12 days ago');

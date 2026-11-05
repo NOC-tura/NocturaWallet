@@ -10,6 +10,7 @@ import {appConfig} from './vite.config';
 export const NOPRESALE_TESTS = [
   'src/__tests__/presaleSwitch.test.ts',
   'src/background/__tests__/messages.test.ts',
+  'src/background/__tests__/phrase.test.ts',
   'src/app/__tests__/router.test.ts',
   'src/app/__tests__/App.test.tsx',
   'src/unlock/__tests__/challenge.test.ts',
@@ -23,6 +24,10 @@ export const NOPRESALE_TESTS = [
   'src/background/geo/__tests__/gate.test.ts',
   'src/background/dapp/__tests__/presaleRegion.test.ts',
   'src/approve/__tests__/presaleRegion.test.tsx',
+  // B1e §1.6: the anti-phishing phrase on the six screens, in both builds.
+  'src/app/__tests__/phrase.test.tsx',
+  'src/approve/__tests__/phrase.test.tsx',
+  'src/unlock/__tests__/phraseScreens.test.ts',
   '../core/geo/**/*.test.ts',
 ];
 

@@ -87,9 +87,14 @@ export async function settled<T>(check: () => T | Promise<T>): Promise<T> {
 const SEED2 = new Uint8Array(32).fill(2);
 const PUB2 = ed25519.getPublicKey(SEED2);
 export const SECOND = {index: 1, publicKey: base58.encode(PUB2), secretKey: base64.encode(new Uint8Array([...SEED2, ...PUB2]))};
+const bytes = (n: number, fill: number) => base64.encode(new Uint8Array(n).fill(fill));
+/** A whole envelope, with the byte lengths a real one has: vault.setKeys binds through envelopeShape (B1e §2.5, R3). */
 export const ENV = {
   v: 1,
   scheme: 'slip10',
+  kdf: {alg: 'argon2id', m: 65536, t: 3, p: 1, salt: bytes(16, 1)},
+  seed: {iv: bytes(12, 2), ct: bytes(48, 3)},
+  password: {wrapped: bytes(40, 4)},
   accounts: [
     {index: 0, name: 'Main', publicKey: ACCOUNT.publicKey},
     {index: 1, name: 'Savings', publicKey: SECOND.publicKey},

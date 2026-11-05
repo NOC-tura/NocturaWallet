@@ -14,8 +14,11 @@ import {LIMITS_KEY} from './dapp/limits';
 import {DAPP_TXS_KEY} from './dapp/dappTxs';
 import {wipeDappStores} from './dapp/store';
 import {PRESALE_RECORDS_KEY, wipePresaleRecords} from './presaleRecordsKey';
+import {PHRASE_KEY} from './phraseKey';
 import {ENVELOPE_BYTES, ENVELOPE_KDF_MAX, ENVELOPE_KDF_MIN, MAX_ACCOUNTS, accountsPolicyOk, b64Length, cleanName} from '../shared/envelopeRules';
 import {envelopeRevision} from '../shared/envelopeRevision';
+import {unreadableV1} from '../shared/unreadable';
+import {storedDigest} from '../shared/storedDigest';
 import {readWalletBalances} from '../../../core/solana/balances';
 import {RpcForbidden} from '../../../core/solana/rpc';
 
@@ -47,9 +50,11 @@ const serial = createMutex();
  * delete (vault.forgetWallet without a replacement, E5 step 7 / B1b-2b E11) and by a first write. The one list, with
  * the address book (B1b-2b E17, D20: wiped on delete, kept on restore — a replacement does not come here), and B1c's
  * dApp grants, blocked sites and rejection limits (spec C11, C14: wiped by a delete, kept by a restore), and B1d §2.4's
- * presale records (both builds). `v1_forbidden_until` is not the wallet's (the coordinator's verdict) and is kept.
+ * presale records (both builds), and B1e §1.4's anti-phishing phrase (a plain remove: a settings.phrase write racing a
+ * delete can leave it behind, and the next first write removes it — the same accepted race as v1_settings).
+ * `v1_forbidden_until` is not the wallet's (the coordinator's verdict) and is kept.
  */
-export const WALLET_DATA_KEYS: readonly string[] = [KNOWN_RECIPIENTS_KEY, SETTINGS_KEY, CONTACTS_KEY, GRANTS_KEY, BLOCKED_KEY, LIMITS_KEY, DAPP_TXS_KEY, PRESALE_RECORDS_KEY];
+export const WALLET_DATA_KEYS: readonly string[] = [KNOWN_RECIPIENTS_KEY, SETTINGS_KEY, CONTACTS_KEY, GRANTS_KEY, BLOCKED_KEY, LIMITS_KEY, DAPP_TXS_KEY, PRESALE_RECORDS_KEY, PHRASE_KEY];
 /** The keys among WALLET_DATA_KEYS removed only behind their own writers' lock (fix round 1, IMPORTANT 1) — never by a
  * plain ext.local.remove, which a write-back in flight could undo: the dApp keys (wipeDappStores; B1c-2: v1_dapp_txs
  * too) and the presale records, whose retry writes on its own schedule (wipePresaleRecords). */
@@ -148,7 +153,7 @@ const bytesAtLeast = (x: unknown, n: number): x is string => (b64Length(x) ?? -1
  * no vault code and cannot check the ciphertext itself; the vault page proved the factor and
  * re-encrypted. Names are checked in storeEnvelope, against the stored envelope. Null otherwise.
  */
-function envelopeShape(x: unknown): StoredEnvelope | null {
+export function envelopeShape(x: unknown): StoredEnvelope | null {
   if (!isObj(x) || x.v !== 1 || (x.scheme !== 'slip10' && x.scheme !== 'cli')) return null;
   const {kdf, seed, password, passkey} = x;
   if (!isObj(kdf) || kdf.alg !== 'argon2id' || !kdfInBounds(kdf) || !bytesExactly(kdf.salt, ENVELOPE_BYTES.salt)) return null;
@@ -181,6 +186,22 @@ function envelopeShape(x: unknown): StoredEnvelope | null {
     ...(pk === undefined ? {} : {passkey: pk}),
     accounts,
   };
+}
+
+/**
+ * B1e §2.1: the background's reading of a stored v1_vault value. A value envelopeShape refuses is `unreadable` when the
+ * frozen predicate (src/shared/unreadable.ts) says no version of Noctura can open it, and otherwise `refused`: this
+ * version's policy refuses it. Asking envelopeShape first is not a check of its own today: the predicate calls no value
+ * envelopeShape accepts unreadable (unreadable.test.ts: the partition and breadth rows), so swapping the two is
+ * invisible — those rows are the guard.
+ */
+export type VaultReading = {kind: 'none'} | {kind: 'unreadable'} | {kind: 'refused'} | {kind: 'wallet'; env: StoredEnvelope};
+
+export function vaultReading(raw: unknown): VaultReading {
+  if (raw === undefined) return {kind: 'none'};
+  const env = envelopeShape(raw);
+  if (env !== null) return {kind: 'wallet', env};
+  return unreadableV1(raw) ? {kind: 'unreadable'} : {kind: 'refused'};
 }
 
 /**
@@ -532,6 +553,65 @@ export async function forgetWallet(
       await clearCaches(ext);
     } catch (e) {
       console.warn('forgetWallet: cleanup after the vault write failed; the next first write clears it', e);
+    }
+    return 'forgotten';
+  });
+}
+
+export type ForgetDamagedResult = 'forgotten' | 'malformed' | 'no-wallet' | 'not-unreadable' | 'busy' | 'send-open' | 'unlocked';
+
+/**
+ * vault.forgetDamaged (B1e §2.4, C2, E12): the one removal of v1_vault without a password — only of a value the frozen
+ * predicate calls unreadable (src/shared/unreadable.ts), which no version of Noctura can open. The vault page sends the
+ * digest of the value it showed (src/shared/storedDigest.ts); the background judges again on its own reads, in E5's
+ * order (forgetWallet's), inside `serial`:
+ *  1. `expectedDigest` not 64 lowercase hex → `malformed`;
+ *  2. read v1_vault: absent → `no-wallet`; not unreadable → `not-unreadable` (a vault refused by this version and a
+ *     wallet both land here); another digest → `busy`;
+ *  3. lock;
+ *  4. check-and-clear v1_pending in ONE updatePending: an open record → `send-open` (nothing removed, left locked);
+ *  5. read again: still unreadable with the same digest, else `busy`;
+ *  6. under sessionMutex: a session back since step 3 → `unlocked`; otherwise v1_vault is removed;
+ *  7. best effort, never undoing step 6: the wallet's data (WALLET_DATA_KEYS) and the caches.
+ * The predicate is the safety; the digest only narrows it to the value the user saw.
+ */
+export async function forgetDamaged(ext: Ext, req: {expectedDigest: unknown}): Promise<ForgetDamagedResult> {
+  const {expectedDigest} = req;
+  if (!isStr(expectedDigest) || !REVISION.test(expectedDigest)) return 'malformed';
+  return serial(async (): Promise<ForgetDamagedResult> => {
+    // 2.
+    const stored = await ext.local.get(VAULT_KEY);
+    if (stored === undefined) return 'no-wallet';
+    if (vaultReading(stored).kind !== 'unreadable') return 'not-unreadable';
+    if (storedDigest(stored) !== expectedDigest) return 'busy';
+    // 3.
+    await lock(ext);
+    // 4.
+    try {
+      await updatePending(ext, records => {
+        if (records.some(isOpen)) throw new SendOpen();
+        return [];
+      });
+    } catch (e) {
+      if (e instanceof SendOpen) return 'send-open';
+      throw e;
+    }
+    // 5 + 6. The reading's clause is implied by the digest's (the same digest is the same text, so the same verdict as
+    // step 2): belt and braces, not a check of its own — the digest compare is the one M-digest proves.
+    const again = await ext.local.get(VAULT_KEY);
+    if (again === undefined || vaultReading(again).kind !== 'unreadable' || storedDigest(again) !== expectedDigest) return 'busy';
+    const removed = await sessionMutex(async () => {
+      if ((await getSession(ext)) !== null) return false;
+      await ext.local.remove(VAULT_KEY);
+      return true;
+    });
+    if (!removed) return 'unlocked';
+    // 7.
+    try {
+      await removeWalletData(ext);
+      await clearCaches(ext);
+    } catch (e) {
+      console.warn('forgetDamaged: cleanup after the vault removal failed; the next first write clears it', e);
     }
     return 'forgotten';
   });

@@ -1,4 +1,4 @@
-import {useEffect, useRef, useState} from 'react';
+import {useEffect, useId, useRef, useState} from 'react';
 import {AddressGroups} from '../../../../web/src/ui/AddressGroups';
 import {PENDING_POLL_MS, useWallet} from '../WalletContext';
 import {FRESH_ROWS, useAccountBalances} from '../useAccountBalances';
@@ -33,6 +33,8 @@ export const DELETE_TEXT = {
   holdCaption: 'Hold the red button to delete · release to cancel',
   hold: 'Hold to delete',
   opensTab: 'Confirmation opens in a new tab.',
+  /** B1e §3 (E6, D31): the accessible alternative to the hold. */
+  understood: 'I understand this permanently removes this wallet from this browser',
   cancel: 'Cancel',
   funded: 'This wallet holds funds',
   fundedTail: 'They stay on Solana. Only your recovery phrase reaches them after this.',
@@ -77,16 +79,23 @@ function boldOdd(parts: readonly string[]) {
  * account's address (lowest index) is the one the delete page will show (C17). Cancel and Back leave once, with the typed
  * text wiped; the hold is its own rule-6 lock (HoldButton). Every await is guarded: an answer that lands after the
  * screen went or after a lock sets nothing and schedules nothing.
+ * B1e §3 (E6, D31): directly above the button (the controller's ruling; §3 says "under"), a native checkbox trades the hold for one activation (HoldButton `once`) — the
+ * typed word still first (the checkbox exists only while it matches, and clears whenever it stops matching), the
+ * vault tab's proof still after. Unchecked on every entry; never remembered.
  */
 export function DeleteWallet({onBack, clock = realClock}: {onBack: () => void; clock?: HoldClock}) {
   const m = useWallet();
   const accounts = m.wallet?.accounts ?? [];
   const {rows, done, failed, reads} = useAccountBalances(accounts);
   const [typed, setTyped] = useState('');
+  const [understood, setUnderstood] = useState(false);
   const [pressing, setPressing] = useState(false);
+  const opensTabId = useId();
   /** The screen's own wallet.pending read (null until it answers). */
   const [own, setOwn] = useState<Pending[] | null>(null);
   const matched = typed === WORD;
+  /** B1e §3: the word typed and the checkbox checked — one activation, no hold. */
+  const once = matched && understood;
   const partial = typed !== '' && !matched;
   const prefix = WORD.startsWith(typed);
   const first = firstAccount(accounts);
@@ -124,16 +133,21 @@ export function DeleteWallet({onBack, clock = realClock}: {onBack: () => void; c
   // rows than it should have — stale cached zeros are not a check), or an account beyond the first 10 has no cache.
   const unknown = done && (failed || reads.size < Math.min(accounts.length, FRESH_ROWS) || accounts.some(a => rows[a.publicKey] === undefined));
 
+  /** The typed word; the checkbox goes with a word that no longer matches (Minor 8). */
+  const word = (v: string) => {
+    setTyped(v);
+    if (v !== WORD) setUnderstood(false);
+  };
   /** Rule 6 for leaving: Back and Cancel leave once (a second pop would leave the caller too). */
   const left = useRef(false);
   const leave = () => {
     if (left.current) return;
     left.current = true;
-    setTyped('');
+    word('');
     onBack();
   };
   const toProof = () => {
-    setTyped('');
+    word('');
     m.platform.openPage('unlock.html?mode=delete');
     if (m.surface === 'popup') m.platform.closeWindow();
   };
@@ -149,7 +163,7 @@ export function DeleteWallet({onBack, clock = realClock}: {onBack: () => void; c
             </span>
             <h2 className="noc-h2 noc-danger">{DELETE_TEXT.heading}</h2>
           </div>
-          <p className="noc-body">{matched ? DELETE_TEXT.holdBody : boldOdd(DELETE_TEXT.body)}</p>
+          <p className="noc-body">{matched && !once ? DELETE_TEXT.holdBody : boldOdd(DELETE_TEXT.body)}</p>
           {typed === '' ? (
             <ul className="app-delete-bullets">
               {[DELETE_TEXT.bulletAssets, DELETE_TEXT.bulletErased].map(parts => (
@@ -206,7 +220,7 @@ export function DeleteWallet({onBack, clock = realClock}: {onBack: () => void; c
               autoCapitalize="characters"
               autoComplete="off"
               spellCheck={false}
-              onChange={e => setTyped(e.target.value)}
+              onChange={e => word(e.target.value)}
             />
             {matched ? (
               <span className="noc-success">
@@ -222,18 +236,38 @@ export function DeleteWallet({onBack, clock = realClock}: {onBack: () => void; c
           ) : null}
           {partial && !prefix ? <p className="noc-caption noc-danger app-delete-help">{DELETE_TEXT.notAPrefix}</p> : null}
         </div>
-        {matched ? <p className="noc-caption app-dim app-center-text">{DELETE_TEXT.holdCaption}</p> : null}
+        {matched && !once ? <p className="noc-caption app-dim app-center-text">{DELETE_TEXT.holdCaption}</p> : null}
       </div>
       <div className="sticky-bar">
+        {/* Controller ruling (B1e-1 Task 3): the box directly above the CTA it unlocks — reached first in reading and tab order. */}
         {matched ? (
-          <HoldButton label={DELETE_TEXT.hold} holdMs={HOLD_MS} disabled={sendOpen} onHeld={toProof} onPressing={setPressing} clock={clock} />
+          <label className="s9-ack-row app-understood">
+            <input type="checkbox" checked={understood} disabled={sendOpen} onChange={e => setUnderstood(e.target.checked)} />
+            <span className="lbl">{DELETE_TEXT.understood}</span>
+          </label>
+        ) : null}
+        {matched ? (
+          <HoldButton
+            label={once ? DELETE_TEXT.title : DELETE_TEXT.hold}
+            holdMs={HOLD_MS}
+            disabled={sendOpen}
+            once={once}
+            describedBy={opensTabId}
+            onHeld={toProof}
+            onPressing={setPressing}
+            clock={clock}
+          />
         ) : (
           <button type="button" className="btn btn-primary app-delete-gated" disabled>
             <ExtIcon name="trash" size={18} />
             {DELETE_TEXT.title}
           </button>
         )}
-        {matched ? <p className="noc-caption app-dim app-center-text">{DELETE_TEXT.opensTab}</p> : null}
+        {matched ? (
+          <p id={opensTabId} className="noc-caption app-dim app-center-text">
+            {DELETE_TEXT.opensTab}
+          </p>
+        ) : null}
         <LockedButton className="btn btn-secondary" disabled={pressing} onPress={leave}>
           {DELETE_TEXT.cancel}
         </LockedButton>

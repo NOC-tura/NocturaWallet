@@ -1,8 +1,10 @@
 import {ExtIcon} from '../app/ui/ExtIcon';
 import {LockedButton} from '../app/ui/LockedButton';
+import {PhraseLine} from '../app/ui/PhraseLine';
 import type {RequestView} from './client';
 import {BudgetNotice, OriginCard, Waiting} from './ui';
 import {WINDOW_TEXT} from './strings';
+import type {PhraseRead} from '../shared/phraseRead';
 
 /**
  * The locked window (spec §4.3, D11): the Noctura mark, Q22, Q23, the request's origin card, and [Reject]. No password
@@ -11,12 +13,13 @@ import {WINDOW_TEXT} from './strings';
  * Q24 is latched by `Approve`, so it shows here too, not only once the window has unlocked — in normal flow above the
  * centred group (fix round 1, M-b), not swept into it: it used to inherit the group's `text-align: center` and land
  * wherever the (short) centred content happened to put it, instead of sitting at the scroll area's own top inset like
- * every other banner in this window.
+ * every other banner in this window. B1e §1.2: the anti-phishing phrase above it all — this window has no top bar.
  */
-export function Locked({request, waiting, notice, onReject}: {request: RequestView; waiting: number; notice: boolean; onReject: () => Promise<unknown>}) {
+export function Locked({request, waiting, notice, onReject, phrase}: {request: RequestView; waiting: number; notice: boolean; onReject: () => Promise<unknown>; phrase: PhraseRead}) {
   return (
     <div className="screen app-approve app-approve-locked">
       <div className="scroll-area app-approve-scroll">
+        <PhraseLine phrase={phrase} />
         {notice ? <BudgetNotice /> : null}
         <div className="app-approve-locked-center">
           <div className="app-lock-tile" aria-hidden="true">

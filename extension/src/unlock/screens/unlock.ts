@@ -4,11 +4,13 @@ import type {EnvelopeV1} from '../../vault/envelope';
 import type {ReturnTo} from '../mode';
 import {attemptPasskeyUnlock, attemptUnlock, createWrongBackoff, type Outcome} from '../orchestrate';
 import {CLOSE_CHECK_MS, exclusive, type PageDeps} from '../page';
-import {passkeyOf, storedVault} from '../stored';
+import {passkeyOf, vaultReading} from '../stored';
 import {COMMON, UNLOCK, cooldownLabel} from '../strings';
 import {unlockFlow} from '../unlockFlow';
 import {byId, closeOrHide, setText, showScreen, shown} from '../view/dom';
 import {startCooldown} from '../view/cooldown';
+import {readPhraseLine, showPhraseLine} from '../view/phraseLine';
+import {mountDamaged} from './damaged';
 
 export interface UnlockScreen {
   show(returnTo: ReturnTo | null): Promise<void>;
@@ -29,7 +31,11 @@ type Phase = 'off' | 'reading' | 'entry' | 'unlocked' | 'no-wallet' | 'damaged' 
  * no counter, no wipe), shown as the design's cooldown card. "Forgot password?" → #39. With
  * `&return=created|imported` a successful unlock goes straight on to that UI-tab route (#7, #40).
  * The page reads what is stored first: no wallet → "No wallet on this browser yet." + [Set up a wallet];
- * a damaged vault → the damaged line, never the password field (and never charged to the backoff).
+ * a damaged vault → B1e §2.2's state (screens/damaged.ts: unreadable, or refused by this version), never the password
+ * field (and never charged to the backoff). An attempt that ends `damaged` reads again: a value that now reads as one of
+ * the two states shows it; a wallet whose seed then failed to open (B1e §2.1, out of the predicate) keeps the damaged
+ * notice and its help. B1e §1.2: the anti-phishing phrase is read in the `reading` phase, before the field shows — the
+ * field never appears without the line's state (the phrase, R9's line, or nothing when none is set).
  *
  * The password: taken out of the field at the click and handed to the attempt in the same turn, so the
  * screen holds no copy while Argon2id runs or the cooldown counts down; a hidden tab or `pagehide` empties
@@ -49,6 +55,7 @@ export function mountUnlock(deps: PageDeps): UnlockScreen {
   const close = byId<HTMLButtonElement>('unl-close');
   const live = byId('unl-cooldown-live');
   const backoff = createWrongBackoff(deps.sleep);
+  const damaged = mountDamaged(deps);
   let returnTo: ReturnTo | null = null;
   let pk: NonNullable<EnvelopeV1['passkey']> | null = null;
   let phase: Phase = 'off';
@@ -112,7 +119,7 @@ export function mountUnlock(deps: PageDeps): UnlockScreen {
     setText(live, cooldownLabel(Math.ceil(ms / 1000)));
     render();
   };
-  const settle = (out: Outcome | 'unavailable') => {
+  const settle = async (out: Outcome | 'unavailable'): Promise<void> => {
     endCooldown();
     if (out === 'unlocked') {
       if (returnTo !== null) {
@@ -125,12 +132,33 @@ export function mountUnlock(deps: PageDeps): UnlockScreen {
       notice('unlocked', UNLOCK.unlocked, UNLOCK.openIcon);
       return;
     }
-    if (out === 'damaged') return notice('damaged', COMMON.damaged, COMMON.damagedHelp);
+    if (out === 'damaged') return judgeDamaged();
     if (out === 'no-wallet') return notice('no-wallet', COMMON.noWallet, '');
     helper(out === 'wrong' ? UNLOCK.wrong : out === 'unavailable' ? UNLOCK.unavailable : UNLOCK.failed, out === 'wrong');
     render();
   };
   const open = () => phase === 'entry' && stopCooldown === null;
+  /** B1e §2.2: the two damaged states, from the page's own read; true when one is shown. */
+  const showDamaged = (raw: unknown): boolean => {
+    const reading = vaultReading(raw);
+    if (reading.kind !== 'unreadable' && reading.kind !== 'refused') return false;
+    phase = 'damaged';
+    field.value = '';
+    helper('', false);
+    render();
+    damaged.show(reading.kind, raw);
+    return true;
+  };
+  /** An attempt answered `damaged`: what is stored now decides which damaged screen says so. */
+  const judgeDamaged = async () => {
+    let raw: unknown;
+    try {
+      raw = await deps.store.readEnvelope();
+    } catch {
+      return notice('unreadable', COMMON.unreadable, '');
+    }
+    if (!showDamaged(raw)) notice('damaged', COMMON.damaged, COMMON.damagedHelp);
+  };
 
   const unlock = () => {
     if (!open() || field.value === '') return;
@@ -144,7 +172,7 @@ export function mountUnlock(deps: PageDeps): UnlockScreen {
         typed = null;
         return attemptUnlock({readEnvelope: deps.store.readEnvelope, send: deps.send, unlockFlow}, {password, kdf: deps.kdf});
       }, cooldown);
-      settle(out);
+      await settle(out);
     });
   };
   const unlockWithPasskey = () => {
@@ -164,7 +192,7 @@ export function mountUnlock(deps: PageDeps): UnlockScreen {
           }),
         cooldown,
       );
-      settle(out);
+      await settle(out);
     });
   };
 
@@ -241,9 +269,9 @@ export function mountUnlock(deps: PageDeps): UnlockScreen {
       } catch {
         return notice('unreadable', COMMON.unreadable, '');
       }
-      const stored = storedVault(raw);
-      if (stored.kind === 'none') return notice('no-wallet', COMMON.noWallet, '');
-      if (stored.kind === 'damaged') return notice('damaged', COMMON.damaged, COMMON.damagedHelp);
+      if (vaultReading(raw).kind === 'none') return notice('no-wallet', COMMON.noWallet, '');
+      if (showDamaged(raw)) return;
+      showPhraseLine('unl', await readPhraseLine(deps.send));
       pk = passkeyOf(raw) ?? null;
       phase = 'entry';
       render();

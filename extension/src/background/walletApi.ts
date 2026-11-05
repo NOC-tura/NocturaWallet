@@ -20,6 +20,7 @@ import {readCachedBalances, readCachedPrices, writeCachedBalances, writeCachedPr
 import {readWalletBalances, WALLET_TOKENS} from '../../../core/solana/balances';
 import {RequestUnreachable, RpcForbidden} from '../../../core/solana/rpc';
 import {dappTxSignatures} from './dapp/dappTxs';
+import {readPhraseBesideWallet, setPhrase} from './phrase';
 
 export type Result = {ok: true; data?: unknown} | {ok: false; error: string; data?: unknown};
 
@@ -42,6 +43,8 @@ export const WALLET_TYPES = [
   'accounts.order',
   'settings.get',
   'settings.set',
+  // B1e §1.3: set, change or remove the anti-phishing phrase (never from the approval window: APPROVE_PAGE_ALLOWED).
+  'settings.phrase',
   'contacts.list',
   'contacts.set',
   'contacts.remove',
@@ -115,8 +118,10 @@ export function displayOrder<T extends {index: number}>(accounts: readonly T[], 
 }
 
 async function walletState(ext: Ext) {
-  const [view, session, settings] = await Promise.all([readWalletView(ext), getSession(ext), readSettings(ext)]);
-  if (view === null) return {hasWallet: false, unlocked: false, scheme: null, accounts: [], selected: null, passkey: false};
+  const [view, session, settings, phrase] = await Promise.all([readWalletView(ext), getSession(ext), readSettings(ext), readPhraseBesideWallet(ext)]);
+  // B1e §1.4: the anti-phishing phrase rides on this answer (locked or unlocked) — the popup's and the UI tab's one read of
+  // it; null unless the stored vault is a wallet this version accepts, as dapp.pending answers it (rev 2.6).
+  if (view === null) return {hasWallet: false, unlocked: false, scheme: null, accounts: [], selected: null, passkey: false, phrase};
   const accounts = displayOrder(view.accounts, settings.accountOrder);
   // The selection is only ever an account that exists: in the envelope, and — while unlocked — in the
   // session too (an account removed in the vault page must not stay selected). Otherwise the first such
@@ -124,7 +129,7 @@ async function walletState(ext: Ext) {
   const inSession = (i: number) => session === null || session.some(a => a.index === i);
   const choices = accounts.map(a => a.index).filter(inSession);
   const selected = choices.includes(settings.selectedAccount) ? settings.selectedAccount : (choices[0] ?? accounts[0]?.index ?? null);
-  return {hasWallet: true, unlocked: session !== null, scheme: view.scheme, accounts, selected, passkey: view.passkey};
+  return {hasWallet: true, unlocked: session !== null, scheme: view.scheme, accounts, selected, passkey: view.passkey, phrase};
 }
 
 /** Balances for onboarding's candidate addresses: public keys in, public numbers out. */
@@ -421,6 +426,8 @@ export async function handleWallet(ext: Ext, deps: WalletDeps, type: WalletType,
         return {ok: true, data: await readSettings(ext)};
       case 'settings.set':
         return await setSettings(ext, deps, msg);
+      case 'settings.phrase':
+        return await setPhrase(ext, deps, msg);
       // B1b-2b E17 (C12): every one refused while locked — the book says whom the user pays.
       case 'contacts.list': {
         const contacts = await listContacts(ext);

@@ -7,7 +7,7 @@ import {expect, type Page} from '@playwright/test';
  */
 
 /**
- * The create run (#2 → #3 → #4 → #5 → #6 skip), handed over to #7 (wallet.html#/created). Returns the 24
+ * The create run (#2 → #3 → #4 → #5 → #6 skip → the anti-phishing step skipped), handed over to #7 (wallet.html#/created). Returns the 24
  * words #3 showed. `fromWelcome`: the page is on #1 already (?mode=welcome), so the run starts at its Create.
  */
 export async function createWallet(vault: Page, id: string, password: string, o: {fromWelcome?: boolean} = {}): Promise<string[]> {
@@ -28,6 +28,7 @@ export async function createWallet(vault: Page, id: string, password: string, o:
   await setPassword(vault, password);
   await expect(vault.locator('#v-passkey')).toBeVisible({timeout: 60_000});
   await vault.locator('#pk-skip').click();
+  await skipPhraseStep(vault);
   await vault.waitForURL(/\/wallet\.html#\/created$/);
   return words;
 }
@@ -95,13 +96,20 @@ export async function unlockWith(vault: Page, id: string, password: string): Pro
   await expect(vault.locator('#unl-notice-line')).toHaveText('Unlocked.', {timeout: 60_000});
 }
 
-/** #8 (a plain import): pastes the phrase, Continue, then #5. The tab ends on #40 (#/imported). */
+/** B1e §1.3: onboarding's anti-phishing step (create after #6, a plain import once stored), skipped. */
+export async function skipPhraseStep(vault: Page): Promise<void> {
+  await expect(vault.locator('#v-anti-phishing')).toBeVisible({timeout: 60_000});
+  await vault.locator('#ap-skip').click();
+}
+
+/** #8 (a plain import): pastes the phrase, Continue, then #5, the anti-phishing step skipped. The tab ends on #40 (#/imported). */
 export async function importWallet(vault: Page, id: string, phrase: string, password: string): Promise<void> {
   await vault.goto(`chrome-extension://${id}/unlock.html?mode=import`);
   await pastePhrase(vault, phrase);
   await vault.locator('#imp-continue').click();
   await expect(vault.locator('#pw-step')).toHaveText('Import · 2 / 2', {timeout: 30_000});
   await setPassword(vault, password);
+  await skipPhraseStep(vault);
   await vault.waitForURL(/\/wallet\.html#\/imported$/, {timeout: 60_000});
 }
 

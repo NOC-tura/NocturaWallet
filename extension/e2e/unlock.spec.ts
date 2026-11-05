@@ -46,10 +46,10 @@ test('unlocking in the vault page puts only signing keys into session storage', 
     expect(await sw.evaluate(() => chrome.storage.session.get(null))).toEqual({});
 
     // A malformed stored envelope is named as damaged — before any password is typed, so never as a
-    // wrong password — and sends nothing.
+    // wrong password — and sends nothing. B1e §2.2: a 3-byte password wrap is unreadable (U3).
     await sw.evaluate(e => chrome.storage.local.set({v1_vault: e}), {...env, password: {wrapped: 'AAAA'}});
     await page.reload();
-    await expect(page.locator('#unl-notice-line')).toHaveText("This wallet's stored data is damaged.", {timeout: 60_000});
+    await expect(page.locator('#dmg-unreadable')).toHaveText('Wallet data is damaged', {timeout: 60_000});
     await expect(page.locator('#unl-password')).toBeHidden();
     expect(await sw.evaluate(() => chrome.storage.session.get(null))).toEqual({});
     expect(nocTura.hits).toEqual([]);

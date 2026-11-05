@@ -146,7 +146,7 @@ describe('Settings (#31, B1b-2b §4.1)', () => {
     expect(await getSession(ext)).toBeNull();
   });
 
-  it('#38 about: the wordmark, the adapted line, the version, the site as text, the licence', async () => {
+  it('#38 about: the wordmark, the adapted line, the version, the legal and help rows (B1e §4.1), the site as text, the licence', async () => {
     await openSettings();
     fireEvent.click(screen.getByText('About Noctura'));
     expect(await screen.findByText('Solana wallet for your browser — your keys stay on this device.')).toBeTruthy();
@@ -154,7 +154,8 @@ describe('Settings (#31, B1b-2b §4.1)', () => {
     expect(screen.getByText('noc-tura.io').closest('a')).toBeNull();
     expect(screen.getByText('© 2026 Noctura')).toBeTruthy();
     expect(screen.getByText(/BSL 1\.1 · converts to MIT on/)).toBeTruthy();
-    for (const gone of ['Terms of Service', 'Privacy Policy', 'Open-source licenses', 'Help & support', 'shielded']) expect(screen.queryByText(new RegExp(gone))).toBeNull();
+    for (const row of ['Terms of Service', 'Privacy Policy', 'Open-source licenses', 'Help & support']) expect(screen.getByText(row).closest('a')).toBeTruthy();
+    expect(screen.queryByText(/shielded/)).toBeNull();
     fireEvent.click(screen.getByRole('button', {name: 'Back'}));
     await waitFor(() => expect(screen.getByRole('heading', {name: 'Settings'})).toBeTruthy());
   });

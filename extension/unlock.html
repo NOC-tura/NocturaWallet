@@ -45,7 +45,8 @@
             <p id="wel-notice-help" class="noc-body-sm vlt-lede"></p>
           </div>
         </div>
-        <p id="wel-terms" class="noc-caption terms" hidden>By continuing you agree to the Terms and Privacy Policy.</p>
+        <!-- B1e §4.1: the two links open noc-tura.io in a new tab — a navigation, never a fetch. -->
+        <p id="wel-terms" class="noc-caption terms" hidden>By continuing you agree to the <a id="wel-terms-link" href="https://noc-tura.io/extension/terms" target="_blank" rel="noopener noreferrer">Terms</a> and <a id="wel-privacy-link" href="https://noc-tura.io/extension/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a>.</p>
         <div id="wel-actions" class="sticky-bar" hidden>
           <button id="wel-create" type="button" class="btn btn-primary">Create new wallet</button>
           <button id="wel-import" type="button" class="btn btn-secondary">I have a wallet</button>
@@ -245,6 +246,30 @@
         </div>
       </section>
 
+      <!-- B1e §1.3 (undrawn, §9): onboarding's anti-phishing step, skippable — on create after #6, on import once the
+           wallet is stored; never on created-locked. The design's #6 scope (.s-bio) and B1b's input. -->
+      <section id="v-anti-phishing" class="screen s-bio" hidden>
+        <div class="top-bar">
+          <span class="title noc-overline vlt-muted">Optional</span>
+        </div>
+        <div class="hero-icon"><svg width="56" height="56" aria-hidden="true"><use href="#i-shield-lock" /></svg></div>
+        <div class="vlt-pad-6 vlt-center">
+          <h1 class="noc-h1 vlt-gap-2">Set an anti-phishing phrase</h1>
+          <p class="noc-body vlt-lede vlt-narrow-300">Noctura shows it on its unlock and approval windows. A window without it is not Noctura's.</p>
+        </div>
+        <form id="ap-form" class="vlt-pad vlt-gap-top-5">
+          <input id="ap-field" class="vlt-input" type="text" autocomplete="off" spellcheck="false" maxlength="64" aria-label="Anti-phishing phrase" aria-describedby="ap-helper ap-help" />
+          <p id="ap-line" class="noc-body-sm vlt-danger vlt-gap-top-2" role="status" hidden></p>
+          <p id="ap-helper" class="noc-caption vlt-muted vlt-gap-top-2">3–32 characters: letters, numbers, symbols and simple emoji.</p>
+          <p id="ap-help" class="noc-caption vlt-muted vlt-gap-top-2">Never type it into a website. Anyone who uses this browser profile can see it.</p>
+        </form>
+        <div class="vlt-grow"></div>
+        <div class="sticky-bar">
+          <button id="ap-set" type="button" class="btn btn-primary" disabled>Set phrase</button>
+          <button id="ap-skip" type="button" class="btn btn-secondary">Skip</button>
+        </div>
+      </section>
+
       <!-- #8 import (spec §3.8): the phrase only (D17); the restore (#39) and retry (#40) paths add their states. -->
       <section id="v-import" class="screen s-import" hidden>
         <div class="top-bar">
@@ -301,6 +326,15 @@
             <div id="unl-tile" class="vlt-lock-tile" aria-hidden="true"><svg width="28" height="28"><use href="#i-lock" /></svg></div>
             <h1 class="noc-h1">Welcome back</h1>
             <p class="noc-body vlt-lede">Enter your password to unlock.</p>
+            <!-- B1e §1.2 (undrawn, §9): the anti-phishing phrase, read before the field shows — never markup (textContent). -->
+            <div id="unl-phrase" class="banner shield vlt-phrase-line" hidden>
+              <svg width="16" height="16" aria-hidden="true"><use href="#i-shield-lock" /></svg>
+              <p class="noc-body-sm"><span class="vlt-sr">Anti-phishing phrase: </span><span id="unl-phrase-text" class="copy" dir="auto"></span></p>
+            </div>
+            <div id="unl-phrase-failed" class="banner warning vlt-phrase-line" role="status" hidden>
+              <svg width="16" height="16" aria-hidden="true"><use href="#i-warn" /></svg>
+              <p class="noc-body-sm">Anti-phishing phrase could not be read — don't type your password until it shows</p>
+            </div>
             <form id="unl-form" class="vlt-field-row">
               <input id="unl-password" class="vlt-input" type="password" autocomplete="current-password" aria-label="Password" />
             </form>
@@ -340,6 +374,15 @@
           <button id="ra-x" type="button" class="icon-btn" aria-label="Cancel"><svg width="22" height="22" aria-hidden="true"><use href="#i-x" /></svg></button>
           <span class="title noc-overline vlt-muted">Confirm with password</span>
           <span class="vlt-bar-spacer"></span>
+        </div>
+        <!-- B1e §1.2 (undrawn, §9): the CURRENT anti-phishing phrase — a phrase challenge's new value is never shown here. -->
+        <div id="ra-phrase" class="banner shield vlt-phrase-line vlt-banner-gap" hidden>
+          <svg width="16" height="16" aria-hidden="true"><use href="#i-shield-lock" /></svg>
+          <p class="noc-body-sm"><span class="vlt-sr">Anti-phishing phrase: </span><span id="ra-phrase-text" class="copy" dir="auto"></span></p>
+        </div>
+        <div id="ra-phrase-failed" class="banner warning vlt-phrase-line vlt-banner-gap" role="status" hidden>
+          <svg width="16" height="16" aria-hidden="true"><use href="#i-warn" /></svg>
+          <p class="noc-body-sm">Anti-phishing phrase could not be read — don't type your password until it shows</p>
         </div>
         <p id="ra-loading" class="noc-body vlt-center vlt-pad" role="status">Reading the details…</p>
         <div id="ra-intent" class="intent-card" hidden>
@@ -714,6 +757,93 @@
           <button id="pm-setup" type="button" class="btn btn-primary" hidden>Set up a wallet</button>
           <button id="pm-close" type="button" class="btn btn-secondary" hidden>Close this tab</button>
           <button id="pm-cancel" type="button" class="btn btn-secondary">Cancel</button>
+        </div>
+      </section>
+
+      <!-- B1e §2.2 (E9, R4): the two damaged states (#9 and #1 show them from their own read); undrawn, built from #37's card.
+           The save note sits directly under Save, in the bar, as it sits under Save on the removal (rev 2.6). -->
+      <section id="v-damaged" class="screen s-pin" hidden>
+        <div class="vlt-damaged">
+          <div class="vlt-danger-card">
+            <div class="vlt-danger-head">
+              <span class="vlt-danger-icon" aria-hidden="true"><svg width="24" height="24"><use href="#i-warn" /></svg></span>
+              <div id="dmg-unreadable">
+                <h1 class="noc-h2 vlt-danger">Wallet data is damaged</h1>
+              </div>
+              <div id="dmg-refused" hidden>
+                <h1 class="noc-h2 vlt-danger">Update Noctura to open this wallet</h1>
+              </div>
+            </div>
+            <div id="dmg-unreadable-body" class="vlt-stack-3">
+              <p class="noc-body">This browser's copy of your wallet can't be read by this or any later version of Noctura.</p>
+              <p class="noc-body-sm vlt-lede">Your funds are on Solana. After you remove this copy, <b>only your recovery phrase reaches them</b>.</p>
+            </div>
+            <div id="dmg-refused-body" class="vlt-stack-3" hidden>
+              <p class="noc-body">This version of Noctura can't open this wallet's data.</p>
+              <p class="noc-body">Update Noctura (in Chrome: Extensions → Update). If it is up to date, the data may have been changed. Nothing was removed.</p>
+              <p id="dmg-help" class="noc-body-sm vlt-lede"></p>
+            </div>
+          </div>
+        </div>
+        <div class="vlt-grow"></div>
+        <div class="sticky-bar">
+          <div id="dmg-save-group" class="vlt-stack-1">
+            <a id="dmg-save" class="btn btn-secondary" download>Save the damaged data</a>
+            <p id="dmg-save-note" class="noc-caption vlt-muted">This file is your wallet's data exactly as this browser holds it. If it contains your encrypted wallet, anyone with the file and your password could try to open it — keep it private.</p>
+          </div>
+          <button id="dmg-remove" type="button" class="btn btn-destructive"><svg width="18" height="18" aria-hidden="true"><use href="#i-trash" /></svg>Remove damaged wallet</button>
+        </div>
+      </section>
+
+      <!-- B1e §2.2, §2.4 (E9, E11, E12): the removal of a vault no version can read — #37's card, typed DELETE and hold. -->
+      <section id="v-remove-damaged" class="screen s-pin" hidden>
+        <div class="top-bar">
+          <button id="rd-x" type="button" class="icon-btn" aria-label="Close"><svg width="22" height="22" aria-hidden="true"><use href="#i-x" /></svg></button>
+          <span class="title noc-h1">Remove damaged wallet</span>
+        </div>
+        <div id="rd-entry" class="vlt-damaged" hidden>
+          <div class="vlt-danger-card">
+            <div class="vlt-danger-head">
+              <span class="vlt-danger-icon" aria-hidden="true"><svg width="24" height="24"><use href="#i-warn" /></svg></span>
+              <h2 class="noc-h2 vlt-danger">Wallet data is damaged</h2>
+            </div>
+            <p class="noc-body">This browser's copy of your wallet can't be read by this or any later version of Noctura.</p>
+            <p class="noc-body-sm vlt-lede">Your funds are on Solana. After you remove this copy, <b>only your recovery phrase reaches them</b>.</p>
+            <p class="noc-body-sm vlt-lede">This removes the wallet from this browser only.</p>
+          </div>
+          <div class="vlt-stack-1">
+            <p class="noc-caption vlt-muted">This wallet's first account</p>
+            <div id="rd-address" class="vlt-address-start"></div>
+            <p id="rd-no-address" class="noc-body-sm vlt-lede" hidden></p>
+          </div>
+          <div class="vlt-stack-1">
+            <a id="rd-save" class="btn btn-secondary" download>Save the damaged data</a>
+            <p class="noc-caption vlt-muted">This file is your wallet's data exactly as this browser holds it. If it contains your encrypted wallet, anyone with the file and your password could try to open it — keep it private.</p>
+          </div>
+          <div>
+            <p id="rd-eyebrow" class="noc-overline vlt-muted vlt-eyebrow">Type <b class="vlt-word">DELETE</b> to confirm</p>
+            <p id="rd-matched" class="noc-overline vlt-success vlt-eyebrow" hidden><svg width="12" height="12" aria-hidden="true"><use href="#i-check" /></svg>Confirmation matched</p>
+            <label id="rd-box" class="s7-pw">
+              <input id="rd-word" type="text" placeholder="Type DELETE here" aria-label="Type DELETE here" autocapitalize="characters" autocomplete="off" spellcheck="false" />
+              <span id="rd-check" class="vlt-success" hidden><svg width="20" height="20" aria-hidden="true"><use href="#i-check" /></svg></span>
+            </label>
+            <p id="rd-help" class="noc-caption vlt-muted vlt-help"></p>
+          </div>
+          <p id="rd-caption" class="noc-caption vlt-muted vlt-center" hidden>Hold the red button to delete · release to cancel</p>
+        </div>
+        <p id="rd-helper" class="noc-caption vlt-center vlt-pad" aria-live="polite"></p>
+        <div id="rd-notice" class="vlt-notice" role="status" hidden>
+          <p id="rd-notice-line" class="noc-body"></p>
+          <p id="rd-notice-help" class="noc-body-sm vlt-lede"></p>
+        </div>
+        <div class="vlt-grow"></div>
+        <div class="sticky-bar">
+          <label id="rd-understood-row" class="s9-ack-row vlt-understood" hidden><input id="rd-understood" type="checkbox" /><span class="lbl">I understand this permanently removes this wallet from this browser</span></label>
+          <button id="rd-hold" type="button" class="btn btn-primary s7-longpress vlt-hold" disabled hidden><span id="rd-fill" class="fill" aria-hidden="true"></span><span class="label vlt-hold-label"><svg width="18" height="18" aria-hidden="true"><use href="#i-trash" /></svg><span><span id="rd-name">Hold to delete</span><span id="rd-count"></span></span></span></button>
+          <button id="rd-again" type="button" class="btn btn-primary" hidden>Start again</button>
+          <button id="rd-setup" type="button" class="btn btn-primary" hidden>Set up a wallet</button>
+          <button id="rd-close" type="button" class="btn btn-secondary" hidden>Close this tab</button>
+          <button id="rd-cancel" type="button" class="btn btn-secondary">Cancel</button>
         </div>
       </section>
 

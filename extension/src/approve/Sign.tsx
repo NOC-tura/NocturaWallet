@@ -4,6 +4,7 @@ import {LockedButton} from '../app/ui/LockedButton';
 import type {Decision, RequestView} from './client';
 import {BlockSite, BudgetNotice, ConfirmButton, LookalikeBanner, OriginCard, RiskConfirm, Spinner, Waiting, WindowTop} from './ui';
 import {useArmed} from './useArmed';
+import type {PhraseRead} from '../shared/phraseRead';
 import {SIGN_TEXT, WINDOW_TEXT} from './strings';
 
 /** The message as text, with the background's ranges <mark>ed (rule 6's keyword; a lookalike's homoglyphs). */
@@ -40,7 +41,7 @@ function preview(text: string, marks: readonly {start: number; end: number}[]): 
  * ruling, this task): a stale poll that clears busy without the user re-arming anything must not leave a confirming
  * CTA already armed from before the busy window — it is a state change like any other and re-starts the hold.
  */
-export function Sign({request, waiting, notice, busy, onDecide}: {request: RequestView; waiting: number; notice: boolean; busy: boolean; onDecide: (d: Decision) => Promise<unknown>}) {
+export function Sign({request, waiting, notice, busy, onDecide, phrase}: {request: RequestView; waiting: number; notice: boolean; busy: boolean; onDecide: (d: Decision) => Promise<unknown>; phrase: PhraseRead}) {
   const detail = request.sign;
   const lookalike = request.site.kind === 'lookalike';
   const [confirming, setConfirming] = useState(false);
@@ -55,7 +56,7 @@ export function Sign({request, waiting, notice, busy, onDecide}: {request: Reque
   if (detail === null) {
     return (
       <div className="screen app-approve">
-        <WindowTop overline={SIGN_TEXT.overline} tone="neutral" onClose={reject} disabled={busy} />
+        <WindowTop overline={SIGN_TEXT.overline} tone="neutral" onClose={reject} disabled={busy} phrase={phrase} />
         <div className="scroll-area app-approve-scroll">
           {notice ? <BudgetNotice /> : null}
           <h1 className="noc-h1 app-approve-title">{SIGN_TEXT.title}</h1>
@@ -80,7 +81,7 @@ export function Sign({request, waiting, notice, busy, onDecide}: {request: Reque
   const label = lookalike ? SIGN_TEXT.labelLookalike : detail.keyword !== null ? SIGN_TEXT.labelKeyword : SIGN_TEXT.label(detail.chars);
   return (
     <div className="screen app-approve">
-      <WindowTop overline={busy ? SIGN_TEXT.overlineSigning : lookalike ? SIGN_TEXT.overlineLookalike : SIGN_TEXT.overline} tone={busy ? 'neutral' : lookalike ? 'danger' : 'neutral'} onClose={reject} disabled={busy} />
+      <WindowTop overline={busy ? SIGN_TEXT.overlineSigning : lookalike ? SIGN_TEXT.overlineLookalike : SIGN_TEXT.overline} tone={busy ? 'neutral' : lookalike ? 'danger' : 'neutral'} onClose={reject} disabled={busy} phrase={phrase} />
       <div className="scroll-area app-approve-scroll">
         {notice ? <BudgetNotice /> : null}
         <h1 className="noc-h1 app-approve-title">{SIGN_TEXT.title}</h1>

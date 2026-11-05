@@ -3,9 +3,9 @@ import {storedVault} from './stored';
 import type {Send} from './types';
 
 /**
- * `applied` (B1b-2b E9): the background applied a settings challenge's patch on this proof. `refused`: the proof
- * held but vault.reauthOk was refused for another reason (`malformed`, `failed`) — for a settings challenge,
- * nothing was changed.
+ * `applied` (B1b-2b E9): the background applied a settings challenge's patch on this proof — or (B1e §1.3) a phrase
+ * challenge's value. `refused`: the proof held but vault.reauthOk was refused for another reason (`malformed`,
+ * `failed`) — for a settings or phrase challenge, nothing was changed.
  */
 export type ReauthPageOutcome = 'confirmed' | 'applied' | 'refused' | 'wrong' | 'not-unlocked' | 'mismatch-locked' | 'expired' | 'damaged' | 'no-wallet' | 'failed';
 
@@ -53,8 +53,11 @@ export async function runReauth(
     if (outcome === 'mismatch') return await lockOnMismatch(deps.send);
     if (outcome !== 'ok') return outcome;
     const r = await deps.send({type: 'vault.reauthOk', challengeId});
-    // A send description answers {ok: true} with no data (D38: #20 sends); a settings one says it was applied.
-    if (r.ok) return typeof r.data === 'object' && r.data !== null && (r.data as {applied?: unknown}).applied === 'settings' ? 'applied' : 'confirmed';
+    // A send description answers {ok: true} with no data (D38: #20 sends); a settings or phrase one says it was applied.
+    if (r.ok) {
+      const applied = typeof r.data === 'object' && r.data !== null ? (r.data as {applied?: unknown}).applied : undefined;
+      return applied === 'settings' || applied === 'phrase' ? 'applied' : 'confirmed';
+    }
     // D39: the challenge expired (or was discarded) while the password was typed — #10's `expired`,
     // never `failed`. A lock that landed after the status read is `not-unlocked`.
     if (r.error === 'unknown-challenge') return 'expired';

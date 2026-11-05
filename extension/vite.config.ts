@@ -6,6 +6,7 @@ import {relative, resolve, sep} from 'node:path';
 import {isStylesheet, scanCss} from './scripts/css-scan.mjs';
 import {presaleFlag} from './scripts/presaleFlag.mjs';
 import {presaleSwitch} from './scripts/presaleSwitch.mjs';
+import {rpcWebsocketsAlias} from './scripts/rpcWebsockets.mjs';
 
 // core/ and web/src/ui/ are imported by relative path, and a bare import in one of their files would
 // otherwise resolve upwards from there — to web/node_modules or the repository root's node_modules
@@ -39,12 +40,18 @@ function sharedResolvesFromHere(): Plugin {
 //            other URL-loading functions, whether it has a backslash), read before Vite's CSS plugin inlines
 //            an @import (an @import'ed file never becomes a module of its own). Every CSS language Vite
 //            compiles counts as a stylesheet (fix round 4), not only .css.
+//   rendered: JS chunk file → module → the bytes of it the chunk really carries (the bundler's `renderedLength`; B1e §4.2,
+//            N3): `chunks` lists every module a chunk was composed from, tree-shaken ones included, so the licence page
+//            (scripts/licences.mjs) reads this section, never `chunks`.
 const CHUNK_MODULES = new Map<string, string[]>();
 const CSS_SOURCES = new Map<string, string[]>();
 const CHUNK_CSS = new Map<string, string[]>();
 const CSS_REFS = new Map<string, {imports: string[]; urls: string[]; loaders: string[]; escapes: boolean}>();
+const RENDERED = new Map<string, Record<string, number>>();
 const moduleId = (id: string) => (id.startsWith('\0') ? id : relative(__dirname, id).split(sep).join('/'));
 const sorted = <T,>(m: Map<string, T>) => Object.fromEntries([...m].sort(([a], [b]) => a.localeCompare(b)));
+const renderedLengths = (modules: Record<string, {renderedLength: number}>) =>
+  Object.fromEntries(Object.entries(modules).map(([id, m]) => [moduleId(id), m.renderedLength] as const).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
 function chunkModules(write: boolean): Plugin {
   return {
     name: 'noctura:chunk-modules',
@@ -61,6 +68,7 @@ function chunkModules(write: boolean): Plugin {
         if (file.type !== 'chunk') continue;
         const ids = file.moduleIds.map(moduleId);
         CHUNK_MODULES.set(file.fileName, [...ids].sort());
+        RENDERED.set(file.fileName, renderedLengths(file.modules));
         const css = [...(file.viteMetadata?.importedCss ?? [])].sort();
         CHUNK_CSS.set(file.fileName, css);
         const sheets = ids.filter(m => isStylesheet(m)).sort();
@@ -70,7 +78,7 @@ function chunkModules(write: boolean): Plugin {
     },
     writeBundle(options) {
       if (!write || options.dir === undefined) return;
-      const out = {chunks: sorted(CHUNK_MODULES), css: sorted(CSS_SOURCES), chunkCss: sorted(CHUNK_CSS), cssRefs: sorted(CSS_REFS)};
+      const out = {chunks: sorted(CHUNK_MODULES), css: sorted(CSS_SOURCES), chunkCss: sorted(CHUNK_CSS), cssRefs: sorted(CSS_REFS), rendered: sorted(RENDERED)};
       writeFileSync(`${options.dir}.modules.json`, `${JSON.stringify(out, null, 2)}\n`);
     },
   };
@@ -95,6 +103,7 @@ export function appConfig(env: Record<string, string | undefined>): UserConfig {
     // in them, unrelated to this bug).
     tsconfig: resolve(__dirname, 'tsconfig.json'),
     define: {__NOCTURA_PRESALE__: JSON.stringify(presale)},
+    resolve: {alias: rpcWebsocketsAlias()},
     plugins: [sharedResolvesFromHere(), presaleSwitch(presale), react(), chunkModules(true)],
     server: {fs: {allow: [resolve(__dirname, '..')]}},
     build: {

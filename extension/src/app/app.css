@@ -400,6 +400,11 @@ a.btn {
 .app-static {
   cursor: default;
 }
+/* B1e §4.1: #38's link rows — the design's `.s7-row` on an <a>: no underline, the row's own colours. */
+.app-about-body a.s7-row {
+  color: inherit;
+  text-decoration: none;
+}
 .app-about-card {
   background: var(--bg-surface-1);
   border-radius: var(--radius-2xl);
@@ -1120,6 +1125,18 @@ a.btn {
   .btn.s7-longpress.app-hold .fill {
     display: none;
   }
+}
+/* B1e §3 (undrawn, §9): #37's checkbox directly above the hold — #47's ack row (.s9-ack-row, its grid and label) around a native
+   checkbox in the row's 20 px box column, the accent its checked colour. */
+.s9-ack-row.app-understood {
+  margin-top: 0;
+}
+.app-understood input {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
 }
 /* 37c: Cancel at the design's .45 while the CTA is pressed. */
 .app-delete .sticky-bar .btn-secondary:disabled {
@@ -2364,4 +2381,48 @@ body:has(.app-window) {
 }
 .s-ref p.app-ref-failed {
   color: var(--fg-secondary);
+}
+/* B1e §1.2 (undrawn, §9): the anti-phishing phrase line under a screen's header — B1b's `.banner` (shield, or warning
+   for R9's line) at the screen's gutter, never scrolled away with the body below it. The phrase wraps whole words and
+   breaks a long one anywhere: it is the user's own text, never cut. Rev 2.6 (D2): under a request window's top bar the
+   line spans the body's content box — the design system's 20 px gutter (`.scroll-area`'s --space-5), not the top
+   bar's 12 px + icon inset. */
+.app-phrase-line {
+  flex: 0 0 auto;
+  align-self: stretch;
+  margin: 0 var(--space-5) var(--space-3);
+  text-align: start;
+}
+/* Rev 2.6 (D1): inside the locked window's scroll area, which already carries the 20 px gutter, the line takes none of
+   its own; and it sits the gutter's 20 px from the window top (the area's --space-2 + --space-3), as from either side. */
+.app-approve-scroll > .app-phrase-line {
+  margin: var(--space-3) 0 var(--space-3);
+}
+.app-phrase-line > .noc-body-sm {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.app-center > .app-phrase-line {
+  margin: 0;
+}
+/* A label only a screen reader reads (the vault page's `.vlt-sr`). */
+.app-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+/* B1e §1.3 (undrawn, §9): #35's anti-phishing card — B1b's input across the card, its two buttons side by side. */
+.app-picker-card .app-phrase-input {
+  width: 100%;
+}
+.app-phrase-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+.app-phrase-card p.noc-caption {
+  margin: 0;
 }

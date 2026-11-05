@@ -7,6 +7,7 @@ import {SkelCircle, SkelLine} from '../app/ui/Skeleton';
 import {feeUsd, shortAddress, showSol} from '../app/format';
 import {fromBook} from '../app/addressBook';
 import {formatAmount} from '../shared/amount';
+import type {PhraseRead} from '../shared/phraseRead';
 import {dependsOnStep, type AddressLabel, type Approval, type BalanceChange, type Decision, type DecodedInstruction, type FieldValue, type Flag, type ProgramKey, type RequestView, type TxDetail, type TxItem} from './client';
 import {BlockSite, BudgetNotice, ConfirmButton, LookalikeBanner, OriginCard, RiskConfirm, Spinner, Waiting, WindowTop, siteLabel} from './ui';
 import {ARM_MS, FLAG_HOLD_MS, useArmed} from './useArmed';
@@ -525,7 +526,7 @@ function stateOf(d: TxDetail | null): TxState | null {
  * simulation, the re-authentication's state, busy, every typed field's match; on a screen with any flag, 1.5 s (B1 §3).
  * Reject is never held.
  */
-export function Tx({request, waiting, notice, busy, onDecide}: {request: RequestView; waiting: number; notice: boolean; busy: boolean; onDecide: (d: Decision) => Promise<unknown>}) {
+export function Tx({request, waiting, notice, busy, onDecide, phrase}: {request: RequestView; waiting: number; notice: boolean; busy: boolean; onDecide: (d: Decision) => Promise<unknown>; phrase: PhraseRead}) {
   const detail = request.tx;
   const lookalike = request.site.kind === 'lookalike';
   const [confirming, setConfirming] = useState(false);
@@ -576,7 +577,7 @@ export function Tx({request, waiting, notice, busy, onDecide}: {request: Request
   if (detail === null) {
     return (
       <div className="screen app-approve">
-        <WindowTop overline={TX_TEXT.overline} tone="neutral" onClose={reject} disabled={busy} />
+        <WindowTop overline={TX_TEXT.overline} tone="neutral" onClose={reject} disabled={busy} phrase={phrase} />
         <div className="scroll-area app-approve-scroll">
           {notice ? <BudgetNotice /> : null}
           <div className="app-origin-slot">
@@ -622,7 +623,7 @@ export function Tx({request, waiting, notice, busy, onDecide}: {request: Request
   const overline = busy ? TX_TEXT.overlineApproving : regionBlocked ? FLAG_TEXT.overlineBlocked : unlimitedOnly ? FLAG_TEXT.overlineUnlimited : approvalsOnly ? FLAG_TEXT.overlineLarge : blocks.length > 0 ? FLAG_TEXT.overlineBlocked : lookalike ? TX_TEXT.overlineLookalike : TX_TEXT.overline;
   return (
     <div className="screen app-approve">
-      <WindowTop overline={overline} tone={!busy && (lookalike || blocks.length > 0 || regionBlocked) ? 'danger' : 'neutral'} onClose={reject} disabled={busy || simulating} />
+      <WindowTop overline={overline} tone={!busy && (lookalike || blocks.length > 0 || regionBlocked) ? 'danger' : 'neutral'} onClose={reject} disabled={busy || simulating} phrase={phrase} />
       <div className={busy ? 'scroll-area app-approve-scroll app-tx-busy' : 'scroll-area app-approve-scroll'}>
         {notice ? <BudgetNotice /> : null}
         <div className="app-origin-slot">

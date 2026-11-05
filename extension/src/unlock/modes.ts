@@ -1,7 +1,9 @@
 import type {PageMode} from './mode';
 import type {PageDeps} from './page';
 import {mountAccounts} from './screens/accounts';
+import {mountAntiPhishing} from './screens/antiPhishing';
 import {mountChangePassword} from './screens/changePassword';
+import {mountDamaged} from './screens/damaged';
 import {mountDelete} from './screens/delete';
 import {mountPasskeyManage} from './screens/passkeyManage';
 import {createCreateRun} from './screens/createRun';
@@ -9,6 +11,7 @@ import {mountForgot} from './screens/forgot';
 import {createImportRun} from './screens/importRun';
 import {mountPassword} from './screens/password';
 import {mountReauth} from './screens/reauth';
+import {mountRemoveDamaged} from './screens/removeDamaged';
 import {createRestoreRun} from './screens/restoreRun';
 import {createRetryRun} from './screens/retryRun';
 import {mountPhrase} from './screens/reveal';
@@ -37,8 +40,10 @@ export function startMode(mode: PageMode, deps: PageDeps): void {
         return;
       }
       const password = mountPassword(deps);
-      const create = createCreateRun(deps, {password, importRun: () => imports.show()});
-      const imports = createImportRun(deps, {password, back: () => create.start('welcome'), storing: create.storing});
+      // B1e §1.3: the anti-phishing step, which both runs call only once the wallet is stored and its keys handed over.
+      const phraseStep = mountAntiPhishing(deps);
+      const create = createCreateRun(deps, {password, importRun: () => imports.show(), phraseStep});
+      const imports = createImportRun(deps, {password, back: () => create.start('welcome'), storing: create.storing, phraseStep});
       if (mode.mode === 'import') imports.show();
       else create.start(mode.mode === 'welcome' ? 'welcome' : 'intro');
       return;
@@ -64,6 +69,9 @@ export function startMode(mode: PageMode, deps: PageDeps): void {
       return;
     case 'password':
       mountChangePassword(deps).show();
+      return;
+    case 'remove-damaged':
+      void mountRemoveDamaged(deps, mountDamaged(deps)).show();
       return;
     case 'unlock':
       void mountUnlock(deps).show(mode.returnTo);

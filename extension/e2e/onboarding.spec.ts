@@ -2,7 +2,7 @@ import {test, expect, type Page, type Worker} from '@playwright/test';
 import {contained, launchPopup, type Harness} from './popupHarness';
 import {E2E_ACCOUNTS, E2E_MNEMONIC, E2E_PASSWORD, makeEnvelope} from './makeEnvelope';
 import {BLOCKHASH_LIFETIME} from './fakeCoordinator';
-import {createWallet, importWallet, pastePhrase, recordSent, sentFrom, setPassword, tryUnlock, unlockWith} from './vaultPage';
+import {createWallet, importWallet, pastePhrase, recordSent, sentFrom, setPassword, skipPhraseStep, tryUnlock, unlockWith} from './vaultPage';
 
 // Spec B1b-2a §8.5, plan 2: specs 1–3, 10 and 12, against the real extension (vault page + UI tab +
 // popup) and the contained fake coordinator. Every spec ends with contained(h).
@@ -64,6 +64,7 @@ async function importDetected(h: Harness): Promise<{vault: Page; scheme: string;
   await expect(vault.locator('#pw-step')).toHaveText('Import · 2 / 2', {timeout: 30_000});
   await expect(vault.locator('#imp-choose')).toBeHidden();
   await setPassword(vault, NEW_PASSWORD);
+  await skipPhraseStep(vault);
   await vault.waitForURL(/\/wallet\.html#\/imported$/, {timeout: 60_000});
   await expect(vault.getByText('Wallet imported', {exact: true})).toBeVisible({timeout: 30_000});
   // The probe read the balances (getMultipleAccounts), which is what the scheme and the accounts came from.

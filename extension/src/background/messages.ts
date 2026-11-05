@@ -7,7 +7,7 @@ import {armAutolock, lock} from './autolock';
 import {readSettings, settingsMutex, writeSettings} from './settings';
 import type {WalletDeps} from './deps';
 import {CHALLENGE_ID, challengeInfo, satisfyChallenge} from './reauthChallenges';
-import {changePassword, forgetWallet, provenRevisionIsStored, readWalletView, removePasskey, storeEnvelope} from './accountsStore';
+import {VAULT_KEY, changePassword, forgetDamaged, forgetWallet, provenRevisionIsStored, removePasskey, storeEnvelope, vaultReading} from './accountsStore';
 import {isOpen, readPending} from './pendingStore';
 import {startPoller} from './pending';
 import {WALLET_TYPES, applySettingsChallenge, handleWallet, isWalletType, type Result} from './walletApi';
@@ -17,6 +17,7 @@ import {runUnlockHook} from './dapp/queue';
 import {dropAccountGrants, listBlocked, listGrants, revokeAll, revokeGrant, undoRevoke, unblock} from './dapp/grantsApi';
 import {reauthWaiting} from './dapp/signTx';
 import {PRESALE_MESSAGE_TYPES} from './presale/api';
+import {applyPhraseChallenge, readPhrase, readPhraseBesideWallet} from './phrase';
 import type {PresaleHandler} from './presaleHost';
 
 /** What the browser reports about a message's origin (runtime.MessageSender). */
@@ -49,6 +50,7 @@ export const PRIVILEGED = [
   'vault.changePassword',
   'vault.removePasskey',
   'vault.phraseVerified',
+  'vault.forgetDamaged',
   'activity.ping',
   ...WALLET_TYPES,
   // B1c §1.4: the approval window's two, and #49's.
@@ -70,8 +72,8 @@ export const PRIVILEGED = [
  * the envelope it re-encrypted (the background is the one writer of v1_vault), or read what a
  * re-authentication is for (vault.challengeInfo, B1b-2a E3), or forget the wallet it proved
  * (vault.forgetWallet, E5), change the password it proved (vault.changePassword, B1b-2b E10) or remove the passkey
- * (vault.removePasskey, E12), or record that the phrase was verified (vault.phraseVerified, E15): the popup and the
- * tab cannot.
+ * (vault.removePasskey, E12), or record that the phrase was verified (vault.phraseVerified, E15), or remove a vault no
+ * version can read (vault.forgetDamaged, B1e §2.4): the popup and the tab cannot.
  */
 const VAULT_PAGE_ONLY: readonly string[] = [
   'vault.setKeys',
@@ -82,6 +84,7 @@ const VAULT_PAGE_ONLY: readonly string[] = [
   'vault.changePassword',
   'vault.removePasskey',
   'vault.phraseVerified',
+  'vault.forgetDamaged',
 ];
 /** B1c §1.4: the approval window's messages come from approve.html only (sender.origin ours, the path /approve.html). */
 const APPROVE_PAGE_ONLY: readonly string[] = ['dapp.pending', 'dapp.decide'];
@@ -191,15 +194,22 @@ export async function handleMessage(ext: Ext, msg: unknown, sender: Sender, deps
       // envelope exists), so this refuses only keys of no stored wallet. The envelope is read inside
       // the same sessionMutex section as the session write (setSessionIf), the section vault.forgetWallet
       // writes the vault in: keys bound to a wallet a forget removes meanwhile are never written.
+      // B1e §2.5 (R3): bound through envelopeShape, so no session is created over an envelope the background refuses
+      // (refused by this version, or unreadable) — those keys are `malformed`.
+      let refusal: 'unknown-account' | 'malformed' = 'unknown-account';
       const bound = async (): Promise<boolean> => {
-        const view = await readWalletView(ext);
-        const stored = new Map((view?.accounts ?? []).map(a => [a.index, a.publicKey]));
+        const reading = vaultReading(await ext.local.get(VAULT_KEY));
+        if (reading.kind === 'unreadable' || reading.kind === 'refused') {
+          refusal = 'malformed';
+          return false;
+        }
+        const stored = new Map((reading.kind === 'wallet' ? reading.env.accounts : []).map(a => [a.index, a.publicKey]));
         return accounts.every(a => stored.get(a.index) === a.publicKey);
       };
       // Fail closed: keys in storage.session with no alarm armed would never auto-lock, while
       // the vault page reports "Unlock failed". Anything that throws after the write undoes it.
       try {
-        if (!(await setSessionIf(ext, accounts, bound))) return {ok: false, error: 'unknown-account'};
+        if (!(await setSessionIf(ext, accounts, bound))) return {ok: false, error: refusal};
         await armAutolock(ext);
       } catch (e) {
         await lock(ext);
@@ -214,7 +224,8 @@ export async function handleMessage(ext: Ext, msg: unknown, sender: Sender, deps
       return {ok: true};
     case 'vault.status': {
       const s = await getSession(ext);
-      return {ok: true, data: {unlocked: s !== null, accounts: (s ?? []).map(a => ({index: a.index, publicKey: a.publicKey}))}};
+      // B1e §1.4: the anti-phishing phrase for the vault page's #9 and #10, locked or unlocked.
+      return {ok: true, data: {unlocked: s !== null, accounts: (s ?? []).map(a => ({index: a.index, publicKey: a.publicKey})), phrase: await readPhrase(ext)}};
     }
     case 'activity.ping':
       if ((await getSession(ext)) !== null) await armAutolock(ext);
@@ -228,6 +239,8 @@ export async function handleMessage(ext: Ext, msg: unknown, sender: Sender, deps
       // message carries only the id. A send challenge (or an unknown one) is satisfied as before (D38).
       const about = await challengeInfo(ext, deps.now(), challengeId);
       if (about?.kind === 'settings') return applySettingsChallenge(ext, deps, challengeId);
+      // B1e §1.3: so is a phrase challenge, from the value it bound.
+      if (about?.kind === 'phrase') return applyPhraseChallenge(ext, deps, challengeId);
       return (await satisfyChallenge(ext, deps.now(), challengeId)) ? {ok: true} : {ok: false, error: 'unknown-challenge'};
     }
     case 'vault.challengeInfo': {
@@ -237,7 +250,9 @@ export async function handleMessage(ext: Ext, msg: unknown, sender: Sender, deps
       if ((await getSession(ext)) === null) return {ok: false, error: 'locked'};
       // The description comes only from here, never from the vault page's URL (E3).
       const about = await challengeInfo(ext, deps.now(), challengeId);
-      return about === null ? {ok: false, error: 'unknown-challenge'} : {ok: true, data: about};
+      if (about === null) return {ok: false, error: 'unknown-challenge'};
+      // B1e §1.3: #10 says "Change …" or "Remove the anti-phishing phrase" — never the value, so the value never comes.
+      return {ok: true, data: about.kind === 'phrase' ? {kind: 'phrase', action: about.phrase === null ? 'remove' : 'change'} : about};
     }
     case 'vault.forgetWallet': {
       if (deps === undefined) return {ok: false, error: 'unavailable'};
@@ -258,6 +273,25 @@ export async function handleMessage(ext: Ext, msg: unknown, sender: Sender, deps
         if ((await readPending(ext)).some(isOpen)) void startPoller(ext, deps);
       } catch (e) {
         console.warn('vault.forgetWallet: forgotten, but the pending check after it failed', e);
+      }
+      return {ok: true};
+    }
+    case 'vault.forgetDamaged': {
+      if (deps === undefined) return {ok: false, error: 'unavailable'};
+      let r: Awaited<ReturnType<typeof forgetDamaged>>;
+      try {
+        r = await forgetDamaged(ext, {expectedDigest: (msg as {expectedDigest?: unknown}).expectedDigest});
+      } catch {
+        // A storage failure: the steps before the removal leave the value in place (locked at most).
+        return {ok: false, error: 'failed'};
+      }
+      if (r !== 'forgotten') return {ok: false, error: r};
+      // As vault.forgetWallet: a send that passed its session check before the lock may have appended a record after
+      // the clear — it is kept, and watched without keys.
+      try {
+        if ((await readPending(ext)).some(isOpen)) void startPoller(ext, deps);
+      } catch (e) {
+        console.warn('vault.forgetDamaged: forgotten, but the pending check after it failed', e);
       }
       return {ok: true};
     }
@@ -307,8 +341,16 @@ export async function handleMessage(ext: Ext, msg: unknown, sender: Sender, deps
         return {ok: false, error: 'failed'};
       }
     }
-    case 'dapp.pending':
-      return deps === undefined ? {ok: false, error: 'unavailable'} : {ok: true, data: await pending(ext, deps)};
+    case 'dapp.pending': {
+      // B1e §1.4: the approval window's one read of the anti-phishing phrase, a top-level field in every state. With no
+      // envelope stored it is null (Task 5 fix round 1, Minor 1, a controller ruling — M3's principle): the accepted
+      // apply-vs-delete race can leave a phrase behind with no wallet, and a no-wallet state draws no line. The same
+      // reading as wallet.state's (rev 2.6): a vault this version refuses is no wallet either.
+      if (deps === undefined) return {ok: false, error: 'unavailable'};
+      const view = await pending(ext, deps);
+      const phrase = await readPhraseBesideWallet(ext);
+      return {ok: true, data: {...view, phrase}};
+    }
     case 'dapp.decide': {
       if (deps === undefined) return {ok: false, error: 'unavailable'};
       const d = decideRequestOf(msg as Record<string, unknown>);

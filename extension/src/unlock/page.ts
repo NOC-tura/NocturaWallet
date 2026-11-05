@@ -25,6 +25,7 @@ export type PageTarget =
   | 'unlock.html?mode=forgot'
   | 'unlock.html?mode=import&source=forgot'
   | 'unlock.html?mode=import&source=retry'
+  | 'unlock.html?mode=remove-damaged'
   | 'wallet.html#/created'
   | 'wallet.html#/imported'
   | `wallet.html#/send/resume?account=${string}`;
