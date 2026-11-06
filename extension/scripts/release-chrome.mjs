@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 // B1e §5.1: `npm run release:chrome` — the Chrome Web Store package, made only after everything that must hold does.
 //
-//   0. preflight: no NODE_ENV in the environment, the working tree clean, this version's zip and notes not written yet
-//      and no `.partial` an interrupted run left (any under release/out/, this version's notes'), the lockfile present
-//      (the notes name a commit and the lockfile's hash; a dirty tree would make that commit a lie, and a written
-//      release is never overwritten);
+//   0. preflight: no NODE_ENV and no VITE_USER_NODE_ENV in the environment, no env file (`.env`, `.env.*`) in
+//      extension/, the working tree clean (untracked files listed one by one, whatever git's config says), this
+//      version's zip and notes not written yet and no `.partial` an interrupted run left (any under release/out/, this
+//      version's notes'), the lockfile present (the notes name a commit and the lockfile's hash; a dirty tree would
+//      make that commit a lie, and a written release is never overwritten);
 //   0a. the live pre-check (§6.5, E26): the three pages, before anything is built — a page that is not live fails the
 //      run in seconds, not after verify;
 //   1. `npm run verify` (clean; both builds, every test, CSP, secrets, every gate, the four reproducible builds);
@@ -32,6 +33,7 @@ import {fileURLToPath} from 'node:url';
 import {MANIFEST_NAME, buildManifest} from '../../web/scripts/build-manifest.mjs';
 import {packageVersion} from '../manifest/source.mjs';
 import {readStoreZip} from './__tests__/storeZipReader.mjs';
+import {ENV_FILE, VITE_NODE_ENV_VAR} from './buildEnv.mjs';
 import {isMain} from './isMain.mjs';
 import {liveCheck} from './live-check.mjs';
 import {zipStore} from './zip-store.mjs';
@@ -67,7 +69,7 @@ export const cliProblem = argv => (argv.length === 0 ? null : USAGE);
  * keeps a NODE_ENV it finds, and NODE_ENV=development or test builds React's development bundle — verify, the third
  * witness and the zip would all agree on it. The preflight refuses a NODE_ENV; this is the second wall.
  */
-export const childEnv = env => Object.fromEntries(Object.entries(env).filter(([name]) => name !== 'NODE_ENV'));
+export const childEnv = env => Object.fromEntries(Object.entries(env).filter(([name]) => name !== 'NODE_ENV' && name !== VITE_NODE_ENV_VAR));
 
 export function nodeEnvProblem(value) {
   return (
@@ -77,6 +79,27 @@ export function nodeEnvProblem(value) {
     'reproducer can meet. Run `env -u NODE_ENV npm run release:chrome`, or unset it.'
   );
 }
+
+export function viteNodeEnvProblem(value) {
+  return (
+    `${VITE_NODE_ENV_VAR} is set (to ${JSON.stringify(value)}) — with NODE_ENV unset, Vite turns ${VITE_NODE_ENV_VAR}=development ` +
+    "into NODE_ENV=development and builds React's development bundle, which verify, the third witness and the zip would " +
+    `all agree on. Run \`env -u ${VITE_NODE_ENV_VAR} npm run release:chrome\`, or unset it.`
+  );
+}
+
+export function envFileProblem(name) {
+  return (
+    `extension/${name} exists — Vite reads a NODE_ENV=development in an env file as a development build, and git ignores ` +
+    'env files, so the clean-tree check cannot see it; the extension build reads none: remove it.'
+  );
+}
+
+/**
+ * The tree check (fix round 1, review I2): every untracked file listed one by one whatever the user's
+ * status.showUntrackedFiles says (`no` hides them all from plain porcelain), and submodules never ignored by config.
+ */
+export const GIT_STATUS = Object.freeze(['status', '--porcelain', '--untracked-files=all', '--ignore-submodules=none']);
 
 /**
  * RP_ID as src/vault/passkey.ts spells it, read without a TypeScript loader: exactly one `RP_ID =` in the file, and it
@@ -105,12 +128,13 @@ export function rpIdProblems(value, rpId) {
   return out;
 }
 
-/** `git status --porcelain` → [] when empty, else the status lines under one heading. */
+/** `git status --porcelain --untracked-files=all` → [] when empty, else the status lines under one heading. */
 export function treeProblems(status) {
   const lines = status.split('\n').filter(l => l.trim() !== '');
   if (lines.length === 0) return [];
   return [
-    'the working tree is not clean — the notes would name a commit that is not what was packed (git status --porcelain; ' +
+    'the working tree is not clean — the notes would name a commit that is not what was packed (git status --porcelain ' +
+      '--untracked-files=all; ' +
       'the paths are relative to the repository root, not to extension/):',
     ...lines.map(l => `  ${l}`),
   ];
@@ -191,6 +215,9 @@ export function releaseSteps(io) {
     preflight: async () => {
       const problems = [];
       if (io.env.NODE_ENV !== undefined) problems.push(nodeEnvProblem(io.env.NODE_ENV));
+      // Fix round 1 (review I1): Vite's two other doors to a development bundle while NODE_ENV is unset.
+      if (io.env[VITE_NODE_ENV_VAR] !== undefined) problems.push(viteNodeEnvProblem(io.env[VITE_NODE_ENV_VAR]));
+      for (const name of io.list('.').filter(n => ENV_FILE.test(n)).sort()) problems.push(envFileProblem(name));
       for (const path of [zipPath(version), notesPath(version)])
         if (io.exists(path))
           problems.push(`${path} exists — version ${version} was packed already: bump extension/package.json's version, or remove the file if that pack was abandoned`);
@@ -206,7 +233,7 @@ export function releaseSteps(io) {
       ];
       for (const path of leftovers)
         problems.push(`${path} exists — left by an interrupted run (a .partial is never moved into place by a later one): remove it, and anything else that run left, before running again`);
-      problems.push(...treeProblems(io.git(['status', '--porcelain'])));
+      problems.push(...treeProblems(io.git(GIT_STATUS)));
       const {commit, problem} = head();
       if (problem) problems.push(problem);
       const lockfile = io.hashFile(LOCKFILE);
@@ -278,7 +305,7 @@ export function releaseSteps(io) {
       };
     },
     write: async done => {
-      const problems = treeProblems(io.git(['status', '--porcelain']));
+      const problems = treeProblems(io.git(GIT_STATUS));
       const {commit, problem} = head();
       if (problem) problems.push(problem);
       else if (commit !== done.preflight.commit) problems.push(`HEAD moved during the run: ${done.preflight.commit} → ${commit}`);

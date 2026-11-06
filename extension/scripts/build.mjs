@@ -16,12 +16,15 @@
 //
 // B1e-2 (review C1): Vite keeps a NODE_ENV it finds in the environment, and NODE_ENV=development (or vitest's test)
 // builds React's development bundle. This script builds only with no NODE_ENV or NODE_ENV=production (the same bytes —
-// measured in the B1e-2 dry run); any other value fails before anything is built.
+// measured in the B1e-2 dry run); any other value fails before anything is built. Fix round 1 (review I1): so does
+// VITE_USER_NODE_ENV in the environment or an env file (`.env`, `.env.*`) in extension/ — Vite's two other ways to a
+// development bundle (scripts/buildEnv.mjs).
 import {execFileSync} from 'node:child_process';
 import {cpSync, mkdirSync, rmSync, writeFileSync} from 'node:fs';
 import {dirname, join, resolve, sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {render} from '../manifest/source.mjs';
+import {VITE_NODE_ENV_VAR, envFilesIn} from './buildEnv.mjs';
 import {LICENCE_PAGE, buildLicencePage} from './licences.mjs';
 import {readStoreKey} from './storeKey.mjs';
 
@@ -30,6 +33,17 @@ const nodeEnv = process.env.NODE_ENV;
 if (nodeEnv !== undefined && nodeEnv !== 'production') {
   throw new Error(
     `NODE_ENV is ${JSON.stringify(nodeEnv)} — build.mjs builds only with no NODE_ENV or NODE_ENV=production (B1e §5.1): any other value builds React's development bundle. Unset it (env -u NODE_ENV …).`,
+  );
+}
+if (process.env[VITE_NODE_ENV_VAR] !== undefined) {
+  throw new Error(
+    `${VITE_NODE_ENV_VAR} is ${JSON.stringify(process.env[VITE_NODE_ENV_VAR])} — Vite turns ${VITE_NODE_ENV_VAR}=development into NODE_ENV=development, React's development bundle; build.mjs builds only without it (B1e §5.1). Unset it (env -u ${VITE_NODE_ENV_VAR} …).`,
+  );
+}
+const envFiles = envFilesIn(ROOT);
+if (envFiles.length > 0) {
+  throw new Error(
+    `env file in extension/: ${envFiles.join(', ')} — Vite reads NODE_ENV=development from one as a development build, and git ignores env files, so a clean tree does not show it; the extension build reads none (B1e §5.1). Remove it.`,
   );
 }
 const args = process.argv.slice(2);

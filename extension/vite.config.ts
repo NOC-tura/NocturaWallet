@@ -102,6 +102,9 @@ export function appConfig(env: Record<string, string | undefined>): UserConfig {
     // `include` stays untouched (adding these config files there surfaces real pre-existing strict-mode errors
     // in them, unrelated to this bug).
     tsconfig: resolve(__dirname, 'tsconfig.json'),
+    // B1e-2 (Task 7 fix round 1, review I1): no env file is read — a NODE_ENV=development in one would make Vite
+    // build React's development bundle (scripts/buildEnv.mjs); nothing in the extension reads import.meta.env.
+    envDir: false,
     define: {__NOCTURA_PRESALE__: JSON.stringify(presale)},
     resolve: {alias: rpcWebsocketsAlias()},
     plugins: [sharedResolvesFromHere(), presaleSwitch(presale), react(), chunkModules(true)],

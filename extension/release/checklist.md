@@ -21,8 +21,9 @@ a step that says "before" is a gate, not a suggestion.
       use today covers `*.noc-tura.io`: a wildcard covers `wallet.noc-tura.io` (one label under noc-tura.io), so (2)
       below cannot hold while it is in use, and the answer may cost ICO a certificate change (certificates that name
       each host they serve instead of the wildcard). Whether to ask ICO for that change is your decision, taken before
-      the rest of this item. Then ICO confirms in writing, recorded in `noc-ops`: (1) `wallet.noc-tura.io` and every name under it have no DNS record — or resolve only to a host that
-      refuses HTTPS — and noc-tura.io has no wildcard record; (2) no certificate covers them: none for
+      the rest of this item. Then ICO confirms in writing, recorded in `noc-ops`: (1) `wallet.noc-tura.io` and every
+      name under it have no DNS record — or resolve only to a host that refuses HTTPS — and noc-tura.io has no wildcard
+      record; (2) no certificate covers them: none for
       `wallet.noc-tura.io` or `*.wallet.noc-tura.io`, and no wildcard `*.noc-tura.io`; (3) ICO tells us **before** any
       record, certificate or service is ever added for those names. You check it yourself without opening any Noctura
       page (a DNS query goes to resolvers and noc-tura.io's name servers, never to a web server — and never open
@@ -73,14 +74,18 @@ a step that says "before" is a gate, not a suggestion.
 - [ ] **No `NODE_ENV` in your shell:** `echo "${NODE_ENV-unset}"` prints `unset` (if not: `unset NODE_ENV`, or prefix
       the command below with `env -u NODE_ENV`). A `NODE_ENV` of development or test makes Vite build React's
       development bundle, and every step would agree on it; `release:chrome` refuses any `NODE_ENV`, and `build.mjs`
-      any but `production`.
+      any but `production`. The same for Vite's two other doors to that bundle: no `VITE_USER_NODE_ENV` in the shell
+      (`echo "${VITE_USER_NODE_ENV-unset}"` prints `unset`) and no env file (`.env`, `.env.*`) in `extension/` —
+      git ignores those, so a clean tree does not show one; `ls -a | grep '^\.env'` prints nothing. Both
+      `release:chrome` and `build.mjs` refuse either.
 - [ ] `npm ci --ignore-scripts && npm run release:chrome` (as CI installs: only `extension/`, no dependency's install
       script; Node 22.12 or later — the zip is byte-identical on any Node, spec §5.4). It runs, in order, stopping at the
-      first refusal with nothing written: the preflight (no `NODE_ENV`, a clean tree, this version not packed yet, no
-      `.partial` file an interrupted run left — any under `release/out/`, this version's notes' — named, the lockfile
-      present); the live pre-check; `npm run verify`; a third store build whose `chrome/` digest must equal
-      verify's `dist-nopresale/chrome`; the RP-ID record; the final live check; the zip made twice with one sha256, read
-      back, its entries one for one the witnessed files. Then it writes `release/out/noctura-chrome-1.0.0.zip`
+      first refusal with nothing written: the preflight (no `NODE_ENV` or `VITE_USER_NODE_ENV`, no env file, a clean
+      tree with every untracked file counted, this version not packed yet, no `.partial` file an interrupted run left —
+      any under `release/out/`, this version's notes' — named, the lockfile present); the live pre-check;
+      `npm run verify`; a third store build whose `chrome/` digest must equal verify's `dist-nopresale/chrome`; the
+      RP-ID record; the final live check; the zip made twice with one sha256, read back, its entries one for one the
+      witnessed files. Then it writes `release/out/noctura-chrome-1.0.0.zip`
       (git-ignored — upload this file) and `release/notes-1.0.0.md` (the version; the zip's bytes, entry count and
       sha256; the package's file digest; the commit; the lockfile's sha256; `NODE_ENV: unset`; the RP ID; Node), each
       under a temporary name first, moved into place when both are written. If it ever says "the write failed
@@ -162,5 +167,6 @@ $ git grep -n -i sideload HEAD -- . | grep -i -c 'extension\|crx\|chrome'
 
 No `*.zip` or `*.crx` in any commit of any branch; no tag; the first file under `extension/release/` is B1e-1's
 (`3b509af`); of the five sideload lines that name the extension, two are spec §5.5's own sentence and three are the
-B1e-2 plan quoting this evidence (this file adds its own once committed); every other sideload note is the Android APK. The owner's unpacked installs and the E2E profiles are not users. The gate applies to every later
-update that adds a permission.
+B1e-2 plan quoting this evidence (this file adds its own once committed); every other sideload note is the Android
+APK. The owner's unpacked installs and the E2E profiles are not users. The gate applies to every later update that adds
+a permission.

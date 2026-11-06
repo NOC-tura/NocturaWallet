@@ -189,6 +189,14 @@ recorded in its ledger — the passages named are edited to match):
 - §5.3 (Task 7, Task 1's review): `check-permissions.mjs --dev-key <outDir>` refuses the directories
   `build.mjs --dev-key` refuses — `dist/`, `dist-nopresale/` and anything under them, by the same prefix test on the
   resolved path — before reading the key.
+- §5.1 (Task 7 fix round 1, its review I1): Vite's two other doors to React's development bundle while `NODE_ENV` is
+  unset are closed — `VITE_USER_NODE_ENV` in the environment and an env file (`.env`, `.env.*`, git-ignored, so the
+  clean-tree check cannot see one) in `extension/`: the preflight and `build.mjs` refuse both, every command the
+  release runs gets its environment without `VITE_USER_NODE_ENV` too, and both Vite configs set `envDir: false`
+  (nothing in the extension reads `import.meta.env`; the four build digests unchanged).
+- §5.1 (Task 7 fix round 1, its review I2): both tree checks run `git status --porcelain --untracked-files=all
+  --ignore-submodules=none` — plain porcelain honours a user's `status.showUntrackedFiles=no` and then shows no
+  untracked file; with the flag every untracked file is listed one by one.
 
 **Rev 2.6** (the B1e-1 final review and its fix wave, 2026-11-03; every line is a departure from rev 2.5's text, ruled
 by the controller and recorded in the plan's ledger — the passages named are edited to match):
@@ -961,11 +969,14 @@ script takes no argument at all — there is no flag that skips a step.
 
 0. **Preflight (rev 2.7):** no `NODE_ENV` in the environment, any value refused (Vite keeps a `NODE_ENV` it finds, and
    `development` or `test` builds React's development bundle — verify, the witness and the zip would all agree on it;
-   the notes record "NODE_ENV: unset"); the working tree is clean (`git status --porcelain` empty, untracked files
-   included); neither this version's zip nor its notes exist — the notes name a commit, and a written release is never
+   the notes record "NODE_ENV: unset"); no `VITE_USER_NODE_ENV` in the environment and no env file (`.env`, `.env.*`)
+   in `extension/` — Vite's other two ways to that bundle while `NODE_ENV` is unset (env files are git-ignored; both
+   Vite configs also set `envDir: false`); the working tree is clean (`git status --porcelain --untracked-files=all
+   --ignore-submodules=none` empty, untracked files included whatever git's config shows); neither this version's zip nor its notes exist — the notes name a commit, and a written release is never
    overwritten — and no `.partial` an interrupted run left (any under `release/out/`, this version's notes'), each
    named; `package-lock.json` is present (its sha256 goes into the notes). Every command the release runs gets
-   its environment without `NODE_ENV`, and `build.mjs` itself refuses one other than `production`.
+   its environment without `NODE_ENV` and `VITE_USER_NODE_ENV`, and `build.mjs` itself refuses a `NODE_ENV` other than
+   `production`, any `VITE_USER_NODE_ENV` and an env file in `extension/`.
 0a. **The live pre-check (rev 2.7, E26):** §6.5's three GETs before anything is built, so a page that is not live stops
    the run in seconds.
 1. `npm run verify` (clean; it builds both variants, runs the tests, the CSP, secrets and every gate including
