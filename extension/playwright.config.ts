@@ -8,4 +8,7 @@ import {defineConfig} from '@playwright/test';
 process.env.PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS = '1';
 
 // A one-off failure keeps its trace (test-results/), so it can be diagnosed after the fact.
-export default defineConfig({testDir: 'e2e', timeout: 120_000, workers: 1, use: {trace: 'retain-on-failure'}});
+// B1e §6.4: e2e/storeScreenshots.spec.ts makes the store screenshots — release material, not a regression check — and
+// runs only through `npm run screenshots` (playwright.screenshots.config.ts), never in `npm run e2e` or CI.
+export const STORE_SCREENSHOTS = 'storeScreenshots.spec.ts';
+export default defineConfig({testDir: 'e2e', testIgnore: STORE_SCREENSHOTS, timeout: 120_000, workers: 1, use: {trace: 'retain-on-failure'}});

@@ -10,6 +10,7 @@
     "build": "tsc --noEmit && node scripts/build.mjs && node scripts/build.mjs --no-presale",
     "test": "vitest run && vitest run --config vitest.nopresale.config.ts",
     "e2e": "playwright test",
+    "screenshots": "playwright test --config playwright.screenshots.config.ts",
     "csp": "node scripts/check-csp.mjs dist/app && node scripts/check-csp.mjs dist-nopresale/app",
     "secrets": "test -d dist/app && test -d dist/chrome && test -d dist/firefox && test -d dist-nopresale/app && test -d dist-nopresale/chrome && test -d dist-nopresale/firefox && node ../web/scripts/check-no-secrets.mjs --bundle dist/app dist/chrome dist/firefox dist-nopresale/app dist-nopresale/chrome dist-nopresale/firefox",
     "gates": "npm run gates:build && NOCTURA_DIST=dist-nopresale npm run gates:build && node scripts/check-no-presale.mjs dist-nopresale dist",
