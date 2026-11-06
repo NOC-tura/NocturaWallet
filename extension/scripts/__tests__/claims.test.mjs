@@ -106,6 +106,27 @@ describe('the claims list (scripts/claims.mjs)', () => {
     expect(ids('Secure as a bank, military-grade encryption.')).toEqual(['bank-grade']);
   });
 
+  it('fix round 1 (task review I1): the passive and past-participle privacy claims are refused on every tier; #40\'s account history passes', () => {
+    const ids = (tier, text) => on(tier, text).map(v => /"(.+)" in/.exec(v)[1]);
+    for (const tier of TIERS) {
+      // The review's planted rows, verbatim.
+      expect(ids(tier, 'Your IP address is never logged.'), tier).toEqual(['never receive']);
+      expect(ids(tier, 'Your keys are never stored on our servers.'), tier).toEqual(['never receive']);
+      expect(ids(tier, 'Your activity is never tracked.'), tier).toEqual(['never receive']);
+      expect(ids(tier, 'Your data is never collected.'), tier).toEqual(['never receive']);
+      expect(ids(tier, 'Never stored, never logged.'), tier).toEqual(['never receive']);
+      expect(ids(tier, 'Nothing is transmitted.'), tier).toEqual(['nothing leaves']);
+      expect(ids(tier, 'No data leaves your browser.'), tier).toEqual(['nothing leaves']);
+      // Their neighbours: each alternative of the two patterns.
+      expect(ids(tier, 'Your balance is never seen by anyone.'), tier).toEqual(['never receive']);
+      expect(ids(tier, 'Your address will never be received by Noctura.'), tier).toEqual(['never receive']);
+      expect(ids(tier, 'Your history was never recorded.'), tier).toEqual(['never receive']);
+      expect(ids(tier, 'No personal information is ever stored.'), tier).toEqual(['nothing leaves']);
+      // True text with the words: the account's own history (#40) passes.
+      expect(on(tier, 'This is a fresh seed — never received any tokens'), tier).toEqual([]);
+    }
+  });
+
   it('review 2 M1: a sending claim with no subject is refused, on every tier — the ruling\'s two planted controls and their forms', () => {
     const ids = (tier, text) => on(tier, text).map(v => /"(.+)" in/.exec(v)[1]);
     for (const tier of TIERS) {

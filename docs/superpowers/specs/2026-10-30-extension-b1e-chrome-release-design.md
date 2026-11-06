@@ -151,8 +151,8 @@ recorded in its ledger — the passages named are edited to match):
 - §6.4 / §10 (Task 6, one claims list, a new gate): `scripts/claims.mjs` is the one list of claims the extension does
   not keep (29: private, privacy, anonymous, untraceable, unlinkable, confidential, end-to-end / E2E, encrypted in
   transit, zero-knowledge, shielded, incognito, hidden, never see, can't see, no one can see / knows, we don't see /
-  know / receive / send …, never receive(s), never send(s) / transmit(s) / upload(s) / shared, never leave(s), nothing
-  leaves / is sent, stays on this device / local, only on
+  know / receive / send …, never receive(s) / is never logged · stored · tracked · collected …, never send(s) /
+  transmit(s) / upload(s) / shared, never leave(s), nothing leaves / is sent · transmitted, no data leaves, stays on this device / local, only on
   this device, local-only, offline-only, works offline …, no server, no tracking / logs, bank- / military-grade —
   "private key(s)", "Privacy Policy", its URL path and the contact address excepted), with true sentences allowed by
   their exact words, each with a verdict and the tiers it holds on (source, built, store, policy), a stale allowance

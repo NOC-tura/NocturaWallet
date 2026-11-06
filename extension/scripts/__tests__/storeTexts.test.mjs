@@ -302,6 +302,9 @@ describe('the store and noc-tura.io texts (B1e §6.3, §6.4)', () => {
       // Review 2 M1: a sending claim with no subject.
       'The wallet never sends your phrase anywhere',
       'Your phrase is never uploaded.',
+      // Task review I1: the passive privacy claims.
+      'Your IP address is never logged.',
+      'No data leaves your browser.',
       // A sentence allowed on the source tier (#39's footer) is not allowed here: the tiers do not leak.
       'Your recovery phrase and password never leave this device.',
     ]) {

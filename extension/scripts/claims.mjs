@@ -44,7 +44,14 @@ export const CLAIMS = Object.freeze(
       pattern:
         /\b(?:we|noctura|the\s+coordinator|our\s+servers?)\s+(?:do\s+not|don['’]?t|does\s+not|doesn['’]?t|cannot|can['’]?t|can\s+not|will\s+not|won['’]?t|never)\s+(?:ever\s+)?(?:see|know|receive|get|store|keep|log|track|collect|record|read|access|share|sell|send|transmit|upload)\b/i,
     },
-    {id: 'never receive', pattern: /\bnever\s+(?:receives?|gets?|collects?|stores?|logs?|tracks?|records?|shares?|sells?|knows?)\b/i},
+    // Fix round 1 (task review I1): the passive ("is never logged / stored / tracked / collected …") and the bare past
+    // participle ("Never stored, never logged.") are the same claim. Not the bare "never received": #40's true "a fresh
+    // seed — never received any tokens" is the account's history, not a claim about Noctura.
+    {
+      id: 'never receive',
+      pattern:
+        /\bnever\s+(?:receives?|gets?|collects?|stores?|logs?|tracks?|records?|shares?|sells?|knows?)\b|\b(?:is|are|was|were|be|been|gets?)\s+never\s+(?:ever\s+)?(?:stored|logged|tracked|collected|recorded|kept|saved|sold|seen|received)\b|\bnever\s+(?:ever\s+)?(?:be|been|gets?|got)\s+(?:stored|logged|tracked|collected|recorded|kept|saved|sold|seen|received)\b|\bnever\s+(?:ever\s+)?(?:stored|logged|tracked|collected|recorded)\b/i,
+    },
     // Review 2 M1: a sending claim needs no subject — "the wallet never sends …", "… is never uploaded", "never shared".
     // The third person and the passive only: the imperative ("Never send your recovery phrase …", help.md's advice) and
     // the user's own history ("Never sent here before", "You have never sent to this address") are true and pass.
@@ -54,7 +61,12 @@ export const CLAIMS = Object.freeze(
         /\bnever\s+(?:ever\s+)?(?:sends|transmits|uploads|transmitted|uploaded|shared)\b|\b(?:is|are|was|were|gets?)\s+never\s+(?:ever\s+)?sent\b|\bnever\s+(?:ever\s+)?(?:be|been|gets?|got)\s+(?:sent|transmitted|uploaded|shared)\b/i,
     },
     {id: 'never leave', pattern: /\bnever\s+(?:ever\s+)?(?:leaves?|left)\b/i},
-    {id: 'nothing leaves', pattern: /\bnothing\s+(?:ever\s+)?(?:leaves|is\s+(?:ever\s+)?(?:sent|shared|stored|logged|tracked|collected|uploaded))\b/i},
+    {
+      id: 'nothing leaves',
+      // Fix round 1 (I1): "transmitted", and "no data / information leaves …" as the same claim as "nothing leaves".
+      pattern:
+        /\bnothing\s+(?:ever\s+)?(?:leaves|is\s+(?:ever\s+)?(?:sent|shared|stored|logged|tracked|collected|uploaded|transmitted))\b|\bno\s+(?:personal\s+)?(?:data|information|info)\s+(?:ever\s+)?(?:leaves|is\s+(?:ever\s+)?(?:sent|shared|stored|logged|tracked|collected|uploaded|transmitted))\b/i,
+    },
     {id: 'stays on this device', pattern: re(`\\b(?:stay|stays|staying|remain|remains|kept|is\\s+kept|are\\s+kept)\\s+(?:only\\s+)?(?:on|in)\\s+${PLACE}\\b|\\bstays?\\s+local\\b`)},
     {id: 'only on this device', pattern: re(`\\b(?:only|solely|exclusively)\\s+(?:on|in)\\s+${PLACE}\\b`)},
     {id: 'local-only', pattern: re(`\\blocal(?:ly)?${DASH}?only\\b|\\b(?:fully|entirely|completely|purely|100%)\\s+local\\b`)},
