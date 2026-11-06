@@ -59,8 +59,12 @@ const PAYMENT: RawIx = {
   ],
   data: [2, 0, 0, 0, ...u64le(250_000_000n)],
 };
-/** Text no store screenshot may show: anything presale, and the failure lines a broken state draws. */
-const REFUSED_TEXT = [/presale/i, /couldn.t|could not/i, /offline/i, /not answering/i, /went wrong/i];
+/**
+ * Text no store screenshot may show: anything presale — "stage price" and the presale's "stage" too (E23: the NOC row
+ * says "estimate · not in total"; no true "stage" is shown in the store build: Status's are class names) — and the
+ * failure lines a broken state draws.
+ */
+const REFUSED_TEXT = [/presale/i, /stage price/i, /\bstages?\b/i, /couldn.t|could not/i, /offline/i, /not answering/i, /went wrong/i];
 
 /** What the TGE-date gate and REFUSED_TEXT find in the page's rendered text — the one reading both the states and the control use. */
 async function textProblems(page: Page, name: string): Promise<string[]> {
@@ -151,6 +155,13 @@ test('the five store screenshots, 1280 × 800, from the store build', async () =
       await control.setContent(`<p>${line}</p>`);
       expect((await textProblems(control, 'control')).length, `"${line}" is caught`).toBe(1);
     }
+    // E23: the old NOC line is refused twice over (its "stage price" and its "stage"); the presale's stage line once.
+    await control.setContent('<p>$630.42</p><p>at stage price</p>');
+    expect(await textProblems(control, 'control')).toEqual(['control: shows /stage price/i', 'control: shows /\\bstages?\\b/i']);
+    await control.setContent('<p>Stage 2 of 10</p>');
+    expect(await textProblems(control, 'control')).toEqual(['control: shows /\\bstages?\\b/i']);
+    await control.setContent('<p>$630.42</p><p>estimate · not in total</p>');
+    expect(await textProblems(control, 'control')).toEqual([]);
     await control.setContent('<p>12.4836 SOL</p>');
     expect(await textProblems(control, 'control')).toEqual([]);
     await control.close();

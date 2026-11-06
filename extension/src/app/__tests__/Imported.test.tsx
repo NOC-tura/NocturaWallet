@@ -22,7 +22,7 @@ const zero = () => walletReader({getBalance: async () => 0n, getTokenAccountsByO
 
 // Spec §3.12: #40 in the UI tab at #/imported.
 describe('#40 import-success (wallet.html#/imported)', () => {
-  it('single account: "Wallet imported", the market total and ≈ SOL, a row per token held (NOC at stage price), the address, the D10 line', async () => {
+  it('single account: "Wallet imported", the market total and ≈ SOL, a row per token held (the NOC value an estimate not in the total, E23 / review 2 M3), the address, the D10 line', async () => {
     await renderApp({surface: 'tab', hash: '#/imported', env: ONE, accounts: [ACCOUNT]});
     expect(await screen.findByText('Wallet imported')).toBeTruthy();
     expect(screen.getByText('1 account · 3 tokens recovered. Welcome back.')).toBeTruthy();
@@ -34,9 +34,14 @@ describe('#40 import-success (wallet.html#/imported)', () => {
     const rows = [...document.querySelectorAll('.s8-token-row')].map(r => [r.querySelector('.pri')?.textContent, r.querySelector('.sec')?.textContent, r.querySelector('.amt')?.textContent, r.querySelector('.fiat')?.textContent]);
     expect(rows).toEqual([
       ['SOL', 'Solana', '62.4821', '$9,372.31'],
-      ['NOC', 'Noctura', '4,200.00', '$630.42 at stage price'],
+      ['NOC', 'Noctura', '4,200.00', '$630.42 (estimate · not in total)'],
       ['USDC', 'USD Coin', '740.21', '$740.21'],
     ]);
+    // Review 2 M3: the line is true — the shown total is the SOL and USDC rows alone, NOC's value left out.
+    const usd = (s: string | null | undefined) => Number(String(s).replace(/[^0-9.]/g, ''));
+    const total = usd(document.querySelector('.s8-recovered-card .total')?.textContent);
+    expect(total).toBeCloseTo(usd(rows[0]?.[3]) + usd(rows[2]?.[3]), 2);
+    expect(total).not.toBeCloseTo(usd(rows[0]?.[3]) + usd(rows[1]?.[3]) + usd(rows[2]?.[3]), 2);
     expect(screen.getByText('Your wallet address')).toBeTruthy();
     expect([...document.querySelectorAll('.s8-addr-chip .addr-groups > span')].map(s => s.textContent).join('')).toBe(ACCOUNT.publicKey);
     expect(screen.getByRole('button', {name: 'Copy address'})).toBeTruthy();

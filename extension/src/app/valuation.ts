@@ -6,7 +6,7 @@ export interface TokenValue {
   base: bigint;
   /** USD, or null when no price is known — never 0 (core/portfolio/value.ts). */
   usd: number | null;
-  /** 'stage' for NOC: the presale stage price, labelled "at stage price", never in the total. */
+  /** 'stage' for NOC: the presale stage price, labelled "estimate" (E23: "estimate · not in total" beside a total — #11, #40 — "(estimate)" on #43), never in the total. */
   basis: 'market' | 'stage';
 }
 

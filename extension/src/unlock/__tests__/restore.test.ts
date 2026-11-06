@@ -50,7 +50,7 @@ describe('#39 forgot password (spec §3.11)', () => {
       ['s8-step-card vlt-gap-bottom-3', "2 Enter your words You'll be taken to the import screen. Type or paste your words."],
       ['s8-step-card', "3 Set a new password Once your phrase is verified against this wallet, you'll choose a new password (at least 12 characters). The old password stops working."],
     ]);
-    expect(text(el('fg-foot'))).toBe('The recovery flow is offline-only. We never see your seed phrase, your password, or your wallet address.');
+    expect(text(el('fg-foot'))).toBe("Your recovery phrase and password never leave this device. To read your balances, your accounts' public addresses are sent to the Noctura coordinator.");
     expect(visible(el('fg-foot'))).toBe(true);
     expect(visible(el('fg-warn'))).toBe(false);
     expect(text(el('fg-next'))).toBe('Restore from seed');

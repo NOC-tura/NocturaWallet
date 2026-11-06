@@ -5,6 +5,7 @@ import {CONTENT_SCRIPTS, EXTENSION_CSP, HOST_PERMISSIONS, PERMISSIONS, render} f
 import {PRIVACY_SENTENCES} from '../../release/privacySentences.mjs';
 import {CONTACT, LIVE_PAGES, TERMS_DRAFT_MARKERS, liveCheck, pageProblems} from '../live-check.mjs';
 import {forbiddenForms} from '../check-no-tge-date.mjs';
+import {claimViolations, markdownUnits, unusedAllowances} from '../claims.mjs';
 import {NOCTURA_PAGES} from '../../src/shared/links';
 import {RP_ID} from '../../src/vault/passkey';
 import {ALLOWANCE_WORD, OVERRIDE_WORDS} from '../../src/background/dapp/redFlags';
@@ -86,25 +87,14 @@ const summaryProblems = s => [
 
 /**
  * Claims the extension does not keep (spec §6.4; memory "shielded privacy guarantee": the extension is transparent):
- * "private" except in "private key(s)", any "privacy" but the Privacy Policy, the contact address and the policy's own
- * URL path and file name (…/extension/privacy, privacy.md), anonymity,
- * untraceability, unlinkability, "shielded", the bank / military comparisons, "TGE" and every written form of its date.
+ * scripts/claims.mjs's list, read on its 'store' tier (the store texts' own true sentences allowed by their exact words;
+ * `used` collects them), plus this check's own: "TGE" and every written form of its date.
  */
-const FORBIDDEN = [
-  /\bprivate(?!\s+keys?\b)\w*/gi,
-  /(?<!\/)\bprivacy\b(?!\s+policy\b|@noc-tura\.io|\.md\b)/gi,
-  /\banonym\w*/gi,
-  /\buntraceab\w*/gi,
-  /\bunlinkab\w*/gi,
-  /\bshielded\b/gi,
-  /\bsecure as a bank\b/gi,
-  /\b(?:bank|military)[- ]grade\b/gi,
-  /\bTGE\b/g,
-];
-function forbiddenClaims(text) {
+function forbiddenClaims(text, used = new Set()) {
   const lower = text.toLowerCase();
   return [
-    ...FORBIDDEN.flatMap(re => [...text.matchAll(re)].map(m => m[0])),
+    ...claimViolations(markdownUnits(text, 'text'), {tier: 'store', used}),
+    ...[...text.matchAll(/\bTGE\b/g)].map(m => m[0]),
     ...forbiddenForms().filter(f => lower.includes(f.toLowerCase())).map(() => '<the TGE date>'),
   ];
 }
@@ -285,10 +275,36 @@ describe('the store and noc-tura.io texts (B1e §6.3, §6.4)', () => {
   });
 
   it('no claim the build does not keep, in all four texts — controls: each planted word is caught, "private keys" is not', () => {
-    for (const [name, text] of Object.entries(TEXTS)) expect(forbiddenClaims(text), name).toEqual([]);
-    expect(forbiddenClaims('Your private keys stay here.')).toEqual([]);
+    const used = new Set();
+    for (const [name, text] of Object.entries(TEXTS)) expect(forbiddenClaims(text, used), name).toEqual([]);
+    // Every store allowance is still needed by one of the four texts (a stale one would let its words back in).
+    expect(unusedAllowances(used, 'store')).toEqual([]);
+    expect(forbiddenClaims('Your private keys are yours.')).toEqual([]);
     expect(forbiddenClaims('Read the Privacy Policy or write to privacy@noc-tura.io.')).toEqual([]);
-    for (const planted of ['A private wallet.', 'Send privately.', 'Anonymous payments.', 'Untraceable.', 'Privacy-first.', 'Shielded sends.', 'As secure as a bank.', 'Bank-grade security.', 'Free until TGE.']) {
+    for (const planted of [
+      'A private wallet.',
+      'Send privately.',
+      'Anonymous payments.',
+      'Untraceable.',
+      'Privacy-first.',
+      'Shielded sends.',
+      'As secure as a bank.',
+      'Bank-grade security.',
+      'Free until TGE.',
+      // Review 1 I3's blind spots, now in the shared list.
+      'Your address never leaves this device.',
+      'We do not see your transactions.',
+      'Your activity stays on this device.',
+      'A local-only wallet.',
+      'Confidential transfers.',
+      'No tracking.',
+      'Works offline.',
+      // Review 2 M1: a sending claim with no subject.
+      'The wallet never sends your phrase anywhere',
+      'Your phrase is never uploaded.',
+      // A sentence allowed on the source tier (#39's footer) is not allowed here: the tiers do not leak.
+      'Your recovery phrase and password never leave this device.',
+    ]) {
       expect(forbiddenClaims(planted).length, planted).toBe(1);
     }
     expect(forbiddenClaims(`On ${forbiddenForms()[0]}.`)).toEqual(['<the TGE date>']);

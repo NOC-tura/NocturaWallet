@@ -2,6 +2,7 @@ import {readFileSync} from 'node:fs';
 import {dirname, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {PRIVACY_SENTENCES} from '../../release/privacySentences.mjs';
+import {claimViolations, markdownUnits, unusedAllowances} from '../claims.mjs';
 import {CONTACT, LIVE_PAGES, foldText, pageProblems} from '../live-check.mjs';
 import {REQUIRED_CONNECT_SRC} from '../check-permissions.mjs';
 import {FRESH_ROWS} from '../../src/app/useAccountBalances';
@@ -79,10 +80,18 @@ describe('the privacy policy (B1e §6.1, §6.2)', () => {
     expect(PRIVACY_MD.startsWith(`# ${privacy.title}\n`)).toBe(true);
   });
 
-  it('privacy.md makes no claim the build does not keep: nothing "anonymous" or "untraceable"; "private" only in "private keys"', () => {
-    const lower = PRIVACY_MD.toLowerCase();
-    expect(lower).not.toMatch(/\b(anonym\w*|untraceable|unlinkable|confidential|encrypted in transit)\b/);
-    expect([...lower.matchAll(/\bprivate\b(.{0,5})/g)].map(m => m[1])).toEqual([' keys']);
+  it('privacy.md makes no claim the build does not keep: scripts/claims.mjs on its policy tier, every policy allowance needed; "private" only in "private keys" — controls: a planted claim, a source-tier sentence', () => {
+    const used = new Set();
+    expect(claimViolations(markdownUnits(PRIVACY_MD, 'privacy.md'), {tier: 'policy', used})).toEqual([]);
+    expect(unusedAllowances(used, 'policy')).toEqual([]);
+    // This check's own addition: the one "private" is P11's "private keys".
+    expect([...PRIVACY_MD.toLowerCase().matchAll(/\bprivate\b(.{0,5})/g)].map(m => m[1])).toEqual([' keys']);
+    const planted = md => claimViolations(markdownUnits(md, 'privacy.md'), {tier: 'policy'});
+    expect(planted(`${PRIVACY_MD}\n\nYour transactions are confidential and encrypted in transit.\n`)).toEqual([
+      'privacy.md: "confidential" in “Your transactions are confidential and encrypted in transit.”',
+      'privacy.md: "encrypted in transit" in “Your transactions are confidential and encrypted in transit.”',
+    ]);
+    expect(planted(`${PRIVACY_MD}\n\nYour keys stay on this device.\n`)).toEqual(['privacy.md: "stays on this device" in “Your keys stay on this device.”']);
   });
 
   it('the facts in the sentences are the code\'s: the one host, the counts, the intervals, the RP ID, the tokens, the contact', () => {

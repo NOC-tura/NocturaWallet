@@ -83,7 +83,7 @@ function base() {
     manifest_version: 3,
     name: 'Noctura',
     version: VERSION,
-    description: 'Noctura wallet for Solana.',
+    description: 'A non-custodial Solana wallet: hold, send and receive SOL and tokens, and approve requests from Solana sites.',
     permissions: PERMISSIONS.map(p => p.value),
     host_permissions: HOST_PERMISSIONS.map(p => p.value),
     content_security_policy: {extension_pages: EXTENSION_CSP},

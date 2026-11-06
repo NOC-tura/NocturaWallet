@@ -8,7 +8,7 @@ Noctura
 
 ## Summary (short description)
 
-Noctura wallet for Solana.
+A non-custodial Solana wallet: hold, send and receive SOL and tokens, and approve requests from Solana sites.
 
 ## Category
 

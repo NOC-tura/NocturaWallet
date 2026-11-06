@@ -144,13 +144,15 @@ recorded in its ledger — the passages named are edited to match):
   account." (E24; the design named the phone app's "future private (shielded) keys") — each old line a claim the
   privacy policy contradicts (P3) or the transparent build does not keep. Words only; layout, classes and icons as
   drawn.
-- §9 (Task 6, a **design departure**, E23): the NOC token row's secondary line is "estimate · not in total" on #11 home
-  and the value's suffix " (estimate)" on #43 and #40 (the design and B1b: "at stage price") — NOC's figure is the
-  balance at the presale stage price, never in a total; no presale wording in the store build.
+- §9 (Task 6, a **design departure**, E23): the NOC token row's secondary line is "estimate · not in total" on #11 home,
+  the value's suffix " (estimate · not in total)" on #40 and " (estimate)" on #43 (the design and B1b: "at stage
+  price") — NOC's figure is the balance at the presale stage price, never in a total; no presale wording in the store
+  build.
 - §6.4 / §10 (Task 6, one claims list, a new gate): `scripts/claims.mjs` is the one list of claims the extension does
-  not keep (28: private, privacy, anonymous, untraceable, unlinkable, confidential, end-to-end / E2E, encrypted in
+  not keep (29: private, privacy, anonymous, untraceable, unlinkable, confidential, end-to-end / E2E, encrypted in
   transit, zero-knowledge, shielded, incognito, hidden, never see, can't see, no one can see / knows, we don't see /
-  know / receive …, never receive(s), never leave(s), nothing leaves / is sent, stays on this device / local, only on
+  know / receive / send …, never receive(s), never send(s) / transmit(s) / upload(s) / shared, never leave(s), nothing
+  leaves / is sent, stays on this device / local, only on
   this device, local-only, offline-only, works offline …, no server, no tracking / logs, bank- / military-grade —
   "private key(s)", "Privacy Policy", its URL path and the contact address excepted), with true sentences allowed by
   their exact words, each with a verdict and the tiers it holds on (source, built, store, policy), a stale allowance
@@ -161,6 +163,15 @@ recorded in its ledger — the passages named are edited to match):
 - §6.4 / §10 (Task 6, the limit, review I3): the claims list is a word list — a review aid, not a proof: it reads each
   literal, template piece, JSX text and HTML text unit alone, so a sentence assembled at run time from pieces, text from
   data (token names, a site's strings, the coordinator's answers) and CSS `content:` are not read as sentences.
+- §6.4 / §10 (Task 6, the plan's review 2 M1, the controller's ruling): the claims list also refuses a sending claim
+  with no subject — "never sends / transmits / uploads", "is never sent / uploaded", "never shared" — and "we /
+  Noctura / the coordinator … don't · never send / transmit / upload"; the imperative ("Never send your recovery
+  phrase …") and the user's own history ("Never sent here before") pass; P11's "never leave this device" stays the one
+  allowed sending form (no new allowance: every existing text passes); planted controls "The wallet never sends your
+  phrase anywhere" and "is never uploaded" are refused on every tier.
+- §9 (Task 6, the plan's review 2 M3, controller copy, D27): #40's NOC value beside "Total value recovered" — a total
+  that leaves NOC out, as `valuation()` builds it — carries " (estimate · not in total)", as #11 home does; #43, which
+  shows no total, keeps " (estimate)".
 - §7 (Task 7): the checklist is `extension/release/checklist.md`; it adds the owner / ICO items open before the release
   (P1, whether `chrome-extension://<id>` is on the coordinator's Origin allow list, the Terms' lawyer, ICO publishing the
   three pages, and E25's gate for `wallet.noc-tura.io`), the no-`NODE_ENV` check before the one command
@@ -1168,7 +1179,7 @@ creditworthiness separately.
   with `script-src 'self'` / no `unsafe-eval` / no `wasm-unsafe-eval` as its reason; the content scripts' justification
   under "Content scripts (`<all_urls>`)"; the privacy policy URL and the contact named), and §6.3's answers. **No
   presale, no TGE date, no privacy claim the build does not keep** (memory "shielded privacy guarantee": the extension
-  is transparent; nothing says "private" or "anonymous"). Rev 2.7: "presale" is absent from the listing and the Terms;
+  is transparent; nothing says "private" or "anonymous", nor that something is never sent, uploaded or shared). Rev 2.7: "presale" is absent from the listing and the Terms;
   in Help and the data-usage form it appears only in P7 / P8 and F12's own strings (and §6.3's Location cell);
   "private" only in "private key(s)". The extension's own screens are held to the same rule by one claims list,
   `scripts/claims.mjs`, read by `scripts/check-ui-claims.mjs` and by the store texts' and the privacy policy's tests
@@ -1266,8 +1277,8 @@ to the Noctura coordinator." (was "The recovery flow is offline-only. We never s
 your wallet address."); #8's banner "This phrase is also the root of the Noctura phone app's keys — anyone who gets it
 from this browser gets those too. Accounts after the first one exist only in this extension until the phone app
 supports more than one account." (E24; was naming the phone app's "future private (shielded) keys"); the NOC token
-row's secondary line "estimate · not in total" on #11 and the suffix " (estimate)" on #43 and #40 (E23; was "at stage
-price"). The design file is the owner's to update.
+row's secondary line "estimate · not in total" on #11, the suffix " (estimate · not in total)" on #40 (beside its total,
+review 2 M3) and " (estimate)" on #43 (E23; was "at stage price"). The design file is the owner's to update.
 
 ## 10. Tests and gates (both plans)
 

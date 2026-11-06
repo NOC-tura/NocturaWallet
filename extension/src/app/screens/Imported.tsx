@@ -276,7 +276,8 @@ export function Imported() {
               </div>
               <div>
                 <div className="amt noc-numeral">{showAmount(t, row.base)}</div>
-                <div className="fiat noc-numeral">{row.usd === null ? '—' : `${showUsd(row.usd)}${row.basis === 'stage' ? ' at stage price' : ''}`}</div>
+                {/* E23, review 2 M3: beside "Total value recovered", which leaves NOC out, the line says so — as Home does. */}
+                <div className="fiat noc-numeral">{row.usd === null ? '—' : `${showUsd(row.usd)}${row.basis === 'stage' ? ' (estimate · not in total)' : ''}`}</div>
               </div>
             </div>
           );

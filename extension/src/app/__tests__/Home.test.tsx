@@ -80,7 +80,9 @@ describe('#11 dashboard', () => {
     expect(screen.getByText('740.21 USDC')).toBeTruthy();
     const noc = document.querySelector('[data-token="NOC"]') as HTMLElement;
     expect(within(noc).getByText('$630.42')).toBeTruthy();
-    expect(within(noc).getByText('at stage price')).toBeTruthy();
+    // E23 (owner, 2026-11-06): the line says what the figure is and that the total leaves it out — no presale wording.
+    expect(within(noc).getByText('estimate · not in total')).toBeTruthy();
+    expect(noc.textContent).not.toMatch(/stage/i);
     // The account and its switcher, the refresh button (D2), the eye.
     expect(screen.getByRole('button', {name: 'Accounts'}).textContent).toContain('Main');
     fireEvent.click(screen.getByRole('button', {name: 'Accounts'}));

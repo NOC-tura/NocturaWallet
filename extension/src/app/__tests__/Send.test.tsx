@@ -202,7 +202,7 @@ describe('#12 send', () => {
     expect(screen.queryByText(SEND_TEXT.maxHelper)).toBeNull();
   });
 
-  it('#43 from the chip: "Choose a token", four rows with balances and NOC "at stage price"; Esc closes only the sheet', async () => {
+  it('#43 from the chip: "Choose a token", four rows with balances and the NOC value "(estimate)"; Esc closes only the sheet', async () => {
     await renderSend();
     await loaded();
     fireEvent.click(screen.getByRole('button', {name: 'Token: SOL'}));
@@ -213,7 +213,7 @@ describe('#12 send', () => {
     expect(document.querySelector('.s-send')).not.toBeNull();
     expect([...sheet.querySelectorAll('.pri')].map(p => p.textContent)).toEqual(['Solana', 'Noctura', 'USD Coin', 'Tether']);
     // 4 200 NOC × $0.1501 (the stage price), outside the market total.
-    expect(within(sheet).getByText('$630.42 at stage price')).toBeTruthy();
+    expect(within(sheet).getByText('$630.42 (estimate)')).toBeTruthy();
     expect(sheet.querySelector('.sel .pri')?.textContent).toBe('Solana');
     fireEvent.keyDown(document, {key: 'Escape'});
     expect(screen.queryByRole('dialog')).toBeNull();
