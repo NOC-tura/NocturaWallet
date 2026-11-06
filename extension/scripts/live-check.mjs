@@ -15,14 +15,23 @@ import {PRIVACY_SENTENCES} from '../release/privacySentences.mjs';
 export const CONTACT = 'privacy@noc-tura.io';
 
 /**
+ * What only the unpublished Terms draft says (release/terms.md's DRAFT note, its first sentence: "DRAFT for the
+ * owner's lawyer — not legal text and not in force."). A Terms page carrying any of them is the draft published with
+ * its note, and fails (B1e-2 Task 4, Fable review 1 I4): case-sensitive, compared on the folded text, so "owner’s"
+ * with a typographic apostrophe is caught too.
+ */
+export const TERMS_DRAFT_MARKERS = Object.freeze(['DRAFT', 'not in force', "owner's lawyer"]);
+
+/**
  * The three pages, in the order they are read. The URLs are src/shared/links.ts NOCTURA_PAGES' (a test pins them
  * equal); each title is the label of the #38 row that opens it (src/app/screens/About.tsx ABOUT_TEXT), so the page a
  * user lands on is headed with the name they clicked. Terms and Help must each carry their title and CONTACT; the
- * privacy page must carry every sentence of privacySentences.mjs (P16 is the contact).
+ * privacy page must carry every sentence of privacySentences.mjs (P16 is the contact). `mustNot`: text the page may
+ * not carry (Terms: TERMS_DRAFT_MARKERS).
  */
 export const LIVE_PAGES = Object.freeze([
   Object.freeze({name: 'privacy', url: 'https://noc-tura.io/extension/privacy', title: 'Privacy Policy', sentences: true}),
-  Object.freeze({name: 'terms', url: 'https://noc-tura.io/extension/terms', title: 'Terms of Service', sentences: false}),
+  Object.freeze({name: 'terms', url: 'https://noc-tura.io/extension/terms', title: 'Terms of Service', sentences: false, mustNot: TERMS_DRAFT_MARKERS}),
   Object.freeze({name: 'help', url: 'https://noc-tura.io/extension/help', title: 'Help & support', sentences: false}),
 ]);
 
@@ -93,6 +102,9 @@ export function pageProblems(page, html, sentences = PRIVACY_SENTENCES) {
   const out = [];
   if (!text.includes(foldText(page.title))) out.push(`${page.name}: missing its title "${page.title}"`);
   if (!text.includes(CONTACT)) out.push(`${page.name}: missing the contact ${CONTACT}`);
+  for (const m of page.mustNot ?? []) {
+    if (text.includes(foldText(m))) out.push(`${page.name}: carries "${m}" — the draft's note, which is not published`);
+  }
   return out;
 }
 
