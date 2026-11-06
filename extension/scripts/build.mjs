@@ -7,19 +7,32 @@
 // (NOCTURA_PRESALE=0 for every vite build, scripts/presaleFlag.mjs), into dist-nopresale/ unless outDir is given; the
 // default is the build with it, into dist/. Either way <outDir>/app.features.json says which it is — next to
 // app.modules.json, never inside a package — for the gates that read the build.
+//
+// B1e §5.3: `--dev-key` writes the store's public key (release/store-key.json, scripts/storeKey.mjs) into the Chrome
+// manifest, so an unpacked install has the store's ID. Only into a directory named on the command line, never dist/ or
+// dist-nopresale/ (the directories verify, the gates and the release read, whose manifests must carry no key); the key
+// file is read before anything is built, and an absent or malformed one fails the build. Firefox's manifest never
+// carries a key.
 import {execFileSync} from 'node:child_process';
 import {cpSync, mkdirSync, rmSync, writeFileSync} from 'node:fs';
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {render} from '../manifest/source.mjs';
 import {LICENCE_PAGE, buildLicencePage} from './licences.mjs';
+import {readStoreKey} from './storeKey.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
 const presale = !args.includes('--no-presale');
-const dirs = args.filter(a => a !== '--no-presale');
-if (dirs.length > 1 || dirs.some(a => a.startsWith('-'))) throw new Error('usage: node scripts/build.mjs [outDir] [--no-presale]');
+const devKey = args.includes('--dev-key');
+const dirs = args.filter(a => a !== '--no-presale' && a !== '--dev-key');
+const USAGE = 'usage: node scripts/build.mjs [outDir] [--no-presale] | node scripts/build.mjs <outDir> --dev-key [--no-presale]';
+if (dirs.length > 1 || dirs.some(a => a.startsWith('-'))) throw new Error(USAGE);
 const outRoot = dirs[0] ? resolve(dirs[0]) : join(ROOT, presale ? 'dist' : 'dist-nopresale');
+if (devKey && (dirs.length === 0 || ['dist', 'dist-nopresale'].some(d => outRoot === join(ROOT, d)))) {
+  throw new Error(`--dev-key builds only into a directory named on the command line, never dist/ or dist-nopresale/ (B1e §5.3). ${USAGE}`);
+}
+const key = devKey ? readStoreKey().key : undefined;
 const app = join(outRoot, 'app');
 const env = {...process.env, NOCTURA_PRESALE: presale ? '1' : '0'};
 // Written last, removed first: a build that fails part-way leaves no claim about what it built.
@@ -40,6 +53,6 @@ for (const browser of ['chrome', 'firefox']) {
   rmSync(dir, {recursive: true, force: true});
   mkdirSync(dir, {recursive: true});
   cpSync(app, dir, {recursive: true});
-  writeFileSync(join(dir, 'manifest.json'), `${JSON.stringify(render(browser), null, 2)}\n`);
+  writeFileSync(join(dir, 'manifest.json'), `${JSON.stringify(render(browser, browser === 'chrome' && key !== undefined ? {key} : {}), null, 2)}\n`);
 }
 writeFileSync(features, `${JSON.stringify({presale})}\n`);

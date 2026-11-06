@@ -4,6 +4,7 @@ import {tmpdir} from 'node:os';
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {checkNoPresale} from '../check-no-presale.mjs';
+import {comparePermissions} from '../check-permissions.mjs';
 import {linkViolations, packageFiles} from '../check-links.mjs';
 import {pageViolations} from '../check-vault-isolation.mjs';
 import {PRESALE_ENTRIES} from '../presaleSwitch.mjs';
@@ -74,6 +75,17 @@ describe('the two builds', () => {
   it('both: the same manifest — the switch adds no permission, host or CSP entry', () => {
     for (const browser of ['chrome', 'firefox']) {
       expect(readFileSync(join(builds.off.dir, browser, 'manifest.json'), 'utf8')).toBe(readFileSync(join(builds.on.dir, browser, 'manifest.json'), 'utf8'));
+    }
+  });
+
+  // B1e §5.2, §5.3: what `node scripts/build.mjs` writes — package.json's version, and no key without --dev-key.
+  it('both: each manifest carries package.json\'s version and no key, and passes the permissions gate', () => {
+    const version = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version;
+    for (const b of Object.values(builds)) {
+      for (const browser of ['chrome', 'firefox']) {
+        const m = JSON.parse(readFileSync(join(b.dir, browser, 'manifest.json'), 'utf8'));
+        expect([browser, m.version, Object.hasOwn(m, 'key'), comparePermissions(m, browser)]).toEqual([browser, version, false, []]);
+      }
     }
   });
 
