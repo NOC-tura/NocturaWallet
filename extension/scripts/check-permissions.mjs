@@ -10,7 +10,8 @@
 // its value is worth pinning independent of source.mjs too — REQUIRED_CONNECT_SRC is copied here on
 // purpose, same pattern as check-rpc-methods.mjs's SPEC_ALLOWED against core/solana/rpc.ts's list.
 import {readFileSync} from 'node:fs';
-import {join, resolve} from 'node:path';
+import {dirname, join, resolve, sep} from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {distDir} from './distDir.mjs';
 import {isMain} from './isMain.mjs';
 import {readStoreKey} from './storeKey.mjs';
@@ -142,11 +143,21 @@ export function comparePermissions(manifest, browser, {recorded, version} = {}) 
 
 // CLI: `node scripts/check-permissions.mjs` reads NOCTURA_DIST's build (dist/ or dist-nopresale/: no key allowed);
 // `node scripts/check-permissions.mjs --dev-key <outDir>` reads a --dev-key build against release/store-key.json (absent
-// or malformed: fails).
+// or malformed: fails). B1e-2 (Task 1's review): `--dev-key` refuses the directories `build.mjs --dev-key` refuses —
+// dist/, dist-nopresale/ and anything under them, by the same prefix test on the resolved path — before reading the
+// key: a key there is never right, and the form without `--dev-key` is the one that reads them.
 if (isMain(import.meta.url)) {
+  const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+  const USAGE = 'usage: node scripts/check-permissions.mjs [--dev-key <outDir>]';
   const args = process.argv.slice(2);
-  if (args.length !== 0 && (args.length !== 2 || args[0] !== '--dev-key')) throw new Error('usage: node scripts/check-permissions.mjs [--dev-key <outDir>]');
+  if (args.length !== 0 && (args.length !== 2 || args[0] !== '--dev-key')) throw new Error(USAGE);
   const devKey = args.length === 2;
+  const inside = dir => resolve(args[1]) === dir || resolve(args[1]).startsWith(dir + sep);
+  if (devKey && ['dist', 'dist-nopresale'].some(d => inside(join(ROOT, d)))) {
+    throw new Error(
+      `--dev-key reads only a directory a --dev-key build may write, never dist/, dist-nopresale/ or anything under them (B1e §5.3); those are read without --dev-key, where a key fails. ${USAGE}`,
+    );
+  }
   const DIST = devKey ? resolve(args[1]) : distDir();
   const recorded = devKey ? readStoreKey() : undefined;
   let bad = 0;

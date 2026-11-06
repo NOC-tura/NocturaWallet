@@ -176,10 +176,19 @@ recorded in its ledger — the passages named are edited to match):
   (P1, whether `chrome-extension://<id>` is on the coordinator's Origin allow list, the Terms' lawyer, ICO publishing the
   three pages, and E25's gate for `wallet.noc-tura.io`), the no-`NODE_ENV` check before the one command
   (`npm ci --ignore-scripts && npm run release:chrome`), the live check's two runs, the screenshots' command and upload
-  order, the notes' commit, step 7's record format and §5.5's evidence as run on 2026-11-05.
+  order, the notes' commit, step 7's record format and §5.5's evidence as run (2026-11-05, re-run on 2026-11-06).
 - §10 (Task 7): `release-chrome.test.mjs` proves §5.1's order, both live checks and that each refusal stops everything
   after it, over an injected io; two of its rows spawn a process — `realIo`'s command environment without `NODE_ENV`,
   and `build.mjs` refusing a `NODE_ENV` before it builds (with unset and `production` as the positive controls).
+- §5.1 (Task 7, the plan's review 2 M2, the controller's ruling): the preflight also refuses any `release/out/*.partial`
+  and this version's `release/notes-<version>.md.partial` that an interrupted run left, naming each — before `verify`,
+  not at the write.
+- §5.6 / §7 (Task 7, the plan's review 2 M5, the controller's ruling): E25's gate first asks ICO whether a certificate
+  in use covers `*.noc-tura.io` (a wildcard covers `wallet.noc-tura.io`); the answer may cost ICO a certificate change,
+  and the owner decides.
+- §5.3 (Task 7, Task 1's review): `check-permissions.mjs --dev-key <outDir>` refuses the directories
+  `build.mjs --dev-key` refuses — `dist/`, `dist-nopresale/` and anything under them, by the same prefix test on the
+  resolved path — before reading the key.
 
 **Rev 2.6** (the B1e-1 final review and its fix wave, 2026-11-03; every line is a departure from rev 2.5's text, ruled
 by the controller and recorded in the plan's ledger — the passages named are edited to match):
@@ -954,7 +963,8 @@ script takes no argument at all — there is no flag that skips a step.
    `development` or `test` builds React's development bundle — verify, the witness and the zip would all agree on it;
    the notes record "NODE_ENV: unset"); the working tree is clean (`git status --porcelain` empty, untracked files
    included); neither this version's zip nor its notes exist — the notes name a commit, and a written release is never
-   overwritten; `package-lock.json` is present (its sha256 goes into the notes). Every command the release runs gets
+   overwritten — and no `.partial` an interrupted run left (any under `release/out/`, this version's notes'), each
+   named; `package-lock.json` is present (its sha256 goes into the notes). Every command the release runs gets
    its environment without `NODE_ENV`, and `build.mjs` itself refuses one other than `production`.
 0a. **The live pre-check (rev 2.7, E26):** §6.5's three GETs before anything is built, so a page that is not live stops
    the run in seconds.
@@ -999,8 +1009,8 @@ would refuse — each of the three numbers 0–65535, no leading zero. #38 shows
   release never pass it. Rev 2.7: `--dev-key` builds only into a directory named on the command line, never `dist/`,
   `dist-nopresale/` or any directory under them, and reads the key before building; `render` refuses a key for Firefox.
 - `check-permissions.mjs`: a manifest in `dist/` or `dist-nopresale/` with a `key` fails; a `--dev-key` build's `key`
-  equals the recorded one (rev 2.7: `node scripts/check-permissions.mjs --dev-key <outDir>`). Mutation: `render` adding
-  `key` by default → fails.
+  equals the recorded one (rev 2.7: `node scripts/check-permissions.mjs --dev-key <outDir>`, which refuses `dist/`,
+  `dist-nopresale/` and anything under them, as the build does). Mutation: `render` adding `key` by default → fails.
 - Development note (in the checklist): an unpacked install carrying the store's key **has the store's ID**, so it and
   the store install cannot coexist in one Chrome profile.
 - Whether the store accepts an uploaded package that carries a matching `key` is not needed: the store package never
@@ -1055,7 +1065,9 @@ this product. Nothing in the extension connects to it: `connect-src` admits only
   `export const RP_ID = '<host>';` (no TypeScript loader; any other form refuses), and the record is committed by
   B1e-2 from the owner's written E17 — §7 step 3 asks the owner to re-confirm it before upload.
 - **Nothing is served there (E25, rev 2.7).** A page at `wallet.noc-tura.io` or at any name under it could ask a store
-  user's browser for the passkey bound to this RP ID, and its PRF output unwraps the vault. Before upload, ICO confirms
+  user's browser for the passkey bound to this RP ID, and its PRF output unwraps the vault. ICO is asked first whether
+  a certificate in use covers `*.noc-tura.io` — a wildcard covers `wallet.noc-tura.io` — and the answer may cost ICO a
+  certificate change; the owner decides (rev 2.7, review 2 M5). Before upload, ICO confirms
   (recorded in `noc-ops`) that those names have no DNS record (or resolve only to a host that refuses HTTPS) and
   noc-tura.io has no wildcard record, that no certificate covers them (none for the name or `*.wallet.noc-tura.io`, no
   wildcard `*.noc-tura.io`), and that ICO tells us before any of it changes; the owner checks with `dig` and a
@@ -1222,9 +1234,10 @@ default fetch and `live-check.mjs` no CLI; the release script hands it a fetch w
 
 Rev 2.7: written as `extension/release/checklist.md` — the steps below with their exact commands and files, the items
 open before the release (P1, whether `chrome-extension://<id>` is on the coordinator's Origin allow list, the Terms'
-lawyer, ICO publishing the three pages, and E25's gate: nothing served at `wallet.noc-tura.io`, no certificate for it),
-the no-`NODE_ENV` check before `npm ci --ignore-scripts && npm run release:chrome`, the live check's two runs (E26), the
-screenshots' command and upload order, the notes' commit, the dev-key note and §5.5's evidence as run on 2026-11-05.
+lawyer, ICO publishing the three pages, and E25's gate: nothing served at `wallet.noc-tura.io`, no certificate for it,
+ICO asked first about a `*.noc-tura.io` wildcard), the no-`NODE_ENV` check before
+`npm ci --ignore-scripts && npm run release:chrome`, the live check's two runs (E26), the screenshots' command and
+upload order, the notes' commit, the dev-key note and §5.5's evidence as run (2026-11-05, re-run on 2026-11-06).
 
 1. Developer account (5 USD fee, 2-step verification, a verified contact e-mail, the EU trader / non-trader
    declaration).

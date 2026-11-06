@@ -289,6 +289,42 @@ describe('check-permissions.mjs (CLI)', () => {
     expect(r.stderr).toContain(`${STORE_KEY_PATH}: absent`);
   });
 
+  // B1e-2 (Task 1's review): --dev-key refuses the set build.mjs --dev-key refuses — dist/, dist-nopresale/ and anything
+  // under them, on the resolved path — before reading the key; run from the package root, as a developer would.
+  const DEV_KEY_REFUSED = '--dev-key reads only a directory a --dev-key build may write, never dist/, dist-nopresale/ or anything under them (B1e §5.3)';
+  const BUILD_REFUSED = '--dev-key builds only into a directory named on the command line, never dist/, dist-nopresale/ or anything under them (B1e §5.3).';
+  const fromRoot = (script, args) =>
+    spawnSync('node', [join(ROOT, script), ...args], {cwd: ROOT, encoding: 'utf8', env: Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'NODE_ENV'))});
+  // [as the test title shows it, the argument] — absolute paths are titled from <root>, the package root.
+  const UNDER_DIST = [
+    ['dist', 'dist'],
+    ['./dist/', './dist/'],
+    ['<root>/dist-nopresale', join(ROOT, 'dist-nopresale')],
+    ['dist-nopresale/chrome', 'dist-nopresale/chrome'],
+    ['<root>/dist/a/b', join(ROOT, 'dist', 'a', 'b')],
+    ['./dist-nopresale/chrome/../firefox', './dist-nopresale/chrome/../firefox'],
+  ];
+
+  it.each(UNDER_DIST)('--dev-key %s: refused before the key is read — the directory build.mjs --dev-key refuses too', (_, dir) => {
+    const r = fromRoot('scripts/check-permissions.mjs', ['--dev-key', dir]);
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toContain(DEV_KEY_REFUSED);
+    expect(r.stderr).not.toContain('store-key.json');
+    const b = fromRoot('scripts/build.mjs', [dir, '--dev-key', '--no-presale']);
+    expect(b.status).not.toBe(0);
+    expect(b.stderr).toContain(BUILD_REFUSED);
+  });
+
+  it.each([
+    ['<root>/dist-nopresale-elsewhere', join(ROOT, 'dist-nopresale-elsewhere')],
+    ['<root>/distant', join(ROOT, 'distant')],
+  ])('positive control: --dev-key %s (a name that only starts like them) is not refused by that rule', (_, dir) => {
+    const r = fromRoot('scripts/check-permissions.mjs', ['--dev-key', dir]);
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).not.toContain(DEV_KEY_REFUSED);
+    expect(r.stderr).toMatch(existsSync(STORE_KEY_PATH) ? /ENOENT/ : /store-key\.json: absent/);
+  });
+
   it('refuses other arguments', () => {
     for (const args of [['--dev-key'], ['out'], ['--dev-key', 'a', 'b']]) {
       const r = run({}, args);

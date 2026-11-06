@@ -94,12 +94,29 @@ describe('the store key (B1e §5.3)', () => {
 
 // The build's side: --dev-key reads the fixed path before building anything, and writes only into a named directory.
 describe('build.mjs --dev-key (B1e §5.3)', () => {
+  const REFUSED = '--dev-key builds only into a directory named on the command line, never dist/, dist-nopresale/ or anything under them (B1e §5.3).';
   it('refuses without a directory, or with dist/ or dist-nopresale/, before reading the key or building', () => {
     for (const args of [['--dev-key'], ['--dev-key', '--no-presale'], ['dist', '--dev-key'], [join(ROOT, 'dist-nopresale'), '--dev-key', '--no-presale'], ['./dist/', '--dev-key']]) {
       const r = build(args);
       expect(r.status).not.toBe(0);
-      expect(r.stderr).toContain('--dev-key builds only into a directory named on the command line, never dist/ or dist-nopresale/ (B1e §5.3).');
+      expect(r.stderr).toContain(REFUSED);
     }
+  });
+
+  it('refuses any directory under dist/ or dist-nopresale/ (B1e-2, review M2: a prefix test on the resolved path)', () => {
+    for (const args of [['dist-nopresale/chrome', '--dev-key', '--no-presale'], [join(ROOT, 'dist', 'a', 'b'), '--dev-key'], ['./dist-nopresale/chrome/../firefox', '--dev-key', '--no-presale']]) {
+      const r = build(args);
+      expect(r.status).not.toBe(0);
+      expect(r.stderr).toContain(REFUSED);
+    }
+  });
+
+  it.runIf(!existsSync(STORE_KEY_PATH))('a sibling whose name only starts like them is not refused by that rule (positive control: it stops at the absent key)', () => {
+    const r = build([join(ROOT, 'dist-nopresale-elsewhere'), '--dev-key', '--no-presale']);
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).not.toContain(REFUSED);
+    expect(r.stderr).toContain(`${STORE_KEY_PATH}: absent`);
+    expect(existsSync(join(ROOT, 'dist-nopresale-elsewhere'))).toBe(false);
   });
 
   it.runIf(!existsSync(STORE_KEY_PATH))('refuses while release/store-key.json is absent (until §7 step 7), and builds nothing', () => {

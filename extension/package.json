@@ -16,6 +16,7 @@
     "gates": "npm run gates:build && NOCTURA_DIST=dist-nopresale npm run gates:build && node scripts/check-no-presale.mjs dist-nopresale dist",
     "gates:build": "node scripts/check-permissions.mjs && node scripts/check-page-bundles.mjs && node scripts/check-vault-isolation.mjs && node scripts/check-rpc-methods.mjs && node scripts/check-no-tge-date.mjs && node scripts/check-fonts.mjs && node scripts/check-classes.mjs && node scripts/check-links.mjs && node scripts/check-licences.mjs && node scripts/check-ui-claims.mjs",
     "reproducible": "node scripts/verify-reproducible.mjs",
+    "release:chrome": "node scripts/release-chrome.mjs",
     "verify": "rm -rf dist dist-nopresale && npm run build && npm run test && npm run csp && npm run secrets && npm run gates && npm run reproducible"
   },
   "dependencies": {

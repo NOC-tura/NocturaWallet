@@ -13,15 +13,25 @@
 // dist-nopresale/ (the directories verify, the gates and the release read, whose manifests must carry no key); the key
 // file is read before anything is built, and an absent or malformed one fails the build. Firefox's manifest never
 // carries a key.
+//
+// B1e-2 (review C1): Vite keeps a NODE_ENV it finds in the environment, and NODE_ENV=development (or vitest's test)
+// builds React's development bundle. This script builds only with no NODE_ENV or NODE_ENV=production (the same bytes —
+// measured in the B1e-2 dry run); any other value fails before anything is built.
 import {execFileSync} from 'node:child_process';
 import {cpSync, mkdirSync, rmSync, writeFileSync} from 'node:fs';
-import {dirname, join, resolve} from 'node:path';
+import {dirname, join, resolve, sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {render} from '../manifest/source.mjs';
 import {LICENCE_PAGE, buildLicencePage} from './licences.mjs';
 import {readStoreKey} from './storeKey.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const nodeEnv = process.env.NODE_ENV;
+if (nodeEnv !== undefined && nodeEnv !== 'production') {
+  throw new Error(
+    `NODE_ENV is ${JSON.stringify(nodeEnv)} — build.mjs builds only with no NODE_ENV or NODE_ENV=production (B1e §5.1): any other value builds React's development bundle. Unset it (env -u NODE_ENV …).`,
+  );
+}
 const args = process.argv.slice(2);
 const presale = !args.includes('--no-presale');
 const devKey = args.includes('--dev-key');
@@ -29,8 +39,11 @@ const dirs = args.filter(a => a !== '--no-presale' && a !== '--dev-key');
 const USAGE = 'usage: node scripts/build.mjs [outDir] [--no-presale] | node scripts/build.mjs <outDir> --dev-key [--no-presale]';
 if (dirs.length > 1 || dirs.some(a => a.startsWith('-'))) throw new Error(USAGE);
 const outRoot = dirs[0] ? resolve(dirs[0]) : join(ROOT, presale ? 'dist' : 'dist-nopresale');
-if (devKey && (dirs.length === 0 || ['dist', 'dist-nopresale'].some(d => outRoot === join(ROOT, d)))) {
-  throw new Error(`--dev-key builds only into a directory named on the command line, never dist/ or dist-nopresale/ (B1e §5.3). ${USAGE}`);
+// B1e-2 (review M2): not into either directory nor anywhere under them — a keyed build inside dist-nopresale/chrome/ would
+// put a second manifest, with the key, into the package the gates read.
+const inside = dir => outRoot === dir || outRoot.startsWith(dir + sep);
+if (devKey && (dirs.length === 0 || ['dist', 'dist-nopresale'].some(d => inside(join(ROOT, d))))) {
+  throw new Error(`--dev-key builds only into a directory named on the command line, never dist/, dist-nopresale/ or anything under them (B1e §5.3). ${USAGE}`);
 }
 const key = devKey ? readStoreKey().key : undefined;
 const app = join(outRoot, 'app');
