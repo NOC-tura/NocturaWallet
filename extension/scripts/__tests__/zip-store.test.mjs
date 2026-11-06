@@ -67,9 +67,26 @@ describe('the STORE zip (B1e §5.4)', () => {
       expect(crc32Of(Buffer.alloc(0))).toBe(0);
     });
 
+    // The final review's ledger line 6: a re-export (`export {x} from '…'`, `export * from '…'`) is an import too.
+    const IMPORTS = /^\s*import\b|\bimport\s*\(|\brequire\s*\(|\bexport\s*(?:\*(?:\s+as\s+[\w$]+)?|\{[^}]*\})\s*from\s*['"]/m;
     it('never imports the writer or zlib', () => {
       const src = readFileSync(join(HERE, 'storeZipReader.mjs'), 'utf8');
-      expect(src).not.toMatch(/^\s*import\b|\bimport\s*\(|\brequire\s*\(/m);
+      expect(src).not.toMatch(IMPORTS);
+    });
+
+    it('the no-import pattern refuses every import form, re-exports included (planted controls), and passes plain exports', () => {
+      for (const planted of [
+        "import {zipStore} from '../zip-store.mjs';",
+        "const z = await import('node:zlib');",
+        "const z = require('node:zlib');",
+        "export {zipStore} from '../zip-store.mjs';",
+        "export * from 'node:zlib';",
+        "export * as zlib from \"node:zlib\";",
+        "export {\n  crc32,\n} from 'node:zlib';",
+      ])
+        expect(planted, planted).toMatch(IMPORTS);
+      for (const plain of ['export function crc32Of(bytes) {', 'export const from = 1;', "export function readStoreZip(zip) { // read from 'the bytes'"])
+        expect(plain, plain).not.toMatch(IMPORTS);
     });
 
     // Each a single field of a valid zip changed — the reader must refuse every one (negative controls), and the unchanged

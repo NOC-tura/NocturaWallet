@@ -67,7 +67,8 @@ recorded in its ledger — the passages named are edited to match):
   fails part-way names the files it left, and only a refusal that left none says "nothing was written".
 - §5.1 (Task 7; review I5, M6): the notes record the version, the zip's bytes, entry count and sha256, the package's
   file digest and file count, the commit and that the tree was clean, `package-lock.json`'s sha256, "NODE_ENV: unset",
-  the RP ID and the Node version; their recipe installs with `npm ci --ignore-scripts`, builds with no `NODE_ENV`, and
+  the RP ID and the Node version (the final fix wave: and that npm's record of `node_modules` agreed with the lockfile);
+  their recipe installs with `npm ci --ignore-scripts`, builds with no `NODE_ENV`, and
   reads the digest with `build-manifest.mjs … --print-only`.
 - §5.1 / §6.5 (Task 7): every live-check request has a 15 s timeout (`AbortSignal.timeout`, the body read included);
   the script takes no argument at all (no skip flag); it is a pure orchestrator (`runRelease(steps)`) over steps built
@@ -197,6 +198,33 @@ recorded in its ledger — the passages named are edited to match):
 - §5.1 (Task 7 fix round 1, its review I2): both tree checks run `git status --porcelain --untracked-files=all
   --ignore-submodules=none` — plain porcelain honours a user's `status.showUntrackedFiles=no` and then shows no
   untracked file; with the flag every untracked file is listed one by one.
+- §6.2 R4, R5 (the final review's I1): both name R7's exception — R4 "… records nothing about an RPC request it
+  answers, except an Origin header that is not on its allow list (below). … It never records the request's parameters,
+  your IP address or any other header.", R5 "… the HTTP status of the outcome, and an Origin header that is not on its
+  allow list (below); not the transaction itself, your IP address or any other header." (were "… or your headers"): the
+  extension's POSTs carry its Origin (R8), which need not be on ICO's allow list, so the policy is true whatever ICO
+  answers; `privacy.test.mjs` holds every application-log sentence on those routes to the exception.
+- §7 (the final review's I1): the checklist asks ICO to allow-list `chrome-extension://<id>` in step 3 — after the first
+  upload gives the item its ID, before submitting — where it asked in step 7, after publishing.
+- §6.2 R13 (the final fix wave, D27, the controller's copy): "one of its scenarios", ICO's word ("on a scenario
+  match"), where it said "attack scenarios".
+- §6.4 Terms / Help (the final fix wave, D27, the controller's copy): the Terms say the phrase and keys are "created or
+  entered on your device"; Help's anti-phishing topic says "anyone … can see it" once (the UI's string); the two re-auth
+  strings under "Why is a transaction blocked?" each have a lead-in (the approval window's line before approving, #10's
+  reason). The checklist lists them for the owner's copy pass.
+- §5.1 (the final review's I3): the preflight also refuses a `node_modules` that is not the lockfile's tree as npm
+  recorded it — `node_modules/.package-lock.json` present, the lockfile's `lockfileVersion`, every package it records in
+  the lockfile with the same `version`, `resolved`, `integrity` and `link`, and every lockfile package recorded but an
+  optional one (another platform's); the notes say that, and no longer "installed with `npm ci --ignore-scripts`" —
+  nothing records how npm ran (the recipe still installs that way). It reads npm's record, not the installed files.
+- §6.5 (the final review's Minor 5): a non-200 answer ends "— a redirect fails" only for a 3xx or an opaque redirect.
+- §5.1 (the final review's ledger line 23): a move into place that fails after its link was made names the final file
+  as left — what is left is read from the disk — and never prints "nothing was written".
+- §5.4 (the final review's ledger line 6): the reader's no-import test also refuses a re-export (`export … from`).
+- §7 (the final review's I2, Minors 1, 2, 4): the per-version re-read is `git -C .. diff <last>..HEAD -- extension/src
+  extension/manifest core` (`core/` holds routes and their bodies; `-C ..` because the paths are the root's); the
+  clean-tree command is quoted as the script runs it; the visual pass names the three cut texts (`5-security`,
+  `2-send-review`, `1-home`); the DRAFT markers are said to catch only the note's exact words.
 
 **Rev 2.6** (the B1e-1 final review and its fix wave, 2026-11-03; every line is a departure from rev 2.5's text, ruled
 by the controller and recorded in the plan's ledger — the passages named are edited to match):

@@ -190,7 +190,16 @@ describe('the live check (B1e §6.5)', () => {
     expect(moved.calls.map(c => c.url), 'the redirect target is never asked').toEqual(LIVE_PAGES.map(p => p.url));
 
     const missing = fakeFetch({...allGood(), [TERMS.url]: {status: 404, body: '<h1>Not found</h1>'}});
-    expect(await liveCheck({fetch: missing.fetch})).toEqual({ok: false, problems: [`terms: ${TERMS.url} answered 404, want 200 — a redirect fails`]});
+    expect(await liveCheck({fetch: missing.fetch})).toEqual({ok: false, problems: [`terms: ${TERMS.url} answered 404, want 200`]});
+    // The final review's Minor 5: the redirect suffix only on a redirect — a 500 is none; a 308 and a 399 are.
+    const broken = fakeFetch({...allGood(), [TERMS.url]: {status: 500, body: 'oops'}});
+    expect((await liveCheck({fetch: broken.fetch})).problems).toEqual([`terms: ${TERMS.url} answered 500, want 200`]);
+    const kept = fakeFetch({...allGood(), [TERMS.url]: {status: 308, location: 'https://noc-tura.io/t'}});
+    expect((await liveCheck({fetch: kept.fetch})).problems).toEqual([`terms: ${TERMS.url} answered 308 (Location: https://noc-tura.io/t), want 200 — a redirect fails`]);
+    const edge = fakeFetch({...allGood(), [TERMS.url]: {status: 399}});
+    expect((await liveCheck({fetch: edge.fetch})).problems).toEqual([`terms: ${TERMS.url} answered 399, want 200 — a redirect fails`]);
+    const below = fakeFetch({...allGood(), [TERMS.url]: {status: 204}});
+    expect((await liveCheck({fetch: below.fetch})).problems).toEqual([`terms: ${TERMS.url} answered 204, want 200`]);
 
     const opaque = fakeFetch({...allGood(), [HELP.url]: {status: 0, type: 'opaqueredirect'}});
     expect((await liveCheck({fetch: opaque.fetch})).problems).toEqual([`help: ${HELP.url} answered 0, want 200 — a redirect fails`]);

@@ -52,9 +52,9 @@ The access logs are rotated daily and deleted automatically: 14 rotated files ar
 
 ### The application log
 
-The coordinator's application log records nothing about an RPC request it answers. When it refuses one, it records the reason and the name of the RPC method; when the Solana network provider cannot be reached, the method name. It never records the request's parameters, your IP address or your headers.
+The coordinator's application log records nothing about an RPC request it answers, except an Origin header that is not on its allow list (below). When it refuses one, it records the reason and the name of the RPC method; when the Solana network provider cannot be reached, the method name. It never records the request's parameters, your IP address or any other header.
 
-For each transaction submitted for broadcast, the application log records the transaction's signature and the HTTP status of the outcome, not the transaction itself, your IP address or your headers.
+For each transaction submitted for broadcast, the application log records the transaction's signature and the HTTP status of the outcome, and an Origin header that is not on its allow list (below); not the transaction itself, your IP address or any other header.
 
 Price, presale statistics, region and restricted-country list requests are not recorded in the application log; only server errors are, with no data from the request.
 
@@ -74,7 +74,7 @@ The country of your IP address is looked up in a MaxMind GeoLite2 database file 
 
 ### Abuse protection (CrowdSec)
 
-The coordinator runs CrowdSec, which reads the access log to detect abuse. When requests match one of its attack scenarios, it stores an alert with the IP address, the scenario, the time, and the path, method, status and User-Agent of those requests, and the IP address may be blocked. Requests that match no scenario create no alert.
+The coordinator runs CrowdSec, which reads the access log to detect abuse. When requests match one of its scenarios, it stores an alert with the IP address, the scenario, the time, and the path, method, status and User-Agent of those requests, and the IP address may be blocked. Requests that match no scenario create no alert.
 
 CrowdSec's local alerts are deleted after 7 days, or once more than 5,000 are stored.
 

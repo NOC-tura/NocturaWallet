@@ -1,4 +1,4 @@
-import {readFileSync} from 'node:fs';
+import {readFileSync, readdirSync} from 'node:fs';
 import {dirname, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {CONTENT_SCRIPTS, EXTENSION_CSP, HOST_PERMISSIONS, PERMISSIONS, render} from '../../manifest/source.mjs';
@@ -417,5 +417,22 @@ describe('the store and noc-tura.io texts (B1e §6.3, §6.4)', () => {
     expect(certs).toContain(r20.text);
     expect(read('release/ico-retention.md')).toContain('5 Use: only to answer requests, protect from abuse (rate limits, CrowdSec), diagnose faults. Not sold or shared for any other purpose.');
     expect(section(DATA_USAGE, '## Remote code')).toMatch(/^\s*\*\*None\.\*\*/);
+  });
+
+  // The final fix wave (the final review's Minor 6 and the D27 copy the controller decided).
+  const trailing = md => md.split('\n').flatMap((l, i) => (/[ \t]$/.test(l) ? [i + 1] : []));
+  it('no line of a release/ text ends in whitespace — control: a planted trailing space is found', () => {
+    for (const name of readdirSync(resolve(ROOT, 'release')).filter(n => n.endsWith('.md')).sort()) expect(trailing(read(`release/${name}`)), name).toEqual([]);
+    expect(trailing('a\nQuestions about these terms: privacy@noc-tura.io. \n')).toEqual([2]);
+  });
+
+  it('the copy pass: the Terms say the phrase is created or entered here; Help says "can see it" once; each re-auth string has its lead-in', () => {
+    expect(TERMS).toContain('Your recovery phrase and your keys are created or entered on your device and stored in this browser');
+    const phrase = section(HELP, '## The anti-phishing phrase');
+    expect(phrase.match(/can see it/g)).toHaveLength(1);
+    expect(phrase).toContain('"Never type it into a website. Anyone who uses this browser profile can see it."');
+    const blocked = section(HELP, '## Why is a transaction blocked?');
+    expect(blocked).toContain(`The approval window says so before you approve: "${"Approving asks you to confirm with your password (or passkey) — you'll start it from the Noctura icon."}"`);
+    expect(blocked).toContain('The confirmation screen you open from the icon names the reason: "Re-auth required to override a blocked transaction."');
   });
 });

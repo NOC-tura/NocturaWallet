@@ -161,9 +161,9 @@ export const ALLOWED = Object.freeze(
       verdict: "true — R12, ICO's answer: the GeoLite2 lookup runs on the coordinator itself",
     },
     {
-      text: "It never records the request's parameters, your IP address or your headers.",
+      text: "It never records the request's parameters, your IP address or any other header.",
       tiers: ['policy'],
-      verdict: "true — R4, ICO's answer 1–2 on the coordinator's application log (R1 says what the access log does record)",
+      verdict: "true — R4, ICO's answer 1–2 on the coordinator's application log; \"other\": the Origin header R4 excepts (R7), and R1 says what the access log does record",
     },
     {text: 'Questions about privacy:', tiers: ['policy'], verdict: 'P16, the contact line (owner decision E8) — a topic, not a claim'},
     {

@@ -116,13 +116,13 @@ export const PRIVACY_SENTENCES = Object.freeze([
   },
   {
     id: 'R4',
-    text: "The coordinator's application log records nothing about an RPC request it answers. When it refuses one, it records the reason and the name of the RPC method; when the Solana network provider cannot be reached, the method name. It never records the request's parameters, your IP address or your headers.",
-    source: 'ICO §6.2 answer 1–2, app log, /rpc',
+    text: "The coordinator's application log records nothing about an RPC request it answers, except an Origin header that is not on its allow list (below). When it refuses one, it records the reason and the name of the RPC method; when the Solana network provider cannot be reached, the method name. It never records the request's parameters, your IP address or any other header.",
+    source: 'ICO §6.2 answer 1–2, app log, /rpc; the Origin exception is R7 ("any route", the final review\'s I1: the extension\'s Origin may not be on the allow list)',
   },
   {
     id: 'R5',
-    text: "For each transaction submitted for broadcast, the application log records the transaction's signature and the HTTP status of the outcome, not the transaction itself, your IP address or your headers.",
-    source: 'ICO §6.2 answer 1–2, app log, /tx/broadcast',
+    text: "For each transaction submitted for broadcast, the application log records the transaction's signature and the HTTP status of the outcome, and an Origin header that is not on its allow list (below); not the transaction itself, your IP address or any other header.",
+    source: 'ICO §6.2 answer 1–2, app log, /tx/broadcast; the Origin exception is R7, as for R4',
   },
   {
     id: 'R6',
@@ -161,8 +161,8 @@ export const PRIVACY_SENTENCES = Object.freeze([
   },
   {
     id: 'R13',
-    text: 'The coordinator runs CrowdSec, which reads the access log to detect abuse. When requests match one of its attack scenarios, it stores an alert with the IP address, the scenario, the time, and the path, method, status and User-Agent of those requests, and the IP address may be blocked. Requests that match no scenario create no alert.',
-    source: 'ICO §6.2 answer 1–2, CrowdSec local',
+    text: 'The coordinator runs CrowdSec, which reads the access log to detect abuse. When requests match one of its scenarios, it stores an alert with the IP address, the scenario, the time, and the path, method, status and User-Agent of those requests, and the IP address may be blocked. Requests that match no scenario create no alert.',
+    source: 'ICO §6.2 answer 1–2, CrowdSec local ("on a scenario match": ICO\'s word, scenario)',
   },
   {
     id: 'R14',

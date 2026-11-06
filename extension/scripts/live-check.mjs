@@ -131,7 +131,9 @@ export async function liveCheck(io) {
     }
     if (res.status !== 200 || res.type === 'opaqueredirect') {
       const to = res.headers?.get('location') ?? null;
-      problems.push(`${page.name}: ${page.url} answered ${res.status}${to === null ? '' : ` (Location: ${to})`}, want 200 — a redirect fails`);
+      // The final review's Minor 5: "a redirect fails" only for a redirect (a 3xx, or the browser's opaque one).
+      const redirect = res.type === 'opaqueredirect' || (res.status >= 300 && res.status <= 399);
+      problems.push(`${page.name}: ${page.url} answered ${res.status}${to === null ? '' : ` (Location: ${to})`}, want 200${redirect ? ' — a redirect fails' : ''}`);
       continue;
     }
     let html;

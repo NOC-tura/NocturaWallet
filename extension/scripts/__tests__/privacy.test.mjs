@@ -151,6 +151,46 @@ describe('the privacy policy (B1e §6.1, §6.2)', () => {
     for (const s of r.filter(x => ['R2', 'R8'].includes(x.id))) expect(s.source, s.id).toContain('e2e/requestHeaders.spec.ts');
   });
 
+  // The final review's I1: the extension's RPC and broadcast POSTs carry its Origin (R8), which need not be on ICO's
+  // allow list — and then is logged (R7, "any route"). A sentence about the application log on those two routes that
+  // says it records nothing, or no header, must name that exception, whatever ICO's allow list holds.
+  const ORIGIN_EXCEPTION = 'an Origin header that is not on its allow list (below)';
+  const unexcepted = sentences =>
+    sentences
+      .filter(s => /application log/.test(s.text) && /\b(?:RPC request|broadcast)\b/.test(s.text) && /records nothing|header/.test(s.text))
+      .filter(s => !s.text.includes(ORIGIN_EXCEPTION))
+      .map(s => s.id);
+
+  it('R4 and R5 name R7\'s Origin exception, R7 follows them in privacy.md, and R8 still puts the Origin on exactly those two routes — controls: rev 2.7\'s first R4 and R5', () => {
+    expect(text('R8')).toContain('an Origin header only with its RPC and broadcast requests');
+    expect(text('R7')).toBe("On any route, an Origin header that is not on the coordinator's allow list is logged with its value, without your IP address.");
+    expect(RETENTION_MD).toContain('Any route: a non-allow-listed Origin value is logged, without the IP.');
+    expect(unexcepted(PRIVACY_SENTENCES)).toEqual([]);
+    for (const id of ['R4', 'R5']) {
+      expect(text(id), id).toContain(ORIGIN_EXCEPTION);
+      expect(text(id), id).toMatch(/your IP address or any other header\.$/);
+      expect(PRIVACY_MD.indexOf(text(id)), `${id} before R7`).toBeLessThan(PRIVACY_MD.indexOf(text('R7')));
+    }
+    const planted = [
+      {
+        id: 'old R4',
+        text: "The coordinator's application log records nothing about an RPC request it answers. When it refuses one, it records the reason and the name of the RPC method; when the Solana network provider cannot be reached, the method name. It never records the request's parameters, your IP address or your headers.",
+      },
+      {
+        id: 'old R5',
+        text: "For each transaction submitted for broadcast, the application log records the transaction's signature and the HTTP status of the outcome, not the transaction itself, your IP address or your headers.",
+      },
+    ];
+    expect(unexcepted(planted)).toEqual(['old R4', 'old R5']);
+    expect(PRIVACY_MD).not.toContain('or your headers');
+  });
+
+  it('R13 says "scenarios", ICO\'s word ("on a scenario match"), with nothing added', () => {
+    expect(RETENTION_MD).toContain('on a scenario match stores an alert');
+    expect(text('R13')).toContain('When requests match one of its scenarios,');
+    expect(text('R13')).not.toMatch(/attack/i);
+  });
+
   it('ico-retention.md records the answer: its date, ICO\'s three commits, the six numbered parts', () => {
     expect(RETENTION_MD).toContain('**Received:** 2026-11-01');
     for (const c of ['67bcec0', '6c68431', 'c803bc1']) expect(RETENTION_MD).toContain(c);

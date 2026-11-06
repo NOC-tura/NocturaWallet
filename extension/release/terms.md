@@ -10,7 +10,7 @@ The extension is software that runs in your browser. It lets you create or impor
 
 ## Non-custodial software
 
-Your recovery phrase and your keys are created on your device and stored in this browser, encrypted with your password. Noctura never receives them, never holds your funds and cannot move, freeze, recover or reset anything in your wallet. If you lose your recovery phrase and your password, no one — not Noctura, not anyone else — can restore access to your funds.
+Your recovery phrase and your keys are created or entered on your device and stored in this browser, encrypted with your password. Noctura never receives them, never holds your funds and cannot move, freeze, recover or reset anything in your wallet. If you lose your recovery phrase and your password, no one — not Noctura, not anyone else — can restore access to your funds.
 
 ## Your responsibility
 
@@ -44,4 +44,4 @@ These terms may change. The version published at https://noc-tura.io/extension/t
 
 ## Contact
 
-Questions about these terms: privacy@noc-tura.io. 
+Questions about these terms: privacy@noc-tura.io.

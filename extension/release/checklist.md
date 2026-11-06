@@ -1,19 +1,27 @@
 # Chrome Web Store submission checklist — Noctura 1.0.0
 
 For the owner (B1e spec §7, with §5.1, §5.3, §5.5, §5.6). Every command runs in `extension/` of a clean checkout of
-`main` (`git status --porcelain` empty — untracked files count; `release:chrome` refuses otherwise). Steps are in order;
-a step that says "before" is a gate, not a suggestion.
+`main` — `git status --porcelain --untracked-files=all --ignore-submodules=none` prints nothing (the script's own
+command: every untracked file counts, whatever your git config hides; `release:chrome` refuses otherwise). Steps are in
+order; a step that says "before" is a gate, not a suggestion.
 
 ## Open before the release (owner / ICO)
 
 - [ ] **ICO: P1 — the automatic OFAC refresh of `/geo/restricted-list`.** The store build runs the region check (F12) and
       fails closed on a stale list; ICO confirms the refresh runs in production (spec §6.2, inherited from B1d §6.5).
-- [ ] **ICO: is `chrome-extension://<the store ID>` on the coordinator's Origin allow list?** Either way the published
-      sentence R7 is true (if it is not, every RPC and broadcast request logs that one value, no IP); ask once the store
-      has assigned the ID (step 7), and tell us if the answer changes a sentence.
+- [ ] **ICO: the extension's Origin on the coordinator's allow list** — asked in step 3, once the first upload has
+      given the item its ID and before you submit (the ID does not exist before that upload).
+- [ ] **Your copy pass (D27).** The final fix wave set these in the controller's words; reword them before ICO publishes
+      if you want — and show ICO R4 and R5, which now name R7's Origin exception in our words: R13 "one of its
+      scenarios" (ICO's word), R4 / R5's "except an Origin header that is not on its allow list", the Terms' "created
+      or entered on your device", Help's anti-phishing topic and the lead-ins to the two re-auth strings under "Why is a
+      transaction blocked?". A privacy
+      sentence changes in `release/privacySentences.mjs` and `release/privacy.md` together (the tests hold them equal).
 - [ ] **The Terms need a lawyer** (owner decision E4): `release/terms.md` is a DRAFT; its first note lists the open points
       (provider's legal name and address, governing law and courts, eligibility, liability wording and EU consumer law,
-      notice of changes). The approved text goes to ICO without the DRAFT note.
+      notice of changes). The approved text goes to ICO without the DRAFT note. The live check catches only the note's
+      own words ("DRAFT", "not in force", "owner's lawyer"), so a reworded draft banner passes it: publishing exactly
+      the approved text is the protection.
 - [ ] **ICO: `wallet.noc-tura.io` serves nothing, and stays so (owner decision E25) — a gate before upload.** The passkey
       RP ID (E17) is a name on ICO's domain, and a passkey bound to it can be asked for by any HTTPS page at that name
       or at any name under it (`<anything>.wallet.noc-tura.io`): such a page could prompt a store user's synced Noctura
@@ -36,8 +44,9 @@ a step that says "before" is a gate, not a suggestion.
       (`walletapp.noc-tura.io` exists and is not covered by the rule: a passkey for `wallet.noc-tura.io` is never
       offered to it.)
 - [ ] **ICO publishes the three pages** exactly as written: `release/privacy.md` at https://noc-tura.io/extension/privacy,
-      `release/terms.md` (approved) at https://noc-tura.io/extension/terms, `release/help.md` at
-      https://noc-tura.io/extension/help — each answering 200 with no redirect.
+      `release/terms.md` (approved, without the DRAFT note — the live check knows only its exact words) at
+      https://noc-tura.io/extension/terms, `release/help.md` at https://noc-tura.io/extension/help — each answering 200
+      with no redirect.
 
 ## 1. Developer account
 
@@ -53,14 +62,18 @@ a step that says "before" is a gate, not a suggestion.
       nothing built, and the final check after `verify` and the RP-ID record, just before the zip — three GETs to
       noc-tura.io each time, one page at a time, six per run; 15 s each, no redirect followed, no retry, no flag to skip
       it. It needs every sentence of `privacySentences.mjs` on the privacy page, and "Terms of Service" / "Help &
-      support" with privacy@noc-tura.io on the other two (the Terms page without the DRAFT note). Until ICO publishes,
+      support" with privacy@noc-tura.io on the other two (the Terms page without the DRAFT note — refused only in that
+      note's exact words). Until ICO publishes,
       `release:chrome` stops at the pre-check and writes nothing (rev 1's dry run, 2026-11-05, which had one check after
       verify: all three pages answered 404).
 - [ ] **Every later version, before its upload:** read every sentence of `release/privacySentences.mjs` against the
-      extension's changes since the last release (`git diff <last release commit>..HEAD -- extension/src extension/manifest`)
-      — a change that keeps every pinned constant can still make a sentence untrue (a new field on an existing route); a
-      sentence it made untrue is corrected and republished by ICO first. Then `release:chrome` runs the live check again
-      that day: the pages are checked when a version is packed, not in between.
+      extension's changes since the last release:
+      `git -C .. diff <last release commit>..HEAD -- extension/src extension/manifest core` (from `extension/`, the
+      paths the repository root's; `core/` holds routes and their bodies — `/tx/broadcast` in `core/solana/broadcast.ts`,
+      the prices path in `core/portfolio/prices.ts`). A change that keeps every pinned constant can still make a sentence
+      untrue (a new field on an existing route); a sentence it made untrue is corrected and republished by ICO first.
+      Then `release:chrome` runs the live check again that day: the pages are checked when a version is packed, not in
+      between.
 
 ## 3. Pack and upload
 
@@ -82,16 +95,26 @@ a step that says "before" is a gate, not a suggestion.
       script; Node 22.12 or later — the zip is byte-identical on any Node, spec §5.4). It runs, in order, stopping at the
       first refusal with nothing written: the preflight (no `NODE_ENV` or `VITE_USER_NODE_ENV`, no env file, a clean
       tree with every untracked file counted, this version not packed yet, no `.partial` file an interrupted run left —
-      any under `release/out/`, this version's notes' — named, the lockfile present); the live pre-check;
+      any under `release/out/`, this version's notes' — named, the lockfile present and `node_modules` its tree:
+      `node_modules/.package-lock.json`, npm's record of what it installed, agrees with it); the live pre-check;
       `npm run verify`; a third store build whose `chrome/` digest must equal verify's `dist-nopresale/chrome`; the
       RP-ID record; the final live check; the zip made twice with one sha256, read back, its entries one for one the
       witnessed files. Then it writes `release/out/noctura-chrome-1.0.0.zip`
       (git-ignored — upload this file) and `release/notes-1.0.0.md` (the version; the zip's bytes, entry count and
-      sha256; the package's file digest; the commit; the lockfile's sha256; `NODE_ENV: unset`; the RP ID; Node), each
+      sha256; the package's file digest; the commit; the lockfile's sha256 and that npm's record of `node_modules` agreed
+      with it — not how npm was run, which nothing records; `NODE_ENV: unset`; the RP ID; Node), each
       under a temporary name first, moved into place when both are written. If it ever says "the write failed
       part-way", remove the files it names before running again. Commit the notes:
       `git add release/notes-1.0.0.md && git commit -m "release(extension): Chrome 1.0.0 notes"`.
 - [ ] Upload `release/out/noctura-chrome-1.0.0.zip` in the developer dashboard.
+- [ ] **Before you submit: ask ICO to add the extension's Origin to the coordinator's allow list.** The upload gives the
+      item its ID (the dashboard shows it); the extension's RPC and broadcast requests carry
+      `Origin: chrome-extension://<that ID>` (R8), and an Origin not on the list is logged with its value, without the
+      IP (R7). The published R4 and R5 name that exception, so the policy is true whatever ICO answers; ask ICO to add
+      `chrome-extension://<the ID>` to the allow list, and to tell us before any change to it. If ICO's answer is not a
+      plain yes or no (another rule, a value logged elsewhere), stop before submitting and tell us: a sentence that
+      changes is changed in `privacySentences.mjs` and `privacy.md` together, ICO republishes the page, and
+      `release:chrome` runs again (its live check holds the page to the list).
 - [ ] Store listing: paste `release/listing.md` field by field (each `## ` heading is the dashboard field). The summary
       is not pasted: the store reads it from the package's manifest `description`; `listing.md` shows the same string.
       The category is yours to pick. Permission justifications: the five `### ` entries under "Permission justifications".
@@ -104,8 +127,11 @@ a step that says "before" is a gate, not a suggestion.
       fresh checkout run `npm run build` first). It writes five 1280 × 800 PNGs to `release/screenshots/out/`
       (git-ignored); upload them in this order: `1-home.png`, `2-send-review.png`, `3-site-request.png`,
       `4-wallet-tab.png`, `5-security.png`. Look at them and at `release/screenshots/backdrop.html` first (the visual
-      pass); flagged for you there: the NOC row's "estimate · not in total" (E23), #19's second check line clipped at 412 px, the test
-      site shown "Unknown", the sample phrase "Violet otter 19" and amounts.
+      pass); flagged for you there: three texts cut at the edge — `5-security.png` cuts the description under "Delete
+      this wallet" (a destructive action is the last thing in a store image), `2-send-review.png` cuts #19's second check
+      line at "zero allowances cha" (412 px), and `1-home.png`'s tab bar covers the NOC row's second line; also the NOC
+      row's "estimate · not in total" (E23), the test site shown "Unknown", the sample phrase "Violet otter 19" and the
+      amounts.
 - [ ] Submit for review **with publishing deferred** (you publish by hand after approval). This may happen before step 4
       (E14); nothing is distributed until step 6.
 
@@ -140,7 +166,6 @@ a step that says "before" is a gate, not a suggestion.
       prints `… chrome carries the recorded store key (id <id>), firefox none`, and `npm test` now runs the
       "once recorded" rows of `storeKey.test.mjs` and `check-permissions.test.mjs` instead of skipping them.
 - [ ] Re-run the "no existing users" evidence below and put its output in the follow-up commit's message.
-- [ ] Ask ICO the Origin question (above) with the ID.
 
 **Development note.** An unpacked install built with `node scripts/build.mjs <outDir> --dev-key` has the store's ID, so it
 and the store install cannot coexist in one Chrome profile (B1e §5.3). `--dev-key` builds only into a directory named on

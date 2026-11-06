@@ -4,8 +4,9 @@
 //   0. preflight: no NODE_ENV and no VITE_USER_NODE_ENV in the environment, no env file (`.env`, `.env.*`) in
 //      extension/, the working tree clean (untracked files listed one by one, whatever git's config says), this
 //      version's zip and notes not written yet and no `.partial` an interrupted run left (any under release/out/, this
-//      version's notes'), the lockfile present (the notes name a commit and the lockfile's hash; a dirty tree would
-//      make that commit a lie, and a written release is never overwritten);
+//      version's notes'), the lockfile present and node_modules its tree as npm recorded it (the notes name a commit
+//      and the lockfile's hash; a dirty tree would make that commit a lie, another installed tree that hash, and a
+//      written release is never overwritten);
 //   0a. the live pre-check (§6.5, E26): the three pages, before anything is built — a page that is not live fails the
 //      run in seconds, not after verify;
 //   1. `npm run verify` (clean; both builds, every test, CSP, secrets, every gate, the four reproducible builds);
@@ -47,6 +48,10 @@ export const RP_ID_FILE = 'release/rp-id.json';
 export const RP_ID_SOURCE = 'src/vault/passkey.ts';
 /** The dependency set the zip is built from; its sha256 goes into the notes. */
 export const LOCKFILE = 'package-lock.json';
+/** npm's own record of the tree it installed, written by every `npm ci` / `npm install` (npm 7 and later). */
+export const INSTALLED_LOCKFILE = 'node_modules/.package-lock.json';
+/** The fields of a package entry that name what was installed: the same in both files, or another tree was built. */
+export const INSTALLED_FIELDS = Object.freeze(['version', 'resolved', 'integrity', 'link']);
 /** The owner's decision E17 (2026-10-30), frozen by 1.0.0: the record must be exactly this. */
 export const RP_ID_RECORD = Object.freeze({rpId: 'wallet.noc-tura.io', confirmedBy: 'owner', decision: 'E17'});
 export const OUT_DIR = 'release/out';
@@ -158,6 +163,51 @@ export function zipWitnessProblems(entries, witnessed) {
   return out;
 }
 
+/**
+ * The final review's I3: node_modules is the lockfile's tree, as npm recorded it. [] iff `installedText`
+ * (node_modules/.package-lock.json) parses, has the lockfile's lockfileVersion, records only packages the lockfile has,
+ * each with the lockfile's INSTALLED_FIELDS, and records every package of the lockfile but the optional ones (npm skips
+ * an optional package built for another platform). What it reads is npm's record, not the installed files; that npm ran
+ * with --ignore-scripts is not recorded anywhere, so the notes do not claim it. `lockText` absent is the preflight's own
+ * refusal; here it is []. At most `limit` differences are named, then their count.
+ */
+export function installedTreeProblems(lockText, installedText, limit = 10) {
+  if (lockText === undefined) return [];
+  if (installedText === undefined)
+    return [`${INSTALLED_LOCKFILE} is absent — node_modules was not installed by npm from ${LOCKFILE}: run \`npm ci --ignore-scripts\` first`];
+  const parse = (text, name) => {
+    try {
+      const value = JSON.parse(text);
+      return value !== null && typeof value === 'object' && value.packages !== null && typeof value.packages === 'object' ? value : `${name} holds no "packages" object`;
+    } catch (e) {
+      return `${name} is not JSON (${message(e)})`;
+    }
+  };
+  const lock = parse(lockText, LOCKFILE);
+  const installed = parse(installedText, INSTALLED_LOCKFILE);
+  const broken = [lock, installed].filter(v => typeof v === 'string');
+  if (broken.length > 0) return broken;
+  const head = `node_modules is not the tree ${LOCKFILE} names (${INSTALLED_LOCKFILE} disagrees) — the package would be built from other dependencies than the notes record: run \`npm ci --ignore-scripts\` first:`;
+  const out = [];
+  if (lock.lockfileVersion !== installed.lockfileVersion)
+    out.push(`lockfileVersion ${JSON.stringify(installed.lockfileVersion)} installed, ${JSON.stringify(lock.lockfileVersion)} in ${LOCKFILE}`);
+  for (const [name, entry] of Object.entries(installed.packages)) {
+    if (name === '') continue;
+    const want = lock.packages[name];
+    if (want === undefined) {
+      out.push(`${name} is installed, and ${LOCKFILE} has no such package`);
+      continue;
+    }
+    for (const field of INSTALLED_FIELDS)
+      if (JSON.stringify(entry?.[field]) !== JSON.stringify(want[field]))
+        out.push(`${name}: ${field} ${JSON.stringify(entry?.[field])} installed, ${JSON.stringify(want[field])} in ${LOCKFILE}`);
+  }
+  for (const [name, entry] of Object.entries(lock.packages))
+    if (name !== '' && !(name in installed.packages) && entry?.optional !== true) out.push(`${name} is in ${LOCKFILE} and not installed`);
+  if (out.length === 0) return [];
+  return [head, ...out.slice(0, limit).map(p => `  ${p}`), ...(out.length > limit ? [`  … and ${out.length - limit} more`] : [])];
+}
+
 /** A fetch whose every request is aborted after `ms` (AbortSignal.timeout covers the body read too). */
 export const timedFetch = (fetch, ms) => (url, init) => fetch(url, {...init, signal: AbortSignal.timeout(ms)});
 
@@ -174,7 +224,8 @@ export function releaseNotes({version, sha256: zipSha, bytes, entries, digest, f
     `- Package file digest: \`sha256:${digest}\` (${files} files of \`extension/${PACKAGE}\`, web/scripts/build-manifest.mjs;`,
     '  each zip entry is one of these files, its path and sha256 compared)',
     `- Commit: \`${commit}\`, working tree clean`,
-    `- Lockfile: \`extension/${LOCKFILE}\` sha256 \`${lockfile}\` (installed with \`npm ci --ignore-scripts\`)`,
+    `- Lockfile: \`extension/${LOCKFILE}\` sha256 \`${lockfile}\`; \`${INSTALLED_LOCKFILE}\` (npm's record of the installed`,
+    `  tree) agreed with it: every package's ${INSTALLED_FIELDS.join(', ')}`,
     '- NODE_ENV: unset',
     `- Passkey RP ID: ${RP_ID_RECORD.rpId} (release/rp-id.json, E17)`,
     `- Node: ${node}`,
@@ -238,6 +289,7 @@ export function releaseSteps(io) {
       if (problem) problems.push(problem);
       const lockfile = io.hashFile(LOCKFILE);
       if (lockfile === undefined) problems.push(`${LOCKFILE} is absent — the notes record the dependency set the zip is built from`);
+      problems.push(...installedTreeProblems(io.read(LOCKFILE), io.read(INSTALLED_LOCKFILE)));
       return {problems, value: {commit, lockfile}, line: `version ${version}, commit ${commit}, working tree clean, NODE_ENV unset`};
     },
     livePrecheck: () => live(false),
@@ -331,14 +383,14 @@ export function releaseSteps(io) {
       } catch (e) {
         return {problems: [`writing failed (${message(e)})`], written: removeAll(partials.filter(path => io.exists(path)))};
       }
-      const placed = [];
       try {
-        finals.forEach((path, i) => {
-          io.place(partials[i], path);
-          placed.push(path);
-        });
+        finals.forEach((path, i) => io.place(partials[i], path));
       } catch (e) {
-        return {problems: [`moving into place failed (${message(e)})`], written: [...placed, ...removeAll(partials.filter(path => io.exists(path)))]};
+        // The final review's ledger line 23: a move can fail after its link was made (the unlink of the temporary name
+        // failed), so what is left is read from the disk, not from the moves that returned — every final file there is
+        // this run's (both were absent above), and every temporary one it could not remove.
+        const left = removeAll(partials.filter(path => io.exists(path)));
+        return {problems: [`moving into place failed (${message(e)})`], written: [...finals.filter(path => io.exists(path)), ...left]};
       }
       return {problems: [], value: {zip: finals[0], notes: finals[1], sha256: zipSha}, line: `${finals[0]} and ${finals[1]}`};
     },

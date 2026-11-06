@@ -5,6 +5,8 @@ import {tmpdir} from 'node:os';
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {
+  INSTALLED_FIELDS,
+  INSTALLED_LOCKFILE,
   LIVE_TIMEOUT_MS,
   LOCKFILE,
   OUT_DIR,
@@ -16,6 +18,7 @@ import {
   GIT_STATUS,
   childEnv,
   cliProblem,
+  installedTreeProblems,
   notesPath,
   partialPath,
   readRpId,
@@ -50,6 +53,21 @@ const RP_ID_JSON = readFileSync(join(ROOT, RP_ID_FILE), 'utf8');
 const COMMIT = 'c0ffee'.padEnd(40, '0');
 const DIGEST = 'd'.repeat(64);
 const LOCK_SHA = '1'.repeat(64);
+/** A lockfile and npm's record of the tree it installed from it (the final review's I3): `fsevents` is optional, for another platform, and so not installed. */
+const pkg = (name, extra = {}) => ({version: '1.0.0', resolved: `https://registry.npmjs.org/${name}/-/${name}-1.0.0.tgz`, integrity: `sha512-${name}`, ...extra});
+const LOCK_PACKAGES = {
+  '': {name: 'noctura-extension', version: '1.0.0'},
+  'node_modules/a': pkg('a'),
+  'node_modules/b': pkg('b', {dev: true}),
+  'node_modules/a/node_modules/c': pkg('c'),
+  'node_modules/fsevents': pkg('fsevents', {dev: true, optional: true}),
+  'node_modules/@noctura/core': {resolved: '../core', link: true},
+};
+const lockJson = (packages, lockfileVersion = 3) => JSON.stringify({name: 'noctura-extension', version: '1.0.0', lockfileVersion, requires: true, packages}, null, 2);
+const LOCK_TEXT = lockJson(LOCK_PACKAGES);
+const installedOf = (packages = LOCK_PACKAGES) =>
+  Object.fromEntries(Object.entries(packages).filter(([name, e]) => name !== '' && !(e.optional === true && name.endsWith('fsevents'))));
+const INSTALLED_TEXT = lockJson(installedOf());
 const sha256 = b => createHash('sha256').update(b).digest('hex');
 const byPath = (a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
 /** The package as the fake io sees it: 28 files, and a real §5.4 zip of exactly them (Task 2's writer). */
@@ -78,6 +96,10 @@ const pageHtml = page =>
     : `<h1>${page.title.replace(/&/g, '&amp;')}</h1><p>${CONTACT}</p>`;
 const live = async url => ({status: 200, headers: {get: () => null}, text: async () => pageHtml(LIVE_PAGES.find(p => p.url === url))});
 const notFound = async () => ({status: 404, headers: {get: () => null}, text: async () => 'Not Found'});
+
+/** The files the fake io reads, each replaceable (`over`: path → text, or undefined for an absent file). */
+const readWith = over => path =>
+  ({[RP_ID_FILE]: RP_ID_JSON, [RP_ID_SOURCE]: PASSKEY_TS, [LOCKFILE]: LOCK_TEXT, [INSTALLED_LOCKFILE]: INSTALLED_TEXT, ...over})[path];
 
 /**
  * A recording io in which every step passes (the positive control); `over` (an object, or a function of `calls` and
@@ -110,7 +132,7 @@ function fakeIo(over = {}) {
     },
     exists: path => written.has(path),
     list: dir => [...written.keys()].filter(path => path.startsWith(`${dir}/`)).map(path => path.slice(dir.length + 1)),
-    read: path => (path === RP_ID_FILE ? RP_ID_JSON : path === RP_ID_SOURCE ? PASSKEY_TS : undefined),
+    read: readWith({}),
     hashFile: path => (path === LOCKFILE ? LOCK_SHA : undefined),
     fetch: async (url, init) => {
       calls.push(`GET ${url}`);
@@ -277,7 +299,8 @@ describe('release:chrome — the steps over an injected io (positive control)', 
       `- Package file digest: \`sha256:${DIGEST}\` (28 files of \`extension/${PACKAGE}\`, web/scripts/build-manifest.mjs;`,
       '  each zip entry is one of these files, its path and sha256 compared)',
       `- Commit: \`${COMMIT}\`, working tree clean`,
-      `- Lockfile: \`extension/package-lock.json\` sha256 \`${LOCK_SHA}\` (installed with \`npm ci --ignore-scripts\`)`,
+      `- Lockfile: \`extension/package-lock.json\` sha256 \`${LOCK_SHA}\`; \`node_modules/.package-lock.json\` (npm's record of the installed`,
+      "  tree) agreed with it: every package's version, resolved, integrity, link",
       '- NODE_ENV: unset',
       '- Passkey RP ID: wallet.noc-tura.io (release/rp-id.json, E17)',
       '- Node: v22.12.0',
@@ -288,6 +311,9 @@ describe('release:chrome — the steps over an injected io (positive control)', 
       expect(notes).toContain(want);
     // The recipe never installs with lifecycle scripts, and never runs the manifest CLI in its writing mode.
     expect(notes).not.toMatch(/npm ci(?! --ignore-scripts)/);
+    // The final review's I3: the notes claim no install the run did not check — nothing records --ignore-scripts.
+    expect(notes).not.toMatch(/installed with/);
+    expect(notes.match(/npm ci --ignore-scripts/g)).toHaveLength(1);
     expect(notes).not.toMatch(/build-manifest\.mjs dist-nopresale\/chrome(?! --print-only)`/);
   });
 
@@ -408,6 +434,30 @@ describe('release:chrome — each refusal stops before anything is written (nega
     });
   });
 
+  it('node_modules is not the lockfile’s tree (the final review’s I3): refused at the preflight, nothing run, no GET', async () => {
+    const stale = {...installedOf(), 'node_modules/a': pkg('a', {version: '0.9.0'})};
+    const {result, calls, written} = await release({read: readWith({[INSTALLED_LOCKFILE]: lockJson(stale)})});
+    expect(result).toEqual({
+      ok: false,
+      stoppedAt: 'preflight',
+      problems: [
+        expect.stringMatching(/^node_modules is not the tree package-lock\.json names \(node_modules\/\.package-lock\.json disagrees\)/),
+        '  node_modules/a: version "0.9.0" installed, "1.0.0" in package-lock.json',
+      ],
+    });
+    expect(calls).toEqual(upTo('git rev-parse'));
+    expect(written.size).toBe(0);
+  });
+
+  it('no node_modules/.package-lock.json (not installed by npm): refused at the preflight', async () => {
+    const {result} = await release({read: readWith({[INSTALLED_LOCKFILE]: undefined})});
+    expect(result).toEqual({
+      ok: false,
+      stoppedAt: 'preflight',
+      problems: ['node_modules/.package-lock.json is absent — node_modules was not installed by npm from package-lock.json: run `npm ci --ignore-scripts` first'],
+    });
+  });
+
   it('the live pre-check fails (a 404, as today): refused before verify — nothing built, every page asked once', async () => {
     const {result, calls, written} = await release(calls => ({
       fetch: async url => {
@@ -418,7 +468,7 @@ describe('release:chrome — each refusal stops before anything is written (nega
     expect(result).toEqual({
       ok: false,
       stoppedAt: 'livePrecheck',
-      problems: LIVE_PAGES.map(p => `${p.name}: ${p.url} answered 404, want 200 — a redirect fails`),
+      problems: LIVE_PAGES.map(p => `${p.name}: ${p.url} answered 404, want 200`),
     });
     expect(calls).toEqual(upTo(GETS[2]));
     expect(calls.some(c => c.startsWith('run'))).toBe(false);
@@ -488,7 +538,7 @@ describe('release:chrome — each refusal stops before anything is written (nega
     ['absent', undefined, [`${RP_ID_FILE} is absent — the owner's confirmation of the passkey RP ID (E17, B1e §5.6) is recorded before upload`]],
     ['not JSON', '{rpId:', [expect.stringMatching(new RegExp(`^${RP_ID_FILE} is not JSON \\(`))]],
   ])('the RP-ID record %s: refused before the final live check and the zip', async (_, text, problems) => {
-    const {result, calls, written} = await release({read: p => (p === RP_ID_FILE ? text : PASSKEY_TS)});
+    const {result, calls, written} = await release({read: readWith({[RP_ID_FILE]: text})});
     expect(result).toEqual({ok: false, stoppedAt: 'rpId', problems});
     expect(calls).toEqual(upTo('removeDir'));
     expect(written.size).toBe(0);
@@ -496,7 +546,7 @@ describe('release:chrome — each refusal stops before anything is written (nega
 
   it('the RP-ID record names another host: refused before the final live check', async () => {
     const {result, calls} = await release({
-      read: p => (p === RP_ID_FILE ? JSON.stringify({...RP_ID_RECORD, rpId: 'passkey.noc-tura.io'}) : PASSKEY_TS),
+      read: readWith({[RP_ID_FILE]: JSON.stringify({...RP_ID_RECORD, rpId: 'passkey.noc-tura.io'})}),
     });
     expect(result.stoppedAt).toBe('rpId');
     expect(result.problems).toEqual([
@@ -507,7 +557,7 @@ describe('release:chrome — each refusal stops before anything is written (nega
   });
 
   it('passkey.ts no longer says RP_ID plainly: refused (the reader fails closed)', async () => {
-    const {result} = await release({read: p => (p === RP_ID_FILE ? RP_ID_JSON : 'export const RP_ID = "wallet.noc-tura.io";\n')});
+    const {result} = await release({read: readWith({[RP_ID_SOURCE]: 'export const RP_ID = "wallet.noc-tura.io";\n'})});
     expect(result).toEqual({
       ok: false,
       stoppedAt: 'rpId',
@@ -527,7 +577,7 @@ describe('release:chrome — each refusal stops before anything is written (nega
     expect(result).toEqual({
       ok: false,
       stoppedAt: 'liveCheck',
-      problems: [`${LIVE_PAGES[1].name}: ${LIVE_PAGES[1].url} answered 404, want 200 — a redirect fails`],
+      problems: [`${LIVE_PAGES[1].name}: ${LIVE_PAGES[1].url} answered 404, want 200`],
     });
     expect(calls).toEqual(upTo(GETS[2], 2));
     expect(written.size).toBe(0);
@@ -664,6 +714,41 @@ describe('release:chrome — a write that fails part-way says what it left (revi
     });
     expect([...written.keys()]).toEqual([ZIP_PATH]);
     expect(refusalLines(result)[0]).toBe(`release: refused at write — the write failed part-way: remove ${ZIP_PATH} (in extension/) before running again`);
+  });
+
+  it('a move whose link was made but whose unlink failed: the final file is named as left, never "nothing was written" (ledger line 23)', async () => {
+    const {result, written} = await release((calls, written) => ({
+      place: (from, to) => {
+        calls.push(`place ${from} ${to}`);
+        written.set(to, written.get(from));
+        if (to === ZIP_PATH) throw new Error(`EPERM: operation not permitted, unlink '${from}'`);
+        written.delete(from);
+      },
+    }));
+    // The zip is in place, its temporary name removed by the cleanup; the notes were never moved, their temporary
+    // name removed too: the zip is what is left.
+    expect(result).toEqual({
+      ok: false,
+      stoppedAt: 'write',
+      problems: [`moving into place failed (EPERM: operation not permitted, unlink '${partialPath(ZIP_PATH)}')`],
+      written: [ZIP_PATH],
+    });
+    expect([...written.keys()]).toEqual([ZIP_PATH]);
+    expect(refusalLines(result)[0]).toBe(`release: refused at write — the write failed part-way: remove ${ZIP_PATH} (in extension/) before running again`);
+  });
+
+  it('the same, and the temporary name cannot be removed either: both the final file and the temporary one are named', async () => {
+    const {result} = await release((calls, written) => ({
+      place: (from, to) => {
+        written.set(to, written.get(from));
+        throw new Error('EPERM');
+      },
+      remove: path => {
+        if (path === partialPath(ZIP_PATH)) throw new Error('EPERM');
+        written.delete(path);
+      },
+    }));
+    expect(result.written).toEqual([ZIP_PATH, partialPath(ZIP_PATH)]);
   });
 
   it('a temporary file that cannot be removed is named as left too', async () => {
@@ -891,6 +976,57 @@ describe('the tree checks see untracked files whatever git is configured to show
     } finally {
       rmSync(root, {recursive: true, force: true});
     }
+  });
+});
+
+describe('node_modules is the lockfile’s tree (the final review’s I3)', () => {
+  const problemsOf = (installed, lock = LOCK_PACKAGES) => installedTreeProblems(lockJson(lock), lockJson(installed));
+  const one = p => [expect.stringMatching(/^node_modules is not the tree package-lock\.json names/), `  ${p}`];
+
+  it('the fields compared are what names the installed package', () => {
+    expect(INSTALLED_FIELDS).toEqual(['version', 'resolved', 'integrity', 'link']);
+    expect(INSTALLED_LOCKFILE).toBe('node_modules/.package-lock.json');
+  });
+
+  it('positive controls: the same tree; an optional package not installed (another platform’s); a field npm adds only to one file', () => {
+    expect(installedTreeProblems(LOCK_TEXT, INSTALLED_TEXT)).toEqual([]);
+    expect(problemsOf({...installedOf(), 'node_modules/a': {...pkg('a'), license: 'MIT'}})).toEqual([]);
+  });
+
+  it('positive control on the real files: this checkout’s node_modules, installed by npm ci, passes', () => {
+    const read = name => (existsSync(join(ROOT, name)) ? readFileSync(join(ROOT, name), 'utf8') : undefined);
+    expect(installedTreeProblems(read(LOCKFILE), read(INSTALLED_LOCKFILE))).toEqual([]);
+  });
+
+  it.each([
+    ['version', {'node_modules/a': pkg('a', {version: '0.9.0'})}, 'node_modules/a: version "0.9.0" installed, "1.0.0" in package-lock.json'],
+    ['resolved', {'node_modules/b': pkg('b', {dev: true, resolved: 'https://evil.example/b.tgz'})}, 'node_modules/b: resolved "https://evil.example/b.tgz" installed, "https://registry.npmjs.org/b/-/b-1.0.0.tgz" in package-lock.json'],
+    ['integrity', {'node_modules/a/node_modules/c': pkg('c', {integrity: 'sha512-other'})}, 'node_modules/a/node_modules/c: integrity "sha512-other" installed, "sha512-c" in package-lock.json'],
+    ['link', {'node_modules/@noctura/core': {resolved: '../core'}}, 'node_modules/@noctura/core: link undefined installed, true in package-lock.json'],
+    ['an extra package', {'node_modules/d': pkg('d')}, 'node_modules/d is installed, and package-lock.json has no such package'],
+  ])('a different %s is named', (_, change, problem) => {
+    expect(problemsOf({...installedOf(), ...change})).toEqual(one(problem));
+  });
+
+  it('a non-optional package of the lockfile not installed is named; an optional one is not', () => {
+    const {['node_modules/b']: _b, ...withoutB} = installedOf();
+    expect(problemsOf(withoutB)).toEqual(one('node_modules/b is in package-lock.json and not installed'));
+    expect(problemsOf({...installedOf(), 'node_modules/fsevents': pkg('fsevents', {dev: true, optional: true})})).toEqual([]);
+  });
+
+  it('another lockfileVersion, a file that is not JSON or holds no packages: refused', () => {
+    expect(installedTreeProblems(LOCK_TEXT, lockJson(installedOf(), 2))).toEqual(one('lockfileVersion 2 installed, 3 in package-lock.json'));
+    expect(installedTreeProblems(LOCK_TEXT, '{')).toEqual([expect.stringMatching(/^node_modules\/\.package-lock\.json is not JSON/)]);
+    expect(installedTreeProblems('{"lockfileVersion": 3}', INSTALLED_TEXT)).toEqual(['package-lock.json holds no "packages" object']);
+    expect(installedTreeProblems(LOCK_TEXT, 'null')).toEqual(['node_modules/.package-lock.json holds no "packages" object']);
+  });
+
+  it('names at most ten differences, then their count; an absent lockfile is the preflight’s own refusal', () => {
+    const many = Object.fromEntries(Array.from({length: 12}, (_, i) => [`node_modules/x${i}`, pkg(`x${i}`)]));
+    const out = problemsOf({...installedOf(), ...many});
+    expect(out).toHaveLength(12);
+    expect(out.at(-1)).toBe('  … and 2 more');
+    expect(installedTreeProblems(undefined, INSTALLED_TEXT)).toEqual([]);
   });
 });
 
