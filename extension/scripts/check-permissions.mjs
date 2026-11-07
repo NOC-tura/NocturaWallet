@@ -10,10 +10,41 @@
 // its value is worth pinning independent of source.mjs too — REQUIRED_CONNECT_SRC is copied here on
 // purpose, same pattern as check-rpc-methods.mjs's SPEC_ALLOWED against core/solana/rpc.ts's list.
 import {readFileSync} from 'node:fs';
-import {join} from 'node:path';
+import {dirname, join, resolve, sep} from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {distDir} from './distDir.mjs';
 import {isMain} from './isMain.mjs';
+import {readStoreKey} from './storeKey.mjs';
 import {PERMISSIONS, HOST_PERMISSIONS, EXTENSION_CSP, MIN_CHROME_VERSION, MIN_FIREFOX_VERSION} from '../manifest/source.mjs';
+
+// B1e §5.2 (R5): the version every built manifest must carry — package.json's, read here on its own (not through
+// source.mjs's VERSION, so a constant put back in source.mjs fails here), and the version pattern pinned here too.
+export const VERSION_PATTERN = /^\d+\.\d+\.\d+$/;
+export function packageJsonVersion() {
+  return JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
+}
+
+/** Every way `manifest.version` is not exactly `want` (package.json's) in the release form. */
+export function versionViolations(manifest, want = packageJsonVersion()) {
+  const got = manifest.version;
+  const out = [];
+  if (typeof want !== 'string' || !VERSION_PATTERN.test(want)) out.push(`package.json version ${JSON.stringify(want)} does not match ${VERSION_PATTERN}`);
+  if (got !== want) out.push(`version is ${JSON.stringify(got)}, want package.json's ${JSON.stringify(want)}`);
+  else if (!VERSION_PATTERN.test(got)) out.push(`version ${JSON.stringify(got)} does not match ${VERSION_PATTERN}`);
+  return out;
+}
+
+/**
+ * B1e §5.3: the manifest `key`. `recorded` undefined (dist/, dist-nopresale/ — what verify, the gates and the release
+ * read): no manifest carries a key. `recorded` = release/store-key.json's {id, key} (a `--dev-key` build): the Chrome
+ * manifest carries exactly that key; Firefox's never carries one.
+ */
+export function keyViolations(manifest, browser, recorded) {
+  const has = Object.hasOwn(manifest, 'key');
+  if (browser !== 'chrome' || recorded === undefined) return has ? [`${browser}: carries a key — only a --dev-key Chrome build may (B1e §5.3)`] : [];
+  if (manifest.key !== recorded.key) return [`chrome: key ${has ? 'differs from' : 'missing, want'} the recorded store key (release/store-key.json, id ${recorded.id})`];
+  return [];
+}
 
 // The one host anything in the extension ever fetches (extension/src/background/deps.ts — RPC
 // reads, JSON reads, the broadcast route, all through the coordinator proxy). No 'self': nothing
@@ -85,8 +116,8 @@ export function contentScriptViolations(scripts) {
   return scripts.flatMap((got, i) => (norm(got) === norm(REQUIRED_CONTENT_SCRIPTS[i]) ? [] : [`content_scripts[${i}] is ${JSON.stringify(got)}, want ${JSON.stringify(REQUIRED_CONTENT_SCRIPTS[i])}`]));
 }
 
-export function comparePermissions(manifest, browser) {
-  const problems = [];
+export function comparePermissions(manifest, browser, {recorded, version} = {}) {
+  const problems = [...versionViolations(manifest, version), ...keyViolations(manifest, browser, recorded)];
   const want = PERMISSIONS.map(p => p.value).join(',');
   const got = (manifest.permissions ?? []).join(',');
   if (got !== want) problems.push(`permissions differ: ${got}`);
@@ -110,16 +141,37 @@ export function comparePermissions(manifest, browser) {
   return problems;
 }
 
+// CLI: `node scripts/check-permissions.mjs` reads NOCTURA_DIST's build (dist/ or dist-nopresale/: no key allowed);
+// `node scripts/check-permissions.mjs --dev-key <outDir>` reads a --dev-key build against release/store-key.json (absent
+// or malformed: fails). B1e-2 (Task 1's review): `--dev-key` refuses the directories `build.mjs --dev-key` refuses —
+// dist/, dist-nopresale/ and anything under them, by the same prefix test on the resolved path — before reading the
+// key: a key there is never right, and the form without `--dev-key` is the one that reads them.
 if (isMain(import.meta.url)) {
-  const DIST = distDir();
+  const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+  const USAGE = 'usage: node scripts/check-permissions.mjs [--dev-key <outDir>]';
+  const args = process.argv.slice(2);
+  if (args.length !== 0 && (args.length !== 2 || args[0] !== '--dev-key')) throw new Error(USAGE);
+  const devKey = args.length === 2;
+  const inside = dir => resolve(args[1]) === dir || resolve(args[1]).startsWith(dir + sep);
+  if (devKey && ['dist', 'dist-nopresale'].some(d => inside(join(ROOT, d)))) {
+    throw new Error(
+      `--dev-key reads only a directory a --dev-key build may write, never dist/, dist-nopresale/ or anything under them (B1e §5.3); those are read without --dev-key, where a key fails. ${USAGE}`,
+    );
+  }
+  const DIST = devKey ? resolve(args[1]) : distDir();
+  const recorded = devKey ? readStoreKey() : undefined;
   let bad = 0;
   for (const browser of ['chrome', 'firefox']) {
     const m = JSON.parse(readFileSync(join(DIST, browser, 'manifest.json'), 'utf8'));
-    for (const p of comparePermissions(m, browser)) {
+    for (const p of comparePermissions(m, browser, {recorded})) {
       console.error(`${browser}: ${p}`);
       bad += 1;
     }
   }
   if (bad) process.exit(1);
-  console.log(`permissions ok (${DIST}): both manifests match manifest/source.mjs`);
+  console.log(
+    devKey
+      ? `permissions ok (${DIST}): both manifests match manifest/source.mjs, version ${packageJsonVersion()}; chrome carries the recorded store key (id ${recorded.id}), firefox none`
+      : `permissions ok (${DIST}): both manifests match manifest/source.mjs, version ${packageJsonVersion()}, no key`,
+  );
 }

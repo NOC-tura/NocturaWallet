@@ -49,6 +49,9 @@ export function contentConfig(env: Record<string, string | undefined>): UserConf
     // never auto-discovered up to the repo root's (which `extends @react-native/typescript-config`, absent when
     // CI installs only web/ and extension/).
     tsconfig: resolve(__dirname, 'tsconfig.json'),
+    // B1e-2 (Task 7 fix round 1, review I1): no env file is read — a NODE_ENV=development in one would make Vite
+    // build React's development bundle (scripts/buildEnv.mjs); nothing in the extension reads import.meta.env.
+    envDir: false,
     publicDir: false,
     define: {__NOCTURA_PRESALE__: JSON.stringify(presale)},
     plugins: [presaleSwitch(presale), contentModules(name)],

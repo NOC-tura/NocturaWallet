@@ -1,5 +1,6 @@
 {
   "name": "noctura-extension",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -9,11 +10,13 @@
     "build": "tsc --noEmit && node scripts/build.mjs && node scripts/build.mjs --no-presale",
     "test": "vitest run && vitest run --config vitest.nopresale.config.ts",
     "e2e": "playwright test",
+    "screenshots": "playwright test --config playwright.screenshots.config.ts",
     "csp": "node scripts/check-csp.mjs dist/app && node scripts/check-csp.mjs dist-nopresale/app",
     "secrets": "test -d dist/app && test -d dist/chrome && test -d dist/firefox && test -d dist-nopresale/app && test -d dist-nopresale/chrome && test -d dist-nopresale/firefox && node ../web/scripts/check-no-secrets.mjs --bundle dist/app dist/chrome dist/firefox dist-nopresale/app dist-nopresale/chrome dist-nopresale/firefox",
     "gates": "npm run gates:build && NOCTURA_DIST=dist-nopresale npm run gates:build && node scripts/check-no-presale.mjs dist-nopresale dist",
-    "gates:build": "node scripts/check-permissions.mjs && node scripts/check-page-bundles.mjs && node scripts/check-vault-isolation.mjs && node scripts/check-rpc-methods.mjs && node scripts/check-no-tge-date.mjs && node scripts/check-fonts.mjs && node scripts/check-classes.mjs && node scripts/check-links.mjs && node scripts/check-licences.mjs",
+    "gates:build": "node scripts/check-permissions.mjs && node scripts/check-page-bundles.mjs && node scripts/check-vault-isolation.mjs && node scripts/check-rpc-methods.mjs && node scripts/check-no-tge-date.mjs && node scripts/check-fonts.mjs && node scripts/check-classes.mjs && node scripts/check-links.mjs && node scripts/check-licences.mjs && node scripts/check-ui-claims.mjs",
     "reproducible": "node scripts/verify-reproducible.mjs",
+    "release:chrome": "node scripts/release-chrome.mjs",
     "verify": "rm -rf dist dist-nopresale && npm run build && npm run test && npm run csp && npm run secrets && npm run gates && npm run reproducible"
   },
   "dependencies": {

@@ -29,7 +29,7 @@ test('1 · onboarding create: #1 → #2 → #3 → #4 → #5 → #6 → #7 shows
   try {
     const vault = await h.ctx.newPage();
     await vault.goto(`chrome-extension://${h.id}/unlock.html?mode=welcome`);
-    await expect(vault.getByText('A Solana wallet built for private, non-custodial holding.')).toBeVisible();
+    await expect(vault.getByText('A non-custodial Solana wallet. Your keys stay on this device.')).toBeVisible();
     // Review L5: the design's font reaches the vault page (a face that loads, not the fallback).
     expect(await vault.evaluate(async () => (await document.fonts.load('16px Geist')).length)).toBeGreaterThan(0);
     expect(await vault.evaluate(() => document.fonts.check('16px Geist'))).toBe(true);

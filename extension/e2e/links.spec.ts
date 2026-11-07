@@ -1,3 +1,4 @@
+import {readFileSync} from 'node:fs';
 import {test, expect, type Page} from '@playwright/test';
 import {EXT, EXT_NOPRESALE} from './launch';
 import {launchPopup, seedUnlockedWallet, type Harness} from './popupHarness';
@@ -9,6 +10,7 @@ import {launchPopup, seedUnlockedWallet, type Harness} from './popupHarness';
 const TERMS = 'https://noc-tura.io/extension/terms';
 const PRIVACY = 'https://noc-tura.io/extension/privacy';
 const HELP = 'https://noc-tura.io/extension/help';
+const PACKAGE_VERSION: unknown = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
 
 /** Clicks a link and returns the tab it opened; the click must open one. */
 async function opensTab(h: Harness, click: () => Promise<void>): Promise<Page> {
@@ -77,6 +79,8 @@ for (const [build, ext] of [
         const p = await h.openPopup();
         await p.getByRole('button', {name: 'Settings'}).click();
         await p.getByText('About Noctura').click();
+        // B1e §5.2: #38's version line is runtime.getManifest().version — package.json's, read here on its own.
+        await expect(p.locator('.app-about-card .noc-mono')).toHaveText(`v${PACKAGE_VERSION}`);
         const rows = [
           ['Terms of Service', TERMS],
           ['Privacy Policy', PRIVACY],

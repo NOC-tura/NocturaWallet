@@ -73,7 +73,7 @@ describe('#8 import: the screen (spec §3.8)', () => {
     expect(field.placeholder).toBe('Enter your 12 or 24-word recovery phrase, separated by spaces.');
     expect([field.getAttribute('autocomplete'), field.getAttribute('spellcheck')]).toEqual(['off', 'false']);
     expect(text(screen.querySelector('.banner.info:not(.toast)'))).toBe(
-      "This phrase is also the root of the Noctura phone app's future private (shielded) keys — anyone who gets it from this browser gets those too. Accounts after the first one exist only in this extension until the phone app supports more than one account.",
+      "This phrase is also the root of the Noctura phone app's keys — anyone who gets it from this browser gets those too. Accounts after the first one exist only in this extension until the phone app supports more than one account.",
     );
     expect(cta.disabled).toBe(true);
     expect(text(screen)).not.toMatch(/Backup file|Screenshots|auto-clears from clipboard|clipboard cleared/);

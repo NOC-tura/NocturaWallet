@@ -10,15 +10,15 @@ const K0 = 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk';
 beforeEach(loadPage);
 
 describe('#1 welcome (spec §3.1)', () => {
-  it('idle: the design’s copy, two trust chips (no "ZK-private", D6), the terms line with its two links, both CTAs in design order', async () => {
+  it('idle: the wordmark, the tagline and two trust chips as B1e-2 Task 6 rewrote them (no "ZK-private", D6), the terms line with its two links, both CTAs in design order', async () => {
     const h = await harness();
     const calls: string[] = [];
     await mountWelcome(h.deps, {create: () => calls.push('create'), import: () => calls.push('import')}).show();
     const screen = el('v-welcome');
     expect(visible(screen)).toBe(true);
     expect(text(screen.querySelector('.wordmark'))).toBe('Noctura');
-    expect(text(screen.querySelector('.tagline'))).toBe('A Solana wallet built for private, non-custodial holding.');
-    expect([...screen.querySelectorAll('.trust-chip')].map(text)).toEqual(['E2E encrypted', 'Non-custodial']);
+    expect(text(screen.querySelector('.tagline'))).toBe('A non-custodial Solana wallet. Your keys stay on this device.');
+    expect([...screen.querySelectorAll('.trust-chip')].map(text)).toEqual(['Encrypted on this device', 'Non-custodial']);
     expect(text(screen)).not.toContain('ZK-private');
     expect(visible(el('wel-terms'))).toBe(true);
     expect(text(screen.querySelector('.terms'))).toBe('By continuing you agree to the Terms and Privacy Policy.');

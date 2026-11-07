@@ -27,8 +27,8 @@ test('visual: the create run — #1, #2, #3, #4, #5, #6 and #7', async () => {
   const h = await launchPopup('noctura-e2e-vis-create-');
   try {
     const p = await vaultTab(h, 'unlock.html?mode=welcome', {passkeyCreate: 'null'});
-    await expect(p.getByText('A Solana wallet built for private, non-custodial holding.')).toBeVisible();
-    await expect(text(p, '.trust-chip')).toHaveText(['E2E encrypted', 'Non-custodial']);
+    await expect(p.getByText('A non-custodial Solana wallet. Your keys stay on this device.')).toBeVisible();
+    await expect(text(p, '.trust-chip')).toHaveText(['Encrypted on this device', 'Non-custodial']);
     // The terms line and both CTAs are unhidden by the page's one vault read: idle is after it (fix round 1).
     await expect(p.locator('#wel-terms')).toBeVisible();
     await expect(p.locator('#wel-terms')).toHaveText('By continuing you agree to the Terms and Privacy Policy.');

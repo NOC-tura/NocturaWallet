@@ -3,3 +3,5 @@ dist/
 dist-nopresale/
 test-results/
 playwright-report/
+release/screenshots/out/
+release/out/

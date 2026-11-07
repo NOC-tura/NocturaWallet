@@ -15,6 +15,15 @@ const hostPermissions = (): string[] => {
   });
 };
 
+// B1e §5.6 (E17), B1e-2: the owner's record of the frozen RP ID, `release/rp-id.json` — the file release:chrome's
+// pre-upload gate reads (scripts/release-chrome.mjs `rpIdProblems`). Read here through Vite's JSON import; an absent file
+// leaves the glob empty, which the reader refuses rather than skips.
+const recorded = (): unknown => {
+  const files = Object.values(import.meta.glob('../../../release/rp-id.json', {eager: true, import: 'default'}));
+  if (files.length !== 1) throw new Error('release/rp-id.json is absent');
+  return files[0];
+};
+
 describe('the passkey RP ID (B1e §5.6)', () => {
   it('is wallet.noc-tura.io, frozen by 1.0.0 (E17)', () => {
     expect(RP_ID).toBe('wallet.noc-tura.io');
@@ -22,6 +31,11 @@ describe('the passkey RP ID (B1e §5.6)', () => {
 
   it('is a host the manifest claims: `https://${RP_ID}/*` is a HOST_PERMISSIONS value', () => {
     expect(hostPermissions()).toContain(`https://${RP_ID}/*`);
+  });
+
+  it('equals the owner’s record: release/rp-id.json is exactly {rpId: RP_ID, confirmedBy: owner, decision: E17}', () => {
+    expect(recorded()).toEqual({rpId: RP_ID, confirmedBy: 'owner', decision: 'E17'});
+    expect(Object.keys(recorded() as object)).toEqual(['rpId', 'confirmedBy', 'decision']);
   });
 
   it('the pin reads the real list (positive control): the coordinator’s permission is in it, an invented host is not', () => {

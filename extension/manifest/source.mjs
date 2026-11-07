@@ -1,3 +1,6 @@
+import {readFileSync} from 'node:fs';
+import {fileURLToPath} from 'node:url';
+
 // The one source for both browsers' manifests, as web/deploy/security-headers.mjs is for
 // nginx: every permission and host is here once, with the reason a store reviewer and a
 // user are owed. The permissions gate (scripts/check-permissions.mjs) compares the built
@@ -55,14 +58,32 @@ export const EXTENSION_CSP =
 export const MIN_CHROME_VERSION = '122';
 export const MIN_FIREFOX_VERSION = '150.0';
 
-const VERSION = '0.1.0';
+// B1e §5.2 (R5): one version source — extension/package.json's `version` (the first store version: 1.0.0), read here so
+// the manifest, #38 (runtime.getManifest().version) and the release notes agree by construction. Chrome's rule for a
+// manifest version, kept to the three numbers §5.2 names: each 0–65535, no leading zero. A version that breaks it fails
+// the build here; check-permissions.mjs checks every built manifest against package.json independently.
+export const PACKAGE_JSON = new URL('../package.json', import.meta.url);
+
+/** True when `v` is a version this extension may ship: three dot-separated integers, each 0–65535, no leading zero. */
+export function isReleaseVersion(v) {
+  return typeof v === 'string' && /^(0|[1-9]\d{0,4})\.(0|[1-9]\d{0,4})\.(0|[1-9]\d{0,4})$/.test(v) && v.split('.').every(n => Number(n) <= 65535);
+}
+
+/** package.json's version; throws when it is missing or not a release version. */
+export function packageVersion(url = PACKAGE_JSON) {
+  const v = JSON.parse(readFileSync(url, 'utf8')).version;
+  if (!isReleaseVersion(v)) throw new Error(`${fileURLToPath(url)}: version must be three integers 0–65535 without leading zeros (B1e §5.2), is ${JSON.stringify(v)}`);
+  return v;
+}
+
+export const VERSION = packageVersion();
 
 function base() {
   return {
     manifest_version: 3,
     name: 'Noctura',
     version: VERSION,
-    description: 'Noctura wallet for Solana.',
+    description: 'A non-custodial Solana wallet: hold, send and receive SOL and tokens, and approve requests from Solana sites.',
     permissions: PERMISSIONS.map(p => p.value),
     host_permissions: HOST_PERMISSIONS.map(p => p.value),
     content_security_policy: {extension_pages: EXTENSION_CSP},
@@ -71,10 +92,20 @@ function base() {
   };
 }
 
-/** @param {'chrome' | 'firefox'} browser */
-export function render(browser) {
+/**
+ * B1e §5.3: `key` — the store's public key (scripts/storeKey.mjs), passed only by `node scripts/build.mjs <outDir>
+ * --dev-key`; never by default, never by `verify`, the E2E builds or the release. Chrome only: a key is how Chrome
+ * fixes an unpacked extension's ID; Firefox has no such field (its ID is gecko.id), so a key for it is refused.
+ * @param {'chrome' | 'firefox'} browser
+ * @param {{key?: string}} [options]
+ */
+export function render(browser, {key} = {}) {
+  if (key !== undefined && (browser !== 'chrome' || typeof key !== 'string' || key === '')) {
+    throw new Error(`a manifest key is a non-empty string for Chrome only (B1e §5.3), not ${JSON.stringify(key)} for ${browser}`);
+  }
   if (browser === 'chrome') {
-    return {...base(), minimum_chrome_version: MIN_CHROME_VERSION, background: {service_worker: 'background.js', type: 'module'}};
+    const manifest = {...base(), minimum_chrome_version: MIN_CHROME_VERSION, background: {service_worker: 'background.js', type: 'module'}};
+    return key === undefined ? manifest : {...manifest, key};
   }
   if (browser === 'firefox') {
     return {

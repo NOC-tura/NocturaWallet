@@ -435,7 +435,7 @@ export function Home({
               </div>
               <div className="price">
                 <div className="pri noc-body-lg noc-numeral">{hidden ? '••••' : row === null || row.usd === null ? '—' : showUsd(row.usd)}</div>
-                {row !== null && row.basis === 'stage' ? <div className="sec noc-body-sm">at stage price</div> : null}
+                {row !== null && row.basis === 'stage' ? <div className="sec noc-body-sm">estimate · not in total</div> : null}
                 {rowNote === 'live' ? <div className="sec noc-body-sm app-success">live</div> : null}
                 {rowNote === 'stale' ? <div className="sec noc-body-sm app-warning">stale</div> : null}
                 {priceStamp(rowNote) && priceAt !== null ? <div className="sec noc-body-sm">price {stamp(priceAt, now)}</div> : null}

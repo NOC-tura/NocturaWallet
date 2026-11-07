@@ -52,7 +52,7 @@ export function TokenSheet({
               <span className="amt">{v === null ? '—' : showAmount(t, v.rows[t].base)}</span>
               <span className="fiat">
                 {v === null || v.rows[t].usd === null ? '—' : showUsd(v.rows[t].usd)}
-                {t === 'NOC' && v !== null && v.rows[t].usd !== null ? ' at stage price' : ''}
+                {t === 'NOC' && v !== null && v.rows[t].usd !== null ? ' (estimate)' : ''}
               </span>
             </span>
           </button>

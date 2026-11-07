@@ -1,0 +1,36 @@
+<!doctype html>
+<!--
+  B1e §6.4 (Minor 9), §9: the store screenshots' backdrop — a 1280 × 800 page of the design background, undrawn (index.html
+  draws no store screenshot), shown to the owner in B1e-2's visual pass. Nothing of its own: the page's ground is the
+  design system's own `body` rule (web/src/styles/design-system.css, the sheet every extension page imports first — the
+  accent's radial wash over --bg-base), and the one frame line is the design system's --bg-surface-3 edge. No colour,
+  font or drawn text is defined here. e2e/storeScreenshots.spec.ts (`npm run screenshots`) puts the popup's or the
+  approval window's capture into #shot at its real size, unscaled, centred, and captures this page.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Noctura store screenshot</title>
+    <link rel="stylesheet" href="../../../web/src/styles/design-system.css" />
+    <style>
+      html,
+      body {
+        width: 1280px;
+        height: 800px;
+        min-height: 0;
+        overflow: hidden;
+      }
+      body {
+        display: grid;
+        place-items: center;
+      }
+      #shot {
+        display: block;
+        outline: 1px solid var(--bg-surface-3);
+      }
+    </style>
+  </head>
+  <body>
+    <img id="shot" alt="" />
+  </body>
+</html>
