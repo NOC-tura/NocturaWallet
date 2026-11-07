@@ -1,7 +1,7 @@
 import React from 'react';
 import {View, Linking, Image} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
-import {Lock, Key, ShieldCheck} from 'lucide-react-native';
+import {Lock, Key} from 'lucide-react-native';
 import {Text, Button} from '../../components/ui';
 import {cn} from '../../utils/cn';
 
@@ -19,7 +19,7 @@ const NOC_LOGO = require('../../assets/tokens/noc-logo.png');
  *       · "N" mark logo (synthetic, no third-party logo, anti-AI-slop)
  *       · "Noctura" wordmark (.noc-h1 32 px display weight)
  *       · Tagline (.noc-body)
- *       · 3 trust chips (Lock + Key + ShieldCheck Lucide icons @ 14 px)
+ *       · 2 trust chips (Lock + Key Lucide icons @ 14 px)
  *   - Terms/Privacy disclaimer (.noc-caption · ABOVE CTAs per spec)
  *   - Sticky bottom bar — 2 CTAs in column:
  *       · [Create new wallet] primary  → security-intro (Round 2a nav fix)
@@ -91,14 +91,13 @@ export function WelcomeScreen({onCreate, onImport}: WelcomeScreenProps) {
         <Text
           variant="body"
           className="text-fg-secondary text-center px-2 mb-6">
-          A Solana wallet built for private, non-custodial holding.
+          A non-custodial Solana wallet. Your keys stay on this device.
         </Text>
 
-        {/* Trust chips row · 3 chips wrap to multi-row on narrow screens */}
+        {/* Trust chips row · the chips wrap to multi-row on narrow screens */}
         <View className="flex-row flex-wrap items-center justify-center gap-2">
-          <TrustChip Icon={Lock} label="E2E encrypted" />
+          <TrustChip Icon={Lock} label="Encrypted on this device" />
           <TrustChip Icon={Key} label="Non-custodial" />
-          <TrustChip Icon={ShieldCheck} label="ZK-private" />
         </View>
       </View>
 

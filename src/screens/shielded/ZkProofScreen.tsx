@@ -770,7 +770,7 @@ function computeHero(state: ZkUiState): {label: string; sub: string; spinning: b
     case 'proving':
       return {
         label: 'Proving',
-        sub: 'Running the Plonk prover. About 6 seconds.',
+        sub: 'Running the Groth16 prover on this device.',
         spinning: true,
       };
     case 'verifying':

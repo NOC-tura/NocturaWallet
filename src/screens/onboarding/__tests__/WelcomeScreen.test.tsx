@@ -30,6 +30,18 @@ describe('WelcomeScreen', () => {
     expect(getByText('Noctura')).toBeTruthy();
   });
 
+  // E24 (2026-11-06): the welcome copy claims nothing the transparent wallet does not keep — no "private", no
+  // end-to-end encryption, no ZK privacy (shielded is behind the disabled FEATURES.shielded flag).
+  it('says what the wallet keeps: non-custodial, keys and encryption on this device — and no privacy claim', () => {
+    const {getByText, queryByText} = render(
+      withSafeArea(<WelcomeScreen onCreate={onCreate} onImport={onImport} />),
+    );
+    expect(getByText('A non-custodial Solana wallet. Your keys stay on this device.')).toBeTruthy();
+    expect(getByText('Encrypted on this device')).toBeTruthy();
+    expect(getByText('Non-custodial')).toBeTruthy();
+    for (const old of [/private/i, /E2E/, /ZK/]) expect(queryByText(old)).toBeNull();
+  });
+
   it('shows "Create new wallet" button', () => {
     const {getByText} = render(
       withSafeArea(<WelcomeScreen onCreate={onCreate} onImport={onImport} />),
