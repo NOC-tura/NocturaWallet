@@ -1,12 +1,47 @@
 # Shielded on A0 · Milestone 1 — shield and a private unshield on the deployed A0 pool (Android, devnet)
 
-**Status:** rev 2, 2026-11-08 — Fable review 1 + owner decisions S6–S9, controller rulings R9–R11. Rev 1 (58c0c7a) was
-the design the owner approved in conversation section by section (the milestone split, `nk` in the Rust prover, the
-unshield destinations, the native confirmation in this milestone, a minimal multi-account in the app; then the
-architecture, the data flow and the test / scope sections). The review (`.superpowers/sdd/shielded-a0-m1-spec-review-1.md`)
-found 4 Critical, 13 Important and 15 Minor issues and asked 7 questions; the owner answered four (S6–S9) and the
-controller ruled on three (R9–R11, `.superpowers/sdd/shielded-a0-m1-decisions.md`). Next: Fable review of rev 2, then
-the owner; then the four plans of §16, each with its own Fable review.
+**Status:** rev 3, 2026-11-08 — Fable review 2 + owner S10–S12, rulings R12–R13. Rev 2 (00e58fe) was Fable review 1 +
+owner decisions S6–S9, controller rulings R9–R11. Rev 1 (58c0c7a) was the design the owner approved in conversation
+section by section (the milestone split, `nk` in the Rust prover, the unshield destinations, the native confirmation in
+this milestone, a minimal multi-account in the app; then the architecture, the data flow and the test / scope
+sections). Review 1 (`.superpowers/sdd/shielded-a0-m1-spec-review-1.md`) found 4 Critical, 13 Important and 15 Minor
+issues; review 2 (`…-spec-review-2.md`) found 1 Critical, 8 Important and 10 Minor. Decisions and rulings:
+`.superpowers/sdd/shielded-a0-m1-decisions.md`. The program-side proposal text (P1, P2) is
+`.superpowers/sdd/shielded-a0-m1-ico-proposal.md`. Next: the owner; then the four plans of §16, each with its own
+Fable review.
+
+### Rev 3 — what changed, finding by finding
+
+- **C-1** (P1 is a SOL faucet on mainnet): S10 — the grant goes only to a destination owner holding 0 lamports, at most
+  once per key (atomic marker); the four coordinator config changes listed and the devnet cost re-sized; the verifier
+  checks the decoded instruction against the owner's pre-balance → §6.4, §6.8, §13, §15 P1.
+- **I-1** (M1c blocked on P1): S11 — "Another address" and "My main account" ship against the frozen contract; the
+  fresh-account default switches on only when the quote carries `gasGrantLamports` → §6.1, §6.4, §11, §16 M1c.
+- **P2**: S12 — a firm proposal (always prepend create-ATA-idempotent) with its stated limit → §15 P2, §6.8.
+- **I-2** (what the sync retains): a per-tx `SyncedTx` record, cached with the notes, built in full by M1b; `confirmed`
+  retries the sync a bounded number of times; "5 minutes past submit" defined on chain time → §9, §6.8.
+- **I-3** (unmeasurable M1b claim): a JS test with a recording `Connection` mock; the phone step is "balance returns"
+  → §14, §16 M1b.
+- **I-4** (counter reuse): a monotone `nextDepositIndex` in the note store's metadata → §5.2, §5.7, §8.
+- **I-5** (fresh index reserved late): a `fresh-pending` role, reserved at selection → §6.1, §6.8, §10.
+- **I-6** (bls.js vector vs the source test): the vector is produced offline by a script under `scripts/`, committed,
+  and the source test's scope excludes `scripts/` → §14.
+- **I-7** (pre-spend nullifier in JS): R12 — `nullifier()` leaves the JNI surface; Rust's `matchSpent` matches synced
+  nullifiers against own notes → §3, §5, §6.6, §6.8, §7, §8, §14.
+- **I-8** (P1's config consequences): the four coordinator changes, sizes and the top-up listed → §15 P1.
+- **R13** (restore cost): accepted on devnet; the indexer trigger stated and measured at M1b → §7, §13, §16 M1b.
+- **Minors:** m-1 → §6.4 (grant ceiling); m-2 → §6.8 (decoded instruction, not balance deltas); m-3 → §3, §4 (fee
+  sanity ceiling, not `max_fee`); m-4 → §6.6; m-5 → §14; m-6 → §4 step 4; m-7 → §10 (checked: the extension's
+  `addAccount` names an account `` `Account ${index + 1}` ``); m-8 → §12 (corrected: `DashboardScreen.tsx` imports
+  `noteScan`, `store/zustand/sessionStore.ts` imports `shieldedViewSession`; neither imports `shieldedIdentity`);
+  m-9 → §10 (checked: `lowestFreeIndex` is exported by `extension/src/unlock/accountsFlow.ts`); m-10 → §2.
+- **New in rev 3, not from the review:** the `unconfirmed` timeout is defined on a sync that completes after the
+  chain's clock passes submit + 300 s, so it also resolves on a quiet pool where no later pool tx exists (review 2's
+  "a synced tx with `blockTime ≥ …`" would wait forever there) → §6.8; two concurrent submits to the same 0-lamport
+  owner would both be granted without an atomic marker → §15 P1; review 2's "Option A removes chaining entirely" holds
+  only for one owner — an attacker using a new key per unshield still draws a grant per key from one deposit's change
+  chain, so on devnet the spend cap is the bound and on mainnet a priced bound is a pre-mainnet decision → §15 P1
+  "What S10 bounds", §13.
 
 ### Rev 2 — what changed, finding by finding
 
@@ -70,7 +105,7 @@ through JS in M1 — §2), a relayed exit, and notes recoverable from the seed.
 2. Wipe the app, restore from the recovery phrase: the shielded balance comes back from the chain.
 3. Unshield part of it to a **fresh account** of the same seed, through the relayer. A script, not the explorer by
    eye, shows that no key of this seed signed or paid the unshield, and that the fresh account received the token
-   amount and the relayer's fixed SOL grant (S6).
+   amount and the relayer's one-time SOL grant (S6, S10: a fresh account holds 0 lamports, so it is granted).
 4. Wipe and restore again: the change note and the fresh account come back.
 5. Send from the fresh account to an address outside this seed, using only the granted SOL: no transaction between
    any other account of the seed and the fresh account exists.
@@ -96,6 +131,9 @@ wallet.
 | S7 | *(review Q2 / C3)* **Accept the seed crossing JS for devnet M1.** The spec states honestly that the native confirmation guards against honest-code mistakes and UI spoofing, **not** against a compromised JS (which holds the seed). **Seed-in-native becomes a mandatory milestone before mainnet.** | §2, §4, §13 |
 | S8 | *(review Q6 / I12)* **M1 is four plans**, each with its own review and an on-phone checkpoint. | §16 |
 | S9 | *(review Q3 / I6)* **`cli`-scheme wallets get no fresh accounts** (the extension's rule: a `cli` wallet has exactly one account). Their unshield goes to any address, or to the main account with the warning. | §6.1, §10 |
+| S10 | *(review 2 C-1)* **The relayer grants SOL only when the destination owner holds 0 lamports** — at most one grant per fresh key. The cost and abuse are bounded by the coordinator's spend cap; P1 lists the coordinator config changes. | §6.4, §6.8, §15 |
+| S11 | *(review 2 I-1)* **M1c ships "Another address" and "My main account" against the frozen contract**; the fresh-account default switches on only when the quote carries the grant. | §6.1, §16 |
+| S12 | *(review 2 Q3)* **P2 is proposed:** the relayer always prepends create-ATA-idempotent, so every unshield has the same instruction list. | §15 |
 
 Controller rulings (the most secure default; the owner may overturn any):
 
@@ -112,6 +150,8 @@ Controller rulings (the most secure default; the owner may overturn any):
 | R9 | *(review Q4 / C4)* **`addrField` never leaves Rust; Rust computes the commitments.** JS's independent check is the `fieldEquations.ts` tests, plus comparing Rust's public inputs with the public values JS can recompute. **Own notes use a secret diversifier `d_self` derived from `nk`**, not `d = 0`. | §3, §5, §7, §8 |
 | R10 | *(review Q5)* **Screens never call the exit "unlinkable".** They say the relayer pays and submits, so no key of yours signs it, and that amounts and timing are public. **`ExportViewKey` is removed from the M1 build** ("not available in this version"; the A0 `ivk` export is an M2 question). | §11, §12 |
 | R11 | *(review Q7)* **The explainer (#17) names the relayer and the RPC provider** as parties that see the exit transaction — not who you are on chain, but the request. | §11 |
+| R12 | *(review 2 I-7)* **JS never holds an own note's nullifier before it is spent.** Rust matches the nullifiers seen in synced `Withdraw` events against the own notes (`matchSpent(handle, chainNullifiers, ownRhos) -> indices`); a spent note's nullifier is public after the fact. | §3, §7 |
+| R13 | *(review 2 Q4)* **Full-history restore cost accepted on devnet.** The indexer trigger: a restore that reads more than 5,000 tree transactions, or takes over 60 s on the acceptance phone, makes a coordinator indexer a pre-mainnet item. | §7, §13 |
 
 ## 1. Facts from the program side (2026-11-08; the facts are theirs, the values are ours)
 
@@ -184,9 +224,9 @@ make the two sides agree by construction.
 
 | layer | owns | never does |
 |---|---|---|
-| **Rust** (`native/noctura-prover`, `libnoctura_prover.so`, JNI) | the seed → `sk` → `nk` → `ivk`, `d_self`, `addrField` derivation; deposit `rho(i)`; `nullifier(rho)`; own-note commitments; `ATA(owner, mint)`; witness completion (everything but the JS allow-list); the authorization record and check; proving with pinned keys; zeroization | return `sk` / `nk` / `ivk` / `d_self` / `addrField`; read the network; accept an unpinned key file |
+| **Rust** (`native/noctura-prover`, `libnoctura_prover.so`, JNI) | the seed → `sk` → `nk` → `ivk`, `d_self`, `addrField` derivation; deposit `rho(i)`; `nullifier(rho)` and matching it against synced nullifiers (R12); own-note commitments; `ATA(owner, mint)`; witness completion (everything but the JS allow-list); the authorization record and check; proving with pinned keys; zeroization | return `sk` / `nk` / `ivk` / `d_self` / `addrField`, or an own note's nullifier outside a proof's public inputs; read the network; accept an unpinned key file |
 | **Kotlin** (`NocturaProverModule` + a confirmation dialog) | showing the owner, the token account, the amount and fee that Rust parsed; `BiometricPrompt`; asking Rust to record a single-use authorization | take display values from JS; expose `authorizeUnshield` to JS |
-| **JS** (`src/modules/shielded/*`) | chain I/O (tree sync, the rho-PDA pre-check, deposit tx build and signing with the transparent key), the allow-listed part of the witness, the relayer client, post-landing verification, the note store (public fields only), recovery, multi-account | hold or compute anything from `sk` / `nk` / `ivk` / `addrField` / `d_self` |
+| **JS** (`src/modules/shielded/*`) | chain I/O (tree sync, the rho-PDA pre-check, deposit tx build and signing with the transparent key), the allow-listed part of the witness, the relayer client, post-landing verification, the note store (public fields only), recovery, multi-account | hold or compute anything from `sk` / `nk` / `ivk` / `addrField` / `d_self`; hold an unspent note's nullifier outside an unshield in flight (§3) |
 | **Screens** | #11 (shielded mode), #16, #17, #18, #19–#21, built to `index.html` + `screen.md`; the account list / switcher, the unshield destination choice, the warnings and the confirmation dialog are undrawn (§11) | — |
 
 **What the native confirmation is, and is not (S7).** Until seed-in-native (§13), the seed passes through JS: the
@@ -214,7 +254,8 @@ holds `nk` / `addrField`, or produces an unshield proof without the native autho
   amount, fee, nullifier, change commitment and time; the relayer's SOL grant; the pool's leaf count (the anonymity set,
   a handful of notes on devnet). The proof hides which leaf an unshield spends.
 - **The relayer**: the network address of the request, the destination, the amount and the time of every unshield it
-  submits — not which deposit it spends.
+  submits — not which deposit it spends. Beyond the request's origin and time it sees the same public data as anyone
+  (the nullifier and change commitment are on chain once the tx lands).
 - **The RPC provider** (Helius on devnet): every request the app makes from its network address — including the
   balance polls of **every** account in the registry, the fresh-account history check and the deposit's rho-PDA
   check. It can link a wallet's accounts to each other by request pattern, fresh exit accounts included. The design
@@ -267,13 +308,21 @@ Neither the relayer nor the RPC provider is "unable to link"; the success criter
 keysOpen(seed: bytes[64]) -> handle             // derives sk/nk/ivk/d_self/addrField; zeroizes the seed copy; opaque handle
 keysClose(handle)                                // zeroizes; invalidates any live authorization
 depositRho(handle, i) -> hex32                   // public once deposited
-nullifier(handle, rhoHex) -> hex32               // public once spent; never sent anywhere before the spend
+matchSpent(handle, chainNullifiers[], ownRhos[]) -> indices[]   // which own notes a set of synced nullifiers spends (R12)
 commitment(handle, amount, rhoHex) -> hex32      // an own note's commitment (d_self implicit)
 prove(handle, circuit, witnessJson, authId?) -> {proofBytes, publicInputs}
 parseUnshield(owner, amount, fee) -> {owner, ata, amount, fee, humanAmount, humanFee, pool}   // Kotlin only
 authorizeUnshield(handle, owner, amount, fee) -> authId                                       // Kotlin only
 ```
 
+- **No pre-spend nullifier in JS (R12, I-7).** There is no `nullifier()` call. Spent-status comes from
+  `matchSpent`, which recomputes `nullifier(rho)` for each own `rho` inside Rust and returns the indices of the own notes
+  whose nullifier is in `chainNullifiers` (the synced `Withdraw` nullifiers, public by then). The one place an unspent
+  note's nullifier reaches JS is the unshield in flight: it is public input [1] of the proof `prove` returns, and the
+  relayer payload JS sends must carry it. From `prove` to the end of that unshield it lives only in memory — never
+  persisted (a `pending` note keeps its `rho`, not its nullifier), never logged, never sent to the RPC — and is dropped
+  when the unshield ends. A pre-spend nullifier is a forward link to the future exit; this keeps it as short-lived as
+  the protocol allows.
 - **The seed crosses as bytes, never as a string (C3).** JS copies its `Uint8Array` into a `number[]` for the bridge
   and fills both with 0 right after the call; Kotlin turns the `ReadableArray` into a `ByteArray`, passes a
   `jbyteArray`, and fills its `ByteArray` with 0 when the call returns; Rust copies it into a zeroizing buffer and
@@ -292,11 +341,12 @@ authorizeUnshield(handle, owner, amount, fee) -> authId                         
     - `deposit`: `{amount, depositIndex}`. Rust computes `rho = rho(depositIndex)`, `commitment(amount, rho)`, the
       pinned `mintHash`, and fills `nk`, `d = d_self`.
     - `withdraw_change`: `{merkleRoot, inputAmount, rho, pathElements[20], pathIndices[20]}`. Rust fills `nullifier =
-      nullifier(rho)`, `withdrawAmount`, `fee` and `recipientField = be_mod_r(ata)` from the authorization, the
+      nullifier(rho)` (internally), `withdrawAmount`, `fee` and `recipientField = be_mod_r(ata)` from the authorization, the
       pinned `mintHash`, `changeCommitment = commitment(inputAmount − withdrawAmount − fee, rho_change)`, `nk`,
       `d = change_d = d_self`; it refuses unless `withdrawAmount + fee ≤ inputAmount`.
-    - The two lists, plus what Rust fills, are asserted in a test to equal the circuit's signal table (§1) and its
-      `nPubInputs` / `nPrivInputs` counts, so an eliminated or constant-folded signal cannot hide.
+    - The JS allow-lists use API names (`depositIndex`), not signal names. The test (m-5) asserts that
+      *mapped(JS allow-list) ∪ Rust-filled = the circuit's signal table* (§1) — `depositIndex` maps to `rho` — and that
+      the counts equal `nPubInputs` / `nPrivInputs`, so an eliminated or constant-folded signal cannot hide.
   - For `withdraw_change`, it requires a live `authId` (§4); the authorization is consumed by the first prove, success
     or failure, and refused if expired, absent, or recorded under another handle.
   - The circuit's key files are read from paths JS supplies, but each is hashed and refused unless it matches the
@@ -305,6 +355,7 @@ authorizeUnshield(handle, owner, amount, fee) -> authId                         
 - **Invariants (tests):**
   - INV-NK: the seed, `sk`, `nk`, `ivk`, `d_self` and every `addrField` never cross JNI, are never logged, are
     zeroized on `keysClose`, on replacement and on drop.
+  - INV-NULL: no JNI call returns an own note's nullifier except as a public input of a `withdraw_change` proof.
   - INV-AUTH: an unshield proof exists only for a `{owner, ata, amount, fee}` a human approved in the native dialog,
     once, within its expiry.
 
@@ -316,7 +367,9 @@ authorizeUnshield(handle, owner, amount, fee) -> authId                         
 2. **Rust parses and validates them (`parseUnshield`):**
    - the owner is 32 bytes of base58 and an on-curve Ed25519 point (m3);
    - Rust derives `ata = ATA(owner, pinned mint)` itself (§3);
-   - the amount and fee are u64, the amount > 0, the fee within the pinned bounds; the note-level condition
+   - the amount and fee are u64, the amount > 0, the fee ≤ a sanity ceiling pinned in Rust (1,000,000 base units —
+     not `pool.max_fee`, which the pool authority can change with `set_max_fee`; the chain enforces that one) (m-3);
+     the note-level condition
      `amount + fee ≤ inputAmount` is checked at `prove` (§3), where `inputAmount` is bound by the Merkle proof;
    - the pool, mint and decimals are the pinned ones (R3).
 3. Kotlin renders, in its own native dialog (not a React view):
@@ -332,7 +385,8 @@ authorizeUnshield(handle, owner, amount, fee) -> authId                         
 4. `BiometricPrompt` (`androidx.biometric`, a new dependency): a strong biometric or the device credential, matching
    the app's keychain setting, using the combination `androidx.biometric` supports at the device's API level (minSdk
    24); the plan names the per-API-level authenticator matrix. On success, Kotlin calls `authorizeUnshield`. Rust
-   records `{owner, ata, amount, fee, pool, mint, handle, expiresAt = now + 120 s}` in native memory and returns an
+   records `{owner, ata, amount, fee, pool, mint, handle, expiresAt = approval time + 120 s}` (the clock starts at the
+   biometric approval, not when the dialog opened, m-6) in native memory and returns an
    opaque `authId`, which carries no data JS could alter. Kotlin returns `{authId, owner, ata}` to JS; JS compares
    `ata` with its own `getAssociatedTokenAddressSync` result and aborts on a mismatch.
 5. A cancel, a timeout (no approval within 60 s), a biometric failure or any rule below returns a refusal; nothing is
@@ -359,17 +413,19 @@ authorizeUnshield(handle, owner, amount, fee) -> authId                         
 ## 5. Shield (deposit)
 
 1. The user enters an amount on #16 (shield side), from the selected transparent account (§10).
-2. **Counter and pre-check (I2).** JS takes the next deposit counter `i` (one per `nk`, across pools: the highest `i`
-   the note store knows, plus one) and calls `depositRho(i)`. It looks up `["rho", rho]` on chain:
+2. **Counter and pre-check (I2, I-4).** JS takes `i = nextDepositIndex` from the note store's metadata (§8): one
+   monotone counter per `nk`, across pools, which only ever increases — it is incremented when a counter is used, and
+   a dropped `pending` deposit does not give its counter back. JS calls `depositRho(i)`. It looks up `["rho", rho]` on chain:
    - absent → proceed with `i`;
    - present → this is **one of our own notes the store does not know** (a deposit that landed while the app died, or
-     before a restore). JS imports it exactly as recovery does (§7, deposits step 2), then moves to `i+1` and checks
-     again. A collision therefore never becomes a paid, rejected tx, and a lost note is found instead of skipped.
+     before a restore). JS imports it exactly as recovery does (§7, deposits step 2), sets `nextDepositIndex = i + 1`
+     and checks again. A collision therefore never becomes a paid, rejected tx, and a lost note is found instead of skipped.
 3. Rust computes the commitment (`commitment(amount, rho)`, R9); JS never holds `addrField`.
 4. Rust proves the deposit circuit (`{amount, depositIndex: i}`). JS compares the returned public inputs, in order:
    `commitment` with Rust's `commitment()` return (the circuit's Poseidon against Rust's: two implementations),
    `amount` and `mintHash` with its own values, `rho` with `depositRho(i)`. A mismatch aborts.
-5. **Before submitting**, JS writes the note as `{commitment, amount, rho, depositIndex: i, status: pending}`. Then it
+5. **Before submitting**, JS writes the note as `{commitment, amount, rho, depositIndex: i, lastValidBlockHeight,
+   status: pending}` and sets `nextDepositIndex = i + 1` in the same write. Then it
    builds the `deposit` instruction (§1 layout, IDL account order, CU limit 200,000) and the existing confirmation flow
    signs it with the selected transparent account (#19 → #20 → #21). No authorization is needed: the circuit binds the
    note to the user's own `nk`, so a deposit cannot pay anyone else.
@@ -377,7 +433,8 @@ authorizeUnshield(handle, owner, amount, fee) -> authId                         
    `leafIndex` and root read from the tx's `LeafInserted`; JS checks that event's commitment equals the note's.
 7. **At startup**, every `pending` deposit is reconciled by its rho PDA: present → read the creating tx (§7 step 2) and
    mark it `unspent`; absent and the chain's block height past the deposit's `lastValidBlockHeight` (stored with the
-   pending note) → drop the `pending` entry (its counter stays used).
+   pending note) → drop the `pending` entry; `nextDepositIndex` is not lowered, so the counter is never reused (reuse
+   would be safe — that `rho` never reached the chain — but one rule is easier to hold than two).
 
 ## 6. Unshield (withdraw with change, relayed)
 
@@ -387,10 +444,18 @@ authorizeUnshield(handle, owner, amount, fee) -> authId                         
    invalid_request` with HTTP 400 to JS, not a thrown network error. No outcome logic is written before it passes.
    The client appends bare paths to `API_BASE`, which already ends in `/v1` (`${API_BASE}/relayer/quote`, never
    `/v1/relayer/…`).
-1. **Destination** (S3, S9):
-   - **`slip10` wallets — default a fresh account**: the lowest `slip10` index not present in the account registry
-     (§10) whose address has no history on the pool's cluster (`getSignaturesForAddress` empty on devnet — which says
-     nothing about mainnet). It is added to the registry as `fresh-exit` only once the unshield lands;
+1. **Destination** (S3, S9, S11):
+   - **`slip10` wallets — a fresh account, the default once the relayer grants SOL**: the lowest `slip10` index not
+     present in the account registry (§10, any role) whose address has no history on the pool's cluster
+     (`getSignaturesForAddress` empty on devnet — which says nothing about mainnet). **It is reserved at selection**
+     (I-5): the registry gains it with role `fresh-pending` when the user proceeds to the confirmation, so a second
+     unshield started meanwhile picks the next index. Promoted to `fresh-exit` when the unshield lands (step 8);
+     removed when the unshield is known not to have landed (an outcome without `txSignature`, or an `unconfirmed`
+     resolved as not landed).
+   - **Until the quote carries `gasGrantLamports` (S11)**, the fresh-account option is shown disabled with its reason
+     (§11), no option is preselected, and the user picks one of the two below. A fresh account without SOL could only
+     be used after a funding tx from another account of the seed — the re-link S6 exists to avoid — so it is not
+     offered half-way.
    - "Another address", with a warning that it is a payment;
    - "My main account", with the warning "this links your exit to your deposit".
    - **`cli` wallets (S9):** no fresh account. The screen offers "Another address" and "My main account" (with the
@@ -401,54 +466,73 @@ authorizeUnshield(handle, owner, amount, fee) -> authId                         
 3. **Tree:** JS syncs pool `8VMe…`'s history (§9) and checks its root against the account's `rootHistory`. It
    computes the note's path.
 4. **Quote:** `GET /relayer/quote`.
-   - It is refused unless `programId`, `pool` and `mint` equal the pinned constants, `feePayer` is a valid key and
-     `gasGrantLamports` (S6, §15 P1) is present and at least the rent-exempt minimum of a 0-byte account plus one
-     signature fee.
+   - It is refused unless `programId`, `pool` and `mint` equal the pinned constants and `feePayer` is a valid key.
+   - `gasGrantLamports` (S6, S10, §15 P1) is **optional** in the frozen contract and becomes present once P1 ships.
+     When present it must be at least the rent-exempt minimum of a 0-byte account plus one signature fee (895,880
+     lamports on today's rent) and at most a sanity ceiling of 50,000,000 lamports (0.05 SOL, m-1), or the quote is
+     refused. When absent, the fresh-account option is disabled (step 1).
    - The fee is **exactly** `minFee.withdraw_change` (R5); a `minFee` above `maxFee` stops with a clear message.
    - The quote's fetch time is recorded.
 5. **Confirmation (§4)** for `{owner, amount, fee}` gives `{authId, owner, ata}`.
 6. **Witness:** JS supplies exactly `{merkleRoot, inputAmount, rho, pathElements, pathIndices}`; Rust fills the rest
-   (§3), checks the authorization and proves. JS compares the seven public inputs with what it can recompute:
-   `merkleRoot` (its own), `nullifier` (the earlier `nullifier()` value), `withdrawAmount` and `fee` (its own),
-   `recipientField` (its own `be_mod_r` of its own ATA derivation — independent of Rust's), `mintHash` (its own),
-   `changeCommitment` (Rust's alone; JS cannot recompute it without `addrField`, and the chain's `LeafInserted` is the
-   later check, step 8). A mismatch aborts.
+   (§3), checks the authorization and proves. JS compares the public inputs it can recompute: `merkleRoot` (its own),
+   `withdrawAmount` and `fee` (its own), `recipientField` (its own `be_mod_r` of its own ATA derivation — independent
+   of Rust's), `mintHash` (its own). Two it cannot (m-4): `nullifier` (JS holds no pre-spend nullifier, R12 — it is
+   checked when the tx lands, by `matchSpent` over the tx's `Withdraw`, step 8) and `changeCommitment` (JS has no
+   `addrField`, R9 — its **only** independent check is the landed `LeafInserted`, step 8). A mismatch aborts.
 7. **Order and freshness (I7):** quote → confirm → prove → submit. Just before submit, if the quote is older than
    `validForSeconds`, JS re-fetches it:
-   - same `minFee`, `feePayer`, `gasGrantLamports` → submit the proof already made (the proof does not depend on the
-     quote except through the fee);
+   - same `minFee`, `feePayer`, `gasGrantLamports` (or its absence) → submit the proof already made (the proof does not
+     depend on the quote except through the fee);
    - any of them changed → discard the proof and go back to step 5: a **new confirmation** for the new fee, then a new
      proof. Nothing is submitted under a fee the user did not approve.
    - A `relay_failed` caused by the root falling out of the 64-entry history → re-sync, new path, new confirmation.
 
    **Submit:** kind `withdraw_change` with `destination = ata` and `destinationOwner = owner` (both from the
-   authorization, so they agree by construction), `cuLimit` 200,000.
+   authorization, so they agree by construction), `cuLimit` 200,000. Just before submit JS records `submitChainTime`:
+   the `blockTime` of the cluster's current slot (`getSlot` then `getBlockTime`; a generic request, nothing in it is
+   about this note), so step 8's timeout runs on the chain's clock, not the phone's.
 8. **Outcomes** (the frozen twelve):
    - `confirmed`: JS verifies **on chain** before marking anything spent (I13). It does not fetch the tx by the
      returned signature (that request would tell the RPC provider which exit is ours, I3): it runs the tree sync (§9),
-     which fetches every new pool tx for everyone alike, takes the tx with the returned signature from it, and
-     requires:
-     - the tx calls program `FeGSS…` on pool `8VMe…` and carries our nullifier and our change commitment;
+     which fetches every new pool tx for everyone alike, and takes the `SyncedTx` with the returned signature from it.
+     RPC lag (I-2): if the signature is not yet in the sync, the sync is retried up to 10 times, 3 s apart; still
+     absent → handled as `unconfirmed`. From the `SyncedTx`, it requires:
+     - the tx calls program `FeGSS…` on pool `8VMe…`; `matchSpent` over its `Withdraw` nullifier returns the note being
+       spent; its `LeafInserted` carries Rust's change commitment;
      - its fee payer is the quote's `feePayer`; its `fee_destination` is `ATA(feePayer, mint)`; its fee equals ours;
      - its `destination` is our `ata` and the token amount moved is ours;
-     - exactly one system transfer of `gasGrantLamports` from `feePayer` to `owner` (S6);
+     - **the grant (S10, m-2)**, checked on the decoded top-level `SystemProgram.transfer` instructions, never on balance
+       deltas (the fee payer's delta also carries the ATA rent, the nullifier rent and the tx fee): at most one
+       `SystemProgram.transfer` in the tx; if there is one, it is exactly `gasGrantLamports` of the quote, from
+       `feePayer` to `owner`, and the owner's pre-balance in the tx was 0 — any other transfer refuses. A 0-lamport
+       owner **without** a grant is accepted (P1's per-owner marker can withhold a concurrent second grant), but for a
+       `fresh-pending` destination it is reported: the exit is recorded (the funds are ours) and the account is shown
+       as holding no SOL — the wallet still never funds it;
+     - any create-ATA-idempotent instruction is exactly `(payer feePayer, ata, owner, mint)` — absent or present (P2
+       makes it always present);
      - **no signer of the tx is any key of this seed** (every registry entry, the main account, `cli` included), and
        the only key of the seed that appears at all is the destination owner (and its ATA).
 
-     Only then is the note marked spent, the change note stored (leaf index from its `LeafInserted`, which must carry
-     Rust's change commitment), and a fresh destination added to the registry as `fresh-exit`.
-   - `unconfirmed`: the note becomes `pending`. JS reconciles **through the tree sync** (§9): a `Withdraw` carrying our
-     nullifier → spent (and verified as above); none after 5 minutes of synced history past the submit → back to
-     `unspent`. It never looks up the nullifier PDA or polls the signature (I3), and never resubmits blindly.
+     Only then is the note marked spent, the change note stored (leaf index from its `LeafInserted`), and a
+     `fresh-pending` destination promoted to `fresh-exit`.
+   - `unconfirmed`: the note becomes `pending` with `pendingSince = submitChainTime`. JS reconciles **through the tree
+     sync** (§9): a `Withdraw` that `matchSpent` attributes to the note → spent (and verified as above); otherwise,
+     once a sync **completes** after the chain's clock (`blockTime` of the current slot, as at submit) has passed
+     `pendingSince + 300 s`, without such a `Withdraw` → not landed (the relayer's blockhash has expired by then, so it
+     cannot land later): back to `unspent`, and a `fresh-pending` reservation is removed. This resolves on a quiet pool
+     too, where no later pool tx exists. It never looks up the nullifier PDA or polls the signature (I3), and never
+     resubmits blindly.
    - `already_spent`: reconcile through the tree sync the same way.
-   - any outcome without `txSignature`: the note is untouched.
+   - any outcome without `txSignature`: the note is untouched; a `fresh-pending` reservation is removed.
    - **Never a self-relay** (R6).
 9. **Progress (#18):** real stages (sync, proof, submit, confirm), never a fixed 90 % or 100 %. This is the July lesson,
    where the progress hung at 90 %.
-10. **The SOL grant (S6).** The fresh account receives the relayer's fixed `gasGrantLamports` in the unshield tx, so it
-    can pay for its own transactions. The wallet never funds a `fresh-exit` account from another account of the seed —
-    not automatically, and not as a suggestion in the UI. Until the program side ships §15 P1, the unshield is not
-    available (no fallback).
+10. **The SOL grant (S6, S10).** A fresh account holds 0 lamports, so the relayer grants it `gasGrantLamports` in the
+    unshield tx, once, and it can pay for its own transactions. The wallet never funds a `fresh-exit` account from
+    another account of the seed — not automatically, and not as a suggestion in the UI. Until the program side ships
+    §15 P1, "Another address" and "My main account" work and the fresh-account option is disabled (S11); there is no
+    fallback that funds it.
 
 ## 7. Recovery from the seed
 
@@ -461,9 +545,10 @@ makes no RPC request specific to one of our notes (I3; m7 does not arise).
      sequential, so a gap only comes from a failed or abandoned tx).
   2. For each hit, read the creating tx (already synced): amount from the instruction, leaf index and commitment from
      `LeafInserted`, and check `commitment(amount, rho)` equals it.
-  3. Spent if a synced `Withdraw` event carries `nullifier(rho)`.
-- **Change notes:** for each spent note, its spending tx is the one whose `Withdraw` carried the nullifier (already
-  synced). `rho_change = Poseidon3(TAG_RHO, nullifier, 0)` (JS can compute it: the nullifier is public), the amount is
+  3. Spent-status for every own note at once: `matchSpent(handle, allSyncedWithdrawNullifiers, ownRhos)` (R12); JS
+     never computes or holds an own nullifier to look for.
+- **Change notes:** for each spent note, its spending tx is the `SyncedTx` whose `Withdraw` nullifier `matchSpent`
+  attributed to it (already synced; that nullifier is public now). `rho_change = Poseidon3(TAG_RHO, nullifier, 0)` (JS can compute it: the nullifier is public), the amount is
   the input minus the instruction's `amount` minus its `fee`, the leaf index and commitment come from its
   `LeafInserted`, and `commitment(changeAmount, rho_change)` must equal that commitment. Recurse.
 - **Accounts (I6, `slip10` wallets only):** each recovered unshield's `destination` token account is compared with
@@ -471,14 +556,20 @@ makes no RPC request specific to one of our notes (I3; m7 does not arise).
   `fresh-exit`. Stop after 20 consecutive indices without a match past the highest match. This is the wallet's own rule
   — the extension has no discovery rule — and it is local, so it reveals nothing to the RPC.
 - The note store and the registry become caches: losing them loses nothing.
+- **Cost (R13).** A restore reads the pool's whole history: one `getSignaturesForAddress` page walk over `5URd…` and a
+  `getTransaction` per pool tx (a few dozen on devnet today). Accepted for devnet. **The indexer trigger:** a restore
+  that reads more than 5,000 tree transactions, or takes more than 60 s on the acceptance phone, makes a coordinator
+  tree indexer a pre-mainnet item (§13). M1b's checkpoint records both numbers (§16).
 
 ## 8. The note store
 
 - **Fields:** `{commitment, amount, rho, depositIndex?, lastValidBlockHeight?, leafIndex?, status: pending | unspent |
-  spent, spentTx?, pendingSince?}` (`lastValidBlockHeight` for a pending deposit, `pendingSince` for a pending unshield), all
-  public or spend-irrelevant. No `noteSecret` and no diversifier: every own note is under `d_self`, which stays in Rust
-  (R9).
-- **Storage:** the encrypted MMKV instance, schema `v1_a0_notes`.
+  spent, spentTx?, pendingSince?}` (`lastValidBlockHeight` for a pending deposit, `pendingSince` — chain time — for a
+  pending unshield), all public or spend-irrelevant. No `noteSecret`, no diversifier (every own note is under `d_self`,
+  which stays in Rust, R9) and no nullifier of an unspent note (R12).
+- **Metadata (I-4):** `nextDepositIndex`, the monotone deposit counter of §5.2 — never lowered, not even when a
+  `pending` deposit is dropped; after a restore it is the highest recovered `depositIndex` + 1.
+- **Storage:** the encrypted MMKV instance, schema `v1_a0_notes` (and the `SyncedTx` cache of §9 beside it).
 - **Old notes:** v1 notes (the old scheme) are not migrated; their schema is cleared on first A0 run in the devnet build.
   They were devnet test notes, and the program side abandoned that pool.
 
@@ -488,7 +579,30 @@ makes no RPC request specific to one of our notes (I3; m7 does not arise).
   for every client alike, so the requests reveal nothing about which notes are ours. Parsed by discriminator for
   `LeafInserted` (exactly the 80-byte payload plus the 8-byte discriminator) and `Withdraw` (32 bytes plus the
   discriminator), plus the `deposit` / `withdraw_with_change` instruction arguments recovery needs. Nothing else is
-  accepted (m8: the v1 `depositLegacy` discriminator goes).
+  accepted (m8: the v1 `depositLegacy` discriminator goes). Only successful transactions are kept; event blobs are
+  admitted only from the pool program's own instruction on this tree (the existing per-instruction scoping of
+  `eventLogs`).
+- **Every spend is in it.** Each A0 spend (`withdraw_with_change`, and M2's `transfer`) writes `merkle_tree` and emits
+  its `LeafInserted` and spend event in the same instruction, so this one history is complete for spent-status and for
+  the `confirmed` check (review 2 §2).
+- **What it retains, per transaction (I-2): the `SyncedTx` record.** M1b builds it in full, so M1c does not re-open
+  the sync:
+  - `signature`, `slot`, `blockTime`;
+  - `signers[]`, `feePayer`;
+  - `leafInserted[]`: `{commitment, leafIndex, root}`;
+  - `withdrawNullifiers[]`;
+  - for a `deposit`: its decoded arguments `{amount, commitment, rho}` and its `depositor`;
+  - for a `withdraw_with_change`: its decoded arguments `{merkleRoot, nullifier, amount, changeCommitment, fee}`, its
+    `destination` token account and its `fee_destination`;
+  - the top-level `SystemProgram.transfer` instructions, decoded `{from, to, lamports}`, and the create-ATA-idempotent
+    instructions, decoded `{payer, ata, owner, mint}`;
+  - the pre-balance (lamports) of every account the tx lists, as `preBalances` gives them (the grant check of §6.8
+    needs the owner's);
+  - the token-balance deltas of the vault and of the destination token account.
+
+  The cache lives in the encrypted MMKV with the notes. It holds nothing secret — everything in it is public chain
+  data — but *which* rows the wallet later reads is the pattern §2 keeps away from the RPC, so it stays with the notes,
+  not in the public instance.
 - **Checks:**
   - the leaves are ordered by `leaf_index` with no gap;
   - the incremental root after each leaf equals the event's `root`;
@@ -505,18 +619,22 @@ makes no RPC request specific to one of our notes (I3; m7 does not arise).
   extension uses (`extension/src/vault/accounts.ts`), so `slip10:n` is the same address in both.
 - **Registry (I6):** `v1_accounts` in the **encrypted** MMKV (a plaintext list of one's own accounts is itself a link —
   departure from rev 1's public MMKV). Entries are `TransparentScheme` strings (`slip10:n` | `cli`, the format
-  `schemeToString` already writes) with a role, `main` | `fresh-exit`. The `main` entry is the scheme the wallet was
+  `schemeToString` already writes) with a role, `main` | `fresh-pending` | `fresh-exit` (I-5: `fresh-pending` is a
+  reservation made at selection, §6.1; it is promoted on landing and removed on a known non-landing; it is not shown in
+  the switcher and is never a Send source). The `main` entry is the scheme the wallet was
   created or imported with (`WALLET_TRANSPARENT_DERIVATION`), whatever it is — `slip10:3` is `slip10:3`, never
   renumbered.
 - **Rules, as the extension's** (`extension/src/shared/envelopeRules.ts`, `extension/src/unlock/accountsFlow.ts`):
   - a `cli` wallet has exactly one account, its `main` (S9): no fresh accounts, and the account switcher shows that one;
   - `slip10` indices are integers in 0 … 2³¹ − 1, no two entries share one, at most 100 entries;
-  - the fresh index is the lowest `slip10` index not in the registry, regardless of display position (as the
-    extension's `lowestFreeIndex`), then the history check of §6.1.
+  - the fresh index is the lowest `slip10` index not in the registry under any role, regardless of display position
+    (the rule of the extension's `lowestFreeIndex`, `extension/src/unlock/accountsFlow.ts`), then the history check of
+    §6.1.
   - The registry is not shared with the extension: an index the extension added is skipped here only by the history
     check.
 - **UI:** the dashboard (#11) gains an account switcher: a list of accounts with SOL and token balances, labelled
-  "Account N+1" (the extension's default name) plus "main" / "exit" tags; no editing. The selected account is the one
+  "Account N+1" for `slip10:N` — the extension's default (`addAccount` names it `` `Account ${index + 1}` ``); the plan
+  reuses that rule rather than restating it (m-7) — plus "main" / "exit" tags; no editing. The selected account is the one
   Send, Receive and Shield use. Fresh accounts appear in it after their unshield lands.
 - **Linking warning (C2):** a Send from any account of the seed to another account of the same seed, where either is
   `fresh-exit`, shows a warning before #19 ("Sending between your own accounts links them on chain"), and needs an
@@ -543,6 +661,8 @@ makes no RPC request specific to one of our notes (I3; m7 does not arise).
     timing are public.";
   - the fresh-account default: "A new account of this wallet (Account N+1) receives it. The relayer also sends it
     `<g>` SOL so it can pay for its own transactions.";
+  - the fresh-account option while the relayer does not grant SOL (S11), disabled: "A new account is not available
+    yet: the relayer cannot send it SOL for its own fees, and funding it from your other accounts would link them.";
   - "My main account": "This links your exit to your deposit: your main account made the deposit.";
   - "Another address": "This is a payment from your shielded balance. The recipient sees the amount.";
   - `cli` wallets (S9): "This wallet uses the Solana CLI key scheme, which has a single account, so no new account can
@@ -553,7 +673,7 @@ makes no RPC request specific to one of our notes (I3; m7 does not arise).
     version.";
   - **#17 explainer, who sees what (R11):** "The relayer that submits your unshield sees the request: the destination,
     the amount, the time and the network address it came from. The proof does not tell it which deposit is spent, but
-    amounts and timing can hint at it. The RPC provider the app uses sees every request the app makes, including the
+    amounts and timing can hint at it. Otherwise it sees what anyone sees on chain. The RPC provider the app uses sees every request the app makes, including the
     balances of all your accounts. On chain, amounts and timing are public.";
   - Settings, Export View Key: "Not available in this version." (disabled row).
 - **Measure, not boolean (I4):** where a screen speaks of the pool's privacy at all, it shows the anonymity set as a
@@ -573,6 +693,10 @@ makes no RPC request specific to one of our notes (I3; m7 does not arise).
   - the old-scheme surfaces facing the user (I9): `primeViewSession`'s write of `WALLET_SHIELDED_ADDRESS` (the 87-char
     v1 address) and the shielded option of Receive that shows it; `noteScan`, `shieldedViewSession`,
     `shieldedIdentity`; the `ExportViewKey` screen and route (the Settings row stays, disabled, R10) — M1b;
+  - the import sites outside the removed modules, which M1b's plan budgets as edits (m-8, checked):
+    `src/screens/dashboard/DashboardScreen.tsx` (imports `noteScan.scanIncomingNotes`) and
+    `src/store/zustand/sessionStore.ts` (imports `clearShieldedViewSession`); `shieldedIdentity` itself is imported
+    only by the v1 modules and `secureStorageSession.ts`, all edited or removed in M1b anyway;
   - the self-relay path and `FEATURES.shieldedRelayer` / `SHIELDED_RELAYER` (R6: never, so the code must not exist), and
     the unreferenced v1 lookup-table client `src/modules/solana/relayer.ts` (it also carries the double `/v1/v1/`
     path) — M1b;
@@ -606,18 +730,28 @@ makes no RPC request specific to one of our notes (I3; m7 does not arise).
   exit as a launch gate).
 - **Later:**
   - iOS (the native port is a prerequisite);
-  - the ceremony (A1), the audit, an immutable VK, mainnet; on mainnet the relayer fee must cover the S6 grant;
-  - a coordinator tree indexer if RPC log scanning becomes too slow.
+  - the ceremony (A1), the audit, an immutable VK, mainnet.
+  - **The grant's mainnet economics — a pre-mainnet decision.** S10 gates the grant to a 0-lamport owner, once per key,
+    but keys are free and change notes chain, so on mainnet the gate alone lets anyone turn `minFee` (a token amount)
+    into a SOL grant per new key, bounded only by the spend cap (§15 P1). A uniform, rarely-changed, token-denominated
+    `minFee` cannot track a SOL cost. Before mainnet the program side and the owner choose a priced bound — for example
+    a minimum `withdrawAmount` for a granted exit, worth more than the grant at a conservative price — or drop the grant
+    there;
+  - a coordinator tree indexer — **a pre-mainnet item if R13's trigger fires** (a restore reading more than 5,000 tree
+    transactions, or over 60 s on the acceptance phone).
 
 ## 14. Tests and gates
 
 Each line is tagged with the plan that delivers it (§16).
 
 - **Rust (M1a):**
-  - EIP-2333 → `sk` against the EIP's own four published cases (seed → master → child, m11), never from this crate; and
-    a test that `micro-key-producer/bls.js`'s `deriveSeedTree` at `m/12381/371/1/0` equals Rust's for a fixed seed (M2's
-    web/extension derivations use that library; divergence would be silent);
-  - `nk`, `ivk`, `addrField`, `nullifier`, `commitment` against values computed independently in JS from the frozen
+  - EIP-2333 → `sk` against the EIP's own four published cases (seed → master → child, m11), never from this crate;
+  - `micro-key-producer/bls.js`'s `deriveSeedTree` at `m/12381/371/1/0` equals Rust's for the repo's public test seed
+    (M2's web/extension derivations use that library; divergence would be silent). **The JS side of this vector is
+    produced offline (I-6)** by a Node script under `scripts/` (the plan names it, e.g. `scripts/a0/bls-spend-vector.mjs`),
+    run by hand, its output committed as a vector file the Rust test reads. It is not a Jest test and nothing under the
+    app's sources calls it, so the boundary source test below needs no exception;
+  - `nk`, `ivk`, `addrField`, `nullifier`, `commitment`, `matchSpent` against values computed independently in JS from the frozen
     equations (`a0/fieldEquations.ts`, itself held to the a0 golden vectors); the Rust Poseidon against the a0 golden
     vectors, with a named mutation (one round constant changed → mismatch);
   - `rho(i)` and `d_self` against a JS reimplementation;
@@ -628,8 +762,11 @@ Each line is tagged with the plan that delivers it (§16).
     on-chain `deposit_vk` (m10);
   - pinned-digest refusal, with a one-byte-changed key file;
   - authorization refusals (another owner, ATA, amount, fee; expired, reused, absent, from a closed or replaced handle;
-    `amount + fee > inputAmount`) and the allow-list refusals (every Rust-filled name, an unknown name), with the
-    allow-lists asserted against the signal table and `nPubInputs` / `nPrivInputs`;
+    `amount + fee > inputAmount`, a fee above the sanity ceiling) and the allow-list refusals (every Rust-filled name, an
+    unknown name), with *mapped(JS allow-list) ∪ Rust-filled = the signal table* and the `nPubInputs` / `nPrivInputs`
+    counts asserted (m-5);
+  - INV-NULL: no JNI function's output other than a `withdraw_change` proof's public inputs equals `nullifier(rho)` for
+    any `rho` the test passed in;
   - zeroization (handle closed → no secret readable) and the seed wiped after `keysOpen`;
   - named mutations for each check.
 - **JS:**
@@ -638,13 +775,24 @@ Each line is tagged with the plan that delivers it (§16).
   - the tree sync against the real `5URd…` account (a recorded fixture) with root, gap and order controls, and the
     parser refusing any other discriminator or payload length (M1b);
   - the deposit `pending` → `unspent` path, a rho-PDA hit for an unknown counter importing the note, startup
-    reconciliation (M1b);
+    reconciliation, and `nextDepositIndex` never lowered (a dropped `pending` does not hand its counter back) (M1b);
+  - the `SyncedTx` record: every field of §9 decoded from recorded fixtures of a landed deposit and a landed relayed
+    `withdraw_with_change` (`3UfCx5TD…`), and refusal of a failed tx or a blob from another program (M1b);
+  - **restore makes no note-specific request (I-3, M1b):** a recording mock `Connection` logs every method and its
+    params during a full restore from fixtures; the test asserts the set of methods is within
+    `{getSignaturesForAddress(5URd…), getTransaction(<pool tx signatures>), getAccountInfo(5URd…), getBalance /
+    getMultipleAccounts(<registry accounts>), getTokenAccountBalance / getParsedTokenAccountsByOwner(<registry
+    accounts>)}` and that no param equals any commitment, `rho`, nullifier, rho-PDA or nullifier-PDA of the fixtures'
+    own notes (positive control: the same assertion fails on a restore variant that looks up one nullifier PDA);
   - deposit recovery on recorded fixtures (M1b); change-note and account recovery on recorded fixtures, and our
     recomputed change commitment against the program side's golden `changeCommitment` row (§15) (M1c);
-  - every relayer outcome, the quote validation, the re-quote → re-confirm rule (M1c);
+  - every relayer outcome, the quote validation (`gasGrantLamports` absent, below the floor, above the ceiling), the
+    re-quote → re-confirm rule, the `confirmed` sync retry bound, the `unconfirmed` chain-time timeout on a quiet pool,
+    and the `fresh-pending` reservation (a second unshield picks the next index; a non-landing removes it) (M1c);
   - post-landing verification refusing a foreign pool, a foreign fee payer, a wrong `fee_destination`, a wrong fee, a
-    wrong destination, a missing or wrong SOL grant, a missing nullifier, and **any signer that is a key of this seed**
-    (M1c);
+    wrong destination, a grant to an owner whose pre-balance was not 0, a grant of another amount or from another
+    payer, two transfers (and, as accepted-but-reported, a fresh destination left without a grant), a create-ATA with other accounts, a missing nullifier, and
+    **any signer that is a key of this seed** — each against both shapes, with and without create-ATA (M1c);
   - multi-account derivation equal to the extension's for `slip10:0..3`; the registry rules (`cli` single, lowest free
     index, no renumbering of `main`); the linking warning (M1c for the registry and fresh rule, M1d for the UI and the
     warning);
@@ -652,49 +800,88 @@ Each line is tagged with the plan that delivers it (§16).
 - **Boundary (M1a for the native side, M1b for the JS source test, M1c for Kotlin):**
   - a JNI surface test that the `.so` exports exactly §3's functions, and that the React Native module exposes all of
     them **except** `parseUnshield` and `authorizeUnshield`;
-  - a source test that no JS module outside `src/modules/keyDerivation/shielded.ts` imports `deriveSeedTree`, that no
+  - a source test, scoped to `src/`, `core/`, `extension/src/` and `web/src/` (not `scripts/`, I-6), that no JS module outside `src/modules/keyDerivation/shielded.ts` imports `deriveSeedTree`, that no
     JS code passes `SHIELDED_PATHS.spend` (or the string `12381/371/1`) to a derive call (m6), and that no JS module
     imports anything that could return a secret;
   - Kotlin (M1c): a touch delivered with `FLAG_WINDOW_IS_OBSCURED` does not approve; a null `currentActivity` refuses;
     a second request while one is in flight refuses; activity recreation during the prompt fails closed.
 - **On the phone (devnet), the acceptance:** the checkpoints of §16 in order — M1a (native proof on the phone), M1b
-  (shield, wipe, restore), M1c (relayed unshield to a fresh account with the scripted checks, wipe, restore), M1d (send
-  from the fresh account with the granted SOL only, the scripted history check). The scripted checks are the
+  (shield, wipe, restore — balance returns; the no-note-specific-request claim is the JS test above), M1c (relayed
+  unshield to another address with the scripted checks, then to a fresh account once P1 is live, wipe, restore), M1d
+  (send from the fresh account with the granted SOL only, the scripted history check). The scripted checks are the
   post-landing verifier's assertions run against devnet from a desk script, recorded with the signatures.
 - All gates of the repo stay green: tsc, jest, lint, no-TGE-date, the privacy claims, and the native-prover workflow.
 
 ## 15. Dependencies and open points
 
 - **Program side:**
-  - **P1 — the S6 SOL grant (a change to the frozen relayer contract; required for M1c).** The wallet's exact proposal:
-    - `destinationOwner` becomes **required** for kind `withdraw_change` (the wallet always sends it already).
-    - In **every** relayed `withdraw_with_change`, the relayer adds one `SystemProgram.transfer` of exactly
-      `gasGrantLamports` from `feePayer` to `destinationOwner`, before the pool instruction — whether or not the ATA
-      existed, whoever the destination is, so every relayed unshield carries the same grant.
-    - `GET /relayer/quote` gains `"gasGrantLamports": "<u64 decimal string>"`; like `minFee`, it is a deliberate config
-      value, the same for every request, changed rarely and announced to the wallet side.
-    - Proposed value: **3,000,000 lamports (0.003 SOL)** — the rent-exempt minimum of a 0-byte account (890,880) so the
-      account can exist, plus one recipient ATA's rent (2,039,280) so its first send can create one, plus fees for a
-      dozen signatures. The program side may pick another value; the wallet only requires it to be at least the
-      rent-exempt minimum plus one signature fee (§6.4).
-    - Size: about 20 bytes more when create-ATA is present (the owner and the system program are already in the tx),
-      about 50 when it is not; under 1,232 either way (888 B today). The program side measures.
-    - Cost and abuse: the grant counts against the relayer's spend cap; an exhausted cap answers `budget_exceeded` (no
-      signature, nothing forwarded). Each grant costs the requester a deposit and `minFee`; on mainnet the fee must
-      cover the grant (S6).
-    - The twelve outcomes are unchanged.
-  - **P2 — uniform create-ATA (proposed, not required).** Always prepend create-ATA-idempotent (a no-op when the ATA
-    exists), so the instruction list is the same for every unshield. Limit, stated: the rent paid on a creation still
-    shows in the balance changes, so "exit to a brand-new account" stays visible to a careful observer.
-  - The A0 relayer announced live on devnet (`/relayer/submit` kind `withdraw_change`, `/relayer/quote`) with P1, and
-    the relayer-landed golden vector sent to the wallet (their `93a82a5` names one, `3UfCx5TD…`).
+  - **P1 — the SOL grant to a new destination owner (S6, S10; a change to the frozen relayer contract; required for
+    M1c's fresh-account option only, S11).** The wallet's exact proposal (the paste-ready text is
+    `.superpowers/sdd/shielded-a0-m1-ico-proposal.md`):
+    - **When:** in a relayed `withdraw_with_change`, the relayer adds one `SystemProgram.transfer` of exactly
+      `gasGrantLamports` from `feePayer` to `destinationOwner` **only when `destinationOwner` holds 0 lamports** at
+      submit (`getBalance(destinationOwner, 'confirmed') == 0`), and only if an atomic per-owner marker is free (Redis
+      `SET a0:grant:<owner> 1 NX PX 180000`, taken before the spend-cap reservation, released if nothing is forwarded).
+      Without the marker two concurrent submits to the same 0-lamport owner would both be granted; with it, at most one
+      grant per key is in flight, and once one lands the owner's balance is no longer 0. The 180 s expiry outlives the
+      relayer's blockhash, so a grant that never landed can be given again.
+    - **Where in the tx:** after any create-ATA-idempotent, before the pool instruction. Order: ComputeBudget →
+      create-ATA-idempotent (P2) → grant (when given) → `withdraw_with_change`.
+    - `destinationOwner` becomes **required** for kind `withdraw_change` (the wallet always sends it already; without
+      it the relayer could not read the owner's balance).
+    - **Quote:** `GET /relayer/quote` gains `"gasGrantLamports": "<u64 decimal string>"`. Like `minFee` it is a
+      deliberate config value, the same for every request, changed rarely and announced to the wallet side. While P1 is
+      not deployed the field is absent, and the wallet disables its fresh-account option (S11).
+    - **Value proposed: 3,000,000 lamports (0.003 SOL)** — the rent-exempt minimum of a 0-byte account (890,880) so the
+      account can exist, plus one recipient ATA's rent (2,039,280) so its first send can create one, plus fees for about
+      a dozen signatures. The program side may pick another value; the wallet refuses a quote whose value is below the
+      rent-exempt minimum plus one signature fee (895,880) or above 50,000,000 (§6.4).
+    - **The four coordinator config changes** (`coordinator/src/services/relayerA0.js`, `coordinator/src/config/index.js`;
+      I-8), with a new `SHIELDED_A0_GAS_GRANT_LAMPORTS` = 3,000,000:
+      1. the per-request cost: `cost += GAS_GRANT` when the grant is given, next to the existing `+= ATA_RENT` when the
+         ATA is missing (`COST.withdraw_change` itself, 958,520, is unchanged);
+      2. `MAX_TX_COST = max(COST.transfer, COST.withdraw_change + ATA_RENT + GAS_GRANT)` = 958,520 + 2,039,280 +
+         3,000,000 = **5,997,800** (was 2,997,800), so `validateConfig`'s cap and floor checks cover a granted exit;
+      3. `SHIELDED_A0_SPEND_CAP_LAMPORTS`: 20,000,000 → **30,000,000** per 60 s window — 20 M would allow only three
+         fresh-account exits a minute pool-wide (3 × 5,997,800), 30 M allows five;
+      4. `SHIELDED_A0_MIN_BALANCE_LAMPORTS`: stays **100,000,000** (it is still ≥ the new `MAX_TX_COST`, which
+         `validateConfig` re-checks at start).
+    - **Devnet cost, re-sized:** an exit to a fresh account costs the relayer 5,997,800 lamports (nullifier rent and
+      signature 958,520, ATA rent 2,039,280, grant 3,000,000); to an owner with SOL and an ATA, 958,520; to an owner with
+      SOL and no ATA, 2,997,800. The fee payer's 2 SOL, less the 0.1 SOL floor, pays for about 316 fresh-account exits;
+      **top it up to 5 SOL** (about 816).
+    - **What S10 bounds, and what it does not.** It bounds the grant to once per key, so chaining unshields to one owner
+      draws one grant. It does not bound an attacker who uses a **new key per unshield**: keys are free, and one
+      deposit's change notes chain through any number of unshields, each costing the attacker `minFee` (10,000 base
+      units) while the relayer pays a grant, a nullifier rent and an ATA rent (the last reclaimable by the attacker by
+      closing the ATA — the frozen contract's create-ATA already has this shape). On devnet the spend cap and the floor
+      bound it: abuse is a denial of service on other users (`budget_exceeded`), not a loss that matters. **On mainnet
+      the per-key gate is not an economic bound by itself**; §13 records it as a pre-mainnet item.
+    - Size: the relayer-landed `3UfCx5TD…` (ComputeBudget → create-ATA → FeGSS) is 888 of 1,232 bytes; the grant adds
+      about 20 bytes (the owner and the system program are already in the tx). The program side measures.
+    - The twelve outcomes are unchanged; an exhausted cap answers `budget_exceeded` (no signature, nothing forwarded).
+    - A new relayer-landed golden vector with a grant, sent to the wallet.
+  - **P2 — create-ATA-idempotent in every relayed unshield (S12, proposed firmly).** The relayer always prepends
+    create-ATA-idempotent `(payer feePayer, ata, owner, mint)`, also when the ATA exists (then it is a no-op), so every
+    relayed `withdraw_with_change` has the same instruction list. Cost: no rent when the ATA exists, a few thousand CU,
+    and about 75 bytes when the tx would not otherwise carry the owner and the ATA program (under 1,232 bytes either
+    way). The relayer-landed golden vector's shape changes accordingly. **Limit, stated:** the instruction list becomes
+    uniform, but the rent paid on a creation and the grant's presence (a 0-lamport owner) still show in the
+    transaction's balance changes and instructions, so "exit to a brand-new account" stays visible to a careful
+    observer. P2 removes one distinguisher, not all of them. The wallet's verifier accepts both shapes (§6.8) until the
+    program side announces P2 deployed, then only the uniform one.
+  - The A0 relayer announced live on devnet (`/relayer/submit` kind `withdraw_change`, `/relayer/quote`) against the
+    frozen contract — enough for M1c's "Another address" and "My main account" (S11) — and the relayer-landed golden
+    vector sent to the wallet (their `93a82a5` names one, `3UfCx5TD…`). P1 (and P2) later, for the fresh account.
   - The IDL `shielded_pool.json` committed or sent (M1b's first task needs it).
   - **The change-note equation confirmed (I8):** the `change rho` row of `gen-signal-table` for `withdraw_change`, and a
     golden `changeCommitment` row with its inputs (`nk` or a test `addrField`, `d`, the amounts, the nullifier) —
     needed for M1c's change-note recovery test; the landed `2mfMYnbt…` is checkable only with the test key's `nk`.
 
-  M1a and M1b can be built and tested on the phone without P1 and the relayer; M1c cannot finish without them.
-- **Owner:** none open after S1–S9. The rulings R1, R3–R11 are listed for the owner to overturn.
+  M1a and M1b can be built and tested on the phone without the relayer. M1c's first checkpoint needs the live relayer
+  on the frozen contract; its second (the fresh account) and M1d's checkpoint need P1.
+- **Owner:** none open after S1–S12. The rulings R1, R3–R13 are listed for the owner to overturn. One point for the
+  owner to know (not to decide in M1): S10's per-key gate is not an economic bound on mainnet (§15 P1, §13).
 
 ## 16. The four plans (S8)
 
@@ -704,10 +891,10 @@ same commit and launches it on the phone. Every requirement of §§3–12 belong
 
 | plan | scope | depends on |
 |---|---|---|
-| **M1a — Rust core** | all of §3 (derivation incl. `d_self`, `rho(i)`, ATA, commitments, allow-lists, the authorization record and check, pinned keys, zeroization, `Mutex`, JNI surface); the Kotlin binding of every JNI function except `parseUnshield` / `authorizeUnshield`; the native removal of `NocturaKeyModule` / `libnoctura_key.so` (§12); `Cargo.lock`, the `readelf` CI step, arm64-only (§12); §14 Rust and native-boundary tests incl. the A0 proof-layout check (m10) | — |
-| **M1b — deposit and recovery** | first task: decode the landed deposit against the IDL and §1 (I1); §5 (deposit, `pending` before submit, counter, rho pre-check, startup reconciliation); §7 deposits; §8; §9; #16 shield side, #18 deposit stages and #19–#21 wired to A0 (their look is already the design's; the data path and #18's stages change); every §12 removal tagged M1b, and hiding #16's unshield side until M1c | M1a |
-| **M1c — confirmation and relayed unshield** | first task: the `pinnedFetch` on-device control (§6.0); §4 (dialog, `androidx.biometric`, window and lifecycle rules); §6 (destination incl. S9, quote, order, submit, outcomes, verifier with the no-signer check, grant); §7 change notes and accounts; §10 registry, its rules and the fresh rule; #16 unshield side, the destination choice and the warnings (undrawn: built from the design system); the guard's widened scope (§11) | M1b; §15 P1 and the live relayer; §15's change-note vector |
-| **M1d — multi-account and the remaining screens** | §10 UI (the account switcher, balances, the selected account for Send / Receive / Shield) and the linking warning; #11 with mode = shielded; #17 with the who-sees-what copy (R11); the owner's visual pass over every undrawn surface of M1c and M1d | M1c |
+| **M1a — Rust core** | all of §3 (derivation incl. `d_self`, `rho(i)`, ATA, commitments, `matchSpent`, allow-lists, the authorization record and check, the fee ceiling, pinned keys, zeroization, `Mutex`, JNI surface); the Kotlin binding of every JNI function except `parseUnshield` / `authorizeUnshield`; the native removal of `NocturaKeyModule` / `libnoctura_key.so` (§12); `Cargo.lock`, the `readelf` CI step, arm64-only (§12); §14 Rust and native-boundary tests incl. the A0 proof-layout check (m10) and the offline bls.js vector (I-6) | — |
+| **M1b — deposit and recovery** | first task: decode the landed deposit against the IDL and §1 (I1); §5 (deposit, `pending` before submit, `nextDepositIndex`, rho pre-check, startup reconciliation); §7 deposits and its cost measurement (R13); §8; §9 including the full `SyncedTx` record (I-2); #16 shield side, #18 deposit stages and #19–#21 wired to A0 (their look is already the design's; the data path and #18's stages change); every §12 removal tagged M1b, and hiding #16's unshield side until M1c | M1a |
+| **M1c — confirmation and relayed unshield** | first task: the `pinnedFetch` on-device control (§6.0); §4 (dialog, `androidx.biometric`, window and lifecycle rules); §6 (destination incl. S9 and S11, quote with and without `gasGrantLamports`, order, submit, outcomes, the `confirmed` retry and the chain-time timeout, the verifier with the no-signer and grant checks); §7 change notes and accounts; §10 registry, its three roles, its rules and the fresh rule with the `fresh-pending` reservation; #16 unshield side, the destination choice and the warnings (undrawn: built from the design system); the guard's widened scope (§11) | M1b; the live relayer on the frozen contract; §15's change-note vector; P1 for its second checkpoint only |
+| **M1d — multi-account and the remaining screens** | §10 UI (the account switcher, balances, the selected account for Send / Receive / Shield) and the linking warning; #11 with mode = shielded; #17 with the who-sees-what copy (R11); the owner's visual pass over every undrawn surface of M1c and M1d | M1c's first checkpoint to start; P1 and M1c's second checkpoint for its own checkpoint |
 
 **Checkpoints (in the acceptance order: deposit → restore → unshield → use):**
 
@@ -716,14 +903,21 @@ same commit and launches it on the phone. Every requirement of §§3–12 belong
   a deposit proof whose public inputs equal the desk values and verify against the deposit VK read from chain; a
   `withdraw_change` prove without an `authId` refuses. `isSupported()` true on the phone.
 - **M1b:** shield an amount from the main account (deposit signed by it); the note shows `unspent` with the leaf index
-  of its `LeafInserted`. Wipe the app, restore from the phrase: the shielded balance returns from the chain, with no
-  RPC request naming the note. Kill the app between the deposit's submit and its confirmation once: at the next start
-  the note is reconciled, not lost.
-- **M1c:** unshield part of the deposit to a fresh account through the relayer. The desk script, from the signature,
-  asserts every §6.8 condition — above all, no signer of the tx is a key of this seed — and that the fresh account
-  holds the token amount and exactly `gasGrantLamports`. Wipe and restore: the change note and the fresh account come
-  back. The owner's visual pass of the destination choice, the warnings and the native dialog. (A `cli` wallet's
-  unshield to "Another address" is exercised once with a second phrase.)
+  of its `LeafInserted`. Wipe the app, restore from the phrase: the shielded balance returns from the chain. (That the
+  restore made no note-specific RPC request is not observable on a phone; it is the recording-`Connection` JS test of
+  §14, I-3, which must pass at this checkpoint.) The restore's tree-transaction count and its duration on the phone are
+  recorded against R13's trigger (5,000 transactions, 60 s). Kill the app between the deposit's submit and its
+  confirmation once: at the next start the note is reconciled, not lost.
+- **M1c, first checkpoint (frozen contract, S11):** unshield part of the deposit through the relayer to "Another
+  address" (a devnet address outside this seed), and once to "My main account" after its warning. The desk script,
+  from each signature, asserts every §6.8 condition — above all, no signer of the tx is a key of this seed — and that
+  no grant was given (no P1 yet). The fresh-account option is visible, disabled, with its reason. Wipe and restore: the
+  change notes come back. The owner's visual pass of the destination choice, the warnings and the native dialog. (A
+  `cli` wallet's unshield to "Another address" is exercised once with a second phrase.)
+- **M1c, second checkpoint (once P1 is live):** unshield to a fresh account. The desk script asserts every §6.8
+  condition, that the owner's pre-balance was 0, that exactly one grant of `gasGrantLamports` from the relayer's fee
+  payer reached it, and that the fresh account holds the token amount. A second unshield started while the first was
+  pending picked the next index (`fresh-pending`). Wipe and restore: the change note and the fresh account come back.
 - **M1d:** switch to the fresh account and send from it to a devnet address outside this seed, paying only from the
   granted SOL. The desk script asserts the fresh account's history is exactly {the relayed unshield, this send} and
   that no transaction connects it to another account of the seed. The linking warning appears when a send from it to
