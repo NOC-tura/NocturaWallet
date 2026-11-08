@@ -1,6 +1,7 @@
 # Shielded on A0 · Milestone 1 — shield and a private unshield on the deployed A0 pool (Android, devnet)
 
-**Status:** rev 3, 2026-11-08 — Fable review 2 + owner S10–S12, rulings R12–R13. Rev 2 (00e58fe) was Fable review 1 +
+**Status:** rev 3.1, 2026-11-08 — the program side's acceptance of P1/P2. Rev 3 (03c866e) was Fable review 2 + owner
+S10–S12, rulings R12–R13. Rev 2 (00e58fe) was Fable review 1 +
 owner decisions S6–S9, controller rulings R9–R11. Rev 1 (58c0c7a) was the design the owner approved in conversation
 section by section (the milestone split, `nk` in the Rust prover, the unshield destinations, the native confirmation in
 this milestone, a minimal multi-account in the app; then the architecture, the data flow and the test / scope
@@ -9,6 +10,23 @@ issues; review 2 (`…-spec-review-2.md`) found 1 Critical, 8 Important and 10 M
 `.superpowers/sdd/shielded-a0-m1-decisions.md`. The program-side proposal text (P1, P2) is
 `.superpowers/sdd/shielded-a0-m1-ico-proposal.md`. Next: the owner; then the four plans of §16, each with its own
 Fable review.
+
+### Rev 3.1 — the program side's acceptance of P1/P2 (text only)
+
+- P1 and P2 marked **ACCEPTED** (2026-11-08), pending the program side's "live on devnet" announcement and two new
+  golden vectors (existing-ATA, fresh-owner); the frozen-contract facts note it → §1, §15, S12 row.
+- Measured rent replaces rev 3's figures where the spec quoted them: 0-byte account 650,240 (was 890,880), ATA
+  1,488,440 (was 2,039,280); the relayer-landed size is 994 bytes (rev 3's 888 was wrong), the grant adds about 17 →
+  §15 P1, P2. The coordinator's cost constants stay at the old rent, as theirs (an over-count) → §15 P1.
+- The wallet's quote lower bound restated as a formula, `rentExempt(0) + 5,000` = 655,240 today (was 895,880) → §6.4.
+- ADDITION 1: no grant to an off-curve `destinationOwner`; the wallet's own destinations are on curve; the verifier
+  accepts a 0-lamport off-curve owner without a grant → §6.8, §15 P1.
+- ADDITION 2: the verifier counts `SystemProgram.transfer` among top-level instructions only → §6.8, §15 P1.
+- `destinationOwner` required (else `invalid_request`) → §15 P1.
+- Mainnet: no grant until a priced bound, so the fresh-account option is devnet-only for now → §0 scope note, §6.1,
+  §6.4, §11, §13, §15 P1.
+- P2's limit as the program side states it (two shapes: grant ⇔ 0-lamport on-curve owner) → §15 P2.
+- The fee payer topped up to 5 SOL (done by the program side) → §15 P1.
 
 ### Rev 3 — what changed, finding by finding
 
@@ -120,6 +138,11 @@ wallet.
 
 ## 0. Scope and decisions
 
+**Scope note (rev 3.1): the fresh-account exit is devnet-only for now.** The program side accepted P1 (§15) with **no
+grant on mainnet** until a priced bound is agreed, so on mainnet the quote carries no `gasGrantLamports` and the
+wallet's fresh-account option is disabled there (§6.1, §11). M1 itself is devnet-only (R8); this note is for whoever
+takes shielded to mainnet: until that bound exists, a mainnet unshield goes to "Another address" or "My main account".
+
 | # | Decision (owner) | Where |
 |---|---|---|
 | S1 | Two milestones. **M1 (this spec): shield + unshield with change, via the relayer**, the whole chain (Rust, Kotlin, JS, screens) and an on-phone test. **M2: private transfer, scanning received notes, the 166-char `noc1…` receive address, merging notes.** | §0, §13 |
@@ -133,7 +156,7 @@ wallet.
 | S9 | *(review Q3 / I6)* **`cli`-scheme wallets get no fresh accounts** (the extension's rule: a `cli` wallet has exactly one account). Their unshield goes to any address, or to the main account with the warning. | §6.1, §10 |
 | S10 | *(review 2 C-1)* **The relayer grants SOL only when the destination owner holds 0 lamports** — at most one grant per fresh key. The cost and abuse are bounded by the coordinator's spend cap; P1 lists the coordinator config changes. | §6.4, §6.8, §15 |
 | S11 | *(review 2 I-1)* **M1c ships "Another address" and "My main account" against the frozen contract**; the fresh-account default switches on only when the quote carries the grant. | §6.1, §16 |
-| S12 | *(review 2 Q3)* **P2 is proposed:** the relayer always prepends create-ATA-idempotent, so every unshield has the same instruction list. | §15 |
+| S12 | *(review 2 Q3)* **P2 is proposed:** the relayer always prepends create-ATA-idempotent, so every unshield has the same instruction list. *(Rev 3.1: P1 and P2 accepted by the program side, pending their "live" announcement.)* | §15 |
 
 Controller rulings (the most secure default; the owner may overturn any):
 
@@ -212,6 +235,8 @@ make the two sides agree by construction.
     present ⟺ forwarded.
   - `fee_destination = ATA(fee_payer, mint)` (derived on chain).
   - The optional `destinationOwner`: the ATA check always runs, and create-ATA-idempotent is added only when the ATA is missing.
+    *(As frozen. P1 and P2, accepted on 2026-11-08 and pending the "live on devnet" announcement, make
+    `destinationOwner` required, prepend create-ATA-idempotent always, and add the grant — §15.)*
   - The wallet adds nothing to a relayed tx. CU default for withdraw_change: 200,000.
   - Relayer fee payer `3jvhiz9qcJAe2zGHvRAiRYXiaFCdjEQrB9KuE5NuFaGe`, fee ATA `9643JXJm5ZZwv8yaTozQ2qMeVw6xHQWhquGsD87knME9`.
   - **Not announced as live to the wallet yet.** (Their `93a82a5` records a `withdraw_change` landed by that key
@@ -452,7 +477,8 @@ authorizeUnshield(handle, owner, amount, fee) -> authId                         
      unshield started meanwhile picks the next index. Promoted to `fresh-exit` when the unshield lands (step 8);
      removed when the unshield is known not to have landed (an outcome without `txSignature`, or an `unconfirmed`
      resolved as not landed).
-   - **Until the quote carries `gasGrantLamports` (S11)**, the fresh-account option is shown disabled with its reason
+   - **Until the quote carries `gasGrantLamports` (S11)** — before P1 is live on devnet, and on mainnet until a priced
+     bound exists (§0 scope note) — the fresh-account option is shown disabled with its reason
      (§11), no option is preselected, and the user picks one of the two below. A fresh account without SOL could only
      be used after a funding tx from another account of the seed — the re-link S6 exists to avoid — so it is not
      offered half-way.
@@ -468,9 +494,12 @@ authorizeUnshield(handle, owner, amount, fee) -> authId                         
 4. **Quote:** `GET /relayer/quote`.
    - It is refused unless `programId`, `pool` and `mint` equal the pinned constants and `feePayer` is a valid key.
    - `gasGrantLamports` (S6, S10, §15 P1) is **optional** in the frozen contract and becomes present once P1 ships.
-     When present it must be at least the rent-exempt minimum of a 0-byte account plus one signature fee (895,880
-     lamports on today's rent) and at most a sanity ceiling of 50,000,000 lamports (0.05 SOL, m-1), or the quote is
-     refused. When absent, the fresh-account option is disabled (step 1).
+     When present it must satisfy `rentExempt(0) + 5,000 ≤ gasGrantLamports ≤ 50,000,000`, or the quote is refused:
+     `rentExempt(0)` is the cluster's `getMinimumBalanceForRentExemption(0)` (a generic request, nothing in it is about
+     a note; 650,240 lamports as the program side measured it on 2026-11-08), 5,000 is one signature fee, so the lower
+     bound is **655,240** today — the least that lets the account exist and sign once; 50,000,000 (0.05 SOL) is a
+     sanity ceiling (m-1). When absent — before P1 is live, and on mainnet until a priced bound exists (§15 P1) — the
+     fresh-account option is disabled (step 1).
    - The fee is **exactly** `minFee.withdraw_change` (R5); a `minFee` above `maxFee` stops with a clear message.
    - The quote's fetch time is recorded.
 5. **Confirmation (§4)** for `{owner, amount, fee}` gives `{authId, owner, ata}`.
@@ -502,15 +531,18 @@ authorizeUnshield(handle, owner, amount, fee) -> authId                         
        spent; its `LeafInserted` carries Rust's change commitment;
      - its fee payer is the quote's `feePayer`; its `fee_destination` is `ATA(feePayer, mint)`; its fee equals ours;
      - its `destination` is our `ata` and the token amount moved is ours;
-     - **the grant (S10, m-2)**, checked on the decoded top-level `SystemProgram.transfer` instructions, never on balance
-       deltas (the fee payer's delta also carries the ATA rent, the nullifier rent and the tx fee): at most one
-       `SystemProgram.transfer` in the tx; if there is one, it is exactly `gasGrantLamports` of the quote, from
-       `feePayer` to `owner`, and the owner's pre-balance in the tx was 0 — any other transfer refuses. A 0-lamport
-       owner **without** a grant is accepted (P1's per-owner marker can withhold a concurrent second grant), but for a
+     - **the grant (S10, m-2)**, checked on the decoded `SystemProgram.transfer` instructions **among the tx's top-level
+       instructions only** (the program side's ADDITION 2: the ATA program and `FeGSS…` call the system program
+       internally — rent for the ATA and the nullifier record — and those inner calls are not counted), never on balance
+       deltas (the fee payer's delta also carries the ATA rent, the nullifier rent and the tx fee): at most one top-level
+       `SystemProgram.transfer`; if there is one, it is exactly `gasGrantLamports` of the quote, from `feePayer` to
+       `owner`, the owner's pre-balance in the tx was 0 and the owner is on the Ed25519 curve — any other top-level
+       transfer refuses. A 0-lamport owner **without** a grant is accepted — off curve (ADDITION 1: the relayer never
+       grants one; the wallet itself never sends one, §3), or withheld by P1's per-owner marker — but for a
        `fresh-pending` destination it is reported: the exit is recorded (the funds are ours) and the account is shown
        as holding no SOL — the wallet still never funds it;
-     - any create-ATA-idempotent instruction is exactly `(payer feePayer, ata, owner, mint)` — absent or present (P2
-       makes it always present);
+     - any create-ATA-idempotent instruction is exactly `(payer feePayer, ata, owner, mint)` — absent or present until
+       P2 is announced live, then required;
      - **no signer of the tx is any key of this seed** (every registry entry, the main account, `cli` included), and
        the only key of the seed that appears at all is the destination owner (and its ATA).
 
@@ -661,7 +693,8 @@ makes no RPC request specific to one of our notes (I3; m7 does not arise).
     timing are public.";
   - the fresh-account default: "A new account of this wallet (Account N+1) receives it. The relayer also sends it
     `<g>` SOL so it can pay for its own transactions.";
-  - the fresh-account option while the relayer does not grant SOL (S11), disabled: "A new account is not available
+  - the fresh-account option while the relayer does not grant SOL (S11 — before P1 is live on devnet; on mainnet until
+    a priced bound exists, so for now the option is devnet-only), disabled: "A new account is not available
     yet: the relayer cannot send it SOL for its own fees, and funding it from your other accounts would link them.";
   - "My main account": "This links your exit to your deposit: your main account made the deposit.";
   - "Another address": "This is a payment from your shielded balance. The recipient sees the amount.";
@@ -731,12 +764,13 @@ makes no RPC request specific to one of our notes (I3; m7 does not arise).
 - **Later:**
   - iOS (the native port is a prerequisite);
   - the ceremony (A1), the audit, an immutable VK, mainnet.
-  - **The grant's mainnet economics — a pre-mainnet decision.** S10 gates the grant to a 0-lamport owner, once per key,
-    but keys are free and change notes chain, so on mainnet the gate alone lets anyone turn `minFee` (a token amount)
-    into a SOL grant per new key, bounded only by the spend cap (§15 P1). A uniform, rarely-changed, token-denominated
-    `minFee` cannot track a SOL cost. Before mainnet the program side and the owner choose a priced bound — for example
-    a minimum `withdrawAmount` for a granted exit, worth more than the grant at a conservative price — or drop the grant
-    there;
+  - **The grant's mainnet economics — a pre-mainnet decision.** S10 gates the grant to a 0-lamport on-curve owner, once
+    per key, but keys are free and change notes chain, so on mainnet the gate alone would let anyone turn `minFee` (a
+    token amount) into a SOL grant per new key, bounded only by the spend cap (§15 P1). A uniform, rarely-changed,
+    token-denominated `minFee` cannot track a SOL cost. **Agreed with the program side (2026-11-08): no grant on
+    mainnet** (no `gasGrantLamports` in the mainnet quote) until the owner and the program side agree a priced bound —
+    their candidate is a minimum `withdrawAmount` for a granted exit, worth more than the grant at a conservative
+    price. Until then the fresh-account exit does not exist on mainnet (§0 scope note);
   - a coordinator tree indexer — **a pre-mainnet item if R13's trigger fires** (a restore reading more than 5,000 tree
     transactions, or over 60 s on the acceptance phone).
 
@@ -791,7 +825,9 @@ Each line is tagged with the plan that delivers it (§16).
     and the `fresh-pending` reservation (a second unshield picks the next index; a non-landing removes it) (M1c);
   - post-landing verification refusing a foreign pool, a foreign fee payer, a wrong `fee_destination`, a wrong fee, a
     wrong destination, a grant to an owner whose pre-balance was not 0, a grant of another amount or from another
-    payer, two transfers (and, as accepted-but-reported, a fresh destination left without a grant), a create-ATA with other accounts, a missing nullifier, and
+    payer, a grant to an off-curve owner, two top-level transfers (while the inner system calls of the ATA program and
+    `FeGSS…` are not counted — positive control: the fresh-owner golden vector passes) (and, as accepted, a 0-lamport
+    off-curve owner without a grant; as accepted-but-reported, a fresh destination left without a grant), a create-ATA with other accounts, a missing nullifier, and
     **any signer that is a key of this seed** — each against both shapes, with and without create-ATA (M1c);
   - multi-account derivation equal to the extension's for `slip10:0..3`; the registry rules (`cli` single, lowest free
     index, no renumbering of `main`); the linking warning (M1c for the registry and fresh rule, M1d for the UI and the
@@ -815,61 +851,69 @@ Each line is tagged with the plan that delivers it (§16).
 ## 15. Dependencies and open points
 
 - **Program side:**
-  - **P1 — the SOL grant to a new destination owner (S6, S10; a change to the frozen relayer contract; required for
-    M1c's fresh-account option only, S11).** The wallet's exact proposal (the paste-ready text is
-    `.superpowers/sdd/shielded-a0-m1-ico-proposal.md`):
-    - **When:** in a relayed `withdraw_with_change`, the relayer adds one `SystemProgram.transfer` of exactly
+  - **P1 — the SOL grant to a new destination owner (S6, S10). ACCEPTED by the program side on 2026-11-08**, pending
+    their "live on devnet" announcement and the new golden vectors; until then the contract stays frozen as it is
+    (their reply: `.superpowers/sdd/shielded-ico-state-2026-11-08.md`, "ICO reply on P1 / P2"). Required for M1c's
+    fresh-account option only (S11). As accepted:
+    - **When:** in a relayed `withdraw_with_change`, the relayer adds one top-level `SystemProgram.transfer` of exactly
       `gasGrantLamports` from `feePayer` to `destinationOwner` **only when `destinationOwner` holds 0 lamports** at
-      submit (`getBalance(destinationOwner, 'confirmed') == 0`), and only if an atomic per-owner marker is free (Redis
+      submit (`getBalance(destinationOwner, 'confirmed') == 0`), **is on the Ed25519 curve** (their ADDITION 1: an
+      off-curve owner — a PDA — is relayed without a grant), and an atomic per-owner marker is free (Redis
       `SET a0:grant:<owner> 1 NX PX 180000`, taken before the spend-cap reservation, released if nothing is forwarded).
       Without the marker two concurrent submits to the same 0-lamport owner would both be granted; with it, at most one
       grant per key is in flight, and once one lands the owner's balance is no longer 0. The 180 s expiry outlives the
-      relayer's blockhash, so a grant that never landed can be given again.
-    - **Where in the tx:** after any create-ATA-idempotent, before the pool instruction. Order: ComputeBudget →
-      create-ATA-idempotent (P2) → grant (when given) → `withdraw_with_change`.
-    - `destinationOwner` becomes **required** for kind `withdraw_change` (the wallet always sends it already; without
-      it the relayer could not read the owner's balance).
-    - **Quote:** `GET /relayer/quote` gains `"gasGrantLamports": "<u64 decimal string>"`. Like `minFee` it is a
-      deliberate config value, the same for every request, changed rarely and announced to the wallet side. While P1 is
-      not deployed the field is absent, and the wallet disables its fresh-account option (S11).
-    - **Value proposed: 3,000,000 lamports (0.003 SOL)** — the rent-exempt minimum of a 0-byte account (890,880) so the
-      account can exist, plus one recipient ATA's rent (2,039,280) so its first send can create one, plus fees for about
-      a dozen signatures. The program side may pick another value; the wallet refuses a quote whose value is below the
-      rent-exempt minimum plus one signature fee (895,880) or above 50,000,000 (§6.4).
-    - **The four coordinator config changes** (`coordinator/src/services/relayerA0.js`, `coordinator/src/config/index.js`;
-      I-8), with a new `SHIELDED_A0_GAS_GRANT_LAMPORTS` = 3,000,000:
+      relayer's blockhash, so a grant that never landed can be given again. The wallet's own destinations are always on
+      the curve (§3 refuses an off-curve owner, m3), so ADDITION 1 never withholds a grant from a wallet fresh account;
+      the verifier still accepts a 0-lamport off-curve owner without a grant (§6.8).
+    - **Where in the tx:** ComputeBudget → create-ATA-idempotent (P2) → grant (when given) → `withdraw_with_change`.
+    - `destinationOwner` is **required** for kind `withdraw_change` (else `invalid_request`); the wallet always sends it.
+    - **Quote:** `GET /relayer/quote` carries `"gasGrantLamports": "3000000"` (decimal string) on devnet. Like `minFee`
+      it is a deliberate config value, the same for every request, changed rarely and announced to the wallet side.
+      While P1 is not live, and **on mainnet until a priced bound is agreed**, the field is absent and the wallet
+      disables its fresh-account option (S11; §0 scope, §11).
+    - **Value: 3,000,000 lamports (0.003 SOL).** On the rent the program side measured on 2026-11-08 (devnet and
+      mainnet alike): the rent-exempt minimum of a 0-byte account (650,240) so the account can exist, plus one recipient
+      ATA's rent (1,488,440) so its first send can create one, leaves 861,320 lamports — fees for well over a hundred
+      signatures. The wallet's quote bounds are in §6.4.
+    - **The four coordinator config changes, as accepted** (`coordinator/src/services/relayerA0.js`,
+      `coordinator/src/config/index.js`), with `SHIELDED_A0_GAS_GRANT_LAMPORTS` = 3,000,000. The program side keeps its
+      cost constants at the **old** rent (`NULLIFIER_RENT` 953,520, `ATA_RENT` 2,039,280, so `COST.withdraw_change` =
+      958,520): they over-count the real cost, which is the safe direction for a spend cap. The figures below are theirs:
       1. the per-request cost: `cost += GAS_GRANT` when the grant is given, next to the existing `+= ATA_RENT` when the
-         ATA is missing (`COST.withdraw_change` itself, 958,520, is unchanged);
+         ATA is missing;
       2. `MAX_TX_COST = max(COST.transfer, COST.withdraw_change + ATA_RENT + GAS_GRANT)` = 958,520 + 2,039,280 +
          3,000,000 = **5,997,800** (was 2,997,800), so `validateConfig`'s cap and floor checks cover a granted exit;
-      3. `SHIELDED_A0_SPEND_CAP_LAMPORTS`: 20,000,000 → **30,000,000** per 60 s window — 20 M would allow only three
-         fresh-account exits a minute pool-wide (3 × 5,997,800), 30 M allows five;
-      4. `SHIELDED_A0_MIN_BALANCE_LAMPORTS`: stays **100,000,000** (it is still ≥ the new `MAX_TX_COST`, which
-         `validateConfig` re-checks at start).
-    - **Devnet cost, re-sized:** an exit to a fresh account costs the relayer 5,997,800 lamports (nullifier rent and
-      signature 958,520, ATA rent 2,039,280, grant 3,000,000); to an owner with SOL and an ATA, 958,520; to an owner with
-      SOL and no ATA, 2,997,800. The fee payer's 2 SOL, less the 0.1 SOL floor, pays for about 316 fresh-account exits;
-      **top it up to 5 SOL** (about 816).
+      3. `SHIELDED_A0_SPEND_CAP_LAMPORTS`: 20,000,000 → **30,000,000** per 60 s window (five fresh-account exits a
+         minute pool-wide by the coordinator's count);
+      4. `SHIELDED_A0_MIN_BALANCE_LAMPORTS`: stays **100,000,000**.
+    - **Devnet cost.** Measured on the relayer-landed `3UfCx5TD…`: 2,189,400 lamports = 5,000 signature + 695,960
+      nullifier rent + 1,488,440 ATA rent. A fresh-account exit therefore really costs about 5,189,400 with the grant
+      (the coordinator counts 5,997,800); an exit to an owner with SOL and an ATA about 700,960 (counted 958,520). The
+      fee payer was **topped up to 5 SOL**: by the coordinator's count, about 816 fresh-account exits above the 0.1 SOL
+      floor.
     - **What S10 bounds, and what it does not.** It bounds the grant to once per key, so chaining unshields to one owner
       draws one grant. It does not bound an attacker who uses a **new key per unshield**: keys are free, and one
       deposit's change notes chain through any number of unshields, each costing the attacker `minFee` (10,000 base
       units) while the relayer pays a grant, a nullifier rent and an ATA rent (the last reclaimable by the attacker by
-      closing the ATA — the frozen contract's create-ATA already has this shape). On devnet the spend cap and the floor
-      bound it: abuse is a denial of service on other users (`budget_exceeded`), not a loss that matters. **On mainnet
-      the per-key gate is not an economic bound by itself**; §13 records it as a pre-mainnet item.
-    - Size: the relayer-landed `3UfCx5TD…` (ComputeBudget → create-ATA → FeGSS) is 888 of 1,232 bytes; the grant adds
-      about 20 bytes (the owner and the system program are already in the tx). The program side measures.
+      closing the ATA). On devnet the spend cap and the floor bound it: abuse is a denial of service on other users
+      (`budget_exceeded`), not a loss that matters. **On mainnet there is no grant** — the quote carries no
+      `gasGrantLamports` — until the owner and the program side agree a priced bound (their candidate: a minimum
+      `withdrawAmount` for a granted exit); §13.
+    - **Size (measured):** the relayer-landed `3UfCx5TD…` (ComputeBudget → create-ATA → FeGSS) serializes to **994** of
+      1,232 bytes (rev 3 said 888; that was wrong); the grant adds about 17 bytes, about 1,011 in all.
     - The twelve outcomes are unchanged; an exhausted cap answers `budget_exceeded` (no signature, nothing forwarded).
-    - A new relayer-landed golden vector with a grant, sent to the wallet.
-  - **P2 — create-ATA-idempotent in every relayed unshield (S12, proposed firmly).** The relayer always prepends
-    create-ATA-idempotent `(payer feePayer, ata, owner, mint)`, also when the ATA exists (then it is a no-op), so every
-    relayed `withdraw_with_change` has the same instruction list. Cost: no rent when the ATA exists, a few thousand CU,
-    and about 75 bytes when the tx would not otherwise carry the owner and the ATA program (under 1,232 bytes either
-    way). The relayer-landed golden vector's shape changes accordingly. **Limit, stated:** the instruction list becomes
-    uniform, but the rent paid on a creation and the grant's presence (a 0-lamport owner) still show in the
-    transaction's balance changes and instructions, so "exit to a brand-new account" stays visible to a careful
-    observer. P2 removes one distinguisher, not all of them. The wallet's verifier accepts both shapes (§6.8) until the
-    program side announces P2 deployed, then only the uniform one.
+    - **Golden vectors to come** with the "live" announcement: an **existing-ATA** exit (no-op create, no grant) and a
+      **fresh-owner** exit (create + grant).
+  - **P2 — create-ATA-idempotent in every relayed unshield (S12). ACCEPTED by the program side on 2026-11-08**, pending
+    the same announcement and vectors. The relayer always prepends create-ATA-idempotent `(payer feePayer, ata, owner,
+    mint)`, also when the ATA exists (then it is a no-op), so the instruction list no longer depends on whether the ATA
+    existed. Cost: no rent when the ATA exists, a few thousand CU, and the bytes of the owner and the ATA program when
+    the tx would not otherwise carry them — under 1,232 either way (the measured create-ATA shape is 994 bytes).
+    **Limit, as the program side states it:** with P1 there are again **two shapes** — with a grant ⇔ the owner was a
+    0-lamport on-curve key, without one otherwise — and the rent paid on a creation still shows in the balance
+    changes, so "exit to a brand-new account" stays visible to a careful observer. P2 removes one distinguisher, not
+    all of them. The wallet's verifier accepts both create-ATA shapes (§6.8) until P2 is announced live, then only the
+    uniform one.
   - The A0 relayer announced live on devnet (`/relayer/submit` kind `withdraw_change`, `/relayer/quote`) against the
     frozen contract — enough for M1c's "Another address" and "My main account" (S11) — and the relayer-landed golden
     vector sent to the wallet (their `93a82a5` names one, `3UfCx5TD…`). P1 (and P2) later, for the fresh account.
