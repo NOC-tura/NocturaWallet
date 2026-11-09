@@ -45,10 +45,22 @@ light-poseidon = "=0.1.2"
 sha2 = "0.10"
 hkdf = "0.12"
 zeroize = "1"
+# A0 unshield parsing and authorization (src/a0/ata.rs, unshield.rs, auth.rs) — pure Rust too.
+# curve25519-dalek =4.1.3 is the version the Solana runtime's `is_on_curve` uses, so an
+# "off curve" here is the chain's; default features off (no tables, no rand, no zeroize).
+curve25519-dalek = { version = "=4.1.3", default-features = false }
+bs58 = "0.5"
+# The authId: 16 bytes from the OS (Android: the getrandom syscall). Already in the lock.
+getrandom = "0.2"
 
 # Android JNI bridge (pure Rust — no C++, no libc++_shared).
 [target.'cfg(target_os = "android")'.dependencies]
 jni = "0.21"
+
+# CLOCK_BOOTTIME for the 120 s authorization window (counts time the phone is suspended);
+# Rust bindings only, already in the lock.
+[target.'cfg(any(target_os = "linux", target_os = "android"))'.dependencies]
+libc = "0.2"
 
 [[example]]
 name = "zkey_check"
