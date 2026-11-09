@@ -32,7 +32,7 @@ use std::fmt;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, MutexGuard};
 use std::time::Duration;
-use zeroize::Zeroizing;
+use zeroize::{Zeroize, Zeroizing};
 
 /// The process-wide state the JNI binds to (Task 4). Tests use their own `Core::new()`.
 pub static CORE: Core = Core::new();
@@ -70,6 +70,8 @@ pub enum A0Error {
     OwnerNotBase58,
     /// The unshield owner does not decode to 32 bytes.
     OwnerLength { got: usize },
+    /// The unshield owner string is longer than `unshield::OWNER_MAX_LEN`; not decoded.
+    OwnerTooLong,
     /// The unshield owner is off the Ed25519 curve (a PDA, for one) — m3.
     OwnerOffCurve,
     /// The unshield owner decompresses, but is not the canonical encoding of its point.
@@ -100,7 +102,7 @@ pub enum A0Error {
     AuthExpired,
     /// The OS random source failed.
     Rng,
-    /// The boot clock could not be read.
+    /// The boot clock could not be read, or the approval time + 120 s does not fit.
     Clock,
     /// `prove`: a circuit name M1 does not know.
     CircuitUnknown,
@@ -161,6 +163,7 @@ impl A0Error {
             A0Error::StatePoisoned => "E_A0_STATE_POISONED",
             A0Error::OwnerNotBase58 => "E_A0_OWNER_NOT_BASE58",
             A0Error::OwnerLength { .. } => "E_A0_OWNER_LENGTH",
+            A0Error::OwnerTooLong => "E_A0_OWNER_TOO_LONG",
             A0Error::OwnerOffCurve => "E_A0_OWNER_OFF_CURVE",
             A0Error::OwnerNonCanonical => "E_A0_OWNER_NON_CANONICAL",
             A0Error::OwnerSmallOrder => "E_A0_OWNER_SMALL_ORDER",
@@ -217,6 +220,11 @@ impl fmt::Display for A0Error {
             A0Error::OwnerLength { got } => {
                 write!(f, "destination owner must be 32 bytes, got {got}")
             }
+            A0Error::OwnerTooLong => write!(
+                f,
+                "destination owner is longer than {} characters (an address is at most 44)",
+                unshield::OWNER_MAX_LEN
+            ),
             A0Error::OwnerOffCurve => {
                 write!(
                     f,
@@ -245,7 +253,7 @@ impl fmt::Display for A0Error {
             }
             A0Error::AuthExpired => write!(f, "unshield authorization expired"),
             A0Error::Rng => write!(f, "the OS random source failed"),
-            A0Error::Clock => write!(f, "the boot clock could not be read"),
+            A0Error::Clock => write!(f, "the boot clock could not be read or is out of range"),
             A0Error::CircuitUnknown => write!(f, "unknown circuit"),
             A0Error::CircuitNotInM1 => write!(f, "transfer is not available in this version"),
             A0Error::AuthUnexpected => write!(f, "a deposit takes no unshield authorization"),
@@ -470,7 +478,13 @@ impl Core {
         }
         let mut spent = Vec::new();
         for (i, rho) in rhos.iter().enumerate() {
-            let nf = Zeroizing::new(fr_to_be32(&keys.nullifier(rho)));
+            // A pre-spend nullifier (INV-NULL): its `Fr` is wiped as soon as its bytes exist, and
+            // the bytes are a `Zeroizing` buffer (compiler-made stack copies stay a stated limit).
+            let mut f = keys.nullifier(rho);
+            let nf = Zeroizing::new(fr_to_be32(&f));
+            f.zeroize();
+            #[cfg(test)]
+            super::wipe_probe::record("match_spent_nullifier", &super::wipe_probe::bytes_of(&f));
             if chain.contains(&*nf) {
                 spent.push(i);
             }
@@ -510,6 +524,9 @@ impl Core {
                 return Err(A0Error::AuthInFlight);
             }
         }
+        // `checked_add`: an overflow is a clock refusal, never a panic (which would poison the
+        // state and wipe the keys) — unreachable from CLOCK_BOOTTIME, reachable by `_at`'s callers.
+        let expires_at = now.checked_add(AUTH_TTL).ok_or(A0Error::Clock)?;
         let id = AuthId::fresh()?;
         inner.auth = Some(Auth {
             id,
@@ -520,7 +537,7 @@ impl Core {
             fee: parsed.fee,
             pool: POOL,
             mint: MINT,
-            expires_at: now + AUTH_TTL,
+            expires_at,
         });
         Ok(id)
     }

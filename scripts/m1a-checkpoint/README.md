@@ -40,6 +40,13 @@ no network request for the checkpoint, and `libnoctura_prover` re-checks each fi
       used `--serial`; the script's printed command already has it). Each run's paths and sha256s are in
       `installs.json`, and every run is appended to `installs.log.jsonl`. If any pull fails, the script STOPs and
       installs nothing.
+- [ ] **Your wallet must be found.** If the phone reports NO `com.nocturawallet` installed, the script prints, between
+      two lines of `!`,
+      `NO WALLET INSTALLED for com.nocturawallet — this run installs it fresh; if you expected your wallet here, STOP (Ctrl-C) now`
+      and STOPs (exit 3) before any install. An absent wallet is most likely the wrong phone or the wrong user profile
+      (adb reads user 0; a wallet in a work or secondary profile is invisible to it). Only if a fresh install of the
+      production app is really what you want, re-run with `--allow-fresh-production`: the line is printed again, then
+      again right before the production install, with 15 s to press Ctrl-C.
 - [ ] **Keep the FIRST rollback** — the one taken before any branch APK was installed: it is the wallet you had. A
       rollback directory is never overwritten (a re-run after the checkpoint installed this commit's production APK
       pulls *that* APK into a second directory); the earliest entry of `installs.log.jsonl` that lists a rollback for
@@ -83,9 +90,11 @@ It reads the VK from devnet; then, **before any install**, for each of the three
 signer (every pulled APK through `apksigner verify --print-certs`) and compares it with the new APK's. A package
 counts as not installed (a first install, allowed) only when two readings agree: the full `pm list packages` (which
 must look like a package list — `package:android` in it) does not name it, and `pm path <package>` answers "unknown"
-(a non-zero exit, no path). Any other combination STOPs. It installs `devnet.apk` and the test APK, runs the checkpoint on the phone (two proofs —
-a few minutes; the screen stays as it is), installs `production.apk` over the installed wallet, launches the devnet
-app and then the production app (10 s each), and prints:
+(a non-zero exit, no path). Any other combination STOPs. For the production wallet "not installed" is a STOP of its
+own unless you passed `--allow-fresh-production` (see "Your wallet must be found" above). It installs `devnet.apk` and
+the test APK, runs the checkpoint on the phone (two proofs — a few minutes; the screen stays as it is), installs
+`production.apk` over the installed wallet, launches the devnet app and then the production app (10 s each), and
+prints:
 
 ```
 PASS  S16.0   the report comes from the phone (ART, aarch64), not a rehearsal
@@ -107,6 +116,9 @@ CHECKPOINT PASSED
 ```
 
 - [ ] Every line `PASS` and the last line `CHECKPOINT PASSED` (exit code 0).
+- [ ] **The script force-stops each app before it launches it** (`adb shell am force-stop <package>`, so the launch
+      is a cold start) — for `com.nocturawallet` that is your wallet: if it is open, it closes and restarts. It is a
+      restart only; no data is touched.
 - [ ] **Look at the phone** during the two launches: the devnet app ("Noctura devnet") opens to its screen, then the
       production wallet opens to its lock screen / dashboard — no crash dialog, no blank screen. Unlock the production
       wallet once: your balances are there (its data was kept).
@@ -123,6 +135,7 @@ refuses to send either). It prints `STOP: …` and exits **3** — before instal
 | `<package> is installed under ANOTHER signing key — installed <sha256>, new <sha256>` | the app on the phone was signed with another key (the September inventory records a **debug-signed devnet build**); `adb install -r` would fail, and the only "fix" is to remove it with its data |
 | `the installed app's signer is UNREADABLE` / `pm path lists no single base.apk` / `the signer of <apk> is unreadable` | a signer could not be read — not compared, so not installed |
 | `pm list packages gave an unrecognised answer` / `pm path gave an unrecognised answer` / `the phone's two readings disagree` | the script could not establish whether the app is installed — it does not guess "not installed" |
+| `com.nocturawallet: no wallet is installed … re-run with --allow-fresh-production` (after the `NO WALLET INSTALLED` line) | both readings agree the production wallet is absent — most likely the wrong phone or user profile; a fresh install only with the flag |
 | `adb pull of the installed <apk> failed` | no complete rollback copy — no install over that app |
 | `a rollback … already exists with other contents` | a rollback directory would have to be overwritten — it never is |
 | `adb install answered INSTALL_FAILED_…` (e.g. `INSTALL_FAILED_UPDATE_INCOMPATIBLE`) | the installer refused; nothing more is sent to the phone |

@@ -22,9 +22,10 @@
 //!   zkey's own verifying key. Its randomness `r`, `s` comes from the OS.
 //! - **Stated limits of the wiping** (Fable review 1, R1-I5): the [`Completed`] copy of `nk` /
 //!   `d_self` lives until the prove returns (seconds) and is wiped on drop; arkworks' internal
-//!   copies of the assignment (FFT buffers) and the `serde_json` values of the JS witness are not
-//!   wiped. INV-NK's "zeroized on keysClose" means the keys state, not an in-flight prove's
-//!   working copies.
+//!   copies of the assignment (FFT buffers), the `serde_json` values and `String` keys of the JS
+//!   witness, the JNI's copies of the witness string (`android.rs`) and compiler-made stack
+//!   temporaries of `nk` / `d_self` are not wiped. INV-NK's "zeroized on keysClose" means the
+//!   keys state, not an in-flight prove's working copies.
 
 use super::ata::derive_ata;
 use super::auth::{self, Auth, AuthId};

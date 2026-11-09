@@ -567,6 +567,27 @@ fn the_probe_sees_live_bytes_positive_control() {
 }
 
 #[test]
+fn match_spent_wipes_every_nullifier_it_computes() {
+    // final review Minor 9 / T1-1: the pre-spend nullifier's `Fr` (not only its byte copy) is
+    // wiped — one probe record per own rho, each all zero, read before the memory is released.
+    let core = Core::new();
+    let me = seeds()[0].clone();
+    let h = open(&core, &me);
+    let own = [rho(&me, 0), rho(&me, 1), rho(&me, 2)];
+    let chain = [nf(&me, 1)];
+    wipe_probe::take("match_spent_nullifier");
+    assert_eq!(core.match_spent(h, &chain, &own).unwrap(), vec![1]);
+    assert_eq!(
+        probe_all_zero("match_spent_nullifier"),
+        3,
+        "one wiped nullifier per own rho"
+    );
+    // the probe's positive control for `Fr` bytes: a live nullifier is visible to it
+    let live = wipe_probe::bytes_of(&fr_from_be32(&nf(&me, 0)).unwrap());
+    assert!(live.iter().any(|b| *b != 0));
+}
+
+#[test]
 fn poseidon_wipes_its_state() {
     wipe_probe::take("poseidon");
     let _ = poseidon(&[Fr::from(1u64), Fr::from(2u64), Fr::from(3u64)]);

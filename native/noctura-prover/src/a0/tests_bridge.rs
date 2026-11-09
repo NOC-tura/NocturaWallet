@@ -144,6 +144,7 @@ fn every_error_has_a_distinct_stable_code_named_after_its_variant() {
         A0Error::StatePoisoned,
         A0Error::OwnerNotBase58,
         A0Error::OwnerLength { got: 1 },
+        A0Error::OwnerTooLong,
         A0Error::OwnerOffCurve,
         A0Error::OwnerNonCanonical,
         A0Error::OwnerSmallOrder,
@@ -189,7 +190,7 @@ fn every_error_has_a_distinct_stable_code_named_after_its_variant() {
             index: 0,
         },
     ];
-    assert_eq!(all.len(), 45);
+    assert_eq!(all.len(), 46);
     let mut codes = HashSet::new();
     for e in &all {
         let c = e.code();

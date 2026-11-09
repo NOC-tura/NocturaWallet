@@ -225,8 +225,10 @@ pub extern "system" fn Java_com_nocturawallet_prover_NocturaA0Native_prove<'a>(
     zkey_path: JString<'a>,
     wasm_path: JString<'a>,
 ) -> jstring {
-    // The witness carries private note data (m4): its Java-side copy is the caller's; this copy
-    // is a Zeroizing buffer.
+    // The witness carries private note data (m4). The `String` this call holds is a Zeroizing
+    // buffer, wiped on drop. NOT wiped (R1-I5's stated limits): the Java string itself (the
+    // caller's), the JVM's `GetStringUTFChars` buffer (released unwiped by the JVM) and any
+    // intermediate copy the modified-UTF-8 → `String` conversion makes.
     call(
         &mut env,
         |env| {

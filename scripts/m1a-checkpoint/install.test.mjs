@@ -110,16 +110,127 @@ const pre = (adb, outDir, signers, pkg = PKG) =>
     apk: 'production.apk',
   });
 
-test('a TRULY absent package (both readings agree) is a first install: allowed, and installs', () => {
+test('a TRULY absent package (both readings agree) other than the wallet is a first install: allowed, quietly, and installs', () => {
   const { adb, calls } = phone();
-  const r = pre(adb, freshOut());
+  const warned = [];
+  const r = I.preflightInstall({
+    ...io(adb, freshOut()),
+    pkg: `${PKG}.devnet`,
+    apk: 'devnet.apk',
+    warn: l => warned.push(l),
+  });
   assert.equal(r.installed, false);
+  assert.equal(r.fresh, undefined);
+  assert.deepEqual(warned, []);
+  I.installApk({ adb, pkg: `${PKG}.devnet`, apk: 'devnet.apk' });
+  assert.deepEqual(calls, [
+    'shell pm list packages',
+    `shell pm path ${PKG}.devnet`,
+    'install -r devnet.apk',
+  ]);
+});
+
+test('Minor 5: NO WALLET installed (com.nocturawallet absent) → a LOUD line and STOP without --allow-fresh-production; no pull, no install', () => {
+  assert.equal(I.PRODUCTION_PACKAGE, PKG);
+  assert.equal(I.ALLOW_FRESH_PRODUCTION, '--allow-fresh-production');
+  const { adb, calls } = phone();
+  const warned = [];
+  assert.throws(
+    () =>
+      I.preflightInstall({
+        ...io(adb, freshOut()),
+        pkg: PKG,
+        apk: 'production.apk',
+        warn: l => warned.push(l),
+      }),
+    e =>
+      e instanceof STOP &&
+      /no wallet is installed/.test(e.message) &&
+      /--allow-fresh-production/.test(e.message),
+  );
+  assert.equal(warned.length, 1);
+  assert.match(
+    warned[0],
+    /NO WALLET INSTALLED for com\.nocturawallet — this run installs it fresh; if you expected your wallet here, STOP \(Ctrl-C\) now/,
+  );
+  assert.deepEqual(calls, ['shell pm list packages', `shell pm path ${PKG}`]);
+});
+
+test('Minor 5: with --allow-fresh-production an absent wallet is a first install — still LOUD, marked fresh, and installs', () => {
+  const { adb, calls } = phone();
+  const warned = [];
+  const r = I.preflightInstall({
+    ...io(adb, freshOut()),
+    pkg: PKG,
+    apk: 'production.apk',
+    allowFreshProduction: true,
+    warn: l => warned.push(l),
+  });
+  assert.equal(r.installed, false);
+  assert.equal(r.fresh, true);
+  assert.equal(warned.length, 1);
+  assert.match(warned[0], /NO WALLET INSTALLED for com\.nocturawallet/);
   I.installApk({ adb, pkg: PKG, apk: 'production.apk' });
   assert.deepEqual(calls, [
     'shell pm list packages',
     `shell pm path ${PKG}`,
     'install -r production.apk',
   ]);
+});
+
+test('Minor 5: the flag changes nothing for an INSTALLED wallet (no loud line, the same signer check and rollback)', () => {
+  const { adb } = phone({ installed: { [PKG]: [BASE] } });
+  const warned = [];
+  const r = I.preflightInstall({
+    ...io(adb, freshOut()),
+    pkg: PKG,
+    apk: 'production.apk',
+    allowFreshProduction: true,
+    warn: l => warned.push(l),
+  });
+  assert.equal(r.installed, true);
+  assert.deepEqual(warned, []);
+});
+
+test('Minor 5: preflightAll — an absent wallet STOPs the whole run before any install, unless the flag is passed through', () => {
+  const targets = [
+    { pkg: `${PKG}.devnet`, apk: 'devnet.apk' },
+    { pkg: `${PKG}.devnet.test`, apk: 'devnet-androidTest.apk' },
+    { pkg: PKG, apk: 'production.apk' },
+  ];
+  {
+    const { adb, calls } = phone();
+    assert.throws(
+      () =>
+        I.preflightAll({
+          ...io(adb, freshOut()),
+          warn: () => {},
+          targets,
+        }),
+      e => e instanceof STOP && /no wallet is installed/.test(e.message),
+    );
+    assert.ok(
+      calls.every(c => !c.startsWith('install')),
+      calls.join('\n'),
+    );
+  }
+  {
+    const { adb } = phone();
+    const r = I.preflightAll({
+      ...io(adb, freshOut()),
+      warn: () => {},
+      allowFreshProduction: true,
+      targets,
+    });
+    assert.deepEqual(
+      r.map(p => [p.pkg, p.installed, p.fresh === true]),
+      [
+        [`${PKG}.devnet`, false, false],
+        [`${PKG}.devnet.test`, false, false],
+        [PKG, false, true],
+      ],
+    );
+  }
 });
 
 test('I2: absence is never inferred — an empty / garbled answer or two disagreeing readings → STOP, no pull, no install', () => {

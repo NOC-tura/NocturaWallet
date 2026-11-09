@@ -14,7 +14,7 @@ use super::ata::{
 use super::auth::{self, Auth, AuthId, AUTH_TTL};
 use super::field::MINT;
 use super::state::{A0Error, Core, Handle};
-use super::unshield::{parse_unshield, DECIMALS, FEE_CEILING, POOL};
+use super::unshield::{parse_unshield, DECIMALS, FEE_CEILING, POOL, PROGRAM_ID};
 use serde_json::Value;
 use std::collections::HashSet;
 use std::time::Duration;
@@ -90,6 +90,50 @@ fn the_pinned_addresses_decimals_and_ceiling_match_the_fixture() {
     assert_eq!(
         s(&c["mint"]),
         "ERkpCFGaoWmeZPhKTUHumrqHTP1QmyHVhMJUnxbRPKCs"
+    );
+}
+
+#[test]
+fn the_program_id_is_pinned_and_the_pool_is_its_pda_with_bump_253() {
+    // Final review I1 / the ledger's Task 2 ruling: POOL is tied to PROGRAM_ID in Rust. The
+    // expected address and bump are the fixture's (web3.js `findProgramAddressSync`, offline)
+    // and the program side's published pool — never this crate's derivation.
+    let c = &v()["constants"];
+    assert_eq!(
+        s(&c["programId"]),
+        "FeGSSsJtmA7GnMgnpj33JsiceSk1NyFopff2FtQFsMuH"
+    );
+    assert_eq!(PROGRAM_ID, b32(&c["programIdHex"]));
+    assert_eq!(
+        bs58::encode(PROGRAM_ID).into_string(),
+        "FeGSSsJtmA7GnMgnpj33JsiceSk1NyFopff2FtQFsMuH"
+    );
+    let row = &v()["programAddresses"][0];
+    assert_eq!(s(&row["label"]), "pool = PDA([\"pool\", mint], programId)");
+    assert_eq!(s(&row["program"]), s(&c["programId"]));
+    assert_eq!(s(&row["seedsHex"][0]), "706f6f6c"); // "pool"
+    assert_eq!(s(&row["seedsHex"][1]), s(&c["mintHex"]));
+    assert_eq!(
+        s(&row["address"]),
+        "8VMe4iZWiq3xQySywih9cciAmzTxMtkawMRYK6JuDdoT"
+    );
+    let want = (b32(&row["addressHex"]), 253u8);
+    assert_eq!(row["bump"].as_u64(), Some(253));
+    assert_eq!(
+        find_program_address(&[b"pool", &MINT], &PROGRAM_ID),
+        Some(want)
+    );
+    assert_eq!(POOL, want.0);
+    // negative controls: another program, or a program id one bit off, is not the pool
+    assert_ne!(
+        find_program_address(&[b"pool", &MINT], &ATA_PROGRAM_ID).map(|p| p.0),
+        Some(want.0)
+    );
+    let mut off = PROGRAM_ID;
+    off[31] ^= 1;
+    assert_ne!(
+        find_program_address(&[b"pool", &MINT], &off).map(|p| p.0),
+        Some(want.0)
     );
 }
 
@@ -271,6 +315,46 @@ fn owner_strings_that_are_not_32_bytes_of_canonical_base58_are_refused() {
             b["label"]
         );
     }
+}
+
+#[test]
+fn an_owner_string_longer_than_64_is_refused_before_it_is_decoded() {
+    // final review Minor 10 / T2-2: 64 characters are still decoded (64 '1's = 64 zero bytes),
+    // 65 are refused unread — so a multi-megabyte string from JS costs nothing.
+    assert_eq!(
+        parse_unshield(&"1".repeat(64), "1", "0"),
+        Err(A0Error::OwnerLength { got: 64 })
+    );
+    assert_eq!(
+        parse_unshield(&"1".repeat(65), "1", "0"),
+        Err(A0Error::OwnerTooLong)
+    );
+    // a valid owner with one more character than the cap allows after it
+    let ok = s(&relayer()["owner"]).to_string();
+    let padded = format!("{ok}{}", "z".repeat(65 - ok.len()));
+    assert_eq!(
+        parse_unshield(&padded, "1", "0"),
+        Err(A0Error::OwnerTooLong)
+    );
+    // positive control: the same owner alone is accepted
+    assert!(parse_unshield(&ok, "1", "0").is_ok());
+    // the record path refuses the same way and records nothing
+    let core = Core::new();
+    let h = open(&core);
+    assert!(matches!(
+        core.authorize_unshield_at(h, &"1".repeat(65), "1", "0", T0),
+        Err(A0Error::OwnerTooLong)
+    ));
+    assert!(core.authorize_unshield_at(h, &ok, "1", "0", T0).is_ok());
+}
+
+#[test]
+fn a_megabyte_owner_string_is_refused_at_once() {
+    // valid base58 throughout, so without the cap it would be decoded (quadratic: an ANR)
+    let big = "z".repeat(1 << 20);
+    let t = std::time::Instant::now();
+    assert_eq!(parse_unshield(&big, "1", "0"), Err(A0Error::OwnerTooLong));
+    assert!(t.elapsed() < Duration::from_secs(1), "{:?}", t.elapsed());
 }
 
 // ---------------------------------------------------------------- parseUnshield (§4 step 2)
@@ -510,6 +594,28 @@ fn the_authorization_is_usable_for_exactly_120_seconds_from_approval() {
         take(&core, h, &id, T0 + Duration::from_secs(3600)).unwrap_err(),
         A0Error::AuthExpired
     );
+}
+
+#[test]
+fn an_approval_time_whose_expiry_overflows_is_a_clock_refusal_not_a_panic() {
+    // final review Minor 11 / T2-3: `now + 120 s` is `checked_add` — a refusal, no record, and
+    // the state is not poisoned (a panic under the lock would wipe the keys).
+    let core = Core::new();
+    let h = open(&core);
+    let owner = s(&relayer()["owner"]).to_string();
+    assert!(matches!(
+        core.authorize_unshield_at(h, &owner, "1", "0", Duration::MAX),
+        Err(A0Error::Clock)
+    ));
+    // the largest approval time that still fits is accepted (edge, positive control) …
+    let edge = Duration::MAX - AUTH_TTL;
+    let id = core
+        .authorize_unshield_at(h, &owner, "1", "0", edge)
+        .unwrap();
+    assert!(take(&core, h, &id, edge).is_ok());
+    // … and the session is alive: nothing was recorded by the refusal, the keys were not wiped
+    assert!(core.authorize_unshield_at(h, &owner, "1", "0", T0).is_ok());
+    assert!(core.deposit_rho(h, 0).is_ok());
 }
 
 #[test]

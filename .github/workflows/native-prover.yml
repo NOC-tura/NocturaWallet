@@ -44,7 +44,11 @@ defaults:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # 90, not 45 (M1a final review Minor 3): a cold run (no rust-cache hit) does a root npm ci,
+    # a cold arkworks + wasmer test build, the keyed proofs, a host release build, cargo-ndk,
+    # a ~1 GB NDK install and a cold arm64 release build — plausibly 35-50 min in sum, so a 45
+    # min limit would kill the first run as "red" when it is only slow.
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
 

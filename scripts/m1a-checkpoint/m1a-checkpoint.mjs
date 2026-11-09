@@ -9,7 +9,7 @@
  *   node scripts/m1a-checkpoint/m1a-checkpoint.mjs vk [--rpc URL] [--out DIR]
  *       ONE devnet request (a JSON-RPC batch: getGenesisHash + getAccountInfo of the Pool): the
  *       deposit VK the chain holds, compared with the pinned deposit_vk.json → DIR/chain-pool.json
- *   node scripts/m1a-checkpoint/m1a-checkpoint.mjs phone --apks DIR [--out DIR] [--serial S]
+ *   node scripts/m1a-checkpoint/m1a-checkpoint.mjs phone --apks DIR [--out DIR] [--serial S] [--allow-fresh-production]
  *       installs the devnet release APK + the checkpoint test APK, runs the instrumentation,
  *       collects its report; installs the production APK; launches both apps
  *       → DIR/phone-report.json, DIR/launches.json, DIR/instrument.txt, DIR/installs.json
@@ -17,11 +17,12 @@
  *       pulled (DIR/rollback-<pkg>-<sha>/ — the rollback, never overwritten) and its signer
  *       compared with the new APK's (install.mjs). A different / unreadable signer, a failed pull or an install
  *       answering INSTALL_FAILED_* → STOP (exit 3), no further adb call. Never uninstalls,
- *       never clears app data.
+ *       never clears app data. No wallet installed (com.nocturawallet absent) → a LOUD line and
+ *       STOP, unless --allow-fresh-production. Each app is force-stopped before it is launched.
  *   node scripts/m1a-checkpoint/m1a-checkpoint.mjs verify [--out DIR] [--report F] [--chain F] [--rehearsal]
  *       verifies the proofs, compares the public inputs, prints PASS / FAIL per §16 line;
  *       exit 0 only if every line passed (with --rehearsal: every line a desk can check)
- *   node scripts/m1a-checkpoint/m1a-checkpoint.mjs all --apks DIR [--out DIR] [--rpc URL]
+ *   node scripts/m1a-checkpoint/m1a-checkpoint.mjs all --apks DIR [--out DIR] [--rpc URL] [--allow-fresh-production]
  *       vk, phone, verify
  *
  * Never contacts *.noc-tura.io, never mainnet: the RPC must answer devnet's genesis hash.
@@ -289,6 +290,7 @@ function phone() {
     apkSigners,
     sha256File,
     outDir: OUT,
+    allowFreshProduction: flag(I.ALLOW_FRESH_PRODUCTION.slice(2)),
     targets: [
       { pkg: devnetPkg, apk: devnetApk },
       { pkg: testPkg, apk: testApk },
@@ -310,7 +312,7 @@ function phone() {
     console.log(
       p.installed
         ? `${p.pkg}: installed, same signer ${p.apkSigners.join(',')}; rollback ${p.rollback.dir}${p.rollback.keptExisting ? ' (already there, identical — kept, not rewritten)' : ''}\n  restore with: ${serial ? p.rollback.command.replace(/^adb /, `adb -s ${serial} `) : p.rollback.command}`
-        : `${p.pkg}: not installed (a first install), signer ${p.apkSigners.join(',')}`,
+        : `${p.pkg}: not installed (a first install${p.fresh ? `, allowed by ${I.ALLOW_FRESH_PRODUCTION}` : ''}), signer ${p.apkSigners.join(',')}`,
     );
   }
   console.log(
@@ -364,6 +366,8 @@ function phone() {
         'see instrument.txt'),
   });
   const launch = (pkg, id, text) => {
+    // A cold start is what is measured, so the app is force-stopped first — for the production
+    // package that is the owner's wallet: a restart, no data touched (README "What it does").
     adb(['shell', 'am', 'force-stop', pkg], { allowFail: true });
     adb(['logcat', '-b', 'crash', '-c'], { allowFail: true });
     const start = adb(
@@ -394,9 +398,19 @@ function phone() {
     }
   };
   launch(devnetPkg, 'S16.10', 'the devnet release APK launches on the phone');
-  console.log(
-    `installing ${prodPkg} (production) over the installed one — its data is kept …`,
-  );
+  if (pre.find(p => p.pkg === prodPkg)?.fresh) {
+    // Again, right before it happens, with time to Ctrl-C (final review Minor 5).
+    const bar = '!'.repeat(100);
+    console.error(`${bar}\n${I.noWalletLine(prodPkg)}\n${bar}`);
+    spawnSync('sleep', ['15']);
+    console.log(
+      `installing ${prodPkg} (production) fresh — no wallet was installed …`,
+    );
+  } else {
+    console.log(
+      `installing ${prodPkg} (production) over the installed one — its data is kept …`,
+    );
+  }
   // An install that fails here STOPs (no further adb call); launches.json is written first so
   // the devnet half of the run is kept.
   writeFileSync(
@@ -560,7 +574,7 @@ if (cmd === 'desk') {
   console.error(
     readFileSync(new URL(import.meta.url), 'utf8')
       .split('\n')
-      .slice(1, 29)
+      .slice(1, 30)
       .join('\n'),
   );
   process.exit(2);

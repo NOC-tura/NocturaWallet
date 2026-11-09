@@ -10,7 +10,11 @@
  *     into the checkpoint's output dir, then `apksigner verify --print-certs` on each copy) and
  *     compared with the new APK's. A different or unreadable signer → STOP before installing,
  *     naming the package and both fingerprints. A package that is not installed (a first
- *     install) is allowed — but only when two readings of the phone agree it is absent.
+ *     install) is allowed — but only when two readings of the phone agree it is absent, and for
+ *     the production wallet (com.nocturawallet) only LOUDLY and only with
+ *     --allow-fresh-production: an absent wallet is most likely the wrong phone or the wrong
+ *     user profile (adb reads user 0; a wallet in a work / secondary profile is invisible to
+ *     both readings), so without the flag it is a STOP (final review Minor 5).
  *   - The pulled APKs are also the ROLLBACK (R1-I2): sha256s recorded, a pull that fails → STOP
  *     (no install over a wallet without its complete rollback copy), an existing rollback is
  *     never overwritten. Rollback: `adb install -r <base.apk>` (or `adb install-multiple -r`
@@ -86,6 +90,16 @@ export function guarded(adb) {
 
 const fp = d => (d.length ? d.join(',') : 'UNREADABLE');
 
+/** The production wallet's package: its absence is never a silent first install. */
+export const PRODUCTION_PACKAGE = 'com.nocturawallet';
+/** The CLI flag that lets the checkpoint install the production wallet where none is installed. */
+export const ALLOW_FRESH_PRODUCTION = '--allow-fresh-production';
+
+/** The loud line printed whenever the production wallet is found absent. */
+export function noWalletLine(pkg) {
+  return `NO WALLET INSTALLED for ${pkg} — this run installs it fresh; if you expected your wallet here, STOP (Ctrl-C) now`;
+}
+
 /** The `package:<path>` lines of a `pm path` answer, or null if any other line is in it. */
 function packagePaths(out) {
   const lines = out
@@ -142,8 +156,9 @@ function installedPaths(call, pkg) {
 
 /**
  * Checks one package before its install; returns what it found. Throws CheckpointStop on a
- * different or unreadable signer, an unestablished install state, or a failed pull (R1-I2) —
- * before any install.
+ * different or unreadable signer, an unestablished install state, a failed pull (R1-I2), or an
+ * absent production wallet without allowFreshProduction (printed loudly through warn either way)
+ * — before any install.
  *   adb(args) → {status, out}          (the refusal guard is applied here, before the call)
  *   apkSigners(path) → string[]        (SHA-256 digests; [] = unreadable)
  *   sha256File(path) → hex
@@ -164,6 +179,8 @@ export function preflightInstall({
   sha256File,
   outDir,
   now = () => Date.now(),
+  allowFreshProduction = false,
+  warn = line => console.error(line),
 }) {
   const call = guarded(adb);
   const newSigners = apkSigners(apk);
@@ -174,6 +191,17 @@ export function preflightInstall({
   }
   const remote = installedPaths(call, pkg);
   if (!remote) {
+    if (pkg === PRODUCTION_PACKAGE) {
+      const bar = '!'.repeat(100);
+      warn(`${bar}\n${noWalletLine(pkg)}\n${bar}`);
+      if (!allowFreshProduction) {
+        throw new CheckpointStop(
+          `${pkg}: no wallet is installed (pm list packages and pm path agree) — most likely the wrong phone or user profile (adb reads user 0). Not installing. ` +
+            `If a fresh install of the production app is what you want, re-run with ${ALLOW_FRESH_PRODUCTION}.`,
+        );
+      }
+      return { pkg, installed: false, fresh: true, apkSigners: newSigners };
+    }
     return { pkg, installed: false, apkSigners: newSigners };
   }
   const names = remote.map(r => basename(r));

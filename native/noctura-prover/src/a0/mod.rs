@@ -23,7 +23,7 @@ mod unshield;
 pub use auth::AuthId;
 pub use prove::Proof;
 pub use state::{A0Error, Core, Handle, CORE};
-pub use unshield::{parse_unshield, Unshield, DECIMALS, FEE_CEILING};
+pub use unshield::{parse_unshield, Unshield, DECIMALS, FEE_CEILING, PROGRAM_ID};
 
 #[cfg(test)]
 mod tests;

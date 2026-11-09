@@ -2,8 +2,8 @@
 //! confirmation dialog shows, every one of them computed here — JS supplies only the three
 //! strings, and nothing it could pass changes the pool, the mint or the decimals.
 //!
-//! - `owner`: base58 of exactly 32 bytes (a 32-byte value has one spelling) and a possible
-//!   Ed25519 public key (`ata::check_owner`); `ata = ATA(owner, pinned mint)` is derived here.
+//! - `owner`: base58 of exactly 32 bytes (a 32-byte value has one spelling; a string longer
+//!   than [`OWNER_MAX_LEN`] is refused before it is decoded) and a possible Ed25519 public key (`ata::check_owner`); `ata = ATA(owner, pinned mint)` is derived here.
 //! - `amount`, `fee`: decimal u64 strings, digits only, no sign, no leading zero, no spaces;
 //!   `amount > 0`; `fee <= FEE_CEILING` (a sanity ceiling pinned here, NOT `pool.max_fee`, which
 //!   the pool authority can change — the chain enforces that one); `amount + fee` fits a u64
@@ -13,7 +13,18 @@
 use super::ata::derive_ata;
 use super::state::A0Error;
 
-/// The devnet A0 pool `8VMe4iZWiq3xQySywih9cciAmzTxMtkawMRYK6JuDdoT` (spec §1, R3).
+/// The devnet A0 program `FeGSSsJtmA7GnMgnpj33JsiceSk1NyFopff2FtQFsMuH` (spec §1, R3; the
+/// Global Constraints' "pinned in Rust"). [`POOL`] is its PDA `["pool", MINT]` with bump 253 —
+/// a test derives it with `find_program_address` and compares it with the fixture written
+/// offline by web3.js (`tests/fixtures/a0-ata-vectors.json`), so the two pins cannot drift.
+/// Nothing in M1a builds a transaction with it; M1b / M1c reuse this one pin.
+pub const PROGRAM_ID: [u8; 32] = [
+    0xd9, 0x8f, 0x90, 0x43, 0x35, 0xb2, 0x10, 0x24, 0xc2, 0x83, 0x5a, 0x36, 0xec, 0xea, 0xbe, 0x24,
+    0x63, 0xf6, 0xd1, 0x3a, 0x7d, 0x26, 0xc2, 0x8f, 0xd5, 0x94, 0xec, 0x42, 0x0e, 0x73, 0xb5, 0x78,
+];
+
+/// The devnet A0 pool `8VMe4iZWiq3xQySywih9cciAmzTxMtkawMRYK6JuDdoT` (spec §1, R3) —
+/// `PDA(["pool", MINT], PROGRAM_ID)`, bump 253.
 pub(crate) const POOL: [u8; 32] = [
     0x6f, 0x45, 0x68, 0x63, 0xaa, 0x9a, 0xfa, 0x9a, 0xfa, 0x96, 0x05, 0x29, 0x1f, 0x51, 0x4e, 0x06,
     0xae, 0x05, 0x8c, 0x2a, 0x72, 0x51, 0xac, 0x0b, 0x42, 0x37, 0x29, 0x3d, 0x1b, 0xfc, 0xef, 0x96,
@@ -60,7 +71,17 @@ pub(crate) fn parse_u64(s: &str, what: &'static str) -> Result<u64, A0Error> {
     s.parse::<u64>().map_err(|_| A0Error::NotU64 { what })
 }
 
+/// The longest owner string that is decoded at all. A 32-byte value is at most 44 base58
+/// characters; the cap leaves room above that so every malformed address of near-valid length
+/// still gets its precise reason (a 45-character string is "not base58" or "33 bytes"), while a
+/// multi-megabyte string from JS is refused in O(1) instead of stalling the native-modules
+/// thread in base58's quadratic decode (an ANR).
+pub(crate) const OWNER_MAX_LEN: usize = 64;
+
 fn parse_owner(s: &str) -> Result<[u8; 32], A0Error> {
+    if s.len() > OWNER_MAX_LEN {
+        return Err(A0Error::OwnerTooLong);
+    }
     let bytes = bs58::decode(s)
         .into_vec()
         .map_err(|_| A0Error::OwnerNotBase58)?;
