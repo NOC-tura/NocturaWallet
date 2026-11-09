@@ -33,10 +33,17 @@ no network request for the checkpoint, and `libnoctura_prover` re-checks each fi
 - [ ] **The production wallet's recovery phrase is at hand.** Step 3 installs the production APK of this commit
       *over* the installed wallet (`adb install -r`: same package, same key, its data is kept). Nothing is uninstalled
       or wiped — but the app can never show the phrase again, so have it before any install over a real wallet.
-- [ ] **Know the rollback.** Before the first install the script `adb pull`s each installed app's base APK into
-      `build/m1a-checkpoint/installed-<package>.base.apk` (its sha256 in `installs.json`, and printed). To put the
-      wallet you had back: `adb install -r build/m1a-checkpoint/installed-com.nocturawallet.base.apk`. If that pull
-      fails, the script STOPs and installs nothing.
+- [ ] **Know the rollback.** Before the first install the script `adb pull`s EVERY APK of each installed app
+      (`base.apk`, and any `split_*.apk` of a split install) into `build/m1a-checkpoint/rollback-<package>-<sha256 of
+      base.apk, 16 hex>/`, and prints the exact restore command — `adb install -r <dir>/base.apk` for one APK,
+      `adb install-multiple -r <dir>/base.apk <dir>/split_….apk …` for a split install (add `-s <serial>` if you
+      used `--serial`; the script's printed command already has it). Each run's paths and sha256s are in
+      `installs.json`, and every run is appended to `installs.log.jsonl`. If any pull fails, the script STOPs and
+      installs nothing.
+- [ ] **Keep the FIRST rollback** — the one taken before any branch APK was installed: it is the wallet you had. A
+      rollback directory is never overwritten (a re-run after the checkpoint installed this commit's production APK
+      pulls *that* APK into a second directory); the earliest entry of `installs.log.jsonl` that lists a rollback for
+      `com.nocturawallet` names it.
 - [ ] The commit to check is checked out and the tree is clean (`git status`); `build-apks.sh` warns otherwise.
 - [ ] On this laptop: `android/keystore.properties` (or `NOCTURA_KEYSTORE_FILE` …), `.env.devnet`, `.env.production`,
       the NDK `27.1.12297006`, and the program side's repository (for `zk/keys/v2/`).
@@ -73,8 +80,10 @@ node scripts/m1a-checkpoint/m1a-checkpoint.mjs all --apks build/m1a-checkpoint/a
 ```
 
 It reads the VK from devnet; then, **before any install**, for each of the three packages it reads the installed app's
-signer (the pulled base APK through `apksigner verify --print-certs`) and compares it with the new APK's — a package
-that is not installed yet is a first install and is allowed. It installs `devnet.apk` and the test APK, runs the checkpoint on the phone (two proofs —
+signer (every pulled APK through `apksigner verify --print-certs`) and compares it with the new APK's. A package
+counts as not installed (a first install, allowed) only when two readings agree: the full `pm list packages` (which
+must look like a package list — `package:android` in it) does not name it, and `pm path <package>` answers "unknown"
+(a non-zero exit, no path). Any other combination STOPs. It installs `devnet.apk` and the test APK, runs the checkpoint on the phone (two proofs —
 a few minutes; the screen stays as it is), installs `production.apk` over the installed wallet, launches the devnet
 app and then the production app (10 s each), and prints:
 
@@ -112,14 +121,16 @@ refuses to send either). It prints `STOP: …` and exits **3** — before instal
 | STOP | means |
 |---|---|
 | `<package> is installed under ANOTHER signing key — installed <sha256>, new <sha256>` | the app on the phone was signed with another key (the September inventory records a **debug-signed devnet build**); `adb install -r` would fail, and the only "fix" is to remove it with its data |
-| `the installed app's signer is UNREADABLE` / `its base APK path is unreadable` / `the signer of <apk> is unreadable` | a signer could not be read — not compared, so not installed |
-| `adb pull of the installed base APK failed` | no rollback copy — no install over that app |
+| `the installed app's signer is UNREADABLE` / `pm path lists no single base.apk` / `the signer of <apk> is unreadable` | a signer could not be read — not compared, so not installed |
+| `pm list packages gave an unrecognised answer` / `pm path gave an unrecognised answer` / `the phone's two readings disagree` | the script could not establish whether the app is installed — it does not guess "not installed" |
+| `adb pull of the installed <apk> failed` | no complete rollback copy — no install over that app |
+| `a rollback … already exists with other contents` | a rollback directory would have to be overwritten — it never is |
 | `adb install answered INSTALL_FAILED_…` (e.g. `INSTALL_FAILED_UPDATE_INCOMPATIBLE`) | the installer refused; nothing more is sent to the phone |
 
 ### If an install STOPs
 
 The script will not resolve it — **you decide**. Nothing has been removed: the phone is as it was before that install,
-and the pulled base APKs are in `build/m1a-checkpoint/`. For the devnet app signed with another key: if (and only if)
+and the pulled APKs are in `build/m1a-checkpoint/rollback-*/`. For the devnet app signed with another key: if (and only if)
 nothing in it is needed — it holds a devnet wallet, so check you have that wallet's phrase too — you may remove it
 yourself and re-run; that is your command, never the script's. For the production wallet (`com.nocturawallet`):
 **never remove it to make the checkpoint pass** — stop and ask; a production APK of another key is the wrong APK.
@@ -127,8 +138,8 @@ yourself and re-run; that is your command, never the script's. For the productio
 ## 4. Record it
 
 - [ ] Keep `build/m1a-checkpoint/` — `chain-pool.json` (the VK read: slot, RPC host, the raw account),
-      `phone-report.json`, `launches.json`, `instrument.txt`, `installs.json` (the signers compared, the rollback copies'
-      sha256), `apks/COMMIT`, `apks/SHA256SUMS` — and paste the PASS
+      `phone-report.json`, `launches.json`, `instrument.txt`, `installs.json` / `installs.log.jsonl` (the signers compared,
+      the rollback copies' paths, sha256s and restore commands), every `rollback-*/` directory, `apks/COMMIT`, `apks/SHA256SUMS` — and paste the PASS
       lines, the commit and the slot into the checkpoint record.
 - [ ] Optional: remove the test app — `adb uninstall com.nocturawallet.devnet.test`. That removes ONLY the
       instrumentation APK `com.nocturawallet.devnet.test` (it holds no user data); the devnet and production apps stay.

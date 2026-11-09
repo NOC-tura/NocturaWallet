@@ -13,9 +13,9 @@
  *       installs the devnet release APK + the checkpoint test APK, runs the instrumentation,
  *       collects its report; installs the production APK; launches both apps
  *       → DIR/phone-report.json, DIR/launches.json, DIR/instrument.txt, DIR/installs.json
- *       Before ANY install, for each of the three packages: the installed app's base APK is
- *       pulled (DIR/installed-<pkg>.base.apk — the rollback) and its signer compared with the
- *       new APK's (install.mjs). A different / unreadable signer, a failed pull or an install
+ *       Before ANY install, for each of the three packages: every APK of the installed app is
+ *       pulled (DIR/rollback-<pkg>-<sha>/ — the rollback, never overwritten) and its signer
+ *       compared with the new APK's (install.mjs). A different / unreadable signer, a failed pull or an install
  *       answering INSTALL_FAILED_* → STOP (exit 3), no further adb call. Never uninstalls,
  *       never clears app data.
  *   node scripts/m1a-checkpoint/m1a-checkpoint.mjs verify [--out DIR] [--report F] [--chain F] [--rehearsal]
@@ -30,6 +30,7 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
+  appendFileSync,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -275,14 +276,14 @@ function phone() {
 
   // Every install's signer check (and the rollback pull) BEFORE the first install: a STOP on
   // any of the three leaves the phone exactly as it was.
-  const rawAdb = args => {
+  const rawAdb = I.guarded(args => {
     const r = spawnSync(adbPath(), [...adbArgs, ...args], {
       encoding: 'utf8',
       timeout: 300000,
       maxBuffer: 64 << 20,
     });
     return { status: r.status, out: (r.stdout ?? '') + (r.stderr ?? '') };
-  };
+  });
   const pre = I.preflightAll({
     adb: rawAdb,
     apkSigners,
@@ -294,14 +295,21 @@ function phone() {
       { pkg: prodPkg, apk: prodApk },
     ],
   });
+  // installs.json is this run's; installs.log.jsonl is append-only, so the FIRST rollback (taken
+  // before any branch APK was installed) stays on record across re-runs.
+  const at = new Date().toISOString();
   writeFileSync(
     join(OUT, 'installs.json'),
-    JSON.stringify(pre, null, 2) + '\n',
+    JSON.stringify({ at, packages: pre }, null, 2) + '\n',
+  );
+  appendFileSync(
+    join(OUT, 'installs.log.jsonl'),
+    JSON.stringify({ at, packages: pre }) + '\n',
   );
   for (const p of pre) {
     console.log(
       p.installed
-        ? `${p.pkg}: installed, same signer ${p.apkSigners.join(',')}; rollback ${p.rollback.path} (sha256 ${p.rollback.sha256}): adb install -r ${p.rollback.path}`
+        ? `${p.pkg}: installed, same signer ${p.apkSigners.join(',')}; rollback ${p.rollback.dir}${p.rollback.keptExisting ? ' (already there, identical — kept, not rewritten)' : ''}\n  restore with: ${serial ? p.rollback.command.replace(/^adb /, `adb -s ${serial} `) : p.rollback.command}`
         : `${p.pkg}: not installed (a first install), signer ${p.apkSigners.join(',')}`,
     );
   }
