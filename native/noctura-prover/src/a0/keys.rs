@@ -73,10 +73,6 @@ impl Keys {
     }
 
     /// `nk` — for the witness (Task 3); never leaves the crate.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "consumed by Task 3's witness completion")
-    )]
     pub(crate) fn nk(&self) -> &Fr {
         &self.nk
     }
@@ -88,10 +84,6 @@ impl Keys {
     }
 
     /// `d_self` — the private `d` / `change_d` of every own note (R9); for the witness (Task 3).
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "consumed by Task 3's witness completion")
-    )]
     pub(crate) fn d_self(&self) -> &Fr {
         &self.d_self
     }

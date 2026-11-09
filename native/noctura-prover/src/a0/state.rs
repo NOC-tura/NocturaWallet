@@ -102,6 +102,46 @@ pub enum A0Error {
     Rng,
     /// The boot clock could not be read.
     Clock,
+    /// `prove`: a circuit name M1 does not know.
+    CircuitUnknown,
+    /// `prove`: `transfer` is M2's; M1 has no allow-list for it.
+    CircuitNotInM1,
+    /// `prove`: an `authId` given to a deposit (the live authorization is used up).
+    AuthUnexpected,
+    /// `prove`: the authorization record disagrees with the pins it was made under.
+    AuthRecordInconsistent,
+    /// `prove`: the witness is not one JSON object.
+    WitnessJson,
+    /// `prove`: a witness key that is a signal Rust fills.
+    WitnessRustFilled { name: &'static str },
+    /// `prove`: a witness key that is neither allow-listed nor a signal.
+    WitnessUnknownKey,
+    /// `prove`: an allow-listed witness key given twice.
+    WitnessDuplicate { name: &'static str },
+    /// `prove`: an allow-listed witness key missing.
+    WitnessMissing { name: &'static str },
+    /// `prove`: a witness value of the wrong form (`index` = the array position; 20 = the array).
+    WitnessValue { name: &'static str, index: usize },
+    /// `prove`: the Merkle path does not lead from the note to `merkleRoot`.
+    WitnessNotInTree,
+    /// `prove`: `withdrawAmount + fee` exceeds the note's `inputAmount`.
+    WithdrawExceedsInput,
+    /// `prove`: a key file could not be read.
+    KeyFileRead { file: &'static str },
+    /// `prove`: a key file is not the pinned one (length or sha256).
+    KeyFilePin { file: &'static str },
+    /// `prove`: a pinned key file did not parse (never expected).
+    KeyFileFormat { file: &'static str },
+    /// `prove`: the key files do not have the circuit's inputs or public-input count.
+    CircuitShape,
+    /// `prove`: the circuit rejected the witness.
+    WitnessRejected,
+    /// `prove`: the witness's public signals are not the values Rust put in.
+    PublicInputMismatch,
+    /// `prove`: the prover failed.
+    ProofFailed,
+    /// `prove`: the proof does not verify against the pinned key's verifying key.
+    ProofDoesNotVerify,
 }
 
 impl fmt::Display for A0Error {
@@ -147,6 +187,45 @@ impl fmt::Display for A0Error {
             A0Error::AuthExpired => write!(f, "unshield authorization expired"),
             A0Error::Rng => write!(f, "the OS random source failed"),
             A0Error::Clock => write!(f, "the boot clock could not be read"),
+            A0Error::CircuitUnknown => write!(f, "unknown circuit"),
+            A0Error::CircuitNotInM1 => write!(f, "transfer is not available in this version"),
+            A0Error::AuthUnexpected => write!(f, "a deposit takes no unshield authorization"),
+            A0Error::AuthRecordInconsistent => {
+                write!(f, "unshield authorization record is inconsistent")
+            }
+            A0Error::WitnessJson => write!(f, "witness is not a JSON object"),
+            A0Error::WitnessRustFilled { name } => {
+                write!(
+                    f,
+                    "witness key {name} is filled natively, not by the caller"
+                )
+            }
+            A0Error::WitnessUnknownKey => write!(f, "witness has a key outside the allow-list"),
+            A0Error::WitnessDuplicate { name } => write!(f, "witness key {name} is repeated"),
+            A0Error::WitnessMissing { name } => write!(f, "witness key {name} is missing"),
+            A0Error::WitnessValue { name, index } => {
+                write!(f, "witness value {name}[{index}] is malformed")
+            }
+            A0Error::WitnessNotInTree => {
+                write!(f, "the Merkle path does not lead from the note to the root")
+            }
+            A0Error::WithdrawExceedsInput => {
+                write!(f, "amount + fee exceeds the note being spent")
+            }
+            A0Error::KeyFileRead { file } => write!(f, "proving key file {file} could not be read"),
+            A0Error::KeyFilePin { file } => {
+                write!(f, "proving key file {file} is not the pinned file")
+            }
+            A0Error::KeyFileFormat { file } => {
+                write!(f, "proving key file {file} did not parse")
+            }
+            A0Error::CircuitShape => write!(f, "the proving keys do not match the circuit"),
+            A0Error::WitnessRejected => write!(f, "the circuit rejected the witness"),
+            A0Error::PublicInputMismatch => {
+                write!(f, "the proof's public inputs are not the expected ones")
+            }
+            A0Error::ProofFailed => write!(f, "the prover failed"),
+            A0Error::ProofDoesNotVerify => write!(f, "the proof does not verify"),
         }
     }
 }
@@ -177,10 +256,6 @@ impl Inner {
     /// this call decides, the record cannot be used again. Refuses, in this order: `handle` not
     /// live (`UnknownHandle`); none live (`AuthAbsent`); another id (`AuthMismatch`); recorded
     /// under another handle (`AuthWrongHandle`); `now >= expires_at` (`AuthExpired`).
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "consumed by Task 3's withdraw_change prove")
-    )]
     pub(crate) fn take_auth(
         &mut self,
         handle: Handle,
@@ -200,6 +275,12 @@ impl Inner {
             return Err(A0Error::AuthExpired);
         }
         Ok(auth)
+    }
+
+    /// Drops the live authorization, if any — what a `prove` without an `authId` does with it
+    /// (every prove consumes the record, whatever it then decides).
+    pub(crate) fn discard_auth(&mut self) {
+        self.auth = None;
     }
 
     /// Test-only: plant a record as if `end_session` had failed to clear it.

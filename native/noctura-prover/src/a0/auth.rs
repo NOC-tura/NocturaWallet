@@ -46,10 +46,6 @@ impl std::fmt::Debug for AuthId {
 /// The record (spec §4 step 4): `{owner, ata, amount, fee, pool, mint, handle, expiresAt}`.
 /// Task 3's `prove` reads every field after `Inner::take_auth` hands it over.
 #[derive(Debug)]
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "consumed by Task 3's withdraw_change prove")
-)]
 pub(crate) struct Auth {
     pub(crate) id: AuthId,
     pub(crate) handle: Handle,

@@ -137,13 +137,6 @@ pub(crate) fn poseidon<const N: usize>(inputs: &[Fr; N]) -> Fr {
 
 /// `rho_change = Poseidon3(TAG_RHO, nullifier, 0)` — the change note's `rho` (§1, §3; the
 /// circuit's `RhoOut` with index 0). Key-free: the nullifier is its only input.
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "consumed by Task 3's withdraw_change witness completion"
-    )
-)]
 pub(crate) fn rho_change(nullifier: &Fr) -> Fr {
     poseidon(&[TAG_RHO, *nullifier, Fr::zero()])
 }

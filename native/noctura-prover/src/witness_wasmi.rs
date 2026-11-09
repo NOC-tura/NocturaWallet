@@ -20,25 +20,52 @@ type Res<T> = Result<T, Box<dyn Error>>;
 /// Pure-Rust circom2 witness calculator over wasmi. Drives the downloaded circom
 /// `.wasm` through its exported functions (init / setInputSignal / getWitness over
 /// shared-RW-memory) — no wasmer, no C. Only circom2 wasm is supported.
+///
+/// The module's linear memory holds every signal of the last witness (for A0: `nk`, `d`, the
+/// note and its path), so it is zero-filled when the calculator is dropped.
 pub struct WitnessCalculator {
     store: Store<()>,
     instance: Instance,
+    memory: Memory,
     n32: u32,
+}
+
+/// What a circom2 wasm reports through `runtime.exceptionHandler` (codes 1–6 in circom's own
+/// `witness_calculator.js`: signal not found, too many signals, signal already set, assert
+/// failed, out of memory, input array index). It is a trap, never a no-op: a calculator that
+/// carried on after a failed `assert` / `===` would return a witness the circuit rejects.
+fn exception_trap(code: i32) -> wasmi::Error {
+    wasmi::Error::new(format!("circom witness exception {code}"))
 }
 
 impl WitnessCalculator {
     pub fn from_file(path: impl AsRef<std::path::Path>) -> Res<Self> {
-        let wasm = std::fs::read(path)?;
+        Self::from_bytes(&std::fs::read(path)?)
+    }
+
+    /// From the wasm's bytes — the A0 path, which hashes the bytes against a pin and must parse
+    /// exactly the bytes it hashed (no second read of the file).
+    pub fn from_bytes(wasm: &[u8]) -> Res<Self> {
         let engine = Engine::default();
-        let module = Module::new(&engine, &wasm[..])?;
+        let module = Module::new(&engine, wasm)?;
         let mut store = Store::new(&engine, ());
 
-        // circom wasm imports env.memory (it manages its own shared-RW buffer inside)
-        let memory = Memory::new(&mut store, MemoryType::new(2000, None))?;
+        // The deployed v1 circuits import env.memory; the A0 circuits export their own. Define
+        // one only when it is imported (2000 pages = 125 MiB of address space otherwise unused).
+        let imports_memory = module
+            .imports()
+            .any(|i| i.module() == "env" && i.name() == "memory");
+        let defined = if imports_memory {
+            Some(Memory::new(&mut store, MemoryType::new(2000, None))?)
+        } else {
+            None
+        };
         let mut linker = Linker::new(&engine);
-        linker.define("env", "memory", memory)?;
+        if let Some(memory) = defined {
+            linker.define("env", "memory", memory)?;
+        }
 
-        // runtime.* host callbacks — all no-ops except `error`, which traps.
+        // runtime.* host callbacks — no-ops except `error` and `exceptionHandler`, which trap.
         linker.func_wrap(
             "runtime",
             "error",
@@ -68,12 +95,22 @@ impl WitnessCalculator {
         linker.func_wrap("runtime", "logFinishComponent", |_: Caller<()>, _: i32| {})?;
         linker.func_wrap("runtime", "logStartComponent", |_: Caller<()>, _: i32| {})?;
         linker.func_wrap("runtime", "log", |_: Caller<()>, _: i32| {})?;
-        linker.func_wrap("runtime", "exceptionHandler", |_: Caller<()>, _: i32| {})?;
+        linker.func_wrap(
+            "runtime",
+            "exceptionHandler",
+            |_: Caller<()>, code: i32| -> Result<(), wasmi::Error> { Err(exception_trap(code)) },
+        )?;
         linker.func_wrap("runtime", "showSharedRWMemory", |_: Caller<()>| {})?;
         linker.func_wrap("runtime", "printErrorMessage", |_: Caller<()>| {})?;
         linker.func_wrap("runtime", "writeBufferMessage", |_: Caller<()>| {})?;
 
         let instance = linker.instantiate_and_start(&mut store, &module)?;
+        let memory = match defined {
+            Some(m) => m,
+            None => instance
+                .get_memory(&store, "memory")
+                .ok_or("wasm neither imports nor exports a memory")?,
+        };
 
         // Require circom2 (getVersion == 2). circom1 uses a different memory model.
         let version = instance
@@ -91,8 +128,89 @@ impl WitnessCalculator {
         Ok(Self {
             store,
             instance,
+            memory,
             n32,
         })
+    }
+
+    /// The number of field elements of the main component's input `name` (its array length, 1
+    /// for a scalar), or `None` when the circuit has no such input — circom's
+    /// `getInputSignalSize`, which answers by the name's hash (0 when it has none).
+    pub fn input_signal_size(&mut self, name: &str) -> Res<Option<usize>> {
+        let f: TypedFunc<(i32, i32), i32> = self
+            .instance
+            .get_typed_func(&self.store, "getInputSignalSize")?;
+        let (msb, lsb) = fnv(name);
+        // circom answers 0 for a name it does not have (its JS treats < 0 as absent too).
+        let size = f.call(&mut self.store, (msb as i32, lsb as i32))?;
+        Ok(usize::try_from(size).ok().filter(|n| *n > 0))
+    }
+
+    /// The number of input field elements the circuit takes in all — circom's `getInputSize`.
+    pub fn input_size(&mut self) -> Res<usize> {
+        Ok(usize::try_from(
+            self.tf0("getInputSize")?.call(&mut self.store, ())?,
+        )?)
+    }
+
+    /// The witness for `inputs` (name → values), with no `BigInt` on the way in or out: the
+    /// values go to the wasm as 32-bit words cut from the field element's limbs, and come back
+    /// as canonical field elements. The returned buffer is wiped on drop; the wasm memory is
+    /// wiped when the calculator is dropped. Every input of the circuit must be given, once.
+    pub fn calculate_witness_from_fr(
+        &mut self,
+        inputs: &[(&str, &[Fr])],
+    ) -> Res<zeroize::Zeroizing<Vec<Fr>>> {
+        if self.n32 != 8 {
+            return Err("not a BN254 circuit (field words != 8)".into());
+        }
+        let init: TypedFunc<i32, ()> = self.instance.get_typed_func(&self.store, "init")?;
+        let write: TypedFunc<(i32, i32), ()> = self
+            .instance
+            .get_typed_func(&self.store, "writeSharedRWMemory")?;
+        let read: TypedFunc<i32, i32> = self
+            .instance
+            .get_typed_func(&self.store, "readSharedRWMemory")?;
+        let set_input: TypedFunc<(i32, i32, i32), ()> = self
+            .instance
+            .get_typed_func(&self.store, "setInputSignal")?;
+        let get_witness: TypedFunc<i32, ()> =
+            self.instance.get_typed_func(&self.store, "getWitness")?;
+
+        init.call(&mut self.store, 0)?;
+        let mut given = 0usize;
+        for (name, values) in inputs {
+            let (msb, lsb) = fnv(name);
+            for (i, value) in values.iter().enumerate() {
+                let mut limbs = value.into_bigint().0;
+                for j in 0..8 {
+                    // least-significant 32-bit word first
+                    let word = (limbs[j / 2] >> (32 * (j % 2))) as u32;
+                    write.call(&mut self.store, (j as i32, word as i32))?;
+                }
+                zeroize::Zeroize::zeroize(&mut limbs);
+                set_input.call(&mut self.store, (msb as i32, lsb as i32, i as i32))?;
+                given += 1;
+            }
+        }
+        if given != self.input_size()? {
+            return Err("not every circuit input was given".into());
+        }
+
+        let witness_size = self.tf0("getWitnessSize")?.call(&mut self.store, ())? as usize;
+        let mut out = zeroize::Zeroizing::new(Vec::with_capacity(witness_size));
+        for i in 0..witness_size {
+            get_witness.call(&mut self.store, i as i32)?;
+            let mut limbs = [0u64; 4];
+            for j in 0..8 {
+                let word = read.call(&mut self.store, j as i32)? as u32;
+                limbs[j / 2] |= u64::from(word) << (32 * (j % 2));
+            }
+            let v = Fr::from_bigint(ark_ff::BigInteger256::new(limbs));
+            zeroize::Zeroize::zeroize(&mut limbs);
+            out.push(v.ok_or("witness value is not a canonical field element")?);
+        }
+        Ok(out)
     }
 
     fn tf0(&self, name: &str) -> Res<TypedFunc<(), i32>> {
@@ -140,6 +258,34 @@ impl WitnessCalculator {
             out.push(bigint_to_fr(from_array32(arr)));
         }
         Ok(out)
+    }
+}
+
+impl Drop for WitnessCalculator {
+    /// Zero-fills the wasm's linear memory: it holds every signal of the last witness.
+    fn drop(&mut self) {
+        let data = self.memory.data_mut(&mut self.store);
+        #[cfg(test)]
+        let before = data.iter().filter(|b| **b != 0).count();
+        data.fill(0);
+        #[cfg(test)]
+        probe::record(before, data.iter().filter(|b| **b != 0).count());
+    }
+}
+
+/// Test-only observation of the drop wipe: (non-zero bytes before, non-zero bytes after).
+#[cfg(test)]
+pub(crate) mod probe {
+    use std::cell::Cell;
+    thread_local! {
+        static LAST: Cell<Option<(usize, usize)>> = const { Cell::new(None) };
+    }
+    pub(crate) fn record(before: usize, after: usize) {
+        LAST.with(|l| l.set(Some((before, after))));
+    }
+    /// Takes this thread's last record.
+    pub(crate) fn take() -> Option<(usize, usize)> {
+        LAST.with(|l| l.take())
     }
 }
 

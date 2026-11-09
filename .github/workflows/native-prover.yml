@@ -129,6 +129,57 @@ jobs:
             exit 1
           fi
 
+      # The A0 proving keys (spec 2026-11-08 shielded A0 M1 §1, R4): the four files
+      # `src/a0/keyfiles.rs` pins by sha256, fetched by THOSE digests from the content-addressed
+      # route (`/h/<sha256>/a0/<file>`) and re-hashed here. This is CI provisioning — the tests
+      # themselves never touch the network: they read NOCTURA_A0_KEYS_DIR and, with CI set, fail
+      # rather than skip when it is missing. Cached by name like the v1 artifacts; a cache hit is
+      # re-verified against the pin, not trusted on its key.
+      - name: Cache the pinned A0 key files
+        uses: actions/cache@v4
+        with:
+          path: |
+            native/noctura-prover/artifacts/a0/deposit_final.zkey
+            native/noctura-prover/artifacts/a0/deposit.wasm
+            native/noctura-prover/artifacts/a0/withdraw_change_final.zkey
+            native/noctura-prover/artifacts/a0/withdraw_change.wasm
+          key: zk-a0-keys-${{ hashFiles('native/noctura-prover/src/a0/keyfiles.rs') }}
+
+      - name: Fetch and verify the pinned A0 key files
+        working-directory: .
+        run: |
+          set -euo pipefail
+          mkdir -p native/noctura-prover/artifacts/a0
+          base=$(grep -E "^const BASE" src/constants/provingAssets.ts | sed -E "s/.*'([^']+)'.*/\1/")
+          # Pins look like:  zkey: Pin { file: "<name>", sha256: "<64 hex>", len: … },
+          pins=$(grep -oE 'file: "[^"]+", sha256: "[0-9a-f]{64}"' native/noctura-prover/src/a0/keyfiles.rs \
+                 | sed -E 's/file: "([^"]+)", sha256: "([0-9a-f]{64})"/\2 \1/')
+          [ -n "$pins" ] || { echo "::error::could not read the A0 pins from src/a0/keyfiles.rs — its format may have changed"; exit 1; }
+          handled=0
+          while read -r want file; do
+            dest="native/noctura-prover/artifacts/a0/$file"
+            if [ -f "$dest" ] && [ "$(sha256sum "$dest" | cut -d' ' -f1)" = "$want" ]; then
+              echo "$file served from cache and re-verified against the Rust pin: $want"
+              handled=$((handled + 1))
+              continue
+            fi
+            curl -fsSL --retry 3 --connect-timeout 15 --max-time 300 "$base/h/$want/a0/$file" -o "$dest" || {
+              echo "::error::could not download $file from $base — the asset host was unreachable or has no A0 file with digest $want. Fail-closed: the A0 prove tests do not run against files that could not be verified."
+              exit 1
+            }
+            got=$(sha256sum "$dest" | cut -d' ' -f1)
+            if [ "$got" != "$want" ]; then
+              echo "::error::$file SHA-256 mismatch — pinned $want, downloaded $got"
+              exit 1
+            fi
+            echo "$file downloaded and verified against the Rust pin: $want"
+            handled=$((handled + 1))
+          done <<< "$pins"
+          if [ "$handled" != "4" ]; then
+            echo "::error::expected 4 A0 key files, handled $handled — the pin parse matched the wrong number of lines"
+            exit 1
+          fi
+
       - name: Formatting
         run: cargo fmt --check
 
@@ -142,6 +193,8 @@ jobs:
       # what happened on this workflow's first run — the positive control below
       # was the only thing that caught it.
       - name: Test
+        env:
+          NOCTURA_A0_KEYS_DIR: ${{ github.workspace }}/native/noctura-prover/artifacts/a0
         run: |
           set -o pipefail
           cargo test --locked 2>&1 | tee /tmp/cargo-test.log
@@ -157,6 +210,21 @@ jobs:
           #!/usr/bin/env bash
           set -euo pipefail
           grep -q "test deposit_prove_to_bytes_matches_public_inputs \.\.\. ok" "$1"
+          # The A0 proofs (and the landed-proof layout check, which needs no key file) ran and passed.
+          for t in \
+            landed_withdraw_change_proofs_verify_under_our_layout_against_the_deployed_vk \
+            keyed_the_signal_tables_are_the_circuits_inputs_and_their_counts \
+            keyed_a_deposit_proof_verifies_against_the_deployed_vk_with_the_desk_values \
+            keyed_withdraw_change_proofs_verify_against_the_deployed_vk \
+            keyed_the_vk_fixtures_are_the_pinned_zkeys_own_verifying_keys \
+            keyed_a_one_byte_changed_or_swapped_key_file_is_refused \
+            keyed_two_proofs_of_one_witness_differ_and_both_verify \
+            keyed_r_and_s_are_independent_draws \
+            keyed_the_circuit_rejects_a_tampered_witness_and_the_wasm_memory_is_wiped; do
+            grep -q "test a0::tests_prove::$t \.\.\. ok" "$1"
+          done
+          # A key-file test that returned early prints this marker; "ok" alone would hide it.
+          ! grep -q "A0-KEYS-SKIPPED" "$1"
           SH
           chmod +x /tmp/assert-interop.sh
 
@@ -183,3 +251,16 @@ jobs:
             exit 1
           fi
           echo "interop assertion is falsifiable"
+
+      # NEGATIVE CONTROL 2 — every test line present and "ok", but one A0 key-file test skipped:
+      # the assertion must still fail (a skipped test reports "ok").
+      - name: Assert the interop check fails on a skipped A0 key-file test
+        working-directory: .
+        run: |
+          grep -E "^test .* \.\.\. ok$" /tmp/cargo-test.log > /tmp/cargo-test-skipped.log
+          echo "A0-KEYS-SKIPPED keyed_withdraw_change_proofs_verify_against_the_deployed_vk: NOCTURA_A0_KEYS_DIR is not set — this test did NOT run" >> /tmp/cargo-test-skipped.log
+          if /tmp/assert-interop.sh /tmp/cargo-test-skipped.log; then
+            echo "::error::the interop assertion PASSED on a log with a skipped A0 key-file test"
+            exit 1
+          fi
+          echo "a skipped A0 key-file test fails the interop assertion"

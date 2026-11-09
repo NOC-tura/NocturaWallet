@@ -50,7 +50,7 @@ pub(crate) struct Parsed {
 }
 
 /// A decimal u64 in its one canonical spelling: `0`, or a non-zero digit then digits.
-fn parse_u64(s: &str, what: &'static str) -> Result<u64, A0Error> {
+pub(crate) fn parse_u64(s: &str, what: &'static str) -> Result<u64, A0Error> {
     let b = s.as_bytes();
     let canonical =
         !b.is_empty() && b.iter().all(u8::is_ascii_digit) && (b.len() == 1 || b[0] != b'0');

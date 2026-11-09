@@ -1,7 +1,8 @@
 //! A0 shielded keys and field values (spec 2026-11-08 shielded A0 M1 §3): EIP-2333 `sk`, `nk`,
 //! `ivk`, `d_self`, `addrField`, `mintHash`, commitments, deposit `rho(i)`, the internal
 //! nullifier, `rho_change`, `matchSpent`, and the one `Mutex` state that holds them; the
-//! unshield destination's ATA, `parseUnshield` and the single-use unshield authorization.
+//! unshield destination's ATA, `parseUnshield` and the single-use unshield authorization; and
+//! `prove` — the per-circuit allow-lists, witness completion, the sha256-pinned A0 key files.
 //!
 //! The public surface is [`state`]'s [`Core`] / [`Handle`] / [`A0Error`]: it takes a seed and
 //! returns only values that are public once used (a deposit `rho`, a commitment, the indices of
@@ -12,16 +13,21 @@ mod ata;
 mod auth;
 mod eip2333;
 mod field;
+mod keyfiles;
 mod keys;
+mod prove;
 pub mod state;
 mod unshield;
 
 pub use auth::AuthId;
+pub use prove::Proof;
 pub use state::{A0Error, Core, Handle, CORE};
 pub use unshield::{parse_unshield, Unshield, DECIMALS, FEE_CEILING};
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_prove;
 #[cfg(test)]
 mod tests_unshield;
 #[cfg(test)]
