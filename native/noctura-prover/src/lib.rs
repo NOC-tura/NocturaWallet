@@ -12,6 +12,9 @@ pub mod witness_wasmi;
 // loads that build to call the same symbols the app does).
 #[cfg(any(target_os = "android", feature = "jni-host"))]
 mod android;
+// The JNI local-reference books of android.rs's exports, over a fake JNIEnv (host, jni-host).
+#[cfg(all(test, feature = "jni-host"))]
+mod tests_android_refs;
 
 // The HOST jni-host build only (never Android, never the app): wasmer-vm — linked through
 // ark-circom, never called (witnesses run in wasmi) — exports `wasmer_vm_probestack`, the

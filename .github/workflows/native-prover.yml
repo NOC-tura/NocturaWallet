@@ -202,6 +202,19 @@ jobs:
           set -o pipefail
           cargo test --locked 2>&1 | tee /tmp/cargo-test.log
 
+      # JNI local references (Task 4 review I1): android.rs compiles on the host only with
+      # jni-host, so its fake-JNIEnv tests run in their own invocation; grep that each one ran.
+      - name: Test the JNI marshalling's local references (jni-host)
+        run: |
+          set -o pipefail
+          cargo test --locked --features jni-host --lib tests_android_refs 2>&1 | tee /tmp/cargo-test-jni.log
+          for t in \
+            large_arrays_cross_the_jni_with_their_local_references_bounded \
+            every_string_argument_is_read_without_leaving_a_reference \
+            the_books_see_the_unfreed_pattern_negative_control; do
+            grep -q "test tests_android_refs::$t \.\.\. ok" /tmp/cargo-test-jni.log
+          done
+
       # The assertion lives in one place so both controls exercise the SAME code.
       # `cargo test` reports success when zero tests run, and a suite that
       # silently stopped executing its only meaningful test is indistinguishable

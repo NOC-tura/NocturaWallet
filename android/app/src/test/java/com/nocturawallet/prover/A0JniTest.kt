@@ -105,6 +105,27 @@ class A0JniTest {
         NocturaA0Native.keysClose(h)
     }
 
+    /**
+     * Review I1 (Task 4, fix round 1): 5,000 + 5,000 values through the real JNI in one call — the
+     * values come through (the own notes' indices, none of the fillers). The local-reference
+     * books are kept by the Rust test `tests_android_refs` over a fake JNIEnv: HotSpot has no
+     * local-reference limit, and JDK 17's `-Xcheck:jni` printed no warning for the unfixed
+     * library at this size (measured), so a JVM run cannot read the leak that overflows ART N's
+     * 512-entry table.
+     */
+    @Test
+    fun largeArraysCrossTheRealJniInOneCall() {
+        val h = open()
+        val extra = 5000
+        val chain = (0 until notes.length()).map { notes.getJSONObject(it).getString("nullifier") } +
+            (0 until extra).map { "%064x".format(it + 1) }
+        val own = (0 until notes.length()).map { notes.getJSONObject(it).getString("rho") } +
+            (0 until extra).map { "%064x".format(it + 1_000_000) }
+        val spent = ok(NocturaA0Native.matchSpent(h, chain.toTypedArray(), own.toTypedArray())) as JSONArray
+        assertEquals((0 until notes.length()).toList().toString().replace(" ", ""), spent.toString())
+        NocturaA0Native.keysClose(h)
+    }
+
     @Test
     fun invNkAndInvNullNoJniOutputCarriesASecretOrAnOwnNullifier() {
         val forbidden = mutableListOf<String>()

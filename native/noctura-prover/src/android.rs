@@ -16,7 +16,7 @@
 //! be built returns `null`, which Kotlin reports as `E_A0_INTERNAL`.
 
 use crate::a0::{bridge, A0Error, CORE};
-use jni::objects::{JByteArray, JClass, JObject, JObjectArray, JString};
+use jni::objects::{JByteArray, JClass, JObjectArray, JString};
 use jni::sys::{jboolean, jstring, JNI_TRUE};
 use jni::JNIEnv;
 use zeroize::Zeroizing;
@@ -78,8 +78,19 @@ fn jni_arg() -> String {
     bridge::envelope(|| Err(A0Error::Arg { what: "jni" }))
 }
 
+/// The local references a [`string`] read may create inside its own frame: `get_string`'s
+/// `java/lang/String` and the object's class (jni 0.21 frees neither).
+const STRING_FRAME: i32 = 4;
+
+/// A Java string's value. Local references (review I1): jni 0.21 deletes none on drop, and ART
+/// on Android 7 / 7.1 (minSdk 24) aborts the process once a native method holds 512 — so every
+/// reference this read creates lives in a local frame popped before it returns, and a call's
+/// live references stay bounded whatever the size of its arguments (`tests_android_refs`).
 fn string(env: &mut JNIEnv, s: &JString) -> Option<String> {
-    env.get_string(s).ok().map(Into::into)
+    env.with_local_frame(STRING_FRAME, |env| -> jni::errors::Result<String> {
+        Ok(env.get_string(s)?.into())
+    })
+    .ok()
 }
 
 /// A nullable Java string: `Some(None)` for `null`.
@@ -95,9 +106,11 @@ fn strings(env: &mut JNIEnv, arr: &JObjectArray) -> Option<Vec<String>> {
     let n = env.get_array_length(arr).ok()?;
     let mut out = Vec::with_capacity(usize::try_from(n).ok()?);
     for i in 0..n {
-        let item: JObject = env.get_object_array_element(arr, i).ok()?;
-        let s = string(env, &JString::from(item))?;
-        out.push(s);
+        let item = JString::from(env.get_object_array_element(arr, i).ok()?);
+        let s = string(env, &item);
+        // the element's own local reference, freed before the next one is taken (review I1)
+        let _ = env.delete_local_ref(item);
+        out.push(s?);
     }
     Some(out)
 }
