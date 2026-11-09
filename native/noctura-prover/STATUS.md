@@ -37,7 +37,7 @@ verify → on-chain-format serialize, all validated in pure Rust from the real a
 
 **On-device (user):** sideload → **launch = libc++ gate** → Settings → "🔧 Native prover test (dev)" → confirm native prove succeeds + publicInputs match hosted. (Only arm64 devices — the APK's other ABIs lack the prover `.so`.)
 
-**Rebuild:** `cargo ndk -t arm64-v8a -o ../../android/app/src/main/jniLibs build --release` (ANDROID_NDK_HOME set), then `ENVFILE=.env.devnet ANDROID_HOME=~/Android/Sdk ./gradlew assembleRelease` in `android/`.
+**Rebuild (superseded 2026-11, M1a):** `ANDROID_NDK_HOME=… native/noctura-prover/build-android.sh` — it installs `libnoctura_prover.so` ALONE into `jniLibs/arm64-v8a/` (the old `cargo ndk -o …` also copied a stray `libark_circom-<hash>.so` into the APK) after the libc++ gate (`check-needed.sh`) and the exact export check (`check-jni-exports.sh`); then `ENVFILE=.env.devnet ANDROID_HOME=~/Android/Sdk ./gradlew assembleRelease` in `android/`.
 
 ## ✅✅✅ STAGE 2 CONFIRMED ON-CHAIN (2026-07-17) — M1 COMPLETE
 

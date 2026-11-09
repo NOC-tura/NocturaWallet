@@ -9,12 +9,18 @@ name: Native prover
 # guarantee lives entirely on the side of the boundary the JS suite cannot see,
 # so this job is the only place it can be checked at all.
 
+# `paths` names every input of this job (Fable review 1, R1-I4): the crate (native/**, its
+# tests/fixtures/** included), what the Rust tests include_str! from outside it
+# (src/modules/shielded/a0/__tests__/golden-vectors.json — and the TS equations next to it, which
+# the key generator imports), the vector generators (scripts/a0-vectors/**) and the lockfile that
+# pins the libraries they derive the fixtures with, the A0/v1 pins' source
+# (src/constants/provingAssets.ts) and the NDK version (android/build.gradle).
 on:
   push:
     branches: [main]
-    paths: ['native/**', '.github/workflows/native-prover.yml', 'src/constants/provingAssets.ts']
+    paths: ['native/**', '.github/workflows/native-prover.yml', 'src/constants/provingAssets.ts', 'android/build.gradle', 'src/modules/shielded/a0/**', 'scripts/a0-vectors/**', 'package-lock.json']
   pull_request:
-    paths: ['native/**', '.github/workflows/native-prover.yml', 'src/constants/provingAssets.ts']
+    paths: ['native/**', '.github/workflows/native-prover.yml', 'src/constants/provingAssets.ts', 'android/build.gradle', 'src/modules/shielded/a0/**', 'scripts/a0-vectors/**', 'package-lock.json']
   workflow_dispatch:
 
 permissions:
@@ -55,9 +61,68 @@ jobs:
           fi
           echo "shell propagates pipeline failure"
 
+      # THE VECTOR GENERATORS (spec §14 anti-circularity; Fable review 1, R1-I4). The fixtures the
+      # Rust tests read are never produced by the code under test: offline generators under
+      # scripts/a0-vectors/ derive them from independent libraries (micro-key-producer,
+      # poseidon-lite, @solana/web3.js, @noble/*) and the app's TS equations. `--check`
+      # regenerates each fixture and compares it byte for byte, so a hand-edited or stale fixture
+      # fails here rather than silently agreeing with the Rust. Node 24: the key generator imports
+      # src/modules/shielded/a0/fieldEquations.ts directly (type stripping). Neither of these two
+      # reads the program side's repository.
+      #
+      # NOT RUN HERE, stated: gen-prove-vectors.mjs --check. Its inputs are the program side's
+      # files read with `git show <pinned rev>` from that repository (--ico=…), which is not
+      # committed here or fetched by CI; it is run by hand (each task that touches the prove
+      # fixtures records its run). The Rust tests themselves check the prove fixture against the
+      # deployed VKs (tests_prove), which is what CI does see of it.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      # npm pinned as in the other workflows (the lockfile writer); --ignore-scripts: the
+      # generators are pure JS and no install script is needed to run them.
+      - name: Install the root dependencies the vector generators import
+        working-directory: .
+        run: |
+          npm install -g npm@11.6.2
+          npm ci --ignore-scripts
+
+      - name: Re-derive the key and ATA vector fixtures (gen-key-vectors / gen-ata-vectors --check)
+        working-directory: .
+        run: |
+          node scripts/a0-vectors/gen-key-vectors.mjs --check
+          node scripts/a0-vectors/gen-ata-vectors.mjs --check
+
+      # NEGATIVE CONTROL — one 64-hex value of each fixture changed (the JSON otherwise byte-
+      # identical): its --check must fail. Restored with git, and the restore is asserted, so the
+      # Rust tests below read the committed fixtures.
+      - name: Assert the generators' --check can fail
+        working-directory: .
+        run: |
+          for g in key ata; do
+            f="native/noctura-prover/tests/fixtures/a0-$g-vectors.json"
+            node -e '
+              const fs = require("fs"); const f = process.argv[1];
+              const j = JSON.parse(fs.readFileSync(f, "utf8")); let done = false;
+              const walk = o => { for (const k of Object.keys(o)) { if (done) return; const v = o[k];
+                if (typeof v === "string" && /^[0-9a-f]{64}$/.test(v)) { o[k] = (v[0] === "0" ? "1" : "0") + v.slice(1); done = true; return; }
+                if (v && typeof v === "object") walk(v); } };
+              walk(j); if (!done) { console.error("no 64-hex value in " + f); process.exit(2); }
+              fs.writeFileSync(f, JSON.stringify(j, null, 2) + "\n");' "$f"
+            [ "$(git diff --numstat -- "$f" | cut -f1,2)" = "$(printf '1\t1')" ] || { echo "::error::the tamper of $f did not change exactly one line"; exit 1; }
+            if node "scripts/a0-vectors/gen-$g-vectors.mjs" --check; then
+              echo "::error::gen-$g-vectors --check PASSED a fixture with a changed value"; exit 1
+            fi
+            git checkout -- "$f"
+          done
+          git diff --exit-code -- native/noctura-prover/tests/fixtures
+          echo "the generators' --check is falsifiable; fixtures restored"
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+          targets: aarch64-linux-android
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -283,9 +348,10 @@ jobs:
           fi
           echo "a skipped A0 key-file test fails the interop assertion"
 
-      # THE JNI SURFACE (spec §3, §14 "Boundary"): the Java_* symbols the library exports must be
-      # exactly jni-exports.txt. The host build with `jni-host` carries the same #[no_mangle]
-      # functions as the arm64 library (Task 5's arm64 step runs the same script on that one).
+      # THE JNI SURFACE (spec §3, §14 "Boundary"): the library's dynamic exports must be exactly
+      # jni-exports.txt — nothing else (exports.map, linked by build.rs). The host build with
+      # `jni-host` carries the same #[no_mangle] functions as the arm64 library, which the steps
+      # at the end of this job build and check with the same script.
       - name: Build the host JNI library
         run: cargo build --release --locked --features jni-host
 
@@ -301,3 +367,59 @@ jobs:
             exit 1
           fi
           echo "the JNI export check is falsifiable"
+
+      # THE ANDROID LIBRARY (spec §12, m15: "a CI step, not a note"). The arm64-v8a library the app
+      # packages is cross-built here with the NDK the app builds with (android/build.gradle's
+      # ndkVersion, read, not restated) by the same script a developer runs, into a scratch
+      # jniLibs. Its dynamic section must NEED no C++ runtime (the July launch crash), its
+      # exports must be exactly jni-exports.txt, and jniLibs must hold that one file.
+      - name: Install the Android NDK of android/build.gradle and cargo-ndk
+        run: |
+          ndk=$(sed -n 's/.*ndkVersion *= *"\([0-9.]*\)".*/\1/p' ../../android/build.gradle)
+          [ -n "$ndk" ] || { echo "::error::could not read ndkVersion from android/build.gradle"; exit 1; }
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$ndk" > /dev/null
+          [ -x "$ANDROID_HOME/ndk/$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang" ]
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$ndk" >> "$GITHUB_ENV"
+          cargo install cargo-ndk --version 4.1.2 --locked
+
+      - name: Build the arm64-v8a library (build-android.sh) — libc++ gate, exact exports, one file
+        run: NOCTURA_JNILIBS_DIR="$RUNNER_TEMP/jniLibs" ./build-android.sh
+
+      - name: Assert the arm64 library NEEDs no C++ runtime and exports exactly jni-exports.txt
+        run: |
+          so="$RUNNER_TEMP/jniLibs/arm64-v8a/libnoctura_prover.so"
+          readelf -d "$so" | grep -E "NEEDED|SONAME"
+          ./check-needed.sh "$so"
+          ./check-jni-exports.sh "$so"
+
+      # NEGATIVE CONTROLS — each gate above must fail on the thing it exists to catch, built here
+      # with the same NDK: a library that NEEDs libc++_shared.so, one that NEEDs a library outside
+      # the allowed set (libz.so), a library exporting the JNI list plus one more symbol, and a
+      # jniLibs with cargo-ndk's stray libark_circom copy.
+      - name: Assert the libc++ gate, the exact export check and the jniLibs check can fail
+        run: |
+          cc="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang"
+          neg="$RUNNER_TEMP/neg"; mkdir -p "$neg"
+          printf '#include <string>\nextern "C" int f(int n) { return (int)std::to_string(n).size(); }\n' > "$neg/cxx.cpp"
+          "$cc++" -shared -fPIC "$neg/cxx.cpp" -o "$neg/cxx.so"
+          readelf -d "$neg/cxx.so" | grep -q 'libc++_shared.so'
+          if ./check-needed.sh "$neg/cxx.so"; then
+            echo "::error::the libc++ gate PASSED a library that NEEDs libc++_shared.so"; exit 1
+          fi
+          printf 'int g(void) { return 0; }\n' > "$neg/z.c"
+          "$cc" -shared -fPIC -Wl,--no-as-needed -lz "$neg/z.c" -o "$neg/z.so"
+          readelf -d "$neg/z.so" | grep -q 'libz.so'
+          if ./check-needed.sh "$neg/z.so"; then
+            echo "::error::the libc++ gate PASSED a library that NEEDs libz.so, outside the allowed set"; exit 1
+          fi
+          { grep -vE '^\s*(#|$)' jni-exports.txt | sed 's/.*/void &(void) {}/'; echo 'void wasmer_vm_probestack(void) {}'; } > "$neg/extra.c"
+          "$cc" -shared -fPIC "$neg/extra.c" -o "$neg/extra.so"
+          if ./check-jni-exports.sh "$neg/extra.so"; then
+            echo "::error::the export check PASSED a library with an export outside jni-exports.txt"; exit 1
+          fi
+          cp -r "$RUNNER_TEMP/jniLibs" "$neg/jniLibs"
+          touch "$neg/jniLibs/arm64-v8a/libark_circom-0123456789abcdef.so"
+          if NOCTURA_JNILIBS_DIR="$neg/jniLibs" ./build-android.sh --verify-only; then
+            echo "::error::the jniLibs check PASSED a tree with a stray library"; exit 1
+          fi
+          echo "the libc++ gate, the exact export check and the jniLibs check are falsifiable"

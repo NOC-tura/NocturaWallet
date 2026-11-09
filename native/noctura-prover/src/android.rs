@@ -1,5 +1,5 @@
-//! Pure-Rust JNI bridge for the Android `NocturaProver` native module. No C++ glue,
-//! no libc++_shared → the blst-style libc++ startup conflict does not apply.
+//! Pure-Rust JNI bridge for the Android `NocturaProver` native module. No C++ glue and no C++
+//! runtime NEEDED (check-needed.sh), so it cannot bring a second libc++_shared into the app.
 //!
 //! Two Kotlin classes bind here, and `jni-exports.txt` lists every symbol (the export check
 //! compares it with the built library's dynamic symbols):

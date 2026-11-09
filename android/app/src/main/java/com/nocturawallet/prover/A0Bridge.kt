@@ -11,19 +11,53 @@ import org.json.JSONException
 import org.json.JSONObject
 
 /**
- * Loads `libnoctura_prover.so` once, lazily — never in a static initializer at app start (the
- * blst lesson: an eager dlopen risks a launch crash). Pure Rust (libc/libm/libdl only).
+ * The ABI gate (spec §12, m14): the prover is built for arm64-v8a only, and on any other ABI —
+ * emulators included — it is never loaded, so `isSupported()` is false and every A0 call is
+ * `E_A0_UNAVAILABLE`. Read off the running process, not off what happens to be packaged: an APK
+ * that one day carried a build for another ABI would still be refused. ART reports
+ * `java.vm.name` = "Dalvik" and, in a 64-bit ARM process, `os.arch` = "aarch64" (a 32-bit ARM
+ * process reports armv7l / armv8l, an emulator x86_64 / i686). A host JVM — the JVM unit tests,
+ * which load the `jni-host` build — is not Android and is not gated.
+ */
+internal object A0Abi {
+    const val ARCH = "aarch64"
+    const val ART_VM_NAME = "Dalvik"
+
+    fun allows(vmName: String?, osArch: String?): Boolean = vmName != ART_VM_NAME || osArch == ARCH
+
+    fun current(): Boolean = allows(System.getProperty("java.vm.name"), System.getProperty("os.arch"))
+}
+
+/**
+ * Loads `libnoctura_prover.so` once, lazily — never in a static initializer at app start (an
+ * eager dlopen risks a launch crash) — and only where [A0Abi] allows it. Pure Rust (libc / libm /
+ * libdl only; native/noctura-prover/check-needed.sh).
  */
 internal object NocturaNativeLib {
     @Volatile private var loaded = false
 
+    fun ensureLoaded() = ensureLoaded(A0Abi.current())
+
+    /** The gate comes first, every time: a refused ABI throws even if a load happened before. */
     @Synchronized
-    fun ensureLoaded() {
+    internal fun ensureLoaded(abiAllowed: Boolean) {
+        if (!abiAllowed) throw UnsatisfiedLinkError("libnoctura_prover is built for arm64-v8a only")
         if (!loaded) {
             System.loadLibrary("noctura_prover")
             loaded = true
         }
     }
+}
+
+/** `isSupported()`: the library loads (ABI gate included) and says so; any failure is false. */
+internal object A0Support {
+    fun check(load: () -> Unit, native: () -> Boolean): Boolean =
+        try {
+            load()
+            native()
+        } catch (e: Throwable) {
+            false
+        }
 }
 
 /** A JS argument that is not in its one form; rejected as `E_A0_ARG` before any native call. */

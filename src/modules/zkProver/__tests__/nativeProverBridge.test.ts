@@ -52,6 +52,12 @@ it('nativeProve (v1) forwards zkeyPath AND wasmPath to native.proveV1 and return
   expect(res.proofBytes).toBe('ab'.repeat(256));
 });
 
+it('nativeProve (v1) surfaces native’s E_V1_REMOVED refusal unchanged (R1-I3)', async () => {
+  const refusal = Object.assign(new Error('E_V1_REMOVED: the v1 prover is removed'), {code: 'E_V1_REMOVED'});
+  mockNative.proveV1.mockRejectedValue(refusal);
+  await expect(nativeProve('deposit', '{}', '/z', '/w')).rejects.toBe(refusal);
+});
+
 describe('a0KeysOpen — the seed crosses as bytes (spec §3, C3)', () => {
   const seedValues = Array.from({length: 64}, (_, i) => (i * 37 + 11) % 256);
 

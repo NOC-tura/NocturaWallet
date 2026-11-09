@@ -19,7 +19,8 @@ export interface A0Proof {
  *  are deliberately absent here. Every A0 call rejects with a stable `E_A0_…` code. */
 interface NocturaProverNative {
   isSupported(): boolean;
-  /** v1 (the NPkc pool) — removed with the v1 path in M1b. */
+  /** v1 (the NPkc pool). Since M1a it only rejects, with code `E_V1_REMOVED`, before any
+   *  native call (R1-I3); removed with the v1 path in M1b. */
   proveV1(
     circuitId: string,
     witnessJson: string,
@@ -62,8 +63,9 @@ export function isProverSupported(): boolean {
   return !!native && native.isSupported();
 }
 
-/** v1 prove (the NPkc pool) — native supplies BOTH SHA-256-verified paths at prove time.
- *  Removed with the v1 path in M1b. */
+/** v1 prove (the NPkc pool). Since M1a native refuses it: the promise rejects with code
+ *  `E_V1_REMOVED` (message prefixed with it), forwarded to the caller unchanged — the v1 prover
+ *  (unpinned keys, no input allow-list) is unreachable (R1-I3). Removed with the v1 path in M1b. */
 export async function nativeProve(
   circuitId: string,
   witnessJson: string,

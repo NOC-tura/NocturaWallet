@@ -7,7 +7,7 @@
  *   - EIP-2333 indices are implicitly hardened (no apostrophes)
  *
  * ⛔ sk_spend (m/12381/371/1/0) is NEVER derived in JavaScript.
- *    It exists only in native code (BLST via iOS CryptoKit / Android KeyStore).
+ *    It exists only inside the Rust A0 core (native/noctura-prover, src/a0).
  *    The path constant is exported for documentation only.
  */
 
