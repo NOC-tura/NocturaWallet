@@ -67,7 +67,7 @@ export type ShieldedScreenStep = 'input' | 'confirm' | 'consolidating' | 'provin
  * Provides real witness data for ZK proof generation.
  * Implementation requires:
  * - MerkleModule for Merkle paths
- * - Native BLST bridge for noteSecret derivation from sk_view
+ * - a native noteSecret derivation from sk_view (v1; removed with the v1 path in M1b)
  *
  * Until both are available, the provider is null and shielded
  * operations throw rather than silently using zero witnesses.

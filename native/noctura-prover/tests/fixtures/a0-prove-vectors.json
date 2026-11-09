@@ -1,0 +1,251 @@
+{
+  "schema": "noctura.a0.prove-vectors/1",
+  "_provenance": "Written by scripts/a0-vectors/gen-prove-vectors.mjs. Scenarios: the app equations (fieldEquations.ts / poseidon-lite), @solana/web3.js ATAs and the Task 1 key fixture; publicInputOrder, the VKs and the landed proofs: the program side files named in `sources`, read at `sourcesRevision`, sha256-pinned. Never written from Rust. Rerun: node scripts/a0-vectors/gen-prove-vectors.mjs --ico=<program side repo> [--check].",
+  "_byteOrder": "Field values are 32-byte BIG-ENDIAN hex, canonical (< r). proofBytes is the 256-byte on-chain layout.",
+  "sourcesRevision": "37ad673360882eded6b07390e286003cc116d4bd",
+  "sources": {
+    "deployed": {
+      "path": "docs/zk-contract/devnet-a0-deployed-contract.json",
+      "sha256": "5d3f2fa35f8aa7363faf9bbdc818ff020221674d0c8edbc0c54d626e6c67be99"
+    },
+    "relayerGolden": {
+      "path": "docs/zk-contract/relayer-a0-golden-vectors.json",
+      "sha256": "de12765c43ffcd4ac2266fdf1902a02d7582ef03dc0bafd9d3c35e83e8cb684f"
+    },
+    "depositVk": {
+      "path": "zk/keys/v2/deposit_vk.json",
+      "sha256": "f6f8ae49b8f032be799ee025f3e48faa34df7aa3685bee54339f538e6f9f2091"
+    },
+    "withdrawChangeVk": {
+      "path": "zk/keys/v2/withdraw_change_vk.json",
+      "sha256": "43dafca79a0523fcffb4a9719f67b4a260cbce2047b9a00c9abff0223134e5cd"
+    }
+  },
+  "publicInputOrder": {
+    "deposit": [
+      "commitment",
+      "amount",
+      "mintHash",
+      "rho"
+    ],
+    "withdraw_change": [
+      "merkleRoot",
+      "nullifier",
+      "withdrawAmount",
+      "recipientField",
+      "mintHash",
+      "changeCommitment",
+      "fee"
+    ]
+  },
+  "vkSha256": {
+    "deposit": "f6f8ae49b8f032be799ee025f3e48faa34df7aa3685bee54339f538e6f9f2091",
+    "withdraw_change": "43dafca79a0523fcffb4a9719f67b4a260cbce2047b9a00c9abff0223134e5cd"
+  },
+  "zeros": [
+    "0000000000000000000000000000000000000000000000000000000000000000",
+    "2098f5fb9e239eab3ceac3f27b81e481dc3124d55ffed523a839ee8446b64864",
+    "1069673dcdb12263df301a6ff584a7ec261a44cb9dc68df067a4774460b1f1e1",
+    "18f43331537ee2af2e3d758d50f72106467c6eea50371dd528d57eb2b856d238",
+    "07f9d837cb17b0d36320ffe93ba52345f1b728571a568265caac97559dbc952a",
+    "2b94cf5e8746b3f5c9631f4c5df32907a699c58c94b2ad4d7b5cec1639183f55",
+    "2dee93c5a666459646ea7d22cca9e1bcfed71e6951b953611d11dda32ea09d78",
+    "078295e5a22b84e982cf601eb639597b8b0515a88cb5ac7fa8a4aabe3c87349d",
+    "2fa5e5f18f6027a6501bec864564472a616b2e274a41211a444cbe3a99f3cc61",
+    "0e884376d0d8fd21ecb780389e941f66e45e7acce3e228ab3e2156a614fcd747",
+    "1b7201da72494f1e28717ad1a52eb469f95892f957713533de6175e5da190af2",
+    "1f8d8822725e36385200c0b201249819a6e6e1e4650808b5bebc6bface7d7636",
+    "2c5d82f66c914bafb9701589ba8cfcfb6162b0a12acf88a8d0879a0471b5f85a",
+    "14c54148a0940bb820957f5adf3fa1134ef5c4aaa113f4646458f270e0bfbfd0",
+    "190d33b12f986f961e10c0ee44d8b9af11be25588cad89d416118e4bf4ebe80c",
+    "22f98aa9ce704152ac17354914ad73ed1167ae6596af510aa5b3649325e06c92",
+    "2a7c7c9b6ce5880b9f6f228d72bf6a575a526f29c66ecceef8b753d38bba7323",
+    "2e8186e558698ec1c67af9c14d463ffc470043c9c2988b954d75dd643f36b992",
+    "0f57c5571e9a4eab49e2c8cf050dae948aef6ead647392273546249d1c1ff10f",
+    "1830ee67b5fb554ad5f63d4388800e1cfe78e310697d46e43c9ce36134f72cca"
+  ],
+  "scenarios": [
+    {
+      "label": "deposit: the repo test seed, depositIndex 0, 1 token (10^9 base units)",
+      "circuit": "deposit",
+      "witness": {
+        "amount": "1000000000",
+        "depositIndex": "0"
+      },
+      "publicInputs": [
+        "02541c5bb65d705e584a835144831936031f3b47977cba9b89f3883057c5245f",
+        "000000000000000000000000000000000000000000000000000000003b9aca00",
+        "05ee2f1a32b56046bcfab53bb4ac502bdc7689c4e2a8446db77130db7fccdca4",
+        "12d576a44d29fa15379dfda30a5cce14c828f6a2d2789d9a0730c47f62d7518e"
+      ]
+    },
+    {
+      "label": "withdraw_change: note of depositIndex 1 (10^9) at leaf 5 of 6, 400000 out + fee 10000, change 999590000",
+      "circuit": "withdraw_change",
+      "authorization": {
+        "owner": "HV996fcQT193sXfh3fgCEDjxsWwWxQC6cVdb1EyZxdJR",
+        "amount": "400000",
+        "fee": "10000",
+        "ata": "DzU8HkTy7b5jK8LvahytrsgimF9Navxc9HgzA7y167Zt"
+      },
+      "witness": {
+        "merkleRoot": "0a149257619fba065c3d3c2e5e0df3553edab77b6142dfaadc8afb3bdd5b7301",
+        "inputAmount": "1000000000",
+        "rho": "1fddfc16b3feed86d3980447623d01ded3c082b70ec96dad1aff383cb00d5e8d",
+        "pathElements": [
+          "00000000000000000000000000000000000000000000000000000000000003ed",
+          "2098f5fb9e239eab3ceac3f27b81e481dc3124d55ffed523a839ee8446b64864",
+          "0259109b2c4364c225b51b8613dd883c9a5e3abc8152bbb1318ea4a1761fd3ad",
+          "18f43331537ee2af2e3d758d50f72106467c6eea50371dd528d57eb2b856d238",
+          "07f9d837cb17b0d36320ffe93ba52345f1b728571a568265caac97559dbc952a",
+          "2b94cf5e8746b3f5c9631f4c5df32907a699c58c94b2ad4d7b5cec1639183f55",
+          "2dee93c5a666459646ea7d22cca9e1bcfed71e6951b953611d11dda32ea09d78",
+          "078295e5a22b84e982cf601eb639597b8b0515a88cb5ac7fa8a4aabe3c87349d",
+          "2fa5e5f18f6027a6501bec864564472a616b2e274a41211a444cbe3a99f3cc61",
+          "0e884376d0d8fd21ecb780389e941f66e45e7acce3e228ab3e2156a614fcd747",
+          "1b7201da72494f1e28717ad1a52eb469f95892f957713533de6175e5da190af2",
+          "1f8d8822725e36385200c0b201249819a6e6e1e4650808b5bebc6bface7d7636",
+          "2c5d82f66c914bafb9701589ba8cfcfb6162b0a12acf88a8d0879a0471b5f85a",
+          "14c54148a0940bb820957f5adf3fa1134ef5c4aaa113f4646458f270e0bfbfd0",
+          "190d33b12f986f961e10c0ee44d8b9af11be25588cad89d416118e4bf4ebe80c",
+          "22f98aa9ce704152ac17354914ad73ed1167ae6596af510aa5b3649325e06c92",
+          "2a7c7c9b6ce5880b9f6f228d72bf6a575a526f29c66ecceef8b753d38bba7323",
+          "2e8186e558698ec1c67af9c14d463ffc470043c9c2988b954d75dd643f36b992",
+          "0f57c5571e9a4eab49e2c8cf050dae948aef6ead647392273546249d1c1ff10f",
+          "1830ee67b5fb554ad5f63d4388800e1cfe78e310697d46e43c9ce36134f72cca"
+        ],
+        "pathIndices": [
+          1,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "changeAmount": "999590000",
+      "publicInputs": [
+        "0a149257619fba065c3d3c2e5e0df3553edab77b6142dfaadc8afb3bdd5b7301",
+        "1b7b0e3403ba6e7dde63eb21bb18db1507fddf19517d7b6a9457ac12aded2107",
+        "0000000000000000000000000000000000000000000000000000000000061a80",
+        "2fd819db5ecb71ae9dafcda3e24d2f050b98e46cd4f2e4ec3426644adf4d1710",
+        "05ee2f1a32b56046bcfab53bb4ac502bdc7689c4e2a8446db77130db7fccdca4",
+        "0f039c2e32f3d398e99d081de353f9400e75aaf336b61f9e8d0b70e6f1409f8e",
+        "0000000000000000000000000000000000000000000000000000000000002710"
+      ]
+    },
+    {
+      "label": "withdraw_change: note of depositIndex 2 (10^9) alone at leaf 0 (path = the zeros), everything out, change 0",
+      "circuit": "withdraw_change",
+      "authorization": {
+        "owner": "HV996fcQT193sXfh3fgCEDjxsWwWxQC6cVdb1EyZxdJR",
+        "amount": "999990000",
+        "fee": "10000",
+        "ata": "DzU8HkTy7b5jK8LvahytrsgimF9Navxc9HgzA7y167Zt"
+      },
+      "witness": {
+        "merkleRoot": "0687924403d4a3a195caaaeda5dcf1ebcea642e8699443835bf543d19480f677",
+        "inputAmount": "1000000000",
+        "rho": "0319d2831854a0c0a3306e59bb5e11c3bacdf8c0839dc2f69bee590713522bf4",
+        "pathElements": [
+          "0000000000000000000000000000000000000000000000000000000000000000",
+          "2098f5fb9e239eab3ceac3f27b81e481dc3124d55ffed523a839ee8446b64864",
+          "1069673dcdb12263df301a6ff584a7ec261a44cb9dc68df067a4774460b1f1e1",
+          "18f43331537ee2af2e3d758d50f72106467c6eea50371dd528d57eb2b856d238",
+          "07f9d837cb17b0d36320ffe93ba52345f1b728571a568265caac97559dbc952a",
+          "2b94cf5e8746b3f5c9631f4c5df32907a699c58c94b2ad4d7b5cec1639183f55",
+          "2dee93c5a666459646ea7d22cca9e1bcfed71e6951b953611d11dda32ea09d78",
+          "078295e5a22b84e982cf601eb639597b8b0515a88cb5ac7fa8a4aabe3c87349d",
+          "2fa5e5f18f6027a6501bec864564472a616b2e274a41211a444cbe3a99f3cc61",
+          "0e884376d0d8fd21ecb780389e941f66e45e7acce3e228ab3e2156a614fcd747",
+          "1b7201da72494f1e28717ad1a52eb469f95892f957713533de6175e5da190af2",
+          "1f8d8822725e36385200c0b201249819a6e6e1e4650808b5bebc6bface7d7636",
+          "2c5d82f66c914bafb9701589ba8cfcfb6162b0a12acf88a8d0879a0471b5f85a",
+          "14c54148a0940bb820957f5adf3fa1134ef5c4aaa113f4646458f270e0bfbfd0",
+          "190d33b12f986f961e10c0ee44d8b9af11be25588cad89d416118e4bf4ebe80c",
+          "22f98aa9ce704152ac17354914ad73ed1167ae6596af510aa5b3649325e06c92",
+          "2a7c7c9b6ce5880b9f6f228d72bf6a575a526f29c66ecceef8b753d38bba7323",
+          "2e8186e558698ec1c67af9c14d463ffc470043c9c2988b954d75dd643f36b992",
+          "0f57c5571e9a4eab49e2c8cf050dae948aef6ead647392273546249d1c1ff10f",
+          "1830ee67b5fb554ad5f63d4388800e1cfe78e310697d46e43c9ce36134f72cca"
+        ],
+        "pathIndices": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "changeAmount": "0",
+      "publicInputs": [
+        "0687924403d4a3a195caaaeda5dcf1ebcea642e8699443835bf543d19480f677",
+        "1a0a6e0e0f381902e8ccc11f795da7a586e1a90489ee7b1ebed27b3c0f0a0422",
+        "000000000000000000000000000000000000000000000000000000003b9aa2f0",
+        "2fd819db5ecb71ae9dafcda3e24d2f050b98e46cd4f2e4ec3426644adf4d1710",
+        "05ee2f1a32b56046bcfab53bb4ac502bdc7689c4e2a8446db77130db7fccdca4",
+        "28d3d6327460024750ace878abd5e9bdb83f965bd6df4e6d56abf7f8b0c48c21",
+        "0000000000000000000000000000000000000000000000000000000000002710"
+      ]
+    }
+  ],
+  "landed": [
+    {
+      "label": "withdraw_with_change landed directly (fee 50000)",
+      "signature": "2mfMYnbtkXU2cHEyoBXSrCMiiv1goih17wcYhbZRPSsaTUmSHX4mcFgsjiqXE9PHxzdxmttf7TGcZrhGWnW8F92g",
+      "proofBytes": "2c404a55bea09aebee279f5e412c6da83f94d6c9b70c3b44ffb27d6fbd8997b61b0c45f2c08f0f8b958067c5a6756561ca5ec00ae947b805745b6588d01cb10721d43701caa9ca7327bb1316e34713130872d54f2c83bac3b44e8758684fd07e2f7122bb769d18c357b8a04a681618ef5ab41f5ecef1d018892dbad6d37259132db01f1b8025b3ca23e5e8cff025f08af943c71d815b05f8b4b68f16a2941c0707f2522b53134bf490af445b08279f6c7d4fbf117b00fae91de246749b3b9c251a1c3cb2c19fdd6792a39974258ff1e2665ca1bcd3985ca12287a6788bacc553221eb19ce2f9d432b79b5b1c12fe3cd40f08765c20daaa8e7ea78b4de3985c8d",
+      "publicInputs": [
+        "298f91ce8da85fdd485f6ea585f56bd92b36b8f9720caa751a6443fcef1c2250",
+        "225b8fd72df5630bad50f3f4d6ea6a5dc50ae599eb8410ccea0fe30e72e1f53a",
+        "00000000000000000000000000000000000000000000000000000000000aae60",
+        "11aed47c84ad37de5322a31697dab39e2f5521832ebc41d20e9e8f0cc46fa342",
+        "05ee2f1a32b56046bcfab53bb4ac502bdc7689c4e2a8446db77130db7fccdca4",
+        "0bb46d5008b14dd034a1b6dba8eba671626931a0ea68e8628f703226f4a2f2d5",
+        "000000000000000000000000000000000000000000000000000000000000c350"
+      ]
+    },
+    {
+      "label": "withdraw_with_change landed by the relayer (fee 10000)",
+      "signature": "3UfCx5TDkpXJsUkYJPcoY7Y8gi1vrSDzgNyt9DixWRAMVdbmCypCXn3nEg4vfWv3n7zpbvSSAz6AmtbLDFjGRn2F",
+      "proofBytes": "1046ded90959286fcce9ca6a0d1a00a6b322888086193e4937c29fd226c161a02957cb0c2e2b1f021ade43ba5e224b054e66321ad7559d6c877d367c4d9d500d0c8f0405a74f1726d0f8b428e4b39d78c88ff11204cfc7ec89a6abb040fec8f0291f168987fee1c87f8103cab0f99c567b548d95ced1a422ae96f0aa4baa9fd51a37bc5afb81ce3504f283a9509b56fc179d5d87db461a998463e4276916b2702a29bf7f47aa940994b216bae2cde05083a23095708244f321cb00a6465d9dd40f340bd8f72b8a3d83eb6179c4eff48b4aec62ab89523e0ae2fca524fa46693d0764fabba5f48e58c32d889212806dd9beef8796dd4a8f35fdc21a25a2ebfd3c",
+      "publicInputs": [
+        "0514c8374f9a62553555855aa476c8764d36c2b9953913aa1b02ba863509696c",
+        "2123772ec3ef328c887d88e87b2d2ee4c7860677850473bbc260321916ea74ac",
+        "0000000000000000000000000000000000000000000000000000000000061a80",
+        "2fd819db5ecb71ae9dafcda3e24d2f050b98e46cd4f2e4ec3426644adf4d1710",
+        "05ee2f1a32b56046bcfab53bb4ac502bdc7689c4e2a8446db77130db7fccdca4",
+        "02c05cd117088e5df06d12ca5bea3d4d76343ebc7e182729f59d330138db0a79",
+        "0000000000000000000000000000000000000000000000000000000000002710"
+      ]
+    }
+  ]
+}

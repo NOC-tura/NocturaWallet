@@ -16,7 +16,7 @@ Privacy-first mobile wallet for Solana with shielded transactions, zero-knowledg
 - React Native 0.84.1 (New Architecture / Fabric / Hermes)
 - @solana/web3.js >= 1.95.8 (v1.x — migrate to @solana/kit when Anchor supports it)
 - Groth16/BN254 ZK proofs via @callstack/polygen AOT + hosted prover
-- BLST (Supranational) for native BLS12-381 signing
+- Pure-Rust native core (`native/noctura-prover`, arkworks): shielded keys and Groth16 proving on device (Android arm64)
 - Zustand + MMKV + NativeWind v4
 
 ## License

@@ -54,3 +54,12 @@ it('throws when the proof publicInputs length != EXPECTED_NPUBLIC (fail-closed)'
   (nativeProve as jest.Mock).mockResolvedValueOnce({proofBytes: 'aa', publicInputs: ['1']}); // wrong for transfer (6)
   await expect(localProver.prove('transfer', {} as never)).rejects.toThrow(/public input/i);
 });
+
+it('surfaces native’s E_V1_REMOVED refusal to its caller, code and message intact (R1-I3)', async () => {
+  const refusal = Object.assign(new Error('E_V1_REMOVED: the v1 prover is removed'), {code: 'E_V1_REMOVED'});
+  (nativeProve as jest.Mock).mockRejectedValueOnce(refusal);
+  await expect(localProver.prove('deposit', {} as never)).rejects.toMatchObject({
+    code: 'E_V1_REMOVED',
+    message: expect.stringMatching(/^E_V1_REMOVED: /),
+  });
+});

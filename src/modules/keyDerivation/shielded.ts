@@ -3,9 +3,8 @@
  *
  * ⛔ SECURITY BOUNDARY: This file contains ONLY view and disclosure key derivation.
  *    deriveShieldedSpendKey() MUST NOT exist in any JS/TS file.
- *    Spend key derivation lives exclusively in native code:
- *      - iOS: NocturaSecureEnclave.swift (BLST via C interop)
- *      - Android: NocturaKeyStore.kt (BLST via JNI)
+ *    Spend key derivation lives exclusively in the Rust A0 core
+ *    (native/noctura-prover, src/a0 — Android, arm64-v8a; no iOS build yet).
  *
  * Library: micro-key-producer/bls.js (EIP-2333)
  *   ⚠️ NOT @scure/bip32 — BIP-32 is invalid for BLS12-381 (>54% of derived keys
@@ -39,5 +38,6 @@ export function deriveDisclosureKey(seed: Uint8Array, index: number): Uint8Array
 }
 
 // ⛔ deriveShieldedSpendKey() DOES NOT EXIST here.
-// For shielded signing, call the native bridge:
-//   NocturaKeyModule.signShieldedOp(payload)
+// The A0 spend key (m/12381/371/1/0) is derived inside Rust only
+// (native/noctura-prover, src/a0); JS reaches it through the opaque handle of
+// src/modules/zkProver/nativeProverBridge.ts (a0KeysOpen … a0Prove).
