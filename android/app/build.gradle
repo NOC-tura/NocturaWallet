@@ -95,6 +95,27 @@ def hasReleaseSigning = releaseStoreFile && releaseStorePassword && releaseKeyAl
  */
 def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
 
+// The M1a checkpoint's key files (the four pinned A0 files, ~10.6 MB) go into the TEST APK only,
+// copied at build time from NOCTURA_A0_KEYS_DIR (the program side's zk/keys/v2/). Never
+// committed, never in the app; libnoctura_prover re-checks each sha256 on the phone.
+def m1aKeysDir = System.getenv("NOCTURA_A0_KEYS_DIR")
+def m1aKeysAssets = layout.buildDirectory.dir("m1a-checkpoint/assets").get().asFile
+def m1aKeyFiles = ["deposit_final.zkey", "deposit.wasm", "withdraw_change_final.zkey", "withdraw_change.wasm"]
+def stageM1aKeys = tasks.register("stageM1aCheckpointKeys", Sync) {
+    into(new File(m1aKeysAssets, "a0"))
+    if (m1aKeysDir) {
+        from(m1aKeysDir) { include(m1aKeyFiles) }
+    }
+    doFirst {
+        def missing = m1aKeysDir ? m1aKeyFiles.findAll { !new File(m1aKeysDir, it).isFile() } : m1aKeyFiles
+        if (missing) {
+            throw new GradleException(
+                "The M1a checkpoint test APK needs the pinned A0 key files: set NOCTURA_A0_KEYS_DIR " +
+                "to a directory holding ${m1aKeyFiles} (the program side's zk/keys/v2/). Missing: ${missing}")
+        }
+    }
+}
+
 android {
     ndkVersion rootProject.ext.ndkVersion
     buildToolsVersion rootProject.ext.buildToolsVersion
@@ -133,6 +154,25 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
         versionName "1.0.0"
+        // The M1a on-phone checkpoint (src/androidTest/): run by scripts/m1a-checkpoint/.
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+    // The checkpoint instruments the RELEASE app, so the phone proves with the library that
+    // ships. The instrumentation lives in its own APK (app-release-androidTest.apk); the release
+    // APK itself is unchanged — scripts/m1a-checkpoint/check-release-apk.sh proves no checkpoint
+    // class, asset or dependency is in it.
+    testBuildType "release"
+    sourceSets {
+        // The checkpoint sequence, shared by the phone run and its desktop rehearsal
+        // (src/test/…/M1aCheckpointHostTest.kt) — a source dir of the two TEST source sets only.
+        androidTest {
+            java.srcDirs += "src/m1aCheckpoint/java"
+            // The offline fixtures (the seed, the scenarios) and the pinned key files under a0/.
+            assets.srcDirs += ["../../native/noctura-prover/tests/fixtures", m1aKeysAssets]
+        }
+        test {
+            java.srcDirs += "src/m1aCheckpoint/java"
+        }
     }
     // The app's one project-local native library is libnoctura_prover.so (pure Rust, arm64-v8a
     // only), built and installed into src/main/jniLibs/ by native/noctura-prover/build-android.sh
@@ -201,6 +241,16 @@ dependencies {
     // the JNI over the host library. org.json: android.jar's copy is a stub off the device.
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20260814")
+
+    // The M1a on-phone checkpoint (the test APK only — never the app).
+    androidTestImplementation("androidx.test:runner:1.7.0")
+    androidTestImplementation("junit:junit:4.13.2")
+}
+
+tasks.configureEach { task ->
+    if (task.name ==~ /merge[A-Za-z]*AndroidTestAssets/) {
+        task.dependsOn(stageM1aKeys)
+    }
 }
 
 

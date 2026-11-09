@@ -14,13 +14,14 @@ name: Native prover
 # (src/modules/shielded/a0/__tests__/golden-vectors.json — and the TS equations next to it, which
 # the key generator imports), the vector generators (scripts/a0-vectors/**) and the lockfile that
 # pins the libraries they derive the fixtures with, the A0/v1 pins' source
-# (src/constants/provingAssets.ts) and the NDK version (android/build.gradle).
+# (src/constants/provingAssets.ts), the NDK version (android/build.gradle) and the M1a
+# checkpoint's desk scripts and their tests (scripts/m1a-checkpoint/**).
 on:
   push:
     branches: [main]
-    paths: ['native/**', '.github/workflows/native-prover.yml', 'src/constants/provingAssets.ts', 'android/build.gradle', 'src/modules/shielded/a0/**', 'scripts/a0-vectors/**', 'package-lock.json']
+    paths: ['native/**', '.github/workflows/native-prover.yml', 'src/constants/provingAssets.ts', 'android/build.gradle', 'src/modules/shielded/a0/**', 'scripts/a0-vectors/**', 'scripts/m1a-checkpoint/**', 'package-lock.json']
   pull_request:
-    paths: ['native/**', '.github/workflows/native-prover.yml', 'src/constants/provingAssets.ts', 'android/build.gradle', 'src/modules/shielded/a0/**', 'scripts/a0-vectors/**', 'package-lock.json']
+    paths: ['native/**', '.github/workflows/native-prover.yml', 'src/constants/provingAssets.ts', 'android/build.gradle', 'src/modules/shielded/a0/**', 'scripts/a0-vectors/**', 'scripts/m1a-checkpoint/**', 'package-lock.json']
   workflow_dispatch:
 
 permissions:
@@ -118,6 +119,21 @@ jobs:
           done
           git diff --exit-code -- native/noctura-prover/tests/fixtures
           echo "the generators' --check is falsifiable; fixtures restored"
+
+      # THE M1a CHECKPOINT'S DESK TESTS (Fable review 1, R1-I4): the desk values from the mnemonic,
+      # the Pool-account VK decode against the recorded devnet read, the independent Groth16
+      # verifier (positive control: the two landed proofs), the §16 judge with a negative control
+      # per line, and the installs' fail-closed rules over a mocked adb (install.test.mjs: a
+      # different / unreadable signer, a failed rollback pull, INSTALL_FAILED_* → STOP with no
+      # further adb call). No network, no device. The files are named by a glob — `node --test`
+      # on the directory itself resolves it as a module on Node 24 — and the glob is asserted to
+      # match, so a rename cannot turn this step into a no-op.
+      - name: The M1a checkpoint desk tests (node --test scripts/m1a-checkpoint/*.test.mjs)
+        working-directory: .
+        run: |
+          files=(scripts/m1a-checkpoint/*.test.mjs)
+          [ "${#files[@]}" -ge 2 ] && [ -f "${files[0]}" ] || { echo "::error::no desk test files matched: ${files[*]}"; exit 1; }
+          node --no-warnings --test "${files[@]}"
 
       - uses: dtolnay/rust-toolchain@stable
         with:
