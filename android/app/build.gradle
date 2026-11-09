@@ -146,6 +146,20 @@ android {
     //         path "src/main/cpp/CMakeLists.txt"
     //     }
     // }
+    testOptions {
+        unitTests.all { test ->
+            // A0JniTest loads the HOST build of libnoctura_prover.so (`cargo build --release
+            // --features jni-host`) from this directory; without it those tests skip, loudly.
+            def hostLib = System.getenv("NOCTURA_A0_HOST_LIB_DIR")
+            if (hostLib) {
+                test.systemProperty "java.library.path", hostLib
+            }
+            test.testLogging {
+                events "passed", "skipped", "failed"
+                showStandardStreams = true
+            }
+        }
+    }
     packagingOptions {
         jniLibs {
             // Exclude any stale libnoctura_key.so from build intermediates so the
@@ -198,6 +212,11 @@ dependencies {
     } else {
         implementation jscFlavor
     }
+
+    // JVM unit tests of the prover module (src/test/): the A0 boundary, the seed zero-fill and
+    // the JNI over the host library. org.json: android.jar's copy is a stub off the device.
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20260814")
 }
 
 

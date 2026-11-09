@@ -142,6 +142,65 @@ pub enum A0Error {
     ProofFailed,
     /// `prove`: the proof does not verify against the pinned key's verifying key.
     ProofDoesNotVerify,
+    /// The JNI bridge: an argument that is not in its one form (a handle, a hex value, an authId).
+    Arg { what: &'static str },
+    /// The JNI bridge: an element of an array argument that is not in its one form.
+    ArgItem { what: &'static str, index: usize },
+}
+
+impl A0Error {
+    /// The stable code Kotlin rejects the JS promise with: `E_A0_` + the variant's name in
+    /// SCREAMING_SNAKE (tested against `Debug`). Exhaustive on purpose: a new variant does not
+    /// compile until it has a code.
+    pub fn code(&self) -> &'static str {
+        match self {
+            A0Error::SeedLength { .. } => "E_A0_SEED_LENGTH",
+            A0Error::UnknownHandle => "E_A0_UNKNOWN_HANDLE",
+            A0Error::NonCanonical { .. } => "E_A0_NON_CANONICAL",
+            A0Error::DuplicateRho { .. } => "E_A0_DUPLICATE_RHO",
+            A0Error::StatePoisoned => "E_A0_STATE_POISONED",
+            A0Error::OwnerNotBase58 => "E_A0_OWNER_NOT_BASE58",
+            A0Error::OwnerLength { .. } => "E_A0_OWNER_LENGTH",
+            A0Error::OwnerOffCurve => "E_A0_OWNER_OFF_CURVE",
+            A0Error::OwnerNonCanonical => "E_A0_OWNER_NON_CANONICAL",
+            A0Error::OwnerSmallOrder => "E_A0_OWNER_SMALL_ORDER",
+            A0Error::OwnerTorsion => "E_A0_OWNER_TORSION",
+            A0Error::NoProgramAddress => "E_A0_NO_PROGRAM_ADDRESS",
+            A0Error::NotU64 { .. } => "E_A0_NOT_U64",
+            A0Error::AmountZero => "E_A0_AMOUNT_ZERO",
+            A0Error::FeeAboveCeiling => "E_A0_FEE_ABOVE_CEILING",
+            A0Error::AmountPlusFeeOverflow => "E_A0_AMOUNT_PLUS_FEE_OVERFLOW",
+            A0Error::AuthInFlight => "E_A0_AUTH_IN_FLIGHT",
+            A0Error::AuthAbsent => "E_A0_AUTH_ABSENT",
+            A0Error::AuthMismatch => "E_A0_AUTH_MISMATCH",
+            A0Error::AuthWrongHandle => "E_A0_AUTH_WRONG_HANDLE",
+            A0Error::AuthExpired => "E_A0_AUTH_EXPIRED",
+            A0Error::Rng => "E_A0_RNG",
+            A0Error::Clock => "E_A0_CLOCK",
+            A0Error::CircuitUnknown => "E_A0_CIRCUIT_UNKNOWN",
+            A0Error::CircuitNotInM1 => "E_A0_CIRCUIT_NOT_IN_M1",
+            A0Error::AuthUnexpected => "E_A0_AUTH_UNEXPECTED",
+            A0Error::AuthRecordInconsistent => "E_A0_AUTH_RECORD_INCONSISTENT",
+            A0Error::WitnessJson => "E_A0_WITNESS_JSON",
+            A0Error::WitnessRustFilled { .. } => "E_A0_WITNESS_RUST_FILLED",
+            A0Error::WitnessUnknownKey => "E_A0_WITNESS_UNKNOWN_KEY",
+            A0Error::WitnessDuplicate { .. } => "E_A0_WITNESS_DUPLICATE",
+            A0Error::WitnessMissing { .. } => "E_A0_WITNESS_MISSING",
+            A0Error::WitnessValue { .. } => "E_A0_WITNESS_VALUE",
+            A0Error::WitnessNotInTree => "E_A0_WITNESS_NOT_IN_TREE",
+            A0Error::WithdrawExceedsInput => "E_A0_WITHDRAW_EXCEEDS_INPUT",
+            A0Error::KeyFileRead { .. } => "E_A0_KEY_FILE_READ",
+            A0Error::KeyFilePin { .. } => "E_A0_KEY_FILE_PIN",
+            A0Error::KeyFileFormat { .. } => "E_A0_KEY_FILE_FORMAT",
+            A0Error::CircuitShape => "E_A0_CIRCUIT_SHAPE",
+            A0Error::WitnessRejected => "E_A0_WITNESS_REJECTED",
+            A0Error::PublicInputMismatch => "E_A0_PUBLIC_INPUT_MISMATCH",
+            A0Error::ProofFailed => "E_A0_PROOF_FAILED",
+            A0Error::ProofDoesNotVerify => "E_A0_PROOF_DOES_NOT_VERIFY",
+            A0Error::Arg { .. } => "E_A0_ARG",
+            A0Error::ArgItem { .. } => "E_A0_ARG_ITEM",
+        }
+    }
 }
 
 impl fmt::Display for A0Error {
@@ -226,6 +285,8 @@ impl fmt::Display for A0Error {
             }
             A0Error::ProofFailed => write!(f, "the prover failed"),
             A0Error::ProofDoesNotVerify => write!(f, "the proof does not verify"),
+            A0Error::Arg { what } => write!(f, "argument {what} is malformed"),
+            A0Error::ArgItem { what, index } => write!(f, "argument {what}[{index}] is malformed"),
         }
     }
 }
@@ -462,6 +523,13 @@ impl Core {
             expires_at: now + AUTH_TTL,
         });
         Ok(id)
+    }
+
+    /// Drops the live authorization, if any — what the JNI bridge's `prove` does when it refuses
+    /// a malformed handle or `authId` before it reaches [`Core::prove`] (every prove consumes it).
+    pub(crate) fn discard_auth(&self) -> Result<(), A0Error> {
+        self.lock()?.discard_auth();
+        Ok(())
     }
 
     /// Test-only: the state behind a poisoned lock, to observe what the poison path left.

@@ -184,7 +184,10 @@ jobs:
         run: cargo fmt --check
 
       - name: Clippy
-        run: cargo clippy --all-targets --locked -- -D warnings
+        run: |
+          cargo clippy --all-targets --locked -- -D warnings
+          # src/android.rs (the JNI marshalling) compiles on the host only with jni-host.
+          cargo clippy --all-targets --locked --features jni-host -- -D warnings
 
       # --locked fails if Cargo.lock would need updating, so a dependency cannot
       # drift without a committed lockfile change.
@@ -223,6 +226,8 @@ jobs:
             keyed_the_circuit_rejects_a_tampered_witness_and_the_wasm_memory_is_wiped; do
             grep -q "test a0::tests_prove::$t \.\.\. ok" "$1"
           done
+          # INV-NULL / INV-AUTH through the JNI bridge's logic, with the real key files.
+          grep -q "test a0::tests_bridge::keyed_bridge_withdraw_change_carries_the_approved_values_and_is_the_one_nullifier_exit \.\.\. ok" "$1"
           # A key-file test that returned early prints this marker; "ok" alone would hide it.
           ! grep -q "A0-KEYS-SKIPPED" "$1"
           SH
@@ -264,3 +269,22 @@ jobs:
             exit 1
           fi
           echo "a skipped A0 key-file test fails the interop assertion"
+
+      # THE JNI SURFACE (spec §3, §14 "Boundary"): the Java_* symbols the library exports must be
+      # exactly jni-exports.txt. The host build with `jni-host` carries the same #[no_mangle]
+      # functions as the arm64 library (Task 5's arm64 step runs the same script on that one).
+      - name: Build the host JNI library
+        run: cargo build --release --locked --features jni-host
+
+      - name: Assert the JNI exports are exactly jni-exports.txt
+        run: ./check-jni-exports.sh target/release/libnoctura_prover.so
+
+      # NEGATIVE CONTROL — the same check against a list missing one symbol must fail.
+      - name: Assert the JNI export check can fail
+        run: |
+          grep -vE '^\s*(#|$)' jni-exports.txt | head -n -1 > /tmp/jni-exports-short.txt
+          if ./check-jni-exports.sh target/release/libnoctura_prover.so /tmp/jni-exports-short.txt; then
+            echo "::error::the JNI export check PASSED against a list missing a symbol — it cannot fail"
+            exit 1
+          fi
+          echo "the JNI export check is falsifiable"

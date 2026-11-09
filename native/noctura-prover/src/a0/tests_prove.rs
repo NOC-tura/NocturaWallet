@@ -141,7 +141,7 @@ fn without_key(sc: &Value, key: &str) -> String {
 }
 
 /// The key-file directory, or `None` (the test then returns early, loudly).
-fn keys_dir(test: &str) -> Option<PathBuf> {
+pub(super) fn keys_dir(test: &str) -> Option<PathBuf> {
     match std::env::var_os("NOCTURA_A0_KEYS_DIR") {
         Some(d) => Some(PathBuf::from(d)),
         None => {

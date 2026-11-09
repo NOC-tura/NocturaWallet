@@ -1,0 +1,18 @@
+# Every JNI symbol libnoctura_prover.so exports — exactly these, no more (spec §3 "JNI surface",
+# §14 "a JNI surface test that the .so exports exactly §3's functions"). check-jni-exports.sh
+# compares this list with the library's dynamic symbols; android/app's A0 boundary tests compare
+# it with the Kotlin `external fun`s. Sorted; `#` lines and blank lines are ignored.
+#
+# The A0 surface (NocturaA0Native). parseUnshield / authorizeUnshield are bound in Kotlin only,
+# never as React methods (their dialog is M1c's).
+Java_com_nocturawallet_prover_NocturaA0Native_authorizeUnshield
+Java_com_nocturawallet_prover_NocturaA0Native_commitment
+Java_com_nocturawallet_prover_NocturaA0Native_depositRho
+Java_com_nocturawallet_prover_NocturaA0Native_keysClose
+Java_com_nocturawallet_prover_NocturaA0Native_keysOpen
+Java_com_nocturawallet_prover_NocturaA0Native_matchSpent
+Java_com_nocturawallet_prover_NocturaA0Native_parseUnshield
+Java_com_nocturawallet_prover_NocturaA0Native_prove
+# isSupported, and the v1 prove — nativeProve goes with the v1 path in M1b.
+Java_com_nocturawallet_prover_NocturaProverModule_nativeIsSupported
+Java_com_nocturawallet_prover_NocturaProverModule_nativeProve

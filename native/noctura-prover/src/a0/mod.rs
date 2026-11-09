@@ -11,6 +11,7 @@
 
 mod ata;
 mod auth;
+pub mod bridge;
 mod eip2333;
 mod field;
 mod keyfiles;
@@ -26,6 +27,8 @@ pub use unshield::{parse_unshield, Unshield, DECIMALS, FEE_CEILING};
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_bridge;
 #[cfg(test)]
 mod tests_prove;
 #[cfg(test)]

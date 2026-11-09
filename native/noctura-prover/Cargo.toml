@@ -60,6 +60,16 @@ serde = "1"
 [target.'cfg(target_os = "android")'.dependencies]
 jni = "0.21"
 
+# The same JNI symbols on the host, for the Kotlin JVM test (android/app/src/test/…/A0JniTest.kt)
+# and the export check (check-jni-exports.sh): `cargo build --release --features jni-host`.
+# Not used by the app; jni is already in the lock.
+[dependencies.jni]
+version = "0.21"
+optional = true
+
+[features]
+jni-host = ["dep:jni"]
+
 # CLOCK_BOOTTIME for the 120 s authorization window (counts time the phone is suspended);
 # Rust bindings only, already in the lock.
 [target.'cfg(any(target_os = "linux", target_os = "android"))'.dependencies]
