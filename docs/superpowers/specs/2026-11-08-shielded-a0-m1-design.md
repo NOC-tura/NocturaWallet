@@ -1,6 +1,7 @@
 # Shielded on A0 · Milestone 1 — shield and a private unshield on the deployed A0 pool (Android, devnet)
 
-**Status:** rev 3.1, 2026-11-08 — the program side's acceptance of P1/P2. Rev 3 (03c866e) was Fable review 2 + owner
+**Status:** rev 3.2, 2026-11-09 — the M1a plan's execution (text only, no owner decision changed). Rev 3.1
+(2026-11-08) was the program side's acceptance of P1/P2. Rev 3 (03c866e) was Fable review 2 + owner
 S10–S12, rulings R12–R13. Rev 2 (00e58fe) was Fable review 1 +
 owner decisions S6–S9, controller rulings R9–R11. Rev 1 (58c0c7a) was the design the owner approved in conversation
 section by section (the milestone split, `nk` in the Rust prover, the unshield destinations, the native confirmation in
@@ -8,8 +9,163 @@ this milestone, a minimal multi-account in the app; then the architecture, the d
 sections). Review 1 (`.superpowers/sdd/shielded-a0-m1-spec-review-1.md`) found 4 Critical, 13 Important and 15 Minor
 issues; review 2 (`…-spec-review-2.md`) found 1 Critical, 8 Important and 10 Minor. Decisions and rulings:
 `.superpowers/sdd/shielded-a0-m1-decisions.md`. The program-side proposal text (P1, P2) is
-`.superpowers/sdd/shielded-a0-m1-ico-proposal.md`. Next: the owner; then the four plans of §16, each with its own
-Fable review.
+`.superpowers/sdd/shielded-a0-m1-ico-proposal.md`. The four plans of §16 each get their own Fable review; M1a is
+executed (rev 3.2), its on-phone checkpoint is next, then M1b's plan.
+
+### Rev 3.2, 2026-11-09 — the M1a plan's execution: the departures of its six tasks, their fix rounds and the final wave; text only, no owner decision changed
+
+Collected from the plan's per-task "Spec rev 3.2 lines" (`docs/superpowers/plans/2026-11-09-shielded-a0-m1a-rust-core.md`),
+the task reports' additions (`.superpowers/sdd/2026-11-09-shielded-a0-m1a-rust-core/task-{1..6}-report.md`), the Fable
+plan review's rulings R1-I1 … R1-I6, the final review's TEXT rows (`final-review.md` T1-2, T1-3, T3-2, T3-4, T4-3) and
+the final wave. Each line names the passage it changes; those passages are edited in place.
+
+*Task 1 — keys, field values, the state:*
+
+- **Poseidon:** `light-poseidon =0.1.2` (the newest that resolves against ark-circom's `num-bigint =0.4.3`), used for
+  its **constants only**; the permutation is the crate's own, so its state is wiped → §3 "Poseidon".
+- **`sk` is not kept** once `nk` is derived; the key set held per handle is `{nk, ivk, d_self, addrField(d_self)}` → §3
+  key derivation.
+- **`ivk` is held with the session's keys** until `keysClose` / replacement / poison (M2 scans with it), never returned
+  — not "zeroized here" at derivation (T1-2) → §3 key derivation.
+- **Handle lifetime:** a `keysOpen` ends the live session **before** it validates the new seed (a refused open leaves no
+  session); `keysClose` with a stale handle is refused and closes nothing; a poisoned state wipes the keys and refuses
+  every call until restart → §3 "Handle lifetime".
+- **`matchSpent`:** ascending indices into `ownRhos`; `chainNullifiers` is a set; a repeated own `rho` is refused; every
+  input canonical (`< r`), never reduced → §3 JNI surface.
+- **The seed is exactly 64 bytes**, zero-filled on every return path → §3 JNI surface, §12.
+- **The process-wide state is a `static`** (`CORE`), never dropped: INV-NK's "on drop" is true of every `Core` value;
+  at process exit nothing is wiped, the OS reclaims the memory (T1-3) → §3 "Rust state", INV-NK.
+
+*Task 2 — the unshield destination and its authorization:*
+
+- **The owner must be a possible Ed25519 public key** — canonical encoding, prime-order subgroup, not the identity;
+  off-curve (a PDA), non-canonical, small-order and torsion owners are refused. "On the curve" for a PDA candidate is
+  curve25519-dalek 4.1.3's `decompress` (the runtime's); bumps 255 down to 1 → §3 "ATA derivation", §4 step 2.
+- **`amount` and `fee` cross as canonical decimal u64 strings** (digits only, no sign, no leading zero); `fee = 0` is
+  accepted; `amount + fee ≤ u64::MAX` is checked at parse; the pinned decimals are **9** (the devnet mint account, read
+  2026-11-08); human amounts are integer-rendered, trailing zeros trimmed, no grouping → §4 step 2.
+- **One authorization at a time:** a second `authorizeUnshield` while one is live is refused (an expired one is
+  replaced); the first take consumes the record even when it refuses; the 120 s run on **CLOCK_BOOTTIME** (suspend
+  counts); `authId` is 16 bytes from the OS RNG → §3 "Rust state", §4 step 4.
+- **Crates added:** `curve25519-dalek =4.1.3` (no default features), `bs58 0.5`, `getrandom 0.2`, `libc 0.2` (Linux /
+  Android only, for CLOCK_BOOTTIME; both already locked) → §12.
+
+*Task 3 — `prove`:*
+
+- **Every `prove` consumes the live authorization first** — with or without an `authId`, whatever circuit, **under any
+  handle, a stale one included**, whatever it then decides (T3-4: a stray prove costs a re-approval, never a wrong
+  proof; M1c's state machine must know it); a deposit given an `authId` refuses; a deposit of 0 refuses → §3 `prove`.
+- **The witness JSON** is one object with every allow-listed key exactly once (repeats refuse); amounts as canonical
+  decimal u64 strings, field elements as 64 lowercase hex (canonical, never reduced), `pathIndices` as JSON integers
+  0 / 1; the note's Merkle path is checked in Rust **before** the key files are read → §3 `prove`.
+- **The key files** are pinned by sha256 **and length**, read once; the proof's randomness is from the OS; the returned
+  proof has **already verified** against the pinned zkey's VK, with public inputs equal to Rust's, in the circuit's
+  order (32-byte BE) → §3 `prove`.
+- **The A0 layout (m10)** is re-verified against the **two landed `withdraw_with_change` proofs** (`2mfMYnbt…`,
+  `3UfCx5TD…`): the landed deposit's proof bytes are not in the program side's committed data. The VK is the program
+  side's committed `vk.json`, pinned, tied to the chain by those proofs; reading the deposit VK from chain is the M1a
+  checkpoint's; the `withdraw_change` VK read from chain (`wchange_vk`) is M1c's (R1-I6) → §14 Rust, §16 M1a.
+- **The counts (m-5)** are the zkey's `nPublic` and the wasm's `getInputSize`, equal to the r1cs header's (4 / 2,
+  7 / 45); the `.r1cs` is not published by digest → §14 Rust.
+- **The A0 key files reach CI by digest** from the content-addressed route, as the v1 artifacts do; the tests read
+  `NOCTURA_A0_KEYS_DIR`, skip loudly without it, fail without it under `CI=true` → §12, §14.
+- **The stated limits of the wiping (R1-I5, T3-2, T4-3):** `prove`'s completed-witness copy of `nk` / `d_self` lives
+  until that prove returns (seconds, outside the lock) and is wiped on drop; NOT wiped: arkworks' internal copies of
+  the assignment (FFT buffers), the `serde_json` values and `String` keys of the JS witness, the JNI's copies of the
+  witness string (the Java string, the JVM's `GetStringUTFChars` buffer, the modified-UTF-8 conversion), and
+  compiler-made stack temporaries. INV-NK's "zeroized on keysClose" means the keys state, not an in-flight prove's
+  working copies → §3 `prove`, INV-NK.
+- **`r` and `s` are independent OS draws:** a test fails if `s` is tied to `r` (`s = r` or `r + c`, via
+  e(ΔA, δ₂) ≠ e(δ₁, ΔB) over two proofs of one witness), with a positive and a negative control on the detector → §14
+  Rust.
+
+*Task 4 — the JNI surface, Kotlin, the JS bridge:*
+
+- **Every argument but the seed crosses as a string in one canonical form, parsed in Rust** — the handle as the decimal
+  of its `u64`; `depositIndex` / `amount` / `fee` as canonical decimal u64; `rho`, nullifiers, commitments as 64
+  lowercase hex; `authId` as 32 lowercase hex or `null`. **Every call returns one envelope**, `{"ok": value}` or
+  `{"error": "E_A0_<VARIANT>", "message": …}`, with a stable code per refusal; a panic is `E_A0_INTERNAL` and never
+  crosses the JNI → §3 JNI surface.
+- **`prove` at the JNI:** a malformed handle or `authId` is refused **and still uses the live authorization up**; `""`
+  is malformed, `null` is "none" → §3 `prove`.
+- **Threads:** `prove` runs on **one dedicated proving thread** (proofs serialized) created with an explicit **8 MiB
+  stack** (a native stack overflow kills the process; the host JVM reading is tested, ART honouring it is the
+  platform's contract); `keysOpen` … `commitment` run on React Native's native-modules thread → §3 "Rust state".
+- **The seed crossing:** JS zero-fills its `number[]` **and the caller's `Uint8Array` when the call settles** (the
+  legacy bridge serializes at flush time); `a0KeysOpen` consumes the caller's array → §3 "The seed crosses as bytes".
+- **`parseUnshield` / `authorizeUnshield` are bound in Kotlin in M1a** as `internal` methods without `@ReactMethod`, so
+  their unreachability from JS is a tested fact; the v1 React method is renamed **`proveV1`** until M1b removes it → §3
+  JNI surface, §14 Boundary, §16.
+- **The boundary readings:** the JNI surface test is `nm -D` of the built library against
+  `native/noctura-prover/jni-exports.txt` (host `jni-host` build and the arm64 build, both in CI); the React-module test
+  is reflection over the compiled class (JVM, not in CI) and a reading of the Kotlin source (Jest, in CI) → §14
+  Boundary.
+
+*Task 5 — removals and build:*
+
+- **The Rust `.so`** is built and installed by `native/noctura-prover/build-android.sh` (alone into
+  `jniLibs/arm64-v8a/`; any other file there fails), **exports exactly the JNI functions** (a linker version script,
+  `exports.map`, checked over the whole dynamic symbol table — nothing else, no `wasmer_vm_*`) and its `NEEDED` must be
+  a subset of {libc, libm, libdl, liblog} with no C++ runtime; the CI step cross-builds it with the NDK
+  `android/build.gradle` names, with negative controls (a libc++_shared-linked and a libz-linked library, an extra
+  export, a stray library in `jniLibs/`) → §12, §14 Boundary.
+- **"`isSupported()` false on any other ABI" is a check of the running process** (`A0Abi`: ART and `os.arch` =
+  aarch64), not only a consequence of what is packaged → §12.
+- **With `NocturaKeyModule` go the JS `src/modules/keychain/nativeBridge.ts`** and its dead caller in `wipeKeys` — in
+  M1a, not M1b; a Jest guard keeps every trace out of the code trees → §12 "Removed".
+- **The v1 React method `proveV1` stays registered but only rejects `E_V1_REMOVED`**, synchronously, before any native
+  call (R1-I3); no Kotlin code calls the `nativeProve` binding (declared until M1b with `jni-exports.txt`'s line); the
+  v1 JS callers (devnet-only) receive the refusal → §12 "Removed".
+- **No CI job runs the Kotlin JVM tests in M1** (a stated limitation; the JNI exports, the libc++ gate and the Jest
+  readings are CI's) → §14 Boundary.
+- **CI re-derives the key and ATA vector fixtures** with their generators' `--check` (Node 24, with a one-value-tamper
+  negative control); its `paths` include every input of the Rust tests and generators (`src/modules/shielded/a0/**`
+  incl. `golden-vectors.json`, `scripts/a0-vectors/**`, `package-lock.json`, `android/build.gradle`);
+  `gen-prove-vectors.mjs --check` needs the program side's repository and is a desk run (R1-I4) → §14.
+
+*Task 6 — the on-phone checkpoint:*
+
+- **The harness is an Android instrumented test of the devnet release variant** (`testBuildType "release"`, its own APK
+  `com.nocturawallet.devnet.test`), carrying the four pinned A0 key files as test assets from `NOCTURA_A0_KEYS_DIR`;
+  "not in the release variant" is shown on the built APKs (`check-release-apk.sh`, with two controls on the test APK)
+  → §16 M1a.
+- **The refusal line is judged with its controls** — the same `withdraw_change` call, approved through the Kotlin-only
+  `authorizeUnshield`, proves and verifies; the used approval refuses; `keysClose` ends the handle — and must be exactly
+  `E_A0_AUTH_ABSENT` → §16 M1a.
+- **"The deposit VK read from chain" is the `deposit_vk` field inside the devnet `Pool` account** (`8VMe4…`, offset
+  144, 768 bytes), read by the desk in one genesis-checked request (`api.devnet.solana.com` by default; never
+  `noc-tura.io`, never mainnet), compared with `deposit_vk.json`, and the phone's proof is verified against it with an
+  independent verifier (`@noble/curves` bn254) — measured equal at slot 520213277 → §16 M1a, §14 Rust.
+- **"Launches it on the phone"** is measured as `am start -W` `Status: ok` + the process alive after 10 s + a clean crash
+  buffer, for the devnet and the production APK; the production APK is installed over the installed wallet with its
+  data kept; **each app is force-stopped before its launch** (a cold start; for the wallet a restart, no data touched)
+  → §16 M1a.
+- **The installs fail closed** (the controller's ruling, R1-I1, R1-I2, Task 6 review I1–I3): the checkpoint never
+  uninstalls and never wipes app data. Before any install, each package's installed signer is read (every pulled APK
+  through `apksigner`) and compared with the new APK's; absence is established by two agreeing readings (`pm list
+  packages`, `pm path`). A different or unreadable signer, an unestablished install state, a failed rollback pull, an
+  existing rollback with other contents, or an install answering `INSTALL_FAILED_*` STOPs (exit 3) with no further adb
+  call. The pulled APKs are the rollback (`adb install -r <base.apk>` / `adb install-multiple -r …`, sha256 recorded,
+  never overwritten) → §16 M1a.
+- **M1a's desk script** is `scripts/m1a-checkpoint/m1a-checkpoint.mjs`, with the owner's checklist in
+  `scripts/m1a-checkpoint/README.md`; its desk tests (`node --test scripts/m1a-checkpoint/*.test.mjs`) run in the
+  native-prover workflow → §14, §16 M1a.
+
+*The final wave (after the final whole-branch review):*
+
+- **The program id is pinned in Rust** (`PROGRAM_ID` = `FeGSS…`, beside `POOL` and `MINT`), and a test asserts
+  `find_program_address(["pool", MINT], PROGRAM_ID) = (POOL, 253)` against the web3.js fixture → §1, §14 Rust.
+- **An owner string longer than 64 characters is refused before it is decoded** (`E_A0_OWNER_TOO_LONG`; a 32-byte
+  address is at most 44, so every near-valid length still gets its precise reason; a megabyte string measured 261 s of
+  decoding without the cap) → §4 step 2.
+- **`expiresAt = approval + 120 s` is a checked addition**: an overflow is `E_A0_CLOCK`, no record, never a panic → §4
+  step 4.
+- **`matchSpent` wipes each nullifier's field element** (not only its byte copy) → §3 JNI surface.
+- **The native workflow's time limit is 90 minutes** (a cold run plausibly takes 35–50) → §12.
+- **No wallet installed is never a silent first install:** if `com.nocturawallet` is absent the desk script prints
+  `NO WALLET INSTALLED for com.nocturawallet — this run installs it fresh; if you expected your wallet here, STOP
+  (Ctrl-C) now` and STOPs, unless the owner passes `--allow-fresh-production` (then the line is printed again before
+  the production install, with 15 s to cancel) → §16 M1a.
 
 ### Rev 3.1 — the program side's acceptance of P1/P2 (text only)
 
@@ -183,6 +339,8 @@ zeros) itself from the frozen spec and only then compares with their landed tran
 make the two sides agree by construction.
 
 - **Program** `FeGSSsJtmA7GnMgnpj33JsiceSk1NyFopff2FtQFsMuH` (fresh id), binary sha256 `24775d75b7548898e54d4ff2a0c1f690c07f41594b88b17a37d4c61d6401590c`.
+  *(Rev 3.2: pinned in Rust as `PROGRAM_ID`, beside `POOL` and `MINT`; a test asserts the pool is its PDA
+  `["pool", mint]` with bump 253.)*
 - **Pool** `8VMe4iZWiq3xQySywih9cciAmzTxMtkawMRYK6JuDdoT`, mint `ERkpCFGaoWmeZPhKTUHumrqHTP1QmyHVhMJUnxbRPKCs`
   (classic SPL Token program), MerkleTree `5URdh1uLKXPh28AbcXBK1oWYGpQjVbMSjrKiAkt1q1Gc`. The program side's
   `docs/zk-contract/devnet-a0-deployed-contract.json` describes them.
@@ -294,11 +452,13 @@ Neither the relayer nor the RPC provider is "unable to link"; the success criter
 **Key derivation (spec from the A0 freeze; values computed here and compared with independent vectors).**
 
 - `sk` = EIP-2333 at `m/12381/371/1/0` from the BIP-39 seed (memory: paths immutable, spend = 1/0). The seed is
-  zeroized the moment `sk` is derived.
+  zeroized the moment `sk` is derived, and `sk` itself is not kept once `nk` is derived (rev 3.2): the key set held per
+  handle is `{nk, ivk, d_self, addrField(d_self)}`.
 - `nk = Poseidon3(TAG_NK = 0x14, sk_hi, sk_lo)`, with `sk` split into two 16-byte big-endian limbs (`sk_hi` the first
   16 bytes of `sk` as 32 bytes BE). `nk` is wallet-only, so the convention needs a wallet-owned vector, not a cross-repo
   one; M1a pins it with one.
-- `ivk = Poseidon2(TAG_IVK = 0x15, nk)` (M2 uses it for scanning; derived and zeroized here, never returned).
+- `ivk = Poseidon2(TAG_IVK = 0x15, nk)` (M2 uses it for scanning; derived here and held with the session's keys until
+  `keysClose`, replacement or poison, which zeroize it; never returned — rev 3.2).
 - **Own diversifier (R9):** `d_self = be_mod_r(SHA-512("noctura/a0/self-d/v1" ‖ nk as 32 bytes BE))`. Every own note
   in M1 (deposits and change) uses `d = change_d = d_self`. M2's receive addresses must use `d ≠ d_self`, so the
   diversifier of own notes is never a value that gets published.
@@ -320,26 +480,38 @@ Neither the relayer nor the RPC provider is "unable to link"; the success criter
   the same reduction: big-endian bytes modulo the BN254 scalar field order `r`.
 - **ATA derivation (C1):** `ata = find_program_address([owner, TOKEN_PROGRAM_ID, mint], ASSOCIATED_TOKEN_PROGRAM_ID)`
   — SHA-256 over seeds ‖ bump ‖ program id ‖ `"ProgramDerivedAddress"`, bump from 255 down, refusing on-curve
-  candidates (Ed25519 point decompression). The owner itself must be **on** the curve: a PDA owner is refused in M1, as
-  no human recipient is one (m3).
+  candidates (Ed25519 point decompression with curve25519-dalek 4.1.3, the runtime's; bumps 255 down to 1). The owner
+  itself must be **a possible Ed25519 public key** (rev 3.2, stricter than "on the curve"): the canonical encoding of a
+  point of the prime-order subgroup other than the identity. Off-curve (a PDA), non-canonical, small-order and torsion
+  owners are refused in M1, as no human recipient holds a key for one (m3).
 - **Poseidon** (m12): a circomlib-parameter-compatible implementation — `light-poseidon` on the arkworks 0.4 family the
   crate already locks (`ark-ff 0.4.1`, `ark-bn254 0.4.0`), or an equivalent; the plan picks the version that resolves
-  against the lock. A mismatch would fail closed at the prove compare but make recovery find nothing, hence §14's
+  against the lock. *(Rev 3.2: `light-poseidon =0.1.2`, used for its constants only; the permutation is the crate's
+  own, so its state is wiped.)* A mismatch would fail closed at the prove compare but make recovery find nothing, hence §14's
   vectors and named mutation.
 
 **JNI surface (the A0 freeze's interface, cut to M1):**
 
 ```
-keysOpen(seed: bytes[64]) -> handle             // derives sk/nk/ivk/d_self/addrField; zeroizes the seed copy; opaque handle
+keysOpen(seed: bytes[64]) -> handle             // exactly 64 bytes; derives sk/nk/ivk/d_self/addrField; zeroizes the seed copy on every path; opaque handle
 keysClose(handle)                                // zeroizes; invalidates any live authorization
 depositRho(handle, i) -> hex32                   // public once deposited
-matchSpent(handle, chainNullifiers[], ownRhos[]) -> indices[]   // which own notes a set of synced nullifiers spends (R12)
+matchSpent(handle, chainNullifiers[], ownRhos[]) -> indices[]   // which own notes a set of synced nullifiers spends (R12); ascending indices into ownRhos
 commitment(handle, amount, rhoHex) -> hex32      // an own note's commitment (d_self implicit)
 prove(handle, circuit, witnessJson, authId?) -> {proofBytes, publicInputs}
 parseUnshield(owner, amount, fee) -> {owner, ata, amount, fee, humanAmount, humanFee, pool}   // Kotlin only
 authorizeUnshield(handle, owner, amount, fee) -> authId                                       // Kotlin only
 ```
 
+- **How the calls cross (rev 3.2).** Every argument but the seed crosses as a string in one canonical form, parsed in
+  Rust: the handle as the decimal of its `u64`; `depositIndex` / `amount` / `fee` as canonical decimal u64 (digits only,
+  no sign, no leading zero); `rho`, nullifiers, commitments as 64 lowercase hex, canonical (`< r`), never reduced;
+  `authId` as 32 lowercase hex or `null` (`""` is malformed). Every call returns one envelope — `{"ok": value}` or
+  `{"error": "E_A0_<VARIANT>", "message": …}` — with a stable code per refusal; a panic is `E_A0_INTERNAL` and never
+  crosses the JNI. `parseUnshield` / `authorizeUnshield` are bound in Kotlin in M1a as `internal` methods without
+  `@ReactMethod`. The v1 React method is renamed `proveV1` and only rejects `E_V1_REMOVED` until M1b deletes it (§12).
+- **`matchSpent` (rev 3.2):** `chainNullifiers` is a set; a repeated own `rho` is refused; each nullifier it computes is
+  wiped (its field element and its bytes) as soon as it has been compared.
 - **No pre-spend nullifier in JS (R12, I-7).** There is no `nullifier()` call. Spent-status comes from
   `matchSpent`, which recomputes `nullifier(rho)` for each own `rho` inside Rust and returns the indices of the own notes
   whose nullifier is in `chainNullifiers` (the synced `Withdraw` nullifiers, public by then). The one place an unspent
@@ -349,17 +521,23 @@ authorizeUnshield(handle, owner, amount, fee) -> authId                         
   when the unshield ends. A pre-spend nullifier is a forward link to the future exit; this keeps it as short-lived as
   the protocol allows.
 - **The seed crosses as bytes, never as a string (C3).** JS copies its `Uint8Array` into a `number[]` for the bridge
-  and fills both with 0 right after the call; Kotlin turns the `ReadableArray` into a `ByteArray`, passes a
+  and fills both with 0 when the call settles (rev 3.2: the legacy bridge serializes at flush time, so the caller's
+  `Uint8Array` is consumed — `a0KeysOpen` zero-fills it); Kotlin turns the `ReadableArray` into a `ByteArray`, passes a
   `jbyteArray`, and fills its `ByteArray` with 0 when the call returns; Rust copies it into a zeroizing buffer and
   wipes it once `sk` is derived. Stated limit: the copies the React Native bridge makes while serializing cannot be
   zeroized from either side. Seed-in-native removes them.
 - **Handle lifetime (m5):** one handle per operation (a deposit, an unshield, a recovery run), closed in a `finally`,
   and also on session lock and on app background **unless** a native confirmation is in flight (then the confirmation's
   own lifecycle rule, §4, fails it closed and the close follows). A second `keysOpen` replaces the first and invalidates
-  any live authorization. The handle dies with the process.
+  any live authorization — it ends the live session **before** it validates the new seed, so a refused open leaves no
+  session (rev 3.2). `keysClose` with a stale handle is refused and closes nothing. A poisoned state (a panic while the
+  lock is held) wipes the keys and refuses every call until restart. The handle dies with the process.
 - **Rust state** is one `Mutex<{keys: Option<Keys>, auth: Option<Auth>}>`: `authorizeUnshield` runs on the UI thread's
   callback and `prove` on Kotlin's proving `Thread`, so neither may observe the other half-written. One authorization
-  at a time.
+  at a time: a second `authorizeUnshield` while one is live is refused (an expired one is replaced). *(Rev 3.2:)*
+  `prove` runs on one dedicated proving thread (proofs serialized) created with an explicit 8 MiB stack; `keysOpen` …
+  `commitment` run on React Native's native-modules thread. The state is a process-wide `static`, never dropped: at
+  process exit nothing is wiped and the OS reclaims the memory.
 - **`prove`:**
   - **Allow-list, not deny-list (I11).** Per circuit, the exact set of signal names JS may supply; any other key —
     `nk`, `d`, `change_d`, a public input Rust fills, a typo — refuses:
@@ -372,14 +550,28 @@ authorizeUnshield(handle, owner, amount, fee) -> authId                         
     - The JS allow-lists use API names (`depositIndex`), not signal names. The test (m-5) asserts that
       *mapped(JS allow-list) ∪ Rust-filled = the circuit's signal table* (§1) — `depositIndex` maps to `rho` — and that
       the counts equal `nPubInputs` / `nPrivInputs`, so an eliminated or constant-folded signal cannot hide.
+    - *(Rev 3.2:)* the witness JSON is one object with every allow-listed key exactly once (a repeat refuses); amounts
+      are canonical decimal u64 strings, field elements 64 lowercase hex (canonical, never reduced), `pathIndices` JSON
+      integers 0 / 1; the note's Merkle path is checked in Rust before the key files are read; a deposit of 0 refuses.
   - For `withdraw_change`, it requires a live `authId` (§4); the authorization is consumed by the first prove, success
-    or failure, and refused if expired, absent, or recorded under another handle.
+    or failure, and refused if expired, absent, or recorded under another handle. *(Rev 3.2:)* **every** `prove`
+    consumes the live authorization first — with or without an `authId`, whatever circuit, under any handle (a stale
+    one included), and when the JNI refuses a malformed handle or `authId` — so a stray prove costs a re-approval, never
+    a wrong proof; M1c's state machine must expect it. A deposit given an `authId` refuses.
   - The circuit's key files are read from paths JS supplies, but each is hashed and refused unless it matches the
-    sha256 pinned in Rust (R4).
+    sha256 (and length, rev 3.2) pinned in Rust (R4); each is read once.
+  - *(Rev 3.2:)* the proof's randomness `r`, `s` is drawn from the OS; the returned proof has already verified against
+    the pinned zkey's VK, with public inputs equal to Rust's in the circuit's order (32-byte BE).
   - `witnessJson` (m4) carries private note data (`inputAmount`, `rho`, the path); it is never logged on either side.
 - **Invariants (tests):**
   - INV-NK: the seed, `sk`, `nk`, `ivk`, `d_self` and every `addrField` never cross JNI, are never logged, are
-    zeroized on `keysClose`, on replacement and on drop.
+    zeroized on `keysClose`, on replacement and on drop. *(Rev 3.2, stated limits — R1-I5:)* "zeroized on keysClose"
+    means the keys state, not an in-flight prove's working copies: `prove`'s completed-witness copy of `nk` / `d_self`
+    lives until that prove returns (seconds, outside the lock) and is wiped on drop; arkworks' internal copies of the
+    assignment (FFT buffers), the `serde_json` values and `String` keys of the JS witness, the JNI's copies of the
+    witness string (the Java string, the JVM's `GetStringUTFChars` buffer, the modified-UTF-8 conversion) and
+    compiler-made stack temporaries are not wiped. "On drop" holds for every `Core` value; the process-wide one is a
+    `static`, never dropped.
   - INV-NULL: no JNI call returns an own note's nullifier except as a public input of a `withdraw_change` proof.
   - INV-AUTH: an unshield proof exists only for a `{owner, ata, amount, fee}` a human approved in the native dialog,
     once, within its expiry.
@@ -390,13 +582,17 @@ authorizeUnshield(handle, owner, amount, fee) -> authId                         
    token account), the amount (base units) and the fee — after the quote (§6.4), so the fee is the one that will be
    submitted.
 2. **Rust parses and validates them (`parseUnshield`):**
-   - the owner is 32 bytes of base58 and an on-curve Ed25519 point (m3);
+   - the owner is 32 bytes of base58 and a possible Ed25519 public key (m3; rev 3.2: canonical, prime-order
+     subgroup, not the identity — §3); a string longer than 64 characters is refused before it is decoded (a 32-byte
+     address is at most 44);
    - Rust derives `ata = ATA(owner, pinned mint)` itself (§3);
-   - the amount and fee are u64, the amount > 0, the fee ≤ a sanity ceiling pinned in Rust (1,000,000 base units —
+   - the amount and fee are u64 (rev 3.2: canonical decimal strings; `fee = 0` accepted; `amount + fee ≤ u64::MAX`
+     checked here), the amount > 0, the fee ≤ a sanity ceiling pinned in Rust (1,000,000 base units —
      not `pool.max_fee`, which the pool authority can change with `set_max_fee`; the chain enforces that one) (m-3);
      the note-level condition
      `amount + fee ≤ inputAmount` is checked at `prove` (§3), where `inputAmount` is bound by the Merkle proof;
-   - the pool, mint and decimals are the pinned ones (R3).
+   - the pool, mint and decimals are the pinned ones (R3; rev 3.2: decimals 9, read from the devnet mint account; human
+     amounts integer-rendered, trailing zeros trimmed, no grouping).
 3. Kotlin renders, in its own native dialog (not a React view):
    - the full owner address, never truncated (substitution attacks live in matching prefixes), labelled as the
      destination;
@@ -412,7 +608,9 @@ authorizeUnshield(handle, owner, amount, fee) -> authId                         
    24); the plan names the per-API-level authenticator matrix. On success, Kotlin calls `authorizeUnshield`. Rust
    records `{owner, ata, amount, fee, pool, mint, handle, expiresAt = approval time + 120 s}` (the clock starts at the
    biometric approval, not when the dialog opened, m-6) in native memory and returns an
-   opaque `authId`, which carries no data JS could alter. Kotlin returns `{authId, owner, ata}` to JS; JS compares
+   opaque `authId`, which carries no data JS could alter. *(Rev 3.2: the 120 s run on CLOCK_BOOTTIME, so suspend
+   counts; `expiresAt` is a checked addition, an overflow is a refusal and never a panic; `authId` is 16 bytes from the
+   OS RNG; the first take consumes the record even when it refuses.)* Kotlin returns `{authId, owner, ata}` to JS; JS compares
    `ata` with its own `getAssociatedTokenAddressSync` result and aborts on a mismatch.
 5. A cancel, a timeout (no approval within 60 s), a biometric failure or any rule below returns a refusal; nothing is
    recorded.
@@ -733,7 +931,12 @@ makes no RPC request specific to one of our notes (I3; m7 does not arise).
   - the self-relay path and `FEATURES.shieldedRelayer` / `SHIELDED_RELAYER` (R6: never, so the code must not exist), and
     the unreferenced v1 lookup-table client `src/modules/solana/relayer.ts` (it also carries the double `/v1/v1/`
     path) — M1b;
-  - `NocturaKeyModule` / `libnoctura_key.so` and its CMake / Gradle stanzas — M1a.
+  - `NocturaKeyModule` / `libnoctura_key.so` and its CMake / Gradle stanzas — M1a; with them (rev 3.2) the JS
+    `src/modules/keychain/nativeBridge.ts` and its dead caller in `wipeKeys` — M1a, not M1b; a Jest guard keeps every
+    trace out of the code trees;
+  - the v1 native prover (`nativeProve`) — M1b. *(Rev 3.2, R1-I3: from M1a the React method `proveV1` stays registered
+    but only rejects `E_V1_REMOVED`, synchronously, before any native call; no Kotlin code calls `nativeProve`; the v1
+    JS callers, devnet-only, receive the refusal.)*
 - **Hidden until its plan lands:** between M1b and M1c, #16's unshield side and the shielded transfer entry are hidden
   in the devnet build (their v1 flows are gone, the A0 one is not there yet).
 - **Kept but unused in M1:** the M2 pieces that still match A0, such as `noteEncryption` (ECIES to `pk_enc_d`). They are
@@ -751,6 +954,18 @@ makes no RPC request specific to one of our notes (I3; m7 does not arise).
   `curve25519-dalek`, `zeroize` derive means a `Cargo.lock` update in the same PR (CI runs `--locked`). A **CI step**,
   not a note (m15), builds the arm64 `.so` and fails if `readelf -d` lists `libc++_shared.so` (or any C++ runtime)
   as `NEEDED`.
+  *(Rev 3.2, as built:)*
+  - the crates added are `curve25519-dalek =4.1.3` (no default features), `bs58 0.5`, `getrandom 0.2`, `libc 0.2`
+    (Linux / Android only, for CLOCK_BOOTTIME) and `light-poseidon =0.1.2`;
+  - the library is built and installed by `native/noctura-prover/build-android.sh` (alone into `jniLibs/arm64-v8a/`;
+    any other file there fails); a linker version script (`exports.map`) makes it export exactly the JNI functions; its
+    `NEEDED` must be a subset of {libc, libm, libdl, liblog}; the CI step cross-builds it with the NDK
+    `android/build.gradle` names and runs these gates with negative controls (a libc++_shared-linked and a libz-linked
+    library, an extra export, a stray library in `jniLibs/`);
+  - "`isSupported()` false on any other ABI" is a check of the running process (`A0Abi`: ART and `os.arch` = aarch64),
+    not only a consequence of what is packaged;
+  - the A0 key files reach CI by digest from the content-addressed route, as the v1 artifacts do; the native workflow's
+    time limit is 90 minutes (a cold run plausibly takes 35–50).
 
 ## 13. Out of M1 (M2 and later)
 
@@ -790,10 +1005,20 @@ Each line is tagged with the plan that delivers it (§16).
     vectors, with a named mutation (one round constant changed → mismatch);
   - `rho(i)` and `d_self` against a JS reimplementation;
   - `derive_ata(owner)` equals `@solana/spl-token`'s derivation for at least three fixed owners; an off-curve owner is
-    refused;
+    refused; *(rev 3.2: against a fixture written offline by web3.js `findProgramAddressSync` / `isOnCurve`, held to
+    the program side's published pool / tree / fee-ATA addresses; non-canonical, small-order and torsion owners are
+    refused too; `PROGRAM_ID` is pinned and `find_program_address(["pool", MINT], PROGRAM_ID) = (POOL, 253)`)*;
   - a proof of each circuit verifies against the VK the chain holds (read from chain, not `vk.json`); the 256-byte
     layout re-verified for A0 by parsing the proof bytes of the landed deposit `3DR6F7oW…` and verifying them with the
-    on-chain `deposit_vk` (m10);
+    on-chain `deposit_vk` (m10); *(rev 3.2, as done: the landed deposit's proof bytes are not in the program side's
+    committed data, so the layout is re-verified against the two landed `withdraw_with_change` proofs `2mfMYnbt…` and
+    `3UfCx5TD…`; the Rust tests use the pinned `vk.json`, tied to the chain by those proofs; the deposit VK read from
+    chain is the M1a checkpoint's (§16), the `withdraw_change` VK read from chain (`wchange_vk`) is M1c's (R1-I6))*;
+  - *(rev 3.2)* the counts of m-5 are the zkey's `nPublic` and the wasm's `getInputSize`, equal to the r1cs header's
+    (4 / 2, 7 / 45); the `.r1cs` is not published by digest; the key files are read from `NOCTURA_A0_KEYS_DIR` (the
+    tests skip loudly without it and fail without it under `CI=true`);
+  - *(rev 3.2)* `r` and `s` are independent OS draws: a test fails if `s` is tied to `r` (`s = r` or `r + c`, via
+    e(ΔA, δ₂) ≠ e(δ₁, ΔB) over two proofs of one witness), with a positive and a negative control on the detector;
   - pinned-digest refusal, with a one-byte-changed key file;
   - authorization refusals (another owner, ATA, amount, fee; expired, reused, absent, from a closed or replaced handle;
     `amount + fee > inputAmount`, a fee above the sanity ceiling) and the allow-list refusals (every Rust-filled name, an
@@ -835,7 +1060,11 @@ Each line is tagged with the plan that delivers it (§16).
   - the privacy-claims guard over its widened scope (M1c).
 - **Boundary (M1a for the native side, M1b for the JS source test, M1c for Kotlin):**
   - a JNI surface test that the `.so` exports exactly §3's functions, and that the React Native module exposes all of
-    them **except** `parseUnshield` and `authorizeUnshield`;
+    them **except** `parseUnshield` and `authorizeUnshield`; *(rev 3.2: "exactly" means nothing else either — no
+    `wasmer_vm_*`; the reading is `nm -D` of the built library against `native/noctura-prover/jni-exports.txt`, on the
+    host `jni-host` build and the arm64 build, both in CI with negative controls; the React-module reading is
+    reflection over the compiled class (a Kotlin JVM test, not in CI — no CI job runs the Kotlin JVM tests in M1, a
+    stated limitation) and a reading of the Kotlin source (Jest, in CI))*;
   - a source test, scoped to `src/`, `core/`, `extension/src/` and `web/src/` (not `scripts/`, I-6), that no JS module outside `src/modules/keyDerivation/shielded.ts` imports `deriveSeedTree`, that no
     JS code passes `SHIELDED_PATHS.spend` (or the string `12381/371/1`) to a derive call (m6), and that no JS module
     imports anything that could return a secret;
@@ -847,6 +1076,12 @@ Each line is tagged with the plan that delivers it (§16).
   (send from the fresh account with the granted SOL only, the scripted history check). The scripted checks are the
   post-landing verifier's assertions run against devnet from a desk script, recorded with the signatures.
 - All gates of the repo stay green: tsc, jest, lint, no-TGE-date, the privacy claims, and the native-prover workflow.
+  *(Rev 3.2: that workflow also re-derives the key and ATA vector fixtures with their generators' `--check` (Node 24,
+  with a one-value-tamper negative control) and runs the M1a desk tests (`node --test
+  scripts/m1a-checkpoint/*.test.mjs`); its `paths` include every input of the Rust tests and generators
+  (`src/modules/shielded/a0/**` incl. `golden-vectors.json`, `scripts/a0-vectors/**`, `scripts/m1a-checkpoint/**`,
+  `package-lock.json`, `android/build.gradle`); `gen-prove-vectors.mjs --check` needs the program side's repository and
+  is a desk run.)*
 
 ## 15. Dependencies and open points
 
@@ -946,6 +1181,29 @@ same commit and launches it on the phone. Every requirement of §§3–12 belong
   instrumented test or a debug-only screen): `keysOpen` with the repo's test seed, `depositRho(0)`, `commitment()`, and
   a deposit proof whose public inputs equal the desk values and verify against the deposit VK read from chain; a
   `withdraw_change` prove without an `authId` refuses. `isSupported()` true on the phone.
+  *(Rev 3.2, as built:)*
+  - the harness is an Android instrumented test of the devnet release variant (`testBuildType "release"`, its own APK
+    `com.nocturawallet.devnet.test`) carrying the four pinned A0 key files as test assets; "not in the release variant"
+    is shown on the built APKs (`check-release-apk.sh`, with two controls on the test APK);
+  - the refusal line is judged with its controls — the same `withdraw_change` call, approved through the Kotlin-only
+    `authorizeUnshield`, proves and verifies; the used approval refuses; `keysClose` ends the handle — and must be
+    exactly `E_A0_AUTH_ABSENT`;
+  - "the deposit VK read from chain" is the `deposit_vk` field inside the devnet `Pool` account (`8VMe4…`, offset 144,
+    768 bytes), read in one genesis-checked request (`api.devnet.solana.com` by default; never `noc-tura.io`, never
+    mainnet), compared with `deposit_vk.json`, and the phone's proof is verified against it with an independent
+    verifier (`@noble/curves` bn254) — measured equal at slot 520213277;
+  - "launches it on the phone" is `am start -W` `Status: ok` + the process alive after 10 s + a clean crash buffer, for
+    the devnet and the production APK; each app is force-stopped first (a cold start; for the wallet a restart, no data
+    touched); the production APK is installed over the installed wallet with its data kept;
+  - the installs fail closed: never an uninstall, never a data wipe; before any install each package's installed signer
+    is read from every pulled APK and compared with the new APK's, and absence is established by two agreeing readings;
+    a different or unreadable signer, an unestablished install state, a failed rollback pull, an existing rollback with
+    other contents or an `INSTALL_FAILED_*` answer STOPs (exit 3) with no further adb call; the pulled APKs are the
+    rollback (sha256 recorded, never overwritten). No wallet installed is never a silent first install: the desk
+    prints `NO WALLET INSTALLED for com.nocturawallet — …, STOP (Ctrl-C) now` and STOPs unless the owner passes
+    `--allow-fresh-production`;
+  - the desk script is `scripts/m1a-checkpoint/m1a-checkpoint.mjs`, the owner's checklist
+    `scripts/m1a-checkpoint/README.md`.
 - **M1b:** shield an amount from the main account (deposit signed by it); the note shows `unspent` with the leaf index
   of its `LeafInserted`. Wipe the app, restore from the phrase: the shielded balance returns from the chain. (That the
   restore made no note-specific RPC request is not observable on a phone; it is the recording-`Connection` JS test of
