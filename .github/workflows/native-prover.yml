@@ -377,7 +377,10 @@ jobs:
         run: |
           ndk=$(sed -n 's/.*ndkVersion *= *"\([0-9.]*\)".*/\1/p' ../../android/build.gradle)
           [ -n "$ndk" ] || { echo "::error::could not read ndkVersion from android/build.gradle"; exit 1; }
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$ndk" > /dev/null
+          # `yes` never ends: it dies of SIGPIPE (141) when sdkmanager exits, and under this job's
+          # pipefail that alone failed the step (Task 5 review I1). `|| :` makes the producer
+          # unable to fail; sdkmanager's own status is still the pipeline's.
+          (yes || :) | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$ndk" > /dev/null
           [ -x "$ANDROID_HOME/ndk/$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang" ]
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$ndk" >> "$GITHUB_ENV"
           cargo install cargo-ndk --version 4.1.2 --locked
@@ -402,13 +405,15 @@ jobs:
           neg="$RUNNER_TEMP/neg"; mkdir -p "$neg"
           printf '#include <string>\nextern "C" int f(int n) { return (int)std::to_string(n).size(); }\n' > "$neg/cxx.cpp"
           "$cc++" -shared -fPIC "$neg/cxx.cpp" -o "$neg/cxx.so"
-          readelf -d "$neg/cxx.so" | grep -q 'libc++_shared.so'
+          # grep without -q reads all of readelf's output: `grep -q` exits at the first match and
+          # can SIGPIPE readelf, which pipefail would report as a failure (I1).
+          readelf -d "$neg/cxx.so" | grep 'libc++_shared.so' > /dev/null
           if ./check-needed.sh "$neg/cxx.so"; then
             echo "::error::the libc++ gate PASSED a library that NEEDs libc++_shared.so"; exit 1
           fi
           printf 'int g(void) { return 0; }\n' > "$neg/z.c"
           "$cc" -shared -fPIC -Wl,--no-as-needed -lz "$neg/z.c" -o "$neg/z.so"
-          readelf -d "$neg/z.so" | grep -q 'libz.so'
+          readelf -d "$neg/z.so" | grep 'libz.so' > /dev/null
           if ./check-needed.sh "$neg/z.so"; then
             echo "::error::the libc++ gate PASSED a library that NEEDs libz.so, outside the allowed set"; exit 1
           fi
