@@ -9,12 +9,19 @@ name: Native prover
 # guarantee lives entirely on the side of the boundary the JS suite cannot see,
 # so this job is the only place it can be checked at all.
 
+# `paths` names every input of this job (Fable review 1, R1-I4): the crate (native/**, its
+# tests/fixtures/** included), what the Rust tests include_str! from outside it
+# (src/modules/shielded/a0/__tests__/golden-vectors.json — and the TS equations next to it, which
+# the key generator imports), the vector generators (scripts/a0-vectors/**) and the lockfile that
+# pins the libraries they derive the fixtures with, the A0/v1 pins' source
+# (src/constants/provingAssets.ts), the NDK version (android/build.gradle) and the M1a
+# checkpoint's desk scripts and their tests (scripts/m1a-checkpoint/**).
 on:
   push:
     branches: [main]
-    paths: ['native/**', '.github/workflows/native-prover.yml', 'src/constants/provingAssets.ts']
+    paths: ['native/**', '.github/workflows/native-prover.yml', 'src/constants/provingAssets.ts', 'android/build.gradle', 'src/modules/shielded/a0/**', 'scripts/a0-vectors/**', 'scripts/m1a-checkpoint/**', 'package-lock.json']
   pull_request:
-    paths: ['native/**', '.github/workflows/native-prover.yml', 'src/constants/provingAssets.ts']
+    paths: ['native/**', '.github/workflows/native-prover.yml', 'src/constants/provingAssets.ts', 'android/build.gradle', 'src/modules/shielded/a0/**', 'scripts/a0-vectors/**', 'scripts/m1a-checkpoint/**', 'package-lock.json']
   workflow_dispatch:
 
 permissions:
@@ -37,7 +44,11 @@ defaults:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # 90, not 45 (M1a final review Minor 3): a cold run (no rust-cache hit) does a root npm ci,
+    # a cold arkworks + wasmer test build, the keyed proofs, a host release build, cargo-ndk,
+    # a ~1 GB NDK install and a cold arm64 release build — plausibly 35-50 min in sum, so a 45
+    # min limit would kill the first run as "red" when it is only slow.
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
 
@@ -55,9 +66,83 @@ jobs:
           fi
           echo "shell propagates pipeline failure"
 
+      # THE VECTOR GENERATORS (spec §14 anti-circularity; Fable review 1, R1-I4). The fixtures the
+      # Rust tests read are never produced by the code under test: offline generators under
+      # scripts/a0-vectors/ derive them from independent libraries (micro-key-producer,
+      # poseidon-lite, @solana/web3.js, @noble/*) and the app's TS equations. `--check`
+      # regenerates each fixture and compares it byte for byte, so a hand-edited or stale fixture
+      # fails here rather than silently agreeing with the Rust. Node 24: the key generator imports
+      # src/modules/shielded/a0/fieldEquations.ts directly (type stripping). Neither of these two
+      # reads the program side's repository.
+      #
+      # NOT RUN HERE, stated: gen-prove-vectors.mjs --check. Its inputs are the program side's
+      # files read with `git show <pinned rev>` from that repository (--ico=…), which is not
+      # committed here or fetched by CI; it is run by hand (each task that touches the prove
+      # fixtures records its run). The Rust tests themselves check the prove fixture against the
+      # deployed VKs (tests_prove), which is what CI does see of it.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      # npm pinned as in the other workflows (the lockfile writer); --ignore-scripts: the
+      # generators are pure JS and no install script is needed to run them.
+      - name: Install the root dependencies the vector generators import
+        working-directory: .
+        run: |
+          npm install -g npm@11.6.2
+          npm ci --ignore-scripts
+
+      - name: Re-derive the key and ATA vector fixtures (gen-key-vectors / gen-ata-vectors --check)
+        working-directory: .
+        run: |
+          node scripts/a0-vectors/gen-key-vectors.mjs --check
+          node scripts/a0-vectors/gen-ata-vectors.mjs --check
+
+      # NEGATIVE CONTROL — one 64-hex value of each fixture changed (the JSON otherwise byte-
+      # identical): its --check must fail. Restored with git, and the restore is asserted, so the
+      # Rust tests below read the committed fixtures.
+      - name: Assert the generators' --check can fail
+        working-directory: .
+        run: |
+          for g in key ata; do
+            f="native/noctura-prover/tests/fixtures/a0-$g-vectors.json"
+            node -e '
+              const fs = require("fs"); const f = process.argv[1];
+              const j = JSON.parse(fs.readFileSync(f, "utf8")); let done = false;
+              const walk = o => { for (const k of Object.keys(o)) { if (done) return; const v = o[k];
+                if (typeof v === "string" && /^[0-9a-f]{64}$/.test(v)) { o[k] = (v[0] === "0" ? "1" : "0") + v.slice(1); done = true; return; }
+                if (v && typeof v === "object") walk(v); } };
+              walk(j); if (!done) { console.error("no 64-hex value in " + f); process.exit(2); }
+              fs.writeFileSync(f, JSON.stringify(j, null, 2) + "\n");' "$f"
+            [ "$(git diff --numstat -- "$f" | cut -f1,2)" = "$(printf '1\t1')" ] || { echo "::error::the tamper of $f did not change exactly one line"; exit 1; }
+            if node "scripts/a0-vectors/gen-$g-vectors.mjs" --check; then
+              echo "::error::gen-$g-vectors --check PASSED a fixture with a changed value"; exit 1
+            fi
+            git checkout -- "$f"
+          done
+          git diff --exit-code -- native/noctura-prover/tests/fixtures
+          echo "the generators' --check is falsifiable; fixtures restored"
+
+      # THE M1a CHECKPOINT'S DESK TESTS (Fable review 1, R1-I4): the desk values from the mnemonic,
+      # the Pool-account VK decode against the recorded devnet read, the independent Groth16
+      # verifier (positive control: the two landed proofs), the §16 judge with a negative control
+      # per line, and the installs' fail-closed rules over a mocked adb (install.test.mjs: a
+      # different / unreadable signer, a failed rollback pull, INSTALL_FAILED_* → STOP with no
+      # further adb call). No network, no device. The files are named by a glob — `node --test`
+      # on the directory itself resolves it as a module on Node 24 — and the glob is asserted to
+      # match, so a rename cannot turn this step into a no-op.
+      - name: The M1a checkpoint desk tests (node --test scripts/m1a-checkpoint/*.test.mjs)
+        working-directory: .
+        run: |
+          files=(scripts/m1a-checkpoint/*.test.mjs)
+          [ "${#files[@]}" -ge 2 ] && [ -f "${files[0]}" ] || { echo "::error::no desk test files matched: ${files[*]}"; exit 1; }
+          node --no-warnings --test "${files[@]}"
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+          targets: aarch64-linux-android
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -129,11 +214,65 @@ jobs:
             exit 1
           fi
 
+      # The A0 proving keys (spec 2026-11-08 shielded A0 M1 §1, R4): the four files
+      # `src/a0/keyfiles.rs` pins by sha256, fetched by THOSE digests from the content-addressed
+      # route (`/h/<sha256>/a0/<file>`) and re-hashed here. This is CI provisioning — the tests
+      # themselves never touch the network: they read NOCTURA_A0_KEYS_DIR and, with CI set, fail
+      # rather than skip when it is missing. Cached by name like the v1 artifacts; a cache hit is
+      # re-verified against the pin, not trusted on its key.
+      - name: Cache the pinned A0 key files
+        uses: actions/cache@v4
+        with:
+          path: |
+            native/noctura-prover/artifacts/a0/deposit_final.zkey
+            native/noctura-prover/artifacts/a0/deposit.wasm
+            native/noctura-prover/artifacts/a0/withdraw_change_final.zkey
+            native/noctura-prover/artifacts/a0/withdraw_change.wasm
+          key: zk-a0-keys-${{ hashFiles('native/noctura-prover/src/a0/keyfiles.rs') }}
+
+      - name: Fetch and verify the pinned A0 key files
+        working-directory: .
+        run: |
+          set -euo pipefail
+          mkdir -p native/noctura-prover/artifacts/a0
+          base=$(grep -E "^const BASE" src/constants/provingAssets.ts | sed -E "s/.*'([^']+)'.*/\1/")
+          # Pins look like:  zkey: Pin { file: "<name>", sha256: "<64 hex>", len: … },
+          pins=$(grep -oE 'file: "[^"]+", sha256: "[0-9a-f]{64}"' native/noctura-prover/src/a0/keyfiles.rs \
+                 | sed -E 's/file: "([^"]+)", sha256: "([0-9a-f]{64})"/\2 \1/')
+          [ -n "$pins" ] || { echo "::error::could not read the A0 pins from src/a0/keyfiles.rs — its format may have changed"; exit 1; }
+          handled=0
+          while read -r want file; do
+            dest="native/noctura-prover/artifacts/a0/$file"
+            if [ -f "$dest" ] && [ "$(sha256sum "$dest" | cut -d' ' -f1)" = "$want" ]; then
+              echo "$file served from cache and re-verified against the Rust pin: $want"
+              handled=$((handled + 1))
+              continue
+            fi
+            curl -fsSL --retry 3 --connect-timeout 15 --max-time 300 "$base/h/$want/a0/$file" -o "$dest" || {
+              echo "::error::could not download $file from $base — the asset host was unreachable or has no A0 file with digest $want. Fail-closed: the A0 prove tests do not run against files that could not be verified."
+              exit 1
+            }
+            got=$(sha256sum "$dest" | cut -d' ' -f1)
+            if [ "$got" != "$want" ]; then
+              echo "::error::$file SHA-256 mismatch — pinned $want, downloaded $got"
+              exit 1
+            fi
+            echo "$file downloaded and verified against the Rust pin: $want"
+            handled=$((handled + 1))
+          done <<< "$pins"
+          if [ "$handled" != "4" ]; then
+            echo "::error::expected 4 A0 key files, handled $handled — the pin parse matched the wrong number of lines"
+            exit 1
+          fi
+
       - name: Formatting
         run: cargo fmt --check
 
       - name: Clippy
-        run: cargo clippy --all-targets --locked -- -D warnings
+        run: |
+          cargo clippy --all-targets --locked -- -D warnings
+          # src/android.rs (the JNI marshalling) compiles on the host only with jni-host.
+          cargo clippy --all-targets --locked --features jni-host -- -D warnings
 
       # --locked fails if Cargo.lock would need updating, so a dependency cannot
       # drift without a committed lockfile change.
@@ -142,9 +281,24 @@ jobs:
       # what happened on this workflow's first run — the positive control below
       # was the only thing that caught it.
       - name: Test
+        env:
+          NOCTURA_A0_KEYS_DIR: ${{ github.workspace }}/native/noctura-prover/artifacts/a0
         run: |
           set -o pipefail
           cargo test --locked 2>&1 | tee /tmp/cargo-test.log
+
+      # JNI local references (Task 4 review I1): android.rs compiles on the host only with
+      # jni-host, so its fake-JNIEnv tests run in their own invocation; grep that each one ran.
+      - name: Test the JNI marshalling's local references (jni-host)
+        run: |
+          set -o pipefail
+          cargo test --locked --features jni-host --lib tests_android_refs 2>&1 | tee /tmp/cargo-test-jni.log
+          for t in \
+            large_arrays_cross_the_jni_with_their_local_references_bounded \
+            every_string_argument_is_read_without_leaving_a_reference \
+            the_books_see_the_unfreed_pattern_negative_control; do
+            grep -q "test tests_android_refs::$t \.\.\. ok" /tmp/cargo-test-jni.log
+          done
 
       # The assertion lives in one place so both controls exercise the SAME code.
       # `cargo test` reports success when zero tests run, and a suite that
@@ -157,6 +311,23 @@ jobs:
           #!/usr/bin/env bash
           set -euo pipefail
           grep -q "test deposit_prove_to_bytes_matches_public_inputs \.\.\. ok" "$1"
+          # The A0 proofs (and the landed-proof layout check, which needs no key file) ran and passed.
+          for t in \
+            landed_withdraw_change_proofs_verify_under_our_layout_against_the_deployed_vk \
+            keyed_the_signal_tables_are_the_circuits_inputs_and_their_counts \
+            keyed_a_deposit_proof_verifies_against_the_deployed_vk_with_the_desk_values \
+            keyed_withdraw_change_proofs_verify_against_the_deployed_vk \
+            keyed_the_vk_fixtures_are_the_pinned_zkeys_own_verifying_keys \
+            keyed_a_one_byte_changed_or_swapped_key_file_is_refused \
+            keyed_two_proofs_of_one_witness_differ_and_both_verify \
+            keyed_r_and_s_are_independent_draws \
+            keyed_the_circuit_rejects_a_tampered_witness_and_the_wasm_memory_is_wiped; do
+            grep -q "test a0::tests_prove::$t \.\.\. ok" "$1"
+          done
+          # INV-NULL / INV-AUTH through the JNI bridge's logic, with the real key files.
+          grep -q "test a0::tests_bridge::keyed_bridge_withdraw_change_carries_the_approved_values_and_is_the_one_nullifier_exit \.\.\. ok" "$1"
+          # A key-file test that returned early prints this marker; "ok" alone would hide it.
+          ! grep -q "A0-KEYS-SKIPPED" "$1"
           SH
           chmod +x /tmp/assert-interop.sh
 
@@ -183,3 +354,97 @@ jobs:
             exit 1
           fi
           echo "interop assertion is falsifiable"
+
+      # NEGATIVE CONTROL 2 — every test line present and "ok", but one A0 key-file test skipped:
+      # the assertion must still fail (a skipped test reports "ok").
+      - name: Assert the interop check fails on a skipped A0 key-file test
+        working-directory: .
+        run: |
+          grep -E "^test .* \.\.\. ok$" /tmp/cargo-test.log > /tmp/cargo-test-skipped.log
+          echo "A0-KEYS-SKIPPED keyed_withdraw_change_proofs_verify_against_the_deployed_vk: NOCTURA_A0_KEYS_DIR is not set — this test did NOT run" >> /tmp/cargo-test-skipped.log
+          if /tmp/assert-interop.sh /tmp/cargo-test-skipped.log; then
+            echo "::error::the interop assertion PASSED on a log with a skipped A0 key-file test"
+            exit 1
+          fi
+          echo "a skipped A0 key-file test fails the interop assertion"
+
+      # THE JNI SURFACE (spec §3, §14 "Boundary"): the library's dynamic exports must be exactly
+      # jni-exports.txt — nothing else (exports.map, linked by build.rs). The host build with
+      # `jni-host` carries the same #[no_mangle] functions as the arm64 library, which the steps
+      # at the end of this job build and check with the same script.
+      - name: Build the host JNI library
+        run: cargo build --release --locked --features jni-host
+
+      - name: Assert the JNI exports are exactly jni-exports.txt
+        run: ./check-jni-exports.sh target/release/libnoctura_prover.so
+
+      # NEGATIVE CONTROL — the same check against a list missing one symbol must fail.
+      - name: Assert the JNI export check can fail
+        run: |
+          grep -vE '^\s*(#|$)' jni-exports.txt | head -n -1 > /tmp/jni-exports-short.txt
+          if ./check-jni-exports.sh target/release/libnoctura_prover.so /tmp/jni-exports-short.txt; then
+            echo "::error::the JNI export check PASSED against a list missing a symbol — it cannot fail"
+            exit 1
+          fi
+          echo "the JNI export check is falsifiable"
+
+      # THE ANDROID LIBRARY (spec §12, m15: "a CI step, not a note"). The arm64-v8a library the app
+      # packages is cross-built here with the NDK the app builds with (android/build.gradle's
+      # ndkVersion, read, not restated) by the same script a developer runs, into a scratch
+      # jniLibs. Its dynamic section must NEED no C++ runtime (the July launch crash), its
+      # exports must be exactly jni-exports.txt, and jniLibs must hold that one file.
+      - name: Install the Android NDK of android/build.gradle and cargo-ndk
+        run: |
+          ndk=$(sed -n 's/.*ndkVersion *= *"\([0-9.]*\)".*/\1/p' ../../android/build.gradle)
+          [ -n "$ndk" ] || { echo "::error::could not read ndkVersion from android/build.gradle"; exit 1; }
+          # `yes` never ends: it dies of SIGPIPE (141) when sdkmanager exits, and under this job's
+          # pipefail that alone failed the step (Task 5 review I1). `|| :` makes the producer
+          # unable to fail; sdkmanager's own status is still the pipeline's.
+          (yes || :) | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$ndk" > /dev/null
+          [ -x "$ANDROID_HOME/ndk/$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang" ]
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$ndk" >> "$GITHUB_ENV"
+          cargo install cargo-ndk --version 4.1.2 --locked
+
+      - name: Build the arm64-v8a library (build-android.sh) — libc++ gate, exact exports, one file
+        run: NOCTURA_JNILIBS_DIR="$RUNNER_TEMP/jniLibs" ./build-android.sh
+
+      - name: Assert the arm64 library NEEDs no C++ runtime and exports exactly jni-exports.txt
+        run: |
+          so="$RUNNER_TEMP/jniLibs/arm64-v8a/libnoctura_prover.so"
+          readelf -d "$so" | grep -E "NEEDED|SONAME"
+          ./check-needed.sh "$so"
+          ./check-jni-exports.sh "$so"
+
+      # NEGATIVE CONTROLS — each gate above must fail on the thing it exists to catch, built here
+      # with the same NDK: a library that NEEDs libc++_shared.so, one that NEEDs a library outside
+      # the allowed set (libz.so), a library exporting the JNI list plus one more symbol, and a
+      # jniLibs with cargo-ndk's stray libark_circom copy.
+      - name: Assert the libc++ gate, the exact export check and the jniLibs check can fail
+        run: |
+          cc="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang"
+          neg="$RUNNER_TEMP/neg"; mkdir -p "$neg"
+          printf '#include <string>\nextern "C" int f(int n) { return (int)std::to_string(n).size(); }\n' > "$neg/cxx.cpp"
+          "$cc++" -shared -fPIC "$neg/cxx.cpp" -o "$neg/cxx.so"
+          # grep without -q reads all of readelf's output: `grep -q` exits at the first match and
+          # can SIGPIPE readelf, which pipefail would report as a failure (I1).
+          readelf -d "$neg/cxx.so" | grep 'libc++_shared.so' > /dev/null
+          if ./check-needed.sh "$neg/cxx.so"; then
+            echo "::error::the libc++ gate PASSED a library that NEEDs libc++_shared.so"; exit 1
+          fi
+          printf 'int g(void) { return 0; }\n' > "$neg/z.c"
+          "$cc" -shared -fPIC -Wl,--no-as-needed -lz "$neg/z.c" -o "$neg/z.so"
+          readelf -d "$neg/z.so" | grep 'libz.so' > /dev/null
+          if ./check-needed.sh "$neg/z.so"; then
+            echo "::error::the libc++ gate PASSED a library that NEEDs libz.so, outside the allowed set"; exit 1
+          fi
+          { grep -vE '^\s*(#|$)' jni-exports.txt | sed 's/.*/void &(void) {}/'; echo 'void wasmer_vm_probestack(void) {}'; } > "$neg/extra.c"
+          "$cc" -shared -fPIC "$neg/extra.c" -o "$neg/extra.so"
+          if ./check-jni-exports.sh "$neg/extra.so"; then
+            echo "::error::the export check PASSED a library with an export outside jni-exports.txt"; exit 1
+          fi
+          cp -r "$RUNNER_TEMP/jniLibs" "$neg/jniLibs"
+          touch "$neg/jniLibs/arm64-v8a/libark_circom-0123456789abcdef.so"
+          if NOCTURA_JNILIBS_DIR="$neg/jniLibs" ./build-android.sh --verify-only; then
+            echo "::error::the jniLibs check PASSED a tree with a stray library"; exit 1
+          fi
+          echo "the libc++ gate, the exact export check and the jniLibs check are falsifiable"

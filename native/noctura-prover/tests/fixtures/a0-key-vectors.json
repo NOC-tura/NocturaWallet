@@ -1,0 +1,734 @@
+{
+  "schema": "noctura.a0.key-vectors/1",
+  "_provenance": "Written by scripts/a0-vectors/gen-key-vectors.mjs from micro-key-producer/bls.js (EIP-2333, itself checked against the EIP cases below), poseidon-lite via src/modules/shielded/a0/fieldEquations.ts (checked against golden-vectors.json), @noble/hashes SHA-512, @scure/bip39 and @scure/base. No Rust output is read. Rerun: node scripts/a0-vectors/gen-key-vectors.mjs [--check].",
+  "_byteOrder": "Every field value is 32-byte BIG-ENDIAN hex, unprefixed, zero-padded, canonical (< r). sk is the 32-byte EIP-2333 I2OSP output. Amounts and indices are decimal strings.",
+  "equations": {
+    "sk": "EIP-2333 at m/12381/371/1/0 from the BIP-39 seed",
+    "viewKey": "EIP-2333 at m/12381/371/2/0 from the BIP-39 seed (a path check only; not used by A0 M1)",
+    "nk": "Poseidon3(TAG_NK = 0x14, sk_hi, sk_lo); sk_hi = OS2IP(sk[0..16]), sk_lo = OS2IP(sk[16..32])",
+    "ivk": "Poseidon2(TAG_IVK = 0x15, nk)",
+    "dSelf": "be_mod_r(SHA-512(\"noctura/a0/self-d/v1\" || be32(nk)))",
+    "addrSelf": "Poseidon3(TAG_ADDR = 0x12, nk, dSelf)",
+    "mintHash": "be_mod_r(mint as 32 bytes)",
+    "rho": "be_mod_r(SHA-512(\"noctura/a0/deposit-rho/v1\" || be32(nk) || u64be(depositIndex)))",
+    "nullifier": "Poseidon3(TAG_NULL = 0x11, nk, rho)",
+    "rhoChange": "Poseidon3(TAG_RHO = 0x13, nullifier, 0)",
+    "commitment": "Poseidon5(TAG_CM = 0x10, addrSelf, amount, mintHash, rho)"
+  },
+  "constants": {
+    "spendPath": "m/12381/371/1/0",
+    "viewPath": "m/12381/371/2/0",
+    "fieldModulus": "21888242871839275222246405745257275088548364400416034343698204186575808495617",
+    "mint": "ERkpCFGaoWmeZPhKTUHumrqHTP1QmyHVhMJUnxbRPKCs",
+    "mintBytes": "c77f68e5b77be0ed9e3bcc15bab1b1a07d462ae6c98e06b2c6f9072b3fccdca8",
+    "mintHash": "05ee2f1a32b56046bcfab53bb4ac502bdc7689c4e2a8446db77130db7fccdca4",
+    "dSelfDomain": "noctura/a0/self-d/v1",
+    "depositRhoDomain": "noctura/a0/deposit-rho/v1"
+  },
+  "eip2333": {
+    "source": {
+      "url": "https://raw.githubusercontent.com/ethereum/ERCs/master/ERCS/erc-2333.md",
+      "commit": "be307c948f28897adb8f25afcc253c2c909de35d",
+      "sha256": "0c8ee48c99befe1a7dd491d2cdde1d9d70ff99ed84d940d9ca14dfe4b9016616"
+    },
+    "cases": [
+      {
+        "label": "Test Case 0",
+        "seed": "c55257c360c07c72029aebc1b53c05ed0362ada38ead3e3e9efa3708e53495531f09a6987599d18264c1e1c92f2cf141630c7a3c4ab7c81b2f001698e7463b04",
+        "master": "6083874454709270928345386274498605044986640685124978867557563392430687146096",
+        "childIndex": 0,
+        "child": "20397789859736650942317412262472558107875392172444076792671091975210932703118",
+        "compressedLamportPK": "dd635d27d1d52b9a49df9e5c0c622360a4dd17cba7db4e89bce3cb048fb721a5"
+      },
+      {
+        "label": "Test Case 1",
+        "seed": "3141592653589793238462643383279502884197169399375105820974944592",
+        "master": "29757020647961307431480504535336562678282505419141012933316116377660817309383",
+        "childIndex": 3141592653,
+        "child": "25457201688850691947727629385191704516744796114925897962676248250929345014287"
+      },
+      {
+        "label": "Test Case 2",
+        "seed": "0099ff991111002299dd7744ee3355bbdd8844115566cc55663355668888cc00",
+        "master": "27580842291869792442942448775674722299803720648445448686099262467207037398656",
+        "childIndex": 4294967295,
+        "child": "29358610794459428860402234341874281240803786294062035874021252734817515685787"
+      },
+      {
+        "label": "Test Case 3",
+        "seed": "d4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3",
+        "master": "19022158461524446591288038168518313374041767046816487870552872741050760015818",
+        "childIndex": 42,
+        "child": "31372231650479070279774297061823572166496564838472787488249775572789064611981"
+      }
+    ]
+  },
+  "seeds": [
+    {
+      "label": "repo test mnemonic (abandon … about), no passphrase",
+      "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+      "passphrase": "",
+      "seed": "5eb00bbddcf069084889a8ab9155568165f5c453ccb85e70811aaed6f6da5fc19a5ac40b389cd370d086206dec8aa6c43daea6690f20ad3d8d48b2d2ce9e38e4",
+      "sk": "3ffaa65f057573ad70a1ff0d50ddae9d6948b3d5714aad08e447a99f0fdcf921",
+      "viewKey": "30171f354d910bcd87d1a0573900419e17e04c1015c4aa6ea127be66fdccd6dc",
+      "nk": "22ca14c21f6dabfd352911586cb04f1ac4c64aa45a952634e68a4a8711f7ebf9",
+      "ivk": "26d3f1108afd520d2f13c38be37636a14d991f63c22fd0a5195c335cf359ec9e",
+      "dSelf": "00ea430a7eb70d922124512aae98af0b731c8cfa0bb62ce7a9a27993d15ce574",
+      "addrSelf": "204872c9087eea6bf401771071eb11573af272f25c2187d8fd2eaf8e331813cb",
+      "notes": [
+        {
+          "depositIndex": "0",
+          "rho": "12d576a44d29fa15379dfda30a5cce14c828f6a2d2789d9a0730c47f62d7518e",
+          "nullifier": "21f44062f79bad95780ac55359b47b9a5d8652186c250224b320c4770ff75925",
+          "rhoChange": "0f81fccac5e2f95103d666ac96cdd67d38b4d35ab5d7b56442b275a1a96554fa",
+          "commitments": [
+            {
+              "amount": "0",
+              "commitment": "0fc478011b6d0ac741f95a1822f522d9cff1fc19c745cae175651f9945c15b75"
+            },
+            {
+              "amount": "1",
+              "commitment": "182c402d7982c36e4452f2da8efe8cb76d645b84e8187094738d79be99d914e8"
+            },
+            {
+              "amount": "1000000000",
+              "commitment": "02541c5bb65d705e584a835144831936031f3b47977cba9b89f3883057c5245f"
+            },
+            {
+              "amount": "18446744073709551615",
+              "commitment": "07a146c775e2da7dc7bc46062f59a16b64c633143b030d93955c5749dc33c325"
+            }
+          ]
+        },
+        {
+          "depositIndex": "1",
+          "rho": "1fddfc16b3feed86d3980447623d01ded3c082b70ec96dad1aff383cb00d5e8d",
+          "nullifier": "1b7b0e3403ba6e7dde63eb21bb18db1507fddf19517d7b6a9457ac12aded2107",
+          "rhoChange": "0170b370934387a8dda4314326b8548353d3b893beb71bac9162fa9a2d4b6171",
+          "commitments": [
+            {
+              "amount": "0",
+              "commitment": "1a80b6a036abbcc0b55a6813889643e92fecf22c770accff61f42347a05cecc9"
+            },
+            {
+              "amount": "1",
+              "commitment": "01c27f5fdb972dc9a8f7694e57cb93186567b8ef7550939f6692be488e62f6c8"
+            },
+            {
+              "amount": "1000000000",
+              "commitment": "2920464f08896a58665e231f3f88ebb0ce338be427e53f8d0d6e249166038933"
+            },
+            {
+              "amount": "18446744073709551615",
+              "commitment": "1e885dd5e329d2509c7ed4a9283a7bd674930bca663aed7cd6dd30f4dbdd04eb"
+            }
+          ]
+        },
+        {
+          "depositIndex": "2",
+          "rho": "0319d2831854a0c0a3306e59bb5e11c3bacdf8c0839dc2f69bee590713522bf4",
+          "nullifier": "1a0a6e0e0f381902e8ccc11f795da7a586e1a90489ee7b1ebed27b3c0f0a0422",
+          "rhoChange": "169071dc956e634880d61e4475075279cd6e4320def712ca336a46c28cdc3379",
+          "commitments": [
+            {
+              "amount": "0",
+              "commitment": "00d2cc808e83103fcecf6d7e3256ceeb1ed9046b5add3133efdc2369a479b69f"
+            },
+            {
+              "amount": "1",
+              "commitment": "12a2b4d9266e6d684722902e0ceb64bcdbff189bfa2319901978f5991a89452a"
+            },
+            {
+              "amount": "1000000000",
+              "commitment": "013d264886f025eeb5fefbad547a3dd60168a2d9c066366422f5fb29219aa877"
+            },
+            {
+              "amount": "18446744073709551615",
+              "commitment": "2031a64999399e3c03bdfa3f1e0a75853a097688617b81adbee43b8665cfd64c"
+            }
+          ]
+        },
+        {
+          "depositIndex": "4294967296",
+          "rho": "2cd7f746fb26d5426f0936a59f483f25027ad75ac374e826bc78736fd9bfbb45",
+          "nullifier": "0d7ccbc178204c5e1547910e0098a21c3401421628690eeaeae20ff8c14181bc",
+          "rhoChange": "202067984f316f463359cd7fb86504aa2c9d953a4c16660d9621e496795b1934",
+          "commitments": [
+            {
+              "amount": "0",
+              "commitment": "0a04b25ebe8cb7dbeaa69da23a0784daa4cc5ba57bc93a32ad824fb565cf1724"
+            },
+            {
+              "amount": "1",
+              "commitment": "17158f4497262bbcc7695933f1f01c40e9bad9032f94619abd6a64826ef1c018"
+            },
+            {
+              "amount": "1000000000",
+              "commitment": "0aa21e91758899bc252ed3a770405a39dde16ec4685f2a264e9fd05e2384bbd7"
+            },
+            {
+              "amount": "18446744073709551615",
+              "commitment": "0d3c40ed24a18dadc4b6f47c9d4f104a476e9a69317c71d278b7e139921700e4"
+            }
+          ]
+        },
+        {
+          "depositIndex": "18446744073709551615",
+          "rho": "00e48d4d09b337b0724533f00e7fa077757b72c8edb4c92acc0ba0466040151e",
+          "nullifier": "2588b6065b48c3443900a596feeaf4ff5ccd0872191393d2b38c8b3478ffc874",
+          "rhoChange": "19c761125fc15adbe354902c04539a1f612846d1d79b497c6f3a312f22ca04b1",
+          "commitments": [
+            {
+              "amount": "0",
+              "commitment": "0dfdcd9cd647004b0b336a304573d4c6227f22a34a58732ae471ae3c6fa86d9e"
+            },
+            {
+              "amount": "1",
+              "commitment": "080ca627ec4e1296e975dfe3a69625e69e178eb8b723f286e301713ce35766ab"
+            },
+            {
+              "amount": "1000000000",
+              "commitment": "1efa5e0290870e0315cf827dae55402f646921649e410272f2933fa87c39cbe0"
+            },
+            {
+              "amount": "18446744073709551615",
+              "commitment": "21458db8e40724c5fe1fc27f8450d6e080b553a1fdca8022d9661c70e8c7993b"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "repo second test mnemonic (zoo … wrong), no passphrase",
+      "mnemonic": "zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong",
+      "passphrase": "",
+      "seed": "b6a6d8921942dd9806607ebc2750416b289adea669198769f2e15ed926c3aa92bf88ece232317b4ea463e84b0fcd3b53577812ee449ccc448eb45e6f544e25b6",
+      "sk": "184f333a745bc4a97dd397bbc33fbbebedbd53bd81b3fdc6323c17ffe1a39811",
+      "viewKey": "151e9232efaaf2ecfb2fe1786965cbcba1f549502a34d8e5891e0ca4323b6396",
+      "nk": "1ca47a7b6e2e70cc0b3b80b9de60bb7665f83f5f8cf28538522bea1466383000",
+      "ivk": "1a0a14c8701c49ecd2fbe6121e366d1724591717d77872b1ce99b4a3a0dba318",
+      "dSelf": "2d7ba46e6d8d547d7f708f5827b37e7873359cf44d674624b6081e58e30b89b0",
+      "addrSelf": "0d1e61652aa16a0319e907c953219b6fde73f2b698edd5baf1e6813007440b5b",
+      "notes": [
+        {
+          "depositIndex": "0",
+          "rho": "08eed9a9fdf360c2aa7b7e930e849c2276423162e1afa543f013e5db76ec2da8",
+          "nullifier": "288f9bd2921e2558566e33177bd3fd251976b27e71016d3d54cb0f7164978156",
+          "rhoChange": "01c0432ce5d3f4c7ecdd136a4ca15393fbb4a5f0654bca3f84b5999dd7a324c1",
+          "commitments": [
+            {
+              "amount": "0",
+              "commitment": "11398ed4149c47252aeb8afc314f1a7b588375172cdc81c34753e1ea082a6837"
+            },
+            {
+              "amount": "1",
+              "commitment": "1a8fd92695b5e2e7cd0614ad4c820094ee873beef9b063019e9a87880e779cc2"
+            },
+            {
+              "amount": "1000000000",
+              "commitment": "0716ca298f60307289ea32bbe93cea2d7cffa6d1d4ab60a1bb36648a0daf0f41"
+            },
+            {
+              "amount": "18446744073709551615",
+              "commitment": "2592e14a91941de55ed6643b4764275379055424f0b09098ee669f70d1bc03cb"
+            }
+          ]
+        },
+        {
+          "depositIndex": "1",
+          "rho": "1fc4b58382eaad02b70e6c1544f84335ff26114263c8981ef61a14f6b12af798",
+          "nullifier": "0ddfb4b9ec2bd0f5aaf38574aa4d05edda2db0faaec0a63f065c673a72ff8533",
+          "rhoChange": "1906ec8035bbd6509c38c76987a47979b2115edf7829eeae288747d317844218",
+          "commitments": [
+            {
+              "amount": "0",
+              "commitment": "2fcfdbd515f6b1a6c5ddee858019d1aad281a11a430250ed4d0e04888eb14fbe"
+            },
+            {
+              "amount": "1",
+              "commitment": "04d3fcd9a2b454d8d20c3758d693775da21d39c2c2cdf5bbaafe09fa0c1e9251"
+            },
+            {
+              "amount": "1000000000",
+              "commitment": "1c8aa4ff32ac47669da047680589435a5ef44f73bb3353ce205129abaa40eac2"
+            },
+            {
+              "amount": "18446744073709551615",
+              "commitment": "1e5932bb8eac9a997221d64012db7e89a542c4fdce6c5d5ed27fc227221470c0"
+            }
+          ]
+        },
+        {
+          "depositIndex": "2",
+          "rho": "2e61017be3d95d06faee2909b6e02f4a8bd1eb83336cd53795754ddb013e5ba5",
+          "nullifier": "0fb53a469777c9f3279d772f1afaa0702c4759373a5dd90b04ce7b88614afb78",
+          "rhoChange": "202119f2a9e5eec4a40eb3dc3f0dc353bc198698df68a018ccbef8d82f298ba8",
+          "commitments": [
+            {
+              "amount": "0",
+              "commitment": "195565f3e75ae17170aafebe3846781567db2e4eaf379d33042e559a4a3e126e"
+            },
+            {
+              "amount": "1",
+              "commitment": "260e8d1d69b5fa38d286d999bee3dbc19e3a084a84ec8798f1b83065383fa88e"
+            },
+            {
+              "amount": "1000000000",
+              "commitment": "14af7b1c9be29ba9f97accf3e7e8c00e73191b540a9b14a0da33ba75bdda50de"
+            },
+            {
+              "amount": "18446744073709551615",
+              "commitment": "2c5856b3f523a3fabbb4f4851d0f83ff954d7d37683f5cc2a1d66e391db2da2f"
+            }
+          ]
+        },
+        {
+          "depositIndex": "4294967296",
+          "rho": "106f423e0aa58ba00eea410a7aad948d02e6895b8e7710180435d9e193233acf",
+          "nullifier": "1ce68f4ff22ec2df36de720dc75573211d52a78226245f64b9029a09db668f22",
+          "rhoChange": "0ce495d0b9c7266aaf42cecea2854bac4d020498a2b2ae01048c221bb4f72e9c",
+          "commitments": [
+            {
+              "amount": "0",
+              "commitment": "05c0f748f464a537ab8a0dc747787127d9d6794cfed624b93a31e4d7a693d36f"
+            },
+            {
+              "amount": "1",
+              "commitment": "0ad90771f584e2749cd27dd3ef9479697cab8a93827f4f4881435ec18afb5f4d"
+            },
+            {
+              "amount": "1000000000",
+              "commitment": "1a92030b41ecf3967ef59625b132816af00d45f267487d0425654729f4044831"
+            },
+            {
+              "amount": "18446744073709551615",
+              "commitment": "24651e1ad6a1796dd29bccfeeb775e5a508e0ef35b72b8dea8033e1d026d1f04"
+            }
+          ]
+        },
+        {
+          "depositIndex": "18446744073709551615",
+          "rho": "1e54e65ee89741aa7d6218602642b257cb6ad00bcb4976a8d7139d0e45df2fd1",
+          "nullifier": "1c66c65272e3cc94042186d670cf6804f3ade032e59909144247260058582cdc",
+          "rhoChange": "1efbc3c778be13e49c65be7f23ff082352f881d222db6a12d203b633fd60edb8",
+          "commitments": [
+            {
+              "amount": "0",
+              "commitment": "2cc9eb89737fa56a1199fb7ff0974ae513059bc202e76c09ac90442a0dcdd801"
+            },
+            {
+              "amount": "1",
+              "commitment": "2dddbcced194e127bf2f3a4210f6443626e6d79cfd95690c26048fc30756c86a"
+            },
+            {
+              "amount": "1000000000",
+              "commitment": "1e2eedf4a90dd87cfb357d2cc39e8c992c116b17ed2e69b42331c5f3a995fc0d"
+            },
+            {
+              "amount": "18446744073709551615",
+              "commitment": "05006369e29ca33bafbd3e2451fcecfdf70e4d6c58fe0ff4b649577e94b94575"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "EIP-2333 Test Case 0 seed (abandon … about + \"TREZOR\")",
+      "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+      "passphrase": "TREZOR",
+      "seed": "c55257c360c07c72029aebc1b53c05ed0362ada38ead3e3e9efa3708e53495531f09a6987599d18264c1e1c92f2cf141630c7a3c4ab7c81b2f001698e7463b04",
+      "sk": "057ef790268fe6b9c8f968b44ddf20ae84d52e1aa79ed30375bbe243bed88f6e",
+      "viewKey": "6bfb1a6ddeaef000ac4271971096327bc2fa86295a10a47fa26247c0205e5b29",
+      "nk": "1029e23dbd1efb37efc2686ce07a1754a2eabe9d2bebd8f8fcfcac121ca47390",
+      "ivk": "2d4f24aff81522d1c379318223aae7798af7dc6c60d833dfc06bd25ebca9ef77",
+      "dSelf": "0f612d428ed56b79e5e86eed0ee5ed51a8688a5e58ff338776cfa7c593bd27f9",
+      "addrSelf": "05111968f62975234e66ba68800fb217cc27997bb48deb04a487760890db2058",
+      "notes": [
+        {
+          "depositIndex": "0",
+          "rho": "097f367971cb47fa866f3aafa17bc5d6a63e531508b25d9555d3408a34e4e5fc",
+          "nullifier": "1a6a2176dcf8f4a0ea0591d22c254d904d98d306bd7bfe8de011c66f682d2712",
+          "rhoChange": "075a677f9015c8e16e62b1d781b20b31f16dfdda3a58deafcf07071578d2e8ef",
+          "commitments": [
+            {
+              "amount": "0",
+              "commitment": "1f21f375a0c25b083d65d84a11d58473c26a584a6dd09a1d45a4ad0f12af4cc0"
+            },
+            {
+              "amount": "1",
+              "commitment": "25d2398cb6d008fc124a6fbf5eea501be2c11a2cd51f337ac2a27e7f019b9a77"
+            },
+            {
+              "amount": "1000000000",
+              "commitment": "2eaa8e74ca95871cab697fab7470a736e502d31527c5aa85afeca74bbd11be60"
+            },
+            {
+              "amount": "18446744073709551615",
+              "commitment": "2b28c1d361052583c22e9e85e6c893ef2a7fd4e32c4b8c2bb306a12fa9722b3e"
+            }
+          ]
+        },
+        {
+          "depositIndex": "1",
+          "rho": "077aa71488c67c58b26e024ede6bac51b19be59aa28e334d9a76d6b286dde708",
+          "nullifier": "05a1282eef276949032193ab97c4a7939a1c414645b48017c0a848f88aa11c4f",
+          "rhoChange": "0c9d2d9c531a8362451cef890f34053150ea9f5539f3c6aa06c6fb4e9f199b82",
+          "commitments": [
+            {
+              "amount": "0",
+              "commitment": "0864f3e2344b07065277e98290bf44918075d59f57daf2e715bffeaece2cd3c0"
+            },
+            {
+              "amount": "1",
+              "commitment": "02019d905e0224000ee0700f7416e95535977e59a6000c6cf17c125b7c926238"
+            },
+            {
+              "amount": "1000000000",
+              "commitment": "0c106452e2138b4bbffeab191f879c2c5d2f9f877aaad51fc9437cb2b4e6abf2"
+            },
+            {
+              "amount": "18446744073709551615",
+              "commitment": "2dc35d8cd23ad2f65124e8ae866ac5b7f1b6ffe486648aeb40e9e08a06baf20a"
+            }
+          ]
+        },
+        {
+          "depositIndex": "2",
+          "rho": "0330b51675a08e2578e9e56b3e9949adcd42d615e20587db4c8d39ec8f1b2f31",
+          "nullifier": "1af45678e3854cb8ddbdb07b690fb98925e1fec5e14368eae6ab0b8aea02a4a9",
+          "rhoChange": "215808f6c6117fbf0d0f06fc7018d5283125f47dc1733d96820cf55a771a2d1e",
+          "commitments": [
+            {
+              "amount": "0",
+              "commitment": "22e44e562e166f1c398055ea74ccf33ccd087d6efbf4761c1e04ff20fba26279"
+            },
+            {
+              "amount": "1",
+              "commitment": "2a53c7d6cfd4cc9128e63db7f85326f45db3e81594d28d9dc1ebe59466629330"
+            },
+            {
+              "amount": "1000000000",
+              "commitment": "2f6f99233e6188f7661d5e27ebe55275eb61f44730a7175098a5886e94c114dd"
+            },
+            {
+              "amount": "18446744073709551615",
+              "commitment": "2fdb3fc8bc65508d88f81148bc031819aebf3be60ffd03dbf3e596bee77c1b5d"
+            }
+          ]
+        },
+        {
+          "depositIndex": "4294967296",
+          "rho": "14a042a90937cb5a1502d417079b92f3a2a50e6bb24f1b6daf76cd704e0fe8b7",
+          "nullifier": "2ffd4f6d75a41242bf407f803f15ed110455f9e885b362428a78b69f4ab359a1",
+          "rhoChange": "26c2fc9b254f14e4501b720dfb067987437ac399f18016bbefba7a0ecb65fa91",
+          "commitments": [
+            {
+              "amount": "0",
+              "commitment": "0371b5acc83b0698ebda9f90197bf6a4e3840e7e36b56ccae90c4496bca0afbd"
+            },
+            {
+              "amount": "1",
+              "commitment": "02dd4f626717e05c86d5edf1452705eb6a9c3e9582ccf8b88d7cf6f63dc0f329"
+            },
+            {
+              "amount": "1000000000",
+              "commitment": "15d8b9d90a493cd8c17101dc38279b9ea1958ab756ad49cef62215b5432d094c"
+            },
+            {
+              "amount": "18446744073709551615",
+              "commitment": "0cbb31e690c32e22ab027d70afda2ed332bca6ce3356d5049ee7595a549c0da3"
+            }
+          ]
+        },
+        {
+          "depositIndex": "18446744073709551615",
+          "rho": "2d16dc40d00dd4b0ede9aec252b46930ab898503af9afb506f3ea39cd8fccc7e",
+          "nullifier": "0c623679fa5744bda627b6c75b31ae5326bd5ef25a39ce75f7e74f7622b5ea4f",
+          "rhoChange": "149cffe31813838c704f652e0589b2addda2e9868a3c3ae2a8a48c3d4109ecf9",
+          "commitments": [
+            {
+              "amount": "0",
+              "commitment": "1f7c48959c4ca40bdb1d2d9bf18351e134f4ef40c7a86ca617065f93b26ab9e8"
+            },
+            {
+              "amount": "1",
+              "commitment": "259a90e21964e380dfaab1ef2398fc29a9a63918f06480bdd2120b26c4aa048f"
+            },
+            {
+              "amount": "1000000000",
+              "commitment": "05d4b10f7286dc08167ed872aab9ceb44ba9cc786cf1664d227b475ae00430b6"
+            },
+            {
+              "amount": "18446744073709551615",
+              "commitment": "039e4cbd207d0ab03f210929ec2705f7e8d180d4a64241c5de5af720e3570c43"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "edge: 64 zero bytes",
+      "seed": "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "sk": "674b713dbf91682d82ac165685e523c3cb00dd5ef5535bb23cf2de519c4637fa",
+      "viewKey": "04713322773c6e54984c5b51b50f251feac5b54e51be426f5f7f441a7bd1a14d",
+      "nk": "0a18f8794ade97fc6948af7e172b15ef915f563b36f2f6cd73db42178785ba14",
+      "ivk": "1b981213e4e65178aba764097afc464529199976d7e2809a5bea2c8566886e74",
+      "dSelf": "0c593cc4309e36d28abec79c9ef07196203f952c3b25c333e60cb6dee6bc1df9",
+      "addrSelf": "0f9bfe5854f4cc9a5c1c156cb51bd85ff9107de09342476b3adf98c6761eef5e",
+      "notes": [
+        {
+          "depositIndex": "0",
+          "rho": "225065f650cde155e4e7fe9107bd3eccf40fce68e1e8980c67fdbca39ac8d913",
+          "nullifier": "0eb281751cb2f681c6ea8b8723ee93b85e02a8c74bdbef87fd6c65f305b0c0a0",
+          "rhoChange": "23e2b7d7adf3c105846ef948c1050be54326f097bcb2fcaceab9b9eac16bdfdd",
+          "commitments": [
+            {
+              "amount": "0",
+              "commitment": "1e14fc4da838a184c5d2bbc79bf61139b2dd1320295d06e230b2809f03801fea"
+            },
+            {
+              "amount": "1",
+              "commitment": "0319d4d970cf71eb1ce0eecad3836c40214c12c10c508e31820fabcc238466e9"
+            },
+            {
+              "amount": "1000000000",
+              "commitment": "0edcde67175fcbebbc26a0e2da47ca6a389c2c92f50d3d255f3de054e04d70b2"
+            },
+            {
+              "amount": "18446744073709551615",
+              "commitment": "2c6b82892870d9293248ece224e25990f3cfb515f0d1b930561e42374e9dd30b"
+            }
+          ]
+        },
+        {
+          "depositIndex": "1",
+          "rho": "0c7a2576f069d195450200d3f204d581a38a1726afb3c1887677f2a72b10e5d2",
+          "nullifier": "01cee7105b6bed5bdea3f99ab7028ce9e599ea5f5de122805fd2c7277814856d",
+          "rhoChange": "1fcea862de0bfada7dd624be65aab77cba22f495df75b69a83b07e4a855927cf",
+          "commitments": [
+            {
+              "amount": "0",
+              "commitment": "21d36fc92c9ef6603a5585774eb6b96aae010e3e71d3efa9862e5015e684b492"
+            },
+            {
+              "amount": "1",
+              "commitment": "0871ddec92b0d4321f7944360d9b4a6003b049ebeb7c8d327a1441ef315d30e9"
+            },
+            {
+              "amount": "1000000000",
+              "commitment": "0831bf3c16918ce6ccdcfb0ca38733ca877ac9350e839f3d3a5d9f2f3678e512"
+            },
+            {
+              "amount": "18446744073709551615",
+              "commitment": "097f8da62b176ce788319cf017a84d7d19e091761bfccb85b8fbb8af77083265"
+            }
+          ]
+        },
+        {
+          "depositIndex": "2",
+          "rho": "22a7695df31751878307d43dd54fafb7280d38fe1389e04743cb4f4cbe17007f",
+          "nullifier": "1284ebb25e00514d1a794c7537f49796cfb8cc877705e8fb6755c607641f29da",
+          "rhoChange": "0e3e14c37342df94a09da7bf73eef19d4d63083412a1fecaaa39b6bae217e3d8",
+          "commitments": [
+            {
+              "amount": "0",
+              "commitment": "0f89c1e35ab90144c4ad51ea787b844938f614cf00a3f28f978fbe530bab0b78"
+            },
+            {
+              "amount": "1",
+              "commitment": "297a7fc4610bad276609eb4599c2a8ce5b3e483c7d5c524c2d34fae50aeba85c"
+            },
+            {
+              "amount": "1000000000",
+              "commitment": "05b5b8a07bd7cfe9b8aee7dd8dc57c662b95e4fad860bfaeb9a21e94bd0efc0a"
+            },
+            {
+              "amount": "18446744073709551615",
+              "commitment": "25d25d29ea77b4dff07846e5d6b75f3fe65114f8f4c32d1093f2beba2f63d3ad"
+            }
+          ]
+        },
+        {
+          "depositIndex": "4294967296",
+          "rho": "233a0d80e70e1d4269acfb6cd06c55ed3ef2ba37e9df42f7b06853625dc89f9c",
+          "nullifier": "27a302d2c15ddd4bab55a9fc4bc38d21a80ba47676b1861439178364ee3badd2",
+          "rhoChange": "022ee764e5939eed1787196a0c55e9645849086cd57b2bdaaf4351450cd6f8a3",
+          "commitments": [
+            {
+              "amount": "0",
+              "commitment": "0465f0cd5fad6df6b7222a998df9645146ea18ce62279a5898efa5f75696d569"
+            },
+            {
+              "amount": "1",
+              "commitment": "02481798e6128727e1ae0d252af446cf4f31da385a5222c8c7ea204842347f3c"
+            },
+            {
+              "amount": "1000000000",
+              "commitment": "0dfad910d7349542a4dbfebfd3be2c2a921b6afe928b7ce5cef9d3e74c6efde0"
+            },
+            {
+              "amount": "18446744073709551615",
+              "commitment": "11ed753d355640df601392114480ef2484470d11e6d069236d82a64131e56ddc"
+            }
+          ]
+        },
+        {
+          "depositIndex": "18446744073709551615",
+          "rho": "2361aa4e92bd53093d96be9f46531bf47ef0eb37ee791310914a15f2ab501265",
+          "nullifier": "10057be5855d89d5ac12e6e92df539b5bca32fdc5afa4232552961de6041e1ce",
+          "rhoChange": "29097310b999a8603864cdc491bfb31477301370f32cc0d565625bf5262a063d",
+          "commitments": [
+            {
+              "amount": "0",
+              "commitment": "290b49e97022bc94fce6d4269a33ce940461c566ece2330722de21aa5efbd2de"
+            },
+            {
+              "amount": "1",
+              "commitment": "2efbc72d311613df95653e01fa1a42f57817ed73a134db3ab83844075b58ceb0"
+            },
+            {
+              "amount": "1000000000",
+              "commitment": "17e7e9927f6376f839569ee8a5a550729e0db24dadeec45f06459323a15991a1"
+            },
+            {
+              "amount": "18446744073709551615",
+              "commitment": "26c298c998ab9f265750238610639436c0d3152a78240d512d192efb904ce7a9"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "edge: 64 0xff bytes",
+      "seed": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "sk": "54fa22859b7fb1d5efb4e080fd0a220307ec574603d1bd3db95146ccebba8760",
+      "viewKey": "2bba0d4a49902f0cf3c8571e4527642ffd9df06df5875c78361ef32a9d16fd82",
+      "nk": "08a8b4e6a0649f85c231a80430e3d8aad2392de2365051b848ddf3af9115422f",
+      "ivk": "19aac771701cd186dbea59839b52d5a154167b87bbaf34c58e71b46c008c9df4",
+      "dSelf": "235fe3e8d1c30a0e745b19171a2aa14cdb79786cd8f74adb18912e811c9b9347",
+      "addrSelf": "0469047b9c27f68b26a7f2ba220d0c508e5ea206ce429d7a27a0ec0cfe08fe4b",
+      "notes": [
+        {
+          "depositIndex": "0",
+          "rho": "19dd9cb143b5d19d1bf8dbbd0d216d9b000674e7a644531cde914dc909786226",
+          "nullifier": "244d1c1b93d0157da4df4901e7343c5d1be413efa4017c7cd67faf564df6a625",
+          "rhoChange": "27535259a0095daa682a46a597c68410c4500701d2b1ab19a40079d139763e67",
+          "commitments": [
+            {
+              "amount": "0",
+              "commitment": "175d184bf8c6f8e5317e55b51ed5341936d1ee0b95cc00df44600031fafb22c9"
+            },
+            {
+              "amount": "1",
+              "commitment": "17e364853f1d63d082154da6a250d8ca51e3c83bc13075739f2e7a8ae7267210"
+            },
+            {
+              "amount": "1000000000",
+              "commitment": "1db8104d3099110f755c4e40c732bbc7d67dde739b09d7fa982183fda08b0f9c"
+            },
+            {
+              "amount": "18446744073709551615",
+              "commitment": "060d27142532efede1f48c3c949477010da153cc528f709fed1c91acadd7771d"
+            }
+          ]
+        },
+        {
+          "depositIndex": "1",
+          "rho": "0130bc40845ee597211d4356d8abbd92877dcef71d1a63c34a9089ffdc614d27",
+          "nullifier": "0687f9ab271e32318360b5cdfe98507f8f8063601872fdefe27430500c10075b",
+          "rhoChange": "0f9f1a87d23ce1879487fde0ce0af1dcfbd31850cad8f12cc2f3c486e6b2f868",
+          "commitments": [
+            {
+              "amount": "0",
+              "commitment": "12dc66c1b49abe2822e84fc46e222482af93c7feef95c91fd92fc614a9e6e6f7"
+            },
+            {
+              "amount": "1",
+              "commitment": "14d2d4511566e2113fb544dbb48f1e3e3b7611ae17c585c6c2324d02c0c8190d"
+            },
+            {
+              "amount": "1000000000",
+              "commitment": "037eb178e64b6c91fe9f8af17c09e38e096c42c51d4dd26d7ed4beab95b8e66a"
+            },
+            {
+              "amount": "18446744073709551615",
+              "commitment": "0b9343ddfe18fdc6726f39a2213fdc5fe95c7f6ce9f2fe7b5da8ec648cbf25c2"
+            }
+          ]
+        },
+        {
+          "depositIndex": "2",
+          "rho": "151026014b0f3313c9b3b3253501340afc0eb344f8e8827dcfa3c352872c857d",
+          "nullifier": "08f16fa5c517e1c98ee68ee8c45a55860b35ddb9577c3e74656ecca63e5b4e83",
+          "rhoChange": "05b99d47fe5ebb4ee0382679ea50fbce18bbcf38c5ce1df64c3a354367317f14",
+          "commitments": [
+            {
+              "amount": "0",
+              "commitment": "28c63d9b39ea6a5339a04ef15afb0e03358b58d328a7bbfdd69bc9688501b416"
+            },
+            {
+              "amount": "1",
+              "commitment": "15aa710efb4caea7c9e2f4ba90345aeddffc67a377821bcdf9c6dc55ff4edb0a"
+            },
+            {
+              "amount": "1000000000",
+              "commitment": "24981077993ec9a417850bb2b8e4ff497effec8e401aa6534240b6ddcc28209d"
+            },
+            {
+              "amount": "18446744073709551615",
+              "commitment": "267d219edb7dd2d54153dfaf92acd5374294228411945de0df5404f64398513a"
+            }
+          ]
+        },
+        {
+          "depositIndex": "4294967296",
+          "rho": "0aa61434a3542d6f2c41c03d846d34691559f839245e43990f63f653bafd9e79",
+          "nullifier": "30239553ace9942ed4fed7c552e6b5d607bb5ee9cd095145862c54efe154e7a2",
+          "rhoChange": "10285d20334eac3ef55ddbed08e48862a4dcaa453e35b72f2cbe03fc23e50f07",
+          "commitments": [
+            {
+              "amount": "0",
+              "commitment": "128a91d480557985703099e48f3b3628a8360ee4817f5a85d4cb3f397664ffc9"
+            },
+            {
+              "amount": "1",
+              "commitment": "225d9cf37edae72a381313b26ee1941911b17fd6a20b44b7a8220db099d6414b"
+            },
+            {
+              "amount": "1000000000",
+              "commitment": "1877d49951b9547d9ba38e6a071f9fe611f0b775c595ef30203d5f18cc33bafe"
+            },
+            {
+              "amount": "18446744073709551615",
+              "commitment": "2be6816c73b70dc6acc352e36c1bc20720226fb10296ec5d53aaf18a266d36b0"
+            }
+          ]
+        },
+        {
+          "depositIndex": "18446744073709551615",
+          "rho": "1acaadca53bfd9f92ad41b52126c8bfcf2549c65e08be45c4530b12e81279c84",
+          "nullifier": "141230facde3a4f2122997be3099ae51a91fed96a0031a2b0d2c49941c01ebbc",
+          "rhoChange": "2318050d54222034151c1e850690814bb6ec2431674cf3d16e7372bc27d63d06",
+          "commitments": [
+            {
+              "amount": "0",
+              "commitment": "11d4946e4a2975e4a4149d52b6cc022d45168ec296ec2609ca33bf8f31496245"
+            },
+            {
+              "amount": "1",
+              "commitment": "07c4d5617ca33f51c23615ef66fb79373fe02c535920de98edab0acdfa78535a"
+            },
+            {
+              "amount": "1000000000",
+              "commitment": "0a88c92cb21c088b76caee5f3fc2320f48921cfade91aa935090457df8945836"
+            },
+            {
+              "amount": "18446744073709551615",
+              "commitment": "2f15e483e11c67180b0d04668072c2bdf1405c33b6c913b2738b689685201c3e"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

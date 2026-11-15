@@ -1,0 +1,82 @@
+{
+  "schema": "noctura.m1a.checkpoint-report/1",
+  "seedCopyZeroFilled": true,
+  "keysClose": {"ok": null},
+  "seedLabel": "repo test mnemonic (abandon \u2026 about), no passphrase",
+  "withdrawWithAuthId": {
+    "publicInputs": [
+      "0a149257619fba065c3d3c2e5e0df3553edab77b6142dfaadc8afb3bdd5b7301",
+      "1b7b0e3403ba6e7dde63eb21bb18db1507fddf19517d7b6a9457ac12aded2107",
+      "0000000000000000000000000000000000000000000000000000000000061a80",
+      "2fd819db5ecb71ae9dafcda3e24d2f050b98e46cd4f2e4ec3426644adf4d1710",
+      "05ee2f1a32b56046bcfab53bb4ac502bdc7689c4e2a8446db77130db7fccdca4",
+      "0f039c2e32f3d398e99d081de353f9400e75aaf336b61f9e8d0b70e6f1409f8e",
+      "0000000000000000000000000000000000000000000000000000000000002710"
+    ],
+    "circuit": "withdraw_change",
+    "ms": 4570,
+    "thread": "noctura-a0-prove",
+    "ok": true,
+    "proofBytes": "037105e6ec6e6a2d226655a877ac6356ed3b5bf0a192dbe29f659779abccfc590653a5d23d2f48f80f02695c938c7005eb0bd1ba33bcdfa18ae97a2bf41f7a680b0744d37c44b549387cc8506e978bea2c59a4a61bf6f8fbf96020c859fc7ac92e935768fc04225d6d5ffa9c454f93048daa11faf431128147956b5476f12b8c23c40c85a9ae1166723a18cb554c5139e2d483f624cbdcf83c7354fda0957e1a0e26ba95c9a9ec72336f6834b431c5c9d04c2235e5552473f575f61f5b7dfdb8292156a9afbadcfd9f04f7dbf106561fac90f73b44f6df65021a4b64aaa82c1624f6b8689ce5c813336921b0f10badbef21cb1135b3f809bbf463990effd745c",
+    "withAuthId": true
+  },
+  "commitment": {
+    "amount": "1000000000",
+    "ok": "02541c5bb65d705e584a835144831936031f3b47977cba9b89f3883057c5245f"
+  },
+  "isSupported": null,
+  "platform": {
+    "javaVmName": "OpenJDK 64-Bit Server VM",
+    "osArch": "amd64",
+    "where": "host-rehearsal"
+  },
+  "depositWitness": {
+    "amount": "1000000000",
+    "depositIndex": "0"
+  },
+  "authorizeUnshield": {
+    "ok": true,
+    "error": null
+  },
+  "withdrawWithoutAuthId": {
+    "circuit": "withdraw_change",
+    "ms": 0,
+    "thread": "noctura-a0-prove",
+    "error": "E_A0_AUTH_ABSENT",
+    "message": "no live unshield authorization",
+    "withAuthId": false
+  },
+  "depositProof": {
+    "publicInputs": [
+      "02541c5bb65d705e584a835144831936031f3b47977cba9b89f3883057c5245f",
+      "000000000000000000000000000000000000000000000000000000003b9aca00",
+      "05ee2f1a32b56046bcfab53bb4ac502bdc7689c4e2a8446db77130db7fccdca4",
+      "12d576a44d29fa15379dfda30a5cce14c828f6a2d2789d9a0730c47f62d7518e"
+    ],
+    "circuit": "deposit",
+    "ms": 698,
+    "thread": "noctura-a0-prove",
+    "ok": true,
+    "proofBytes": "209dd4d565c8595b7cf32db5e637bb788509a07496290c94a164500cd9bdb04c204ba8d415d7ab03a475eedec34eddd2d5a4e7e07d1283c84f3054bf3b03d81818a48385a43b3de7a43b7f9c7947f650146d898934595052b73887ea8bdb08a5152f27d0b8a9a86658390c272de67acff4886bd5c0cb3817e602edd66515993117a7643f4478373fb8cfa0a272a685dc24cf0c0e0e642c20739f2a271e6318e212ded9fc90e29e91bddf0bff5506b717f26ed4c857951195d7e71fdc16fe3e1a29524f8ab19f6701d911ab7241c356ebc35d1c96e79a5fbd5c5759035a676c440edf4c123d0632d576b54787b7cee7a3bba9c4b331fc39296642f4dbcf177550",
+    "withAuthId": false
+  },
+  "keysOpen": {"ok": "1"},
+  "depositRho": {
+    "depositIndex": "0",
+    "ok": "12d576a44d29fa15379dfda30a5cce14c828f6a2d2789d9a0730c47f62d7518e"
+  },
+  "depositRhoAfterClose": {
+    "error": "E_A0_UNKNOWN_HANDLE",
+    "message": "unknown or closed key handle"
+  },
+  "withdrawScenario": "withdraw_change: note of depositIndex 1 (10^9) at leaf 5 of 6, 400000 out + fee 10000, change 999590000",
+  "complete": true,
+  "withdrawReusedAuthId": {
+    "circuit": "withdraw_change",
+    "ms": 0,
+    "thread": "noctura-a0-prove",
+    "error": "E_A0_AUTH_ABSENT",
+    "message": "no live unshield authorization",
+    "withAuthId": true
+  }
+}

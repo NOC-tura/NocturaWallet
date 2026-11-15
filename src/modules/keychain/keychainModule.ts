@@ -35,10 +35,11 @@ const KEYCHAIN_OPTIONS = {
  *   - View key (retrievable without biometric — read-only)
  *   - PIN hash + salt (for PIN fallback unlock)
  *
- * For shielded signing (sk_spend), see nativeBridge.ts — never stored in JS.
+ * The shielded spend key never exists in JS: the A0 core derives it inside Rust
+ * (native/noctura-prover, reached via src/modules/zkProver/nativeProverBridge.ts).
  *
  * Current: react-native-keychain provides OS-level encryption (iOS Keychain / Android Keystore).
- * Upgrade path: When native BLST modules are integrated, seed storage will use P-256 ECDH
+ * Upgrade path: with seed-in-native, seed storage will use P-256 ECDH
  * envelope encryption via iOS Secure Enclave / Android StrongBox for an additional layer
  * (P-256 key in SE produces AES-256-GCM key → encrypt seed). See .instructions.md lines 62-67.
  */
@@ -139,13 +140,6 @@ export class KeychainManager {
     await Keychain.resetGenericPassword({service: SERVICE_VIEW_KEY});
     await Keychain.resetGenericPassword({service: SERVICE_PIN_HASH});
     await Keychain.resetGenericPassword({service: SERVICE_PIN_SALT});
-    // Also wipe native-stored seed if native module is available
-    try {
-      const {NocturaKeyBridge} = require('./nativeBridge');
-      await NocturaKeyBridge.deleteSeed();
-    } catch {
-      // Native module not available yet — safe to ignore during development
-    }
   }
 
   async setupPin(pin: string): Promise<void> {

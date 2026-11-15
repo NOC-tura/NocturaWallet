@@ -1,0 +1,56 @@
+/* The dynamic exports of libnoctura_prover.so (linked with this by build.rs, Android and Linux).
+ *
+ * Exactly the JNI functions stay global: check-jni-exports.sh compares the built library's whole
+ * dynamic symbol table with jni-exports.txt. Everything else is local.
+ *
+ * Why the names below are listed one by one: rustc passes the linker its OWN version script,
+ * which names every #[no_mangle] function of every linked crate as global — here wasmer-vm's 35
+ * `wasmer_vm_*` libcalls (wasmer comes in through ark-circom and is never called; witnesses run
+ * in wasmi). A glob (`local: *;`, or `wasmer_vm_*`) loses to rustc's exact names; an exact name
+ * here wins over rustc's (measured with the NDK 27.1 lld for arm64 and rustc 1.90's rust-lld on
+ * the x86_64 host: 45 defined dynamic symbols before, 10 after). If a dependency update drops one
+ * of these names, the link is refused (rustc passes --no-undefined-version: "version script
+ * assignment of 'local' to symbol … failed: symbol not defined"); if it adds a new export,
+ * check-jni-exports.sh fails on it. Both are loud; neither is silent.
+ */
+{
+  global:
+    Java_*;
+  local:
+    wasmer_vm_data_drop;
+    wasmer_vm_elem_drop;
+    wasmer_vm_externref_dec;
+    wasmer_vm_externref_inc;
+    wasmer_vm_f32_ceil;
+    wasmer_vm_f32_floor;
+    wasmer_vm_f32_nearest;
+    wasmer_vm_f32_trunc;
+    wasmer_vm_f64_ceil;
+    wasmer_vm_f64_floor;
+    wasmer_vm_f64_nearest;
+    wasmer_vm_f64_trunc;
+    wasmer_vm_func_ref;
+    wasmer_vm_imported_memory32_copy;
+    wasmer_vm_imported_memory32_fill;
+    wasmer_vm_imported_memory32_grow;
+    wasmer_vm_imported_memory32_size;
+    wasmer_vm_imported_table_get;
+    wasmer_vm_imported_table_grow;
+    wasmer_vm_imported_table_set;
+    wasmer_vm_imported_table_size;
+    wasmer_vm_memory32_copy;
+    wasmer_vm_memory32_fill;
+    wasmer_vm_memory32_grow;
+    wasmer_vm_memory32_init;
+    wasmer_vm_memory32_size;
+    wasmer_vm_probestack;
+    wasmer_vm_raise_trap;
+    wasmer_vm_table_copy;
+    wasmer_vm_table_fill;
+    wasmer_vm_table_get;
+    wasmer_vm_table_grow;
+    wasmer_vm_table_init;
+    wasmer_vm_table_set;
+    wasmer_vm_table_size;
+    *;
+};
