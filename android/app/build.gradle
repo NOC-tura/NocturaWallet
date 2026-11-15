@@ -149,6 +149,13 @@ android {
                 "FEATURES_SHIELDED.")
         }
         manifestPlaceholders = [appLabel: (project.env.get("APP_LABEL") ?: "@string/app_name")]
+        // react-native-config finds the env values in BuildConfig, and looks for that class under
+        // the APPLICATION id unless told otherwise. With APP_ID_SUFFIX the application id is
+        // com.nocturawallet.devnet while BuildConfig lives in the namespace com.nocturawallet, so
+        // every Config.* read was undefined — API_BASE included — and the devnet build hung on its
+        // splash screen ("ReactConfig: Could not find BuildConfig class" in logcat, 2026-11-15).
+        // Pin the lookup to the namespace; for the production build it is the same package.
+        resValue "string", "build_config_package", "com.nocturawallet"
 
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
