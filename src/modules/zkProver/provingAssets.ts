@@ -1,4 +1,4 @@
-import {circuitAssets, type CircuitId} from '../../constants/provingAssets';
+import {circuitAssets, type CircuitAssets, type CircuitId} from '../../constants/provingAssets';
 
 /** Injected filesystem/download/hash boundary (real impl wraps react-native-fs;
  *  tests mock it). Kept an interface so the pure download/verify/cache logic is
@@ -51,8 +51,19 @@ export async function ensureCircuitAssets(
   id: CircuitId,
   io: AssetIO,
 ): Promise<{zkeyPath: string; wasmPath: string}> {
-  const {zkey, wasm} = circuitAssets(id);
-  const zkeyPath = await ensureOne(zkey.url, zkey.sha256, io.cachePath(id, 'zkey'), io);
-  const wasmPath = await ensureOne(wasm.url, wasm.sha256, io.cachePath(id, 'wasm'), io);
+  return ensurePinnedAssets(id, circuitAssets(id), io);
+}
+
+/**
+ * The same download → verify → path step for any pinned pair (the A0 set lives in
+ * `shielded/a0/keyAssets.ts`); `cacheId` names the cache files (`io.cachePath(cacheId, kind)`).
+ */
+export async function ensurePinnedAssets(
+  cacheId: string,
+  {zkey, wasm}: CircuitAssets,
+  io: AssetIO,
+): Promise<{zkeyPath: string; wasmPath: string}> {
+  const zkeyPath = await ensureOne(zkey.url, zkey.sha256, io.cachePath(cacheId, 'zkey'), io);
+  const wasmPath = await ensureOne(wasm.url, wasm.sha256, io.cachePath(cacheId, 'wasm'), io);
   return {zkeyPath, wasmPath};
 }

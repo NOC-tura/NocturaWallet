@@ -1,0 +1,208 @@
+/**
+ * Killed between submit and confirmation (spec §5 steps 5 + 7, §14 "startup reconciliation, and
+ * nextDepositIndex never lowered", §16 M1b checkpoint "kill the app between the deposit's submit and
+ * its confirmation once: at the next start the note is reconciled, not lost").
+ *
+ * The flow runs against the live devnet fake until the send; then every request hangs forever —
+ * the app is dead, its promise never settles and is abandoned. What survives is what survives on
+ * the phone: the encrypted store (the same MMKV instance re-opened) and the chain. The "next
+ * start" is a new Connection over that chain and `runA0Startup` (the app's startup step).
+ */
+jest.mock('@solana/web3.js', () =>
+  jest.requireActual<typeof import('../__testing__/realWeb3')>('../__testing__/realWeb3').loadRealWeb3(),
+);
+jest.mock('react-native', () => ({
+  NativeModules: {
+    NocturaProver: jest.requireActual<typeof import('../__testing__/offlineA0')>('../__testing__/offlineA0').createFakeProverNative(),
+  },
+  Platform: {OS: 'android', select: (o: {android?: unknown; default?: unknown}) => o.android ?? o.default},
+}));
+import {readFileSync} from 'fs';
+import {join} from 'path';
+import {NativeModules} from 'react-native';
+import {PublicKey} from '@solana/web3.js';
+import {clearAllStores, initSecureMmkv} from '../../../../store/mmkv/instances';
+import {TEST_SEED, offlineDepositProver, offlineKeys, seedBytes} from '../__testing__/offlineA0';
+import type {FakeProverNative} from '../__testing__/offlineA0';
+import {chainFrom} from '../__testing__/recordedRpc';
+import type {RecordedFixture} from '../__testing__/recordedRpc';
+import {fundTokenAccount, liveDevnet} from '../__testing__/liveDevnet';
+import type {LiveDevnet} from '../__testing__/liveDevnet';
+import {deriveTransparentKeypair} from '../../../keyDerivation/transparent';
+import type {AssetIO} from '../../../zkProver/provingAssets';
+import {loadA0NoteStore} from '../noteStore';
+import {prepareA0Deposit, reconcileA0PendingDeposits, submitA0Deposit} from '../depositFlow';
+import type {A0DepositOutcome} from '../depositFlow';
+import {runA0Startup} from '../startup';
+
+const TREE = JSON.parse(readFileSync(join(__dirname, 'fixtures/devnet-tree-5URd.json'), 'utf8')) as RecordedFixture;
+const fake = NativeModules.NocturaProver as unknown as FakeProverNative;
+const own = offlineKeys(TEST_SEED);
+const DEPOSITOR = new PublicKey(deriveTransparentKeypair(seedBytes(TEST_SEED)).publicKey).toBase58();
+const AMOUNT = 1_000_000n;
+const RECORDED_LEAVES = 17;
+
+const io: AssetIO = {
+  cachePath: (id, kind) => `/cache/${id}.${kind}`,
+  exists: async () => true,
+  download: async () => undefined,
+  sha256: async p =>
+    p.endsWith('.zkey')
+      ? 'fef08f0217a44c8c1629f5f8d670047461205c1fced83d7ea6fe763420e53fe9'
+      : '1d69d7f89792a31d4c7780afa52b2f11707a4347f61382e7b294f4848d7dfff1',
+  remove: async () => undefined,
+};
+
+let net: LiveDevnet;
+
+beforeEach(() => {
+  clearAllStores();
+  initSecureMmkv('test-key');
+  fake.reset();
+  fake.setProver(offlineDepositProver);
+  net = liveDevnet(chainFrom(TREE));
+  fundTokenAccount(net, DEPOSITOR, 5_000_000n);
+  loadA0NoteStore();
+});
+
+/** Deposit until the app dies right after the send (the flow's promise is abandoned, never awaited). */
+async function depositAndKill(lands: boolean): Promise<{rho: string; flow: Promise<A0DepositOutcome>; lvbh: number}> {
+  const p = await prepareA0Deposit(net.connection, seedBytes(TEST_SEED), AMOUNT, {io, sync: {useCache: false}});
+  net.onSend = () => 'kill';
+  net.killLands = lands;
+  let submitted: () => void = () => undefined;
+  const sent = new Promise<void>(r => {
+    submitted = r;
+  });
+  const flow = submitA0Deposit(net.connection, p, seedBytes(TEST_SEED), {
+    sync: {useCache: false},
+    onStage: s => {
+      if (s === 'submitted') {
+        submitted();
+      }
+    },
+  });
+  await sent;
+  await new Promise(r => setTimeout(r, 20)); // the flow is now stuck in its first status poll
+  expect(net.killed).toBe(true);
+  return {rho: p.rho, flow, lvbh: net.height.confirmed + 150};
+}
+
+/** The next start: the same store and chain, a fresh Connection, a fresh native session. */
+function restart(): LiveDevnet {
+  const next = liveDevnet(net.chain);
+  next.accounts = net.accounts;
+  next.statuses = net.statuses;
+  next.height = net.height;
+  next.tokenAccounts = net.tokenAccounts;
+  initSecureMmkv('test-key'); // the same instance id: what was written survives
+  fake.reset();
+  return next;
+}
+
+describe('killed between submit and confirmation', () => {
+  it('the pending note (with its lastValidBlockHeight) and the counter survive the kill', async () => {
+    const {rho, lvbh} = await depositAndKill(false);
+    restart();
+    expect(loadA0NoteStore()).toEqual({
+      nextDepositIndex: 1n,
+      notes: [
+        {
+          commitment: own.commitment(AMOUNT, rho),
+          amount: AMOUNT,
+          rho,
+          depositIndex: 0n,
+          lastValidBlockHeight: lvbh,
+          status: 'pending',
+        },
+      ],
+    });
+  });
+
+  it('it LANDED: at the next start the rho PDA is present → the note is unspent at its leaf, not lost', async () => {
+    const {rho} = await depositAndKill(true);
+    const next = restart();
+    const res = await runA0Startup(next.connection, seedBytes(TEST_SEED), {sync: {useCache: false}});
+    expect(res.restoredBecause).toBeNull();
+    expect(res.reconcile).toEqual({
+      confirmed: [{rho, leafIndex: RECORDED_LEAVES, signature: net.sent[0]!.signature}],
+      dropped: [],
+      stillPending: [],
+    });
+    expect(loadA0NoteStore()).toEqual({
+      nextDepositIndex: 1n,
+      notes: [{commitment: own.commitment(AMOUNT, rho), amount: AMOUNT, rho, depositIndex: 0n, leafIndex: RECORDED_LEAVES, status: 'unspent'}],
+    });
+    // the reconciliation needs no key: no native call at all, and no getTransaction of our signature outside the sync
+    expect(fake.calls).toEqual([]);
+    expect(next.requests.filter(r => r.method === 'getAccountInfo').map(r => r.params[0])).toEqual([
+      PublicKey.findProgramAddressSync(
+        [Buffer.from('rho'), Buffer.from(rho, 'hex')],
+        new PublicKey('FeGSSsJtmA7GnMgnpj33JsiceSk1NyFopff2FtQFsMuH'),
+      )[0].toBase58(),
+      '5URdh1uLKXPh28AbcXBK1oWYGpQjVbMSjrKiAkt1q1Gc',
+    ]);
+  });
+
+  it('it did NOT land, still before its lastValidBlockHeight → kept pending', async () => {
+    const {rho, lvbh} = await depositAndKill(false);
+    const next = restart();
+    next.height.finalized = lvbh; // not PAST it
+    const res = await runA0Startup(next.connection, seedBytes(TEST_SEED));
+    expect(res.reconcile).toEqual({confirmed: [], dropped: [], stillPending: [{rho, reason: 'not-expired'}]});
+    expect(loadA0NoteStore().notes).toHaveLength(1);
+  });
+
+  it('it did NOT land and the finalized height is past its lastValidBlockHeight → dropped; the counter is NOT lowered', async () => {
+    const {rho, lvbh} = await depositAndKill(false);
+    const next = restart();
+    next.height.finalized = lvbh + 1;
+    const res = await runA0Startup(next.connection, seedBytes(TEST_SEED));
+    expect(res.reconcile).toEqual({confirmed: [], dropped: [{rho, reason: 'expired'}], stillPending: []});
+    expect(loadA0NoteStore()).toEqual({nextDepositIndex: 1n, notes: []});
+    // the next deposit takes counter 1, never the dropped 0 again
+    fake.setProver(offlineDepositProver);
+    const p = await prepareA0Deposit(next.connection, seedBytes(TEST_SEED), AMOUNT, {io});
+    expect(p.depositIndex).toBe(1n);
+    expect(p.rho).toBe(own.rho(1n));
+  });
+
+  it('the drop is decided on FINALIZED reads only: a confirmed-height past expiry is not enough', async () => {
+    const {rho, lvbh} = await depositAndKill(false);
+    const next = restart();
+    next.height.confirmed = lvbh + 500;
+    next.height.finalized = lvbh;
+    const res = await reconcileA0PendingDeposits(next.connection);
+    expect(res.stillPending).toEqual([{rho, reason: 'not-expired'}]);
+    expect(next.requests.find(r => r.method === 'getBlockHeight')!.params).toEqual([{commitment: 'finalized'}]);
+  });
+
+  it('absent at the confirmed read, present at the finalized one (landed in between) → kept, never dropped', async () => {
+    const {rho, lvbh} = await depositAndKill(false);
+    const next = restart();
+    next.height.finalized = lvbh + 1;
+    const pda = PublicKey.findProgramAddressSync(
+      [Buffer.from('rho'), Buffer.from(rho, 'hex')],
+      new PublicKey('FeGSSsJtmA7GnMgnpj33JsiceSk1NyFopff2FtQFsMuH'),
+    )[0].toBase58();
+    // the confirmed read misses it, the finalized one (made after the height) sees it
+    let reads = 0;
+    const realGet = next.accounts.get.bind(next.accounts);
+    next.accounts.get = (k: string) => {
+      if (k === pda) {
+        reads += 1;
+        return reads === 1 ? undefined : {owner: 'FeGSSsJtmA7GnMgnpj33JsiceSk1NyFopff2FtQFsMuH', finalized: true};
+      }
+      return realGet(k);
+    };
+    const res = await reconcileA0PendingDeposits(next.connection);
+    expect(res).toEqual({confirmed: [], dropped: [], stillPending: [{rho, reason: 'not-in-sync'}]});
+    expect(loadA0NoteStore().notes).toHaveLength(1);
+  });
+
+  it('no pending deposit → the reconciliation makes no request', async () => {
+    const res = await reconcileA0PendingDeposits(net.connection);
+    expect(res).toEqual({confirmed: [], dropped: [], stillPending: []});
+    expect(net.requests).toEqual([]);
+  });
+});

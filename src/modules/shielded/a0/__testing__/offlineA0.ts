@@ -153,6 +153,45 @@ const u64 = (v: unknown, what: string): bigint => {
   return BigInt(v);
 };
 
+/** What the fake's `prove` was asked (the witness is private note data in the app — tests only). */
+export interface FakeProveRequest {
+  circuit: string;
+  witnessJson: string;
+  authId: string | null;
+  zkeyPath: string;
+  wasmPath: string;
+}
+/** A prover plugged into the fake: the live handle's offline keys and the request → the proof. */
+export type FakeProver = (keys: OfflineA0Keys, req: FakeProveRequest) => {proofBytes: string; publicInputs: string[]};
+
+/**
+ * The deposit circuit computed OFFLINE, as the Rust core answers it (§3 `prove`, §1 public inputs):
+ * the witness is exactly `{amount, depositIndex}` as canonical decimal strings (anything else
+ * `E_A0_WITNESS`), amount 0 refuses (`E_A0_AMOUNT_ZERO`), no `authId`; the public inputs are
+ * [commitment(amount, rho(i)), amount, mintHash, rho(i)] as 64 hex, and the 256 proof bytes are a
+ * deterministic stand-in (SHA-512 of the inputs, 4 blocks) — the chain is a fixture here, nothing
+ * verifies them.
+ */
+export const offlineDepositProver: FakeProver = (keys, req) => {
+  if (req.circuit !== 'deposit' || req.authId !== null) {
+    throw new NativeRefusal('E_A0_WITNESS', `fake deposit prover: circuit ${req.circuit}, authId ${String(req.authId)}`);
+  }
+  const w = JSON.parse(req.witnessJson) as Record<string, unknown>;
+  if (Object.keys(w).sort().join(',') !== 'amount,depositIndex') {
+    throw new NativeRefusal('E_A0_WITNESS', `fake deposit prover: keys ${Object.keys(w).join(',')}`);
+  }
+  const amount = u64(w.amount, 'amount');
+  const i = u64(w.depositIndex, 'depositIndex');
+  if (amount === 0n) {
+    throw new NativeRefusal('E_A0_AMOUNT_ZERO', 'a deposit of 0');
+  }
+  const rho = keys.rho(i);
+  const publicInputs = [keys.commitment(amount, rho), hex64(amount), hex64(MINT_HASH), rho];
+  const seed = enc.encode(publicInputs.join(''));
+  const proof = cat(...[0, 1, 2, 3].map(k => sha512(cat(Uint8Array.of(k), seed))));
+  return {proofBytes: Buffer.from(proof).toString('hex'), publicInputs};
+};
+
 export interface FakeProverNative {
   isSupported(): boolean;
   proveV1(): Promise<never>;
@@ -161,8 +200,17 @@ export interface FakeProverNative {
   depositRho(handle: string, depositIndex: string): Promise<string>;
   matchSpent(handle: string, chainNullifiers: string[], ownRhos: string[]): Promise<number[]>;
   commitment(handle: string, amount: string, rho: string): Promise<string>;
-  prove(): Promise<never>;
+  prove(
+    handle: string,
+    circuit: string,
+    witnessJson: string,
+    authId: string | null,
+    zkeyPath: string,
+    wasmPath: string,
+  ): Promise<{proofBytes: string; publicInputs: string[]}>;
   /** test controls */
+  /** plug a prover in (null = refuse every prove, the default: recovery never proves) */
+  setProver(p: FakeProver | null): void;
   readonly calls: FakeCall[];
   /** the live handle, or null */
   liveHandle(): string | null;
@@ -177,6 +225,7 @@ export function createFakeProverNative(): FakeProverNative {
   let live: {handle: string; keys: OfflineA0Keys} | null = null;
   let counter = 0;
   const failures = new Map<string, Error>();
+  let prover: FakeProver | null = null;
 
   const enter = (method: string, args: unknown[]): void => {
     calls.push({method, args: JSON.parse(JSON.stringify(args)) as unknown[]});
@@ -199,17 +248,27 @@ export function createFakeProverNative(): FakeProverNative {
     failNext: (method, error) => {
       failures.set(method, error);
     },
+    setProver: p => {
+      prover = p;
+    },
     reset: () => {
       calls.length = 0;
       live = null;
       failures.clear();
+      prover = null;
     },
     isSupported: () => true,
     proveV1: async () => {
       throw new NativeRefusal('E_V1_REMOVED', 'the v1 prover is removed');
     },
-    prove: async () => {
-      throw new NativeRefusal('E_FAKE_NO_PROVE', 'the fake proves nothing (recovery never proves)');
+    prove: async (handle, circuit, witnessJson, authId, zkeyPath, wasmPath) => {
+      // the witness is logged (it is a test's own data); the app never logs it
+      enter('prove', [handle, circuit, witnessJson, authId, zkeyPath, wasmPath]);
+      const keys = keysOf(handle);
+      if (!prover) {
+        throw new NativeRefusal('E_FAKE_NO_PROVE', 'the fake proves nothing (recovery never proves)');
+      }
+      return prover(keys, {circuit, witnessJson, authId, zkeyPath, wasmPath});
     },
     keysOpen: async (seed: number[]) => {
       enter('keysOpen', [seed.length]); // the seed itself is never logged

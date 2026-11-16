@@ -316,6 +316,16 @@ const bigMax = (a: bigint, b: bigint): bigint => (a > b ? a : b);
 
 // ------------------------------------------------------------------ the API
 
+/**
+ * Whether an A0 record exists (decodable or not), WITHOUT the first-run write `loadA0NoteStore`
+ * makes. The startup step (`a0/startup.ts`) asks this before anything else touches the store: no
+ * record = a fresh install or a wiped app → restore from the seed first (Task 4, M1b checkpoint).
+ * Throws `E_A0_STORE_LOCKED` without the encrypted instance.
+ */
+export function hasA0NoteRecord(): boolean {
+  return storage().getString(KEY) !== undefined;
+}
+
 /** The store (and, on the first A0 run, the v1 notes cleared). Throws LOCKED / CORRUPT. */
 export function loadA0NoteStore(): A0NoteStoreState {
   return read();

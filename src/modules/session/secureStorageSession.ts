@@ -7,6 +7,10 @@ import {setShieldedViewSession} from '../shielded/shieldedViewSession';
 import {getViewPublicKey} from '../shielded/shieldedIdentity';
 import {encodeShieldedAddress} from '../shielded/shieldedAddressCodec';
 import {MMKV_KEYS} from '../../constants/mmkvKeys';
+import {isShieldedEnabled} from '../../constants/features';
+import {isProverSupported} from '../zkProver/nativeProverBridge';
+import {getConnection} from '../solana/connection';
+import {ensureA0Startup} from '../shielded/a0/startup';
 
 /**
  * Prime the shielded view-key scan cache AND persist the user's own noc1…
@@ -30,6 +34,19 @@ function primeViewSession(seed: Uint8Array): void {
 }
 
 /**
+ * The A0 startup step (restore when the device has no A0 note record, then reconcile pending
+ * deposits — `shielded/a0/startup.ts`), started in the background with its OWN copy of the seed
+ * (the restore consumes it), only where shielded can run: the devnet build (FEATURES.shielded) on
+ * a device with the native prover. Never rejects; its state gates the shielded balance.
+ */
+function startA0(seed: Uint8Array): void {
+  if (!isShieldedEnabled() || !isProverSupported()) {
+    return;
+  }
+  ensureA0Startup(getConnection(), seed.slice()); // never rejects (its failure is a state)
+}
+
+/**
  * Initialize the encrypted note-store MMKV for this session. Retrieves the seed
  * (biometric/keychain), derives the storage key, inits the store, zeroizes the
  * seed. Idempotent — no-op if the store is already open. Call once per session
@@ -43,6 +60,7 @@ export async function unlockSecureStorage(): Promise<void> {
     seed = await mnemonicToSeed(mnemonic);
     initSecureMmkv(deriveSecureStorageKey(seed));
     primeViewSession(seed);
+    startA0(seed);
   } finally {
     if (seed) zeroize(seed);
   }
@@ -53,4 +71,5 @@ export function unlockSecureStorageWithSeed(seed: Uint8Array): void {
   if (mmkvSecure()) return;
   initSecureMmkv(deriveSecureStorageKey(seed));
   primeViewSession(seed);
+  startA0(seed);
 }

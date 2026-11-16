@@ -121,12 +121,16 @@ export interface AppendedDeposit {
   root: string;
 }
 
-/** Append a deposit `{amount, commitment, rho}` (a clone of the landed 3DR6F7oW…) as the newest tx. */
+/** Append a deposit `{amount, commitment, rho}` (a clone of the landed 3DR6F7oW…) as the newest tx
+ *  (under `as.signature` when given — liveDevnet.ts lands a sent tx under its own signature). */
 export function appendDeposit(
   chain: RecordedChain,
   d: {amount: bigint; commitment: string; rho: string},
+  as?: {signature: string},
 ): AppendedDeposit {
-  const {sig, slot} = nextId();
+  const id = nextId();
+  const sig = as?.signature ?? id.sig;
+  const slot = id.slot;
   const tx = cloneAsNewest(chain, txOf(chain, '3DR6F7oW').tx, sig, slot);
   const ix = poolIx(tx);
   const data = base58.decode(ix.data);

@@ -16,7 +16,7 @@ const sleep = (ms: number): Promise<void> => new Promise(r => setTimeout(r, ms))
  * lastValidBlockHeight passes (caller then retries with a fresh blockhash);
  * throws on an on-chain error.
  */
-async function pollConfirmation(
+export async function pollConfirmation(
   connection: Connection,
   signature: string,
   lastValidBlockHeight: number,

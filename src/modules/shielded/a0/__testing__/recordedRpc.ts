@@ -82,9 +82,11 @@ export interface RpcRequest {
   params: unknown[];
 }
 
-class RpcRefusal extends Error {}
+/** A request the recording cannot answer (answered as a JSON-RPC error). */
+export class RpcRefusal extends Error {}
 
-function answer(chain: RecordedChain, method: string, params: unknown[]): unknown {
+/** The recording's answer to one request (exported for liveDevnet.ts, which extends it). */
+export function answer(chain: RecordedChain, method: string, params: unknown[]): unknown {
   const cfg = (params[1] ?? {}) as Record<string, unknown>;
   const commitmentOk = cfg.commitment === 'confirmed' || cfg.commitment === 'finalized';
   if (method === 'getSignaturesForAddress') {
