@@ -716,3 +716,34 @@ describe('R1-m7: the settle loop\'s pause is cleared at teardown', () => {
     clearSpy.mockRestore();
   });
 });
+
+describe('fix round 1: after a confirmed send, a failing settle sync leaves the note pending (never a rejection)', () => {
+  it('the tree sync throws after the confirmed send → pending/not-in-sync with its detail; the note still pending; exactly one send', async () => {
+    const p = await prepare();
+    const out = await submitA0Deposit(net.connection, p, seedBytes(TEST_SEED), {
+      sync: {useCache: false},
+      settleAttempts: 1,
+      onStage: s => {
+        if (s === 'settling') {
+          net.chain.account = {...net.chain.account, value: null}; // the tree account reads as missing
+        }
+      },
+    });
+    expect(out).toMatchObject({status: 'pending', signature: net.sent[0]!.signature, reason: 'not-in-sync'});
+    expect(out.status === 'pending' && out.detail).toMatch(/E_A0_TREE_MISSING/);
+    expect(net.sent).toHaveLength(1);
+    expect(net.statuses.get(net.sent[0]!.signature)?.confirmationStatus).toBe('confirmed');
+    expect(loadA0NoteStore().notes).toEqual([expect.objectContaining({rho: p.rho, status: 'pending'})]);
+  });
+
+  it('control: a note-store refusal in the settle loop (E_A0_STORE_CHANGED) still propagates', async () => {
+    const p = await prepare();
+    net.holdWhen = m => m === 'getSignaturesForAddress';
+    const run = submit(p);
+    await until(() => net.held > 0, 'submit to reach its settle sync');
+    wipeAndImport();
+    net.release();
+    await expect(run).rejects.toMatchObject({code: 'E_A0_STORE_CHANGED'});
+    expect(net.sent).toHaveLength(1);
+  });
+});

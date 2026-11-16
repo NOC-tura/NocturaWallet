@@ -56,6 +56,7 @@ import {a0RhoMarkerPda, buildA0DepositIx} from './depositIx';
 import {FIELD_MODULUS, toBe32Hex} from './fieldEquations';
 import {ensureA0KeyFiles, A0_NPUBLIC} from './keyAssets';
 import {
+  A0NoteStoreError,
   addA0PendingDeposit,
   confirmA0Deposit,
   dropA0PendingDeposit,
@@ -442,8 +443,10 @@ export function clearA0SettleTimersForTests(): void {
  * Steps 5–6 (#21). `seed` is CONSUMED (the depositor's key is derived from it, checked against
  * the prepared depositor, and wiped). The pending note and `nextDepositIndex = i + 1` are ONE store
  * write made BEFORE the send — a refusal there (another deposit took the counter) sends nothing.
- * After the send nothing throws on the chain's behalf: an unconfirmed or unsynced deposit stays
- * `pending` for the startup reconciliation, the single authority on pending deposits.
+ * After the send nothing throws on the chain's behalf: an unconfirmed or unsynced deposit — also
+ * one whose settle sync fails or reads an ambiguous history — stays `pending` (`not-in-sync`, with
+ * the error as `detail`) for the startup reconciliation, the single authority on pending deposits.
+ * Only an `A0NoteStoreError` (e.g. `E_A0_STORE_CHANGED`) still rejects after the send.
  */
 export async function submitA0Deposit(
   connection: Connection,
@@ -500,21 +503,33 @@ export async function submitA0Deposit(
 
   // Step 6: the leaf from the synced history (never a getTransaction of our own signature).
   options.onStage?.('settling', signature);
+  // After a sent + confirmed deposit nothing throws on the chain's or the RPC's behalf: a failing
+  // sync (E_A0_TREE_*, a timeout), an ambiguous history (E_A0_DEPOSIT_LEAF) leaves the note
+  // `pending` for the startup reconciliation, the single authority on pending deposits. Only the
+  // note store's own refusals propagate (E_A0_STORE_CHANGED after a wipe + import, LOCKED, …):
+  // they say the store this flow wrote to is no longer the one to write.
   const attempts = options.settleAttempts ?? 3;
-  for (let k = 0; k < attempts; k++) {
-    if (k > 0) {
-      await sleep(options.settleDelayMs ?? 1500);
+  try {
+    for (let k = 0; k < attempts; k++) {
+      if (k > 0) {
+        await sleep(options.settleDelayMs ?? 1500);
+      }
+      const {tree} = await syncA0Tree(connection, options.sync);
+      const s = settle(tree, p);
+      if (s.kind === 'ours') {
+        confirmA0Deposit(p.rho, {leafIndex: s.leafIndex, commitment: p.commitment}, bound);
+        return {status: 'unspent', signature, leafIndex: s.leafIndex, root: s.root};
+      }
+      if (s.kind === 'foreign') {
+        dropA0PendingDeposit(p.rho, bound);
+        return {status: 'dropped', signature, reason: 'foreign', foreignSignature: s.signature};
+      }
     }
-    const {tree} = await syncA0Tree(connection, options.sync);
-    const s = settle(tree, p);
-    if (s.kind === 'ours') {
-      confirmA0Deposit(p.rho, {leafIndex: s.leafIndex, commitment: p.commitment}, bound);
-      return {status: 'unspent', signature, leafIndex: s.leafIndex, root: s.root};
+  } catch (e) {
+    if (e instanceof A0NoteStoreError) {
+      throw e;
     }
-    if (s.kind === 'foreign') {
-      dropA0PendingDeposit(p.rho, bound);
-      return {status: 'dropped', signature, reason: 'foreign', foreignSignature: s.signature};
-    }
+    return {status: 'pending', signature, reason: 'not-in-sync', detail: e instanceof Error ? e.message : String(e)};
   }
   return {status: 'pending', signature, reason: 'not-in-sync'};
 }
