@@ -66,18 +66,28 @@ export function killDevnetApp(adb) {
   return I.guarded(adb)(['shell', 'am', 'force-stop', DEVNET_PACKAGE]);
 }
 
+/** The ids (`<session>-<seq>`) of recorded readouts. */
+export function readoutIdsOf(recorded) {
+  return recorded.map(x => `${x.readout.session}-${x.readout.seq}`);
+}
+
 /**
  * The kill watch: fed the live log (`adb logcat`), it collects readouts and, the FIRST time a
  * complete "deposit-submitted" readout appears, kills the devnet app at once (once).
+ *
+ * `known` (review I-1): the ids already recorded before the watch started. `adb logcat` replays
+ * the ring buffer first, and that replay still holds every earlier deposit's "deposit-submitted";
+ * a known id is neither a new readout nor a reason to kill — only a readout first seen on this
+ * stream can arm the kill. The CLI collects (records the buffer) right before it starts.
  */
 export class KillWatcher {
-  constructor({ kill, killAfterSubmit, now = () => new Date().toISOString() }) {
+  constructor({ kill, killAfterSubmit, known = [], now = () => new Date().toISOString() }) {
     this.kill = kill;
     this.killAfterSubmit = killAfterSubmit;
     this.now = now;
     this.buffer = '';
     this.text = '';
-    this.seen = new Set();
+    this.seen = new Set(known);
     this.readouts = [];
     this.killed = null;
   }

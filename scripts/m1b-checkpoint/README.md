@@ -166,6 +166,10 @@ Make a second deposit of **0.0005** the same way. The moment the app reports the
 shell am force-stop com.nocturawallet.devnet` (the process dies; no data touched) and prints `KILLED …` (→
 `kill.json`). #21 disappears with the app.
 
+The watch first records what is already in the phone's log (a `collect`): `adb logcat` replays its buffer, which
+still holds step 3's `deposit-submitted`, and an already-recorded readout never triggers the kill — only a readout
+that is new on the live stream does. Start the watch **before** you tap through the second deposit.
+
 - [ ] Reopen the devnet app and unlock it. The watch prints `readout … startup ready` — the reconciliation ran.
 - [ ] The dashboard shows the second deposit in the balance (it landed), or — rare: if it did not land — no pending
       line after ~2 minutes and a restart (dropped exactly once its blockhash expired; nothing left the account).
@@ -260,8 +264,9 @@ CHECKPOINT PASSED
       20)` — copy it too. The restore walks the deposit counters 0, 1, 2, … and stops after **20 consecutive counters
       with no deposit on chain**; a counter is never handed back, so a deposit that expired (never landed) or was
       front-run still uses one up. **20 consecutive expired or front-run deposits therefore hide every later deposit
-      of this wallet from a restore from the phrase** (the funds are on chain, the app does not find them). You kept
-      the limit at 20 (your decision, asked at the M1b finish). For a devnet wallet that made only this checkpoint's two
+      of this wallet from a restore from the phrase** (the funds are on chain, the app does not find them). The gap
+      limit stays 20 as in the plan you approved; whether to raise it or count only landed deposits is open for you
+      (R1-m4, asked at the M1b finish). For a devnet wallet that made only this checkpoint's two
       deposits, expect `highest counter hit 1` and `22 counters tried` (`0` / `21` if the killed deposit never
       landed).
 - [ ] **Then clear the phone's log** (R1-m6): `adb logcat -c`. The readout lines stay in the phone's log buffer
@@ -373,8 +378,14 @@ accept is a change request.
     no presale banner, no "Refer a friend" (presale, staking, the purchase geo gate and the presale referral are off
     on devnet — widened by ruling, you may narrow it).
 
+**The transparent send and onboarding in the devnet build (Task 6, S13)**
+22. The transparent send's #20 says "Network · Solana devnet", #21 "Confirmed on Solana devnet", and its "View
+    details" opens the block explorer you chose with `?cluster=devnet` (Solscan by default; a Solana FM choice opens the
+    Solana Explorer on devnet).
+23. Onboarding ends on the dashboard, not on the presale screen (presale is off on devnet).
+
 **Settings**
-22. "Export view key" disabled, "Not available in this version."; Wipe wallet warns about shielded notes (it names the
+24. "Export view key" disabled, "Not available in this version."; Wipe wallet warns about shielded notes (it names the
     recovery phrase).
 
 **One behaviour to see once (safe, but you should expect it)**

@@ -303,6 +303,51 @@ export function judgeApkConfig({ devnet, production }) {
   return lines;
 }
 
+// ------------------------------------------------------------------------- the I-3 run
+
+/**
+ * The I-3 Jest run's evidence for M1b.7 (review I-2). `verify` removes the result file, reads HEAD
+ * and the tree state, notes the time, spawns `npx jest --json --outputFile`, reads HEAD again:
+ *   spawn: spawnSync's {status, error}   json: the result file parsed, or null   startedAt: ms
+ *   head: {before, after}   dirty: `git status --porcelain --untracked-files=no` before the run
+ * It is evidence only if the process ran and exited 0, the file is THIS run's (written, and its
+ * `startTime` not before the spawn), HEAD did not move and the tree was clean; otherwise
+ * `ran: false` with the reason — never a PASS from a stale file or a jest that did not start.
+ */
+export function readI3({ spawn, json, startedAt, head, dirty }) {
+  const commit = head?.before ?? null;
+  const base = j => ({
+    passed: j?.numPassedTests ?? 0,
+    failed: j?.numFailedTests ?? 0,
+    pending: j?.numPendingTests ?? 0,
+    file: j?.testResults?.[0]?.name ?? null,
+    commit: dirty ? `${commit} (dirty)` : commit,
+  });
+  const no = why => ({ ran: false, ...base(json), why });
+  if (spawn?.error) {
+    return no(`jest did not start: ${spawn.error.message ?? spawn.error}`);
+  }
+  if (spawn?.status === null || spawn?.status === undefined) {
+    return no('jest gave no exit status (killed)');
+  }
+  if (spawn.status !== 0) {
+    return no(`jest exited ${spawn.status}`);
+  }
+  if (!json) {
+    return no('jest wrote no result file');
+  }
+  if (!Number.isFinite(json.startTime) || json.startTime < startedAt) {
+    return no(`the result file is not this run's (startTime ${json.startTime} < ${startedAt})`);
+  }
+  if (!head?.before || head.before !== head.after) {
+    return no(`HEAD moved during the run (${head?.before} → ${head?.after})`);
+  }
+  if (dirty) {
+    return no('the tree has uncommitted changes');
+  }
+  return { ran: true, ...base(json), why: null };
+}
+
 // ------------------------------------------------------------------------- the judge
 
 const sum = xs => xs.reduce((s, x) => s + x, 0n);
@@ -451,7 +496,7 @@ export function judge({ readouts, wipe, kill, main, chain, launches = [], apkLin
     'M1b.7',
     'I-3: the recording-Connection test (restoreRequests.test.ts) passes at this commit',
     i3?.ran && i3.failed === 0 && i3.pending === 0 && i3.passed >= 5 && /restoreRequests\.test\.ts$/.test(i3.file ?? '') && i3.commit === commit?.head && !/dirty/.test(i3.commit),
-    i3 ? `${i3.passed} passed, ${i3.failed} failed, ${i3.pending} skipped at ${i3.commit}` : 'not run',
+    !i3 ? 'not run' : !i3.ran ? `not run: ${i3.why ?? 'no evidence'}` : `${i3.passed} passed, ${i3.failed} failed, ${i3.pending} skipped at ${i3.commit}`,
   );
   for (const l of apkLines) {
     add(l.id, l.text, l.pass, l.detail);

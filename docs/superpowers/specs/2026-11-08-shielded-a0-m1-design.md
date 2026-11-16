@@ -20,7 +20,7 @@ Collected from the plan's per-task "Spec rev 3.3 lines" (`docs/superpowers/plans
 the rulings of the Fable plan reviews (R1-C1, R2-N1, R3-N5, R1-I1 … R1-I3, R1-m1 … R1-m9, R2-N2 … R2-N4; the plan's front
 matter) and the rev 3.3 additions of the task reports (`.superpowers/sdd/2026-11-15-shielded-a0-m1b-deposit-recovery/task-{1..7}-report.md`).
 Each line names the passage it changes; those passages are edited in place (marked *Rev 3.3*). The one owner question
-the execution raised (R1-m4, the gap limit) is recorded, not decided: the limit stays 20.
+the execution raised (R1-m4, the gap limit) is recorded, not decided: the gap limit stays 20 as in the plan the owner approved; whether to raise it or count only landed deposits is open for the owner (asked at the M1b finish).
 
 *Task 1 — the landed deposit, the constants, the builder:*
 
@@ -71,8 +71,9 @@ the execution raised (R1-m4, the gap limit) is recorded, not decided: the limit 
   the highest hit (own or not) + 1 → §5 step 2, §7 step 2, §8.
 - **The restore records `highestHit`** (R1-m4), the highest deposit counter with a hit (own or foreign), or none.
   The hazard it shows, for the owner: with the gap limit at 20 and a counter that is never handed back, **20
-  consecutive expired or front-run deposits hide every later own deposit from a restore**. The limit stays 20 (the
-  owner's decision) → §7 "Deposits", "Cost (R13)".
+  consecutive expired or front-run deposits hide every later own deposit from a restore**. The gap limit stays 20 as in
+  the plan the owner approved; whether to raise it or count only landed deposits is open for the owner (R1-m4, asked
+  at the M1b finish) → §7 "Deposits", "Cost (R13)".
 - **Change-note attribution:** `matchSpent` returns indices into `ownRhos`, not the nullifier; the attribution is one
   further local `matchSpent(handle, [n], spentRhos)` per synced `Withdraw` nullifier (M1c); M1b leaves `spentTx`
   unset → §7 "Change notes".
@@ -1003,7 +1004,8 @@ makes no RPC request specific to one of our notes (I3; m7 does not arise).
      counted (`foreignRhoHits`) and not imported; any hit resets the gap count; `nextDepositIndex` after a restore is
      the highest hit, own or not, + 1. The restore records that `highestHit` (R1-m4). **Hazard, for the owner:** a
      counter is never handed back, so 20 consecutive expired or front-run deposits hide every later own deposit from a
-     restore. The limit stays 20, the owner's decision.)*
+     restore. The gap limit stays 20 as in the plan the owner approved; whether to raise it or count only landed
+     deposits is open for the owner, R1-m4.)*
   2. For each hit, read the creating tx (already synced): amount from the instruction, leaf index and commitment from
      `LeafInserted`, and check `commitment(amount, rho)` equals it.
   3. Spent-status for every own note at once: `matchSpent(handle, allSyncedWithdrawNullifiers, ownRhos)` (R12); JS
@@ -1461,7 +1463,7 @@ Each line is tagged with the plan that delivers it (§16).
   M1a and M1b can be built and tested on the phone without the relayer. M1c's first checkpoint needs the live relayer
   on the frozen contract; its second (the fresh account) and M1d's checkpoint need P1.
 - **Owner:** none open after S1–S12 *(rev 3.3: one question raised by M1b, R1-m4 — the deposit gap limit of 20 with a
-  never-reused counter, §7; kept at 20)*. The rulings R1, R3–R13 are listed for the owner to overturn. One point for the
+  never-reused counter, §7: the gap limit stays 20 as in the plan the owner approved; whether to raise it or count only landed deposits is open for the owner)*. The rulings R1, R3–R13 are listed for the owner to overturn. One point for the
   owner to know (not to decide in M1): S10's per-key gate is not an economic bound on mainnet (§15 P1, §13).
 
 ## 16. The four plans (S8)

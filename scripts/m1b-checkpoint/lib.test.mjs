@@ -272,3 +272,50 @@ describe('the judge — every line, and a negative control for each', () => {
     assert.match(L.judge(s).info.join('\n'), /R13 TRIGGER REACHED .* PRE-MAINNET/);
   });
 });
+
+describe('the I-3 run\'s evidence (verify → M1b.7; review I-2)', () => {
+  const FILE = '/x/src/modules/shielded/a0/__tests__/restoreRequests.test.ts';
+  const jestJson = (over = {}) => ({ numPassedTests: 6, numFailedTests: 0, numPendingTests: 0, startTime: 1000, testResults: [{ name: FILE }], ...over });
+  const run = (over = {}) => ({
+    spawn: { status: 0, error: undefined },
+    json: jestJson(),
+    startedAt: 900,
+    head: { before: 'c0ffee', after: 'c0ffee' },
+    dirty: '',
+    ...over,
+  });
+  const m1b7 = i3 => {
+    const s = scenario();
+    s.i3 = i3;
+    return lineOf(s, 'M1b.7');
+  };
+  test('positive control: a run started now, exit 0, its own file, HEAD unchanged and clean → ran, M1b.7 PASS', () => {
+    const i3 = L.readI3(run());
+    assert.deepEqual(i3, { ran: true, passed: 6, failed: 0, pending: 0, file: FILE, commit: 'c0ffee', why: null });
+    assert.equal(m1b7(i3).pass, true);
+  });
+  for (const [why, over] of [
+    ['the jest process did not start (spawn error)', { spawn: { status: null, error: new Error('spawn npx ENOENT') } }],
+    ['the jest process was killed (no exit status)', { spawn: { status: null, error: undefined } }],
+    ['jest exited non-zero', { spawn: { status: 1, error: undefined } }],
+    ['no result file was written', { json: null }],
+    ['the result file is older than this run (a stale i3-jest.json)', { json: jestJson({ startTime: 899 }) }],
+    ['HEAD moved during the run', { head: { before: 'c0ffee', after: 'beef00' } }],
+    ['the tree is dirty', { dirty: ' M src/x.ts' }],
+  ]) {
+    test(`not evidence → M1b.7 FAILS: ${why}`, () => {
+      const i3 = L.readI3(run(over));
+      assert.equal(i3.ran, false, JSON.stringify(i3));
+      assert.ok(i3.why);
+      const l = m1b7(i3);
+      assert.equal(l.pass, false);
+      assert.match(l.detail, /not run/);
+    });
+  }
+  test('each refusal names its own reason (a spawn error is "did not start", never folded into another)', () => {
+    assert.match(L.readI3(run({ spawn: { status: null, error: new Error('spawn npx ENOENT') } })).why, /^jest did not start: spawn npx ENOENT$/);
+    assert.match(L.readI3(run({ spawn: { status: null, error: undefined } })).why, /no exit status/);
+    assert.match(L.readI3(run({ json: jestJson({ startTime: 899 }) })).why, /not this run's/);
+  });
+});
+

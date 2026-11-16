@@ -265,9 +265,12 @@ function saveLaunch(l) {
 function watch() {
   oneDevice();
   const killAfterSubmit = flag('kill-after-submit');
-  const w = new D.KillWatcher({ killAfterSubmit, kill: () => D.killDevnetApp(rawAdb) });
+  // review I-1: `adb logcat` replays the buffer, which still holds the earlier deposits'
+  // "deposit-submitted" lines — record them first, so only a readout new on the stream can kill
+  collect();
+  const w = new D.KillWatcher({ killAfterSubmit, known: D.readoutIdsOf(recorded()), kill: () => D.killDevnetApp(rawAdb) });
   const child = spawn(adbPath(), [...serialArgs(), 'logcat'], { stdio: ['ignore', 'pipe', 'inherit'] });
-  console.log(`watching the phone's log${killAfterSubmit ? ' — the DEVNET app is force-stopped at the first "deposit-submitted"' : ''} (Ctrl-C to end)`);
+  console.log(`watching the phone's log${killAfterSubmit ? ' — the DEVNET app is force-stopped at the first NEW "deposit-submitted" (those already recorded are ignored)' : ''} (Ctrl-C to end)`);
   child.stdout.setEncoding('utf8');
   let written = false;
   child.stdout.on('data', chunk => {
@@ -385,15 +388,24 @@ async function verify() {
   const chain = { txs, tree: { pages, readAt: new Date().toISOString(), rpcHost: new URL(url).hostname } };
   json('chain.json', chain);
 
-  // I-3 (§14): the recording-Connection test, run here at this commit.
-  const head = execFileSync('git', ['-C', ROOT, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+  // I-3 (§14): the recording-Connection test, run here at this commit. Its evidence is THIS run
+  // only (review I-2): the old result file removed first, HEAD and the tree read before, HEAD read
+  // after, the spawn's own status — a stale file or a jest that did not start is "not run".
+  const gitHead = () => execFileSync('git', ['-C', ROOT, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+  const head = gitHead();
   const dirty = execFileSync('git', ['-C', ROOT, 'status', '--porcelain', '--untracked-files=no'], { encoding: 'utf8' }).trim();
   const jestOut = join(OUT, 'i3-jest.json');
-  spawnSync('npx', ['jest', '--ci', '--json', '--outputFile', jestOut, 'src/modules/shielded/a0/__tests__/restoreRequests.test.ts'], { cwd: ROOT, stdio: 'inherit' });
-  const j = existsSync(jestOut) ? JSON.parse(readFileSync(jestOut, 'utf8')) : null;
-  const i3 = j
-    ? { ran: true, passed: j.numPassedTests, failed: j.numFailedTests, pending: j.numPendingTests, file: j.testResults?.[0]?.name, commit: dirty ? `${head} (dirty)` : head }
-    : null;
+  rmSync(jestOut, { force: true });
+  const startedAt = Date.now();
+  const spawned = spawnSync('npx', ['jest', '--ci', '--json', '--outputFile', jestOut, 'src/modules/shielded/a0/__tests__/restoreRequests.test.ts'], { cwd: ROOT, stdio: 'inherit' });
+  let j = null;
+  try {
+    j = existsSync(jestOut) ? JSON.parse(readFileSync(jestOut, 'utf8')) : null;
+  } catch {
+    j = null;
+  }
+  const i3 = L.readI3({ spawn: { status: spawned.status, error: spawned.error }, json: j, startedAt, head: { before: head, after: gitHead() }, dirty });
+  json('i3-run.json', { ...i3, startedAt: new Date(startedAt).toISOString(), status: spawned.status });
 
   const apkDir = opt('apks', join(ROOT, 'build/m1b-checkpoint/apks'));
   const config = existsSync(join(apkDir, 'CONFIG.json')) ? JSON.parse(readFileSync(join(apkDir, 'CONFIG.json'), 'utf8')) : {};

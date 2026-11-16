@@ -151,6 +151,29 @@ describe('the kill: force-stop of the devnet app, once, at the first "deposit-su
     w.push(of(1));
     assert.deepEqual(p.calls, [`shell am force-stop ${DEVNET_PACKAGE}`]);
   });
+  test('a "deposit-submitted" already in the buffer when the watch starts (recorded by its collect) does not kill; the next one does (review I-1)', () => {
+    // `adb logcat` replays the ring buffer: step 3's submitted readout is still in it at step 4
+    const p = phone();
+    const known = D.readoutIdsOf([{ readout: { session: 'kz3d9q2a', seq: 1 } }, { readout: { session: 'kz3d9q2a', seq: 2 } }]);
+    const w = new D.KillWatcher({ killAfterSubmit: true, known, kill: () => D.killDevnetApp(p.adb) });
+    w.push(SAMPLE); // the buffer's replay: the earlier deposit's submitted + outcome, and more
+    assert.deepEqual(p.calls, []);
+    assert.equal(w.killed, null);
+    assert.equal(w.readouts.length, 3); // the known two are not new readouts either
+    const second = JSON.stringify({
+      schema: 'noctura.a0.readout/1', event: 'deposit-submitted', session: 'kz3d9q2b', seq: 1, at: '2026-11-15T20:05:00.000Z',
+      signature: 'a7wDRKqvnNSkBAGs56ssKby9pqXQtc3eAv6W5sF1HAMWNiGYEkkjUPkeNJ4Ji3E2AjUfseiR3U65Fcr8kQvm5tY',
+      depositor: 'GoBAmZzHvD6F4KHLNmBFh2wZAGE1dwwufeTbifSHEYfd', amount: '500000', commitment: '0'.repeat(63) + '7',
+    });
+    w.push(`NOCTURA-A0-READOUT kz3d9q2b-1 1/1 ${second}\n`);
+    assert.deepEqual(p.calls, [`shell am force-stop ${DEVNET_PACKAGE}`]);
+    assert.equal(w.killed.session, 'kz3d9q2b');
+    // control: the same replay WITHOUT the recorded ids kills on the stale line (the defect)
+    const p2 = phone();
+    const stale = new D.KillWatcher({ killAfterSubmit: true, kill: () => D.killDevnetApp(p2.adb) });
+    stale.push(SAMPLE);
+    assert.equal(stale.killed.session, 'kz3d9q2a');
+  });
   test('without --kill-after-submit nothing is killed (positive control of the flag)', () => {
     const p = phone();
     const w = new D.KillWatcher({ killAfterSubmit: false, kill: () => D.killDevnetApp(p.adb) });
