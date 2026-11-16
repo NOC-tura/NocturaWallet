@@ -22,6 +22,11 @@
  *   - 'kill'  — accepted and landed or not (`killLands`), and from then on every request hangs
  *     forever: the app was killed between submit and confirmation (the flow's promise never
  *     settles; the test abandons it, as the OS would).
+ *
+ * `holdWhen` / `release()` pause a flow at a chosen request (it and every later one wait until
+ * the release) so a test can wipe and re-open the encrypted store while the flow is in flight
+ * (R1-C1 / R2-N1 / R3-N5); `onRequest` sees each request before it is answered (R1-I2's growing
+ * chain).
  */
 import {Connection, PublicKey, VersionedTransaction} from '@solana/web3.js';
 import {base58} from '@scure/base';
@@ -65,6 +70,14 @@ export interface LiveDevnet {
   killed: boolean;
   /** land a deposit someone ELSE made (a template clone with these args), marker included */
   landForeign(d: {amount: bigint; commitment: string; rho: string}): string;
+  /** when it returns true for a request, that request and every later one wait for `release()` */
+  holdWhen: ((method: string, params: unknown[]) => boolean) | null;
+  /** requests waiting on the hold now */
+  held: number;
+  /** let the held requests (and later ones) through; clears `holdWhen` */
+  release(): void;
+  /** called with every request (after a hold, before the answer) */
+  onRequest: ((method: string, params: unknown[]) => void) | null;
 }
 
 const NEVER = new Promise<never>(() => undefined);
@@ -155,6 +168,8 @@ function adoptMessage(rec: RecordedTx, tx: VersionedTransaction, amount: bigint,
 /** A live devnet over a copy of the recorded chain (the caller's `chain` is edited in place). */
 export function liveDevnet(chain: RecordedChain): LiveDevnet {
   const requests: RpcRequest[] = [];
+  let gate: Promise<void> | null = null;
+  let openGate: (() => void) | null = null;
   const net: LiveDevnet = {
     connection: undefined as unknown as Connection,
     requests,
@@ -175,6 +190,16 @@ export function liveDevnet(chain: RecordedChain): LiveDevnet {
       net.accounts.set(rhoPda(d.rho), {owner: PROGRAM, finalized: true});
       return a.signature;
     },
+    holdWhen: null,
+    held: 0,
+    release() {
+      net.holdWhen = null;
+      const open = openGate;
+      gate = null;
+      openGate = null;
+      open?.();
+    },
+    onRequest: null,
   };
 
   const land = (sig: string, tx: VersionedTransaction): 'land' | 'failed-init' => {
@@ -324,10 +349,19 @@ export function liveDevnet(chain: RecordedChain): LiveDevnet {
   const fakeFetch = async (_url: unknown, init?: {body?: unknown}) => {
     const body = JSON.parse(String(init?.body)) as {id: unknown; method: string; params?: unknown[]};
     const params = body.params ?? [];
+    if (gate || net.holdWhen?.(body.method, params)) {
+      gate ??= new Promise<void>(r => {
+        openGate = r;
+      });
+      net.held++;
+      await gate;
+      net.held--;
+    }
     if (net.killed) {
       return NEVER;
     }
     requests.push({method: body.method, params: JSON.parse(JSON.stringify(params)) as unknown[]});
+    net.onRequest?.(body.method, params);
     let payload: unknown;
     try {
       payload = {jsonrpc: '2.0', id: body.id, result: respond(body.method, params)};

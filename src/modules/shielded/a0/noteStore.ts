@@ -22,12 +22,23 @@
  * again. A corrupt record is replaced only by a recovery from the chain
  * (`mergeA0RecoveredNotes`), the source the store is a cache of (§7).
  *
+ * BINDING (R2-N1, R3-N5) — an in-app "Wipe wallet" followed by an import replaces the encrypted
+ * instance inside ONE process, while an async flow of the old wallet (a restore, a reconcile, a
+ * deposit) may still be in flight. Every call takes an optional `bound`: the instance its caller
+ * captured at its own entry (`mmkvSecure()` then). When given, the call refuses with
+ * `E_A0_STORE_CHANGED` BEFORE reading or writing anything if the open instance is not that one —
+ * so a stale flow can neither write the old wallet's notes into the new wallet's store nor create
+ * the new store's record (whose absence is what makes the new wallet restore). Flows pass it to
+ * every call made after an `await`. `saveA0SyncCache` (syncCache.ts) is deliberately unbound
+ * (N7): public data that verifies itself on read.
+ *
  * THE v1 NOTES (§8 "Old notes", §12) — not migrated. The first A0 run (the first call that finds
  * no A0 record) removes every v1 note key (`v1_notes_<mint>`, the v1 `noteStore.ts` schema) from
  * the encrypted instance and then writes the empty A0 record, so it happens once: a later call
  * finds the record and touches nothing. Shielded runs only in the devnet build (R8), so only
  * the devnet build ever gets here.
  */
+import type {MMKV} from 'react-native-mmkv';
 import {mmkvSecure} from '../../../store/mmkv/instances';
 import {MMKV_KEYS} from '../../../constants/mmkvKeys';
 import {A0} from './constants';
@@ -64,6 +75,8 @@ export type A0NoteStoreErrorCode =
   | 'E_A0_STORE_LOCKED'
   /** the stored record does not decode exactly */
   | 'E_A0_STORE_CORRUPT'
+  /** the caller's flow started on another encrypted instance (a wipe + import since, R2-N1) */
+  | 'E_A0_STORE_CHANGED'
   /** an attempt to lower nextDepositIndex */
   | 'E_A0_COUNTER_LOWER'
   /** a pending deposit whose counter is not nextDepositIndex */
@@ -275,16 +288,28 @@ function decode(raw: string): A0NoteStoreState {
   return {nextDepositIndex: next, notes};
 }
 
-function storage() {
+/**
+ * The instance a flow captured at its entry (`mmkvSecure()` then; null = none was open), passed
+ * back to every store call it makes after an `await`. Omitted = the open instance, unchecked.
+ */
+export type A0StoreBinding = MMKV | null;
+
+function storage(bound?: A0StoreBinding): MMKV {
   const store = mmkvSecure();
   if (!store) {
     throw new A0NoteStoreError('E_A0_STORE_LOCKED', 'the encrypted store is not open');
+  }
+  if (bound !== undefined && store !== bound) {
+    throw new A0NoteStoreError(
+      'E_A0_STORE_CHANGED',
+      'the encrypted store was replaced (wipe + import) while this flow was in flight; nothing written',
+    );
   }
   return store;
 }
 
 /** The first A0 run: clear the v1 note schema, then write the empty A0 record (so: once). */
-function firstRun(store: NonNullable<ReturnType<typeof mmkvSecure>>): A0NoteStoreState {
+function firstRun(store: MMKV): A0NoteStoreState {
   for (const k of store.getAllKeys()) {
     if (k.startsWith(V1_NOTES_PREFIX)) {
       store.remove(k);
@@ -295,12 +320,7 @@ function firstRun(store: NonNullable<ReturnType<typeof mmkvSecure>>): A0NoteStor
   return empty;
 }
 
-function read(): A0NoteStoreState {
-  const store = storage();
-  const raw = store.getString(KEY);
-  if (raw === undefined) {
-    return firstRun(store);
-  }
+function decodeOrCorrupt(raw: string): A0NoteStoreState {
   try {
     return decode(raw);
   } catch {
@@ -308,8 +328,30 @@ function read(): A0NoteStoreState {
   }
 }
 
-function write(state: A0NoteStoreState): void {
-  storage().set(KEY, encode(state));
+function read(bound?: A0StoreBinding): A0NoteStoreState {
+  const store = storage(bound);
+  const raw = store.getString(KEY);
+  if (raw === undefined) {
+    return firstRun(store);
+  }
+  return decodeOrCorrupt(raw);
+}
+
+/**
+ * The record as it is, WITHOUT the first-run write: an absent record has no note, so `rho` is
+ * unknown (R3-N5: confirm and drop never create the record — only the startup step and an
+ * explicit first store read do).
+ */
+function readExisting(rho: string, bound?: A0StoreBinding): A0NoteStoreState {
+  const raw = storage(bound).getString(KEY);
+  if (raw === undefined) {
+    throw new A0NoteStoreError('E_A0_NOTE_UNKNOWN', `no note with rho ${rho} (no A0 record)`);
+  }
+  return decodeOrCorrupt(raw);
+}
+
+function write(state: A0NoteStoreState, bound?: A0StoreBinding): void {
+  storage(bound).set(KEY, encode(state));
 }
 
 const bigMax = (a: bigint, b: bigint): bigint => (a > b ? a : b);
@@ -322,13 +364,13 @@ const bigMax = (a: bigint, b: bigint): bigint => (a > b ? a : b);
  * record = a fresh install or a wiped app → restore from the seed first (Task 4, M1b checkpoint).
  * Throws `E_A0_STORE_LOCKED` without the encrypted instance.
  */
-export function hasA0NoteRecord(): boolean {
-  return storage().getString(KEY) !== undefined;
+export function hasA0NoteRecord(bound?: A0StoreBinding): boolean {
+  return storage(bound).getString(KEY) !== undefined;
 }
 
-/** The store (and, on the first A0 run, the v1 notes cleared). Throws LOCKED / CORRUPT. */
-export function loadA0NoteStore(): A0NoteStoreState {
-  return read();
+/** The store (and, on the first A0 run, the v1 notes cleared). Throws LOCKED / CORRUPT / CHANGED. */
+export function loadA0NoteStore(bound?: A0StoreBinding): A0NoteStoreState {
+  return read(bound);
 }
 
 /** The sum of the unspent notes' amounts. */
@@ -337,16 +379,16 @@ export function a0UnspentBalance(): bigint {
 }
 
 /** Raise `nextDepositIndex` to `next`; refuses to lower it (equal is a no-op). §5 step 2. */
-export function setA0NextDepositIndex(next: bigint): void {
+export function setA0NextDepositIndex(next: bigint, bound?: A0StoreBinding): void {
   if (typeof next !== 'bigint' || next < 0n || next > U64_MAX) {
     invalid('nextDepositIndex is not a counter');
   }
-  const s = read();
+  const s = read(bound);
   if (next < s.nextDepositIndex) {
     throw new A0NoteStoreError('E_A0_COUNTER_LOWER', `nextDepositIndex ${s.nextDepositIndex} cannot go down to ${next}`);
   }
   if (next !== s.nextDepositIndex) {
-    write({...s, nextDepositIndex: next});
+    write({...s, nextDepositIndex: next}, bound);
   }
 }
 
@@ -355,13 +397,16 @@ export function setA0NextDepositIndex(next: bigint): void {
  * in ONE write. `depositIndex` must be exactly the current counter (lower would reuse a rho,
  * higher would leave a gap the recovery's gap limit counts).
  */
-export function addA0PendingDeposit(d: {
-  commitment: string;
-  amount: bigint;
-  rho: string;
-  depositIndex: bigint;
-  lastValidBlockHeight: number;
-}): void {
+export function addA0PendingDeposit(
+  d: {
+    commitment: string;
+    amount: bigint;
+    rho: string;
+    depositIndex: bigint;
+    lastValidBlockHeight: number;
+  },
+  bound?: A0StoreBinding,
+): void {
   const note = checkNote({
     commitment: d.commitment,
     amount: d.amount,
@@ -373,7 +418,7 @@ export function addA0PendingDeposit(d: {
   if (note.depositIndex === U64_MAX) {
     invalid('the deposit counter is exhausted');
   }
-  const s = read();
+  const s = read(bound);
   if (note.depositIndex !== s.nextDepositIndex) {
     throw new A0NoteStoreError(
       'E_A0_COUNTER_MISMATCH',
@@ -382,7 +427,7 @@ export function addA0PendingDeposit(d: {
   }
   const notes = [...s.notes, note];
   checkUnique(notes);
-  write({nextDepositIndex: s.nextDepositIndex + 1n, notes});
+  write({nextDepositIndex: s.nextDepositIndex + 1n, notes}, bound);
 }
 
 function indexOfRho(s: A0NoteStoreState, rho: string): number {
@@ -396,8 +441,12 @@ function indexOfRho(s: A0NoteStoreState, rho: string): number {
 const isPendingDeposit = (n: A0Note): boolean => n.status === 'pending' && n.lastValidBlockHeight !== undefined;
 
 /** §5 step 6: a pending deposit becomes `unspent` at the leaf of its LeafInserted, whose commitment must be the note's. */
-export function confirmA0Deposit(rho: string, leaf: {leafIndex: number; commitment: string}): void {
-  const s = read();
+export function confirmA0Deposit(
+  rho: string,
+  leaf: {leafIndex: number; commitment: string},
+  bound?: A0StoreBinding,
+): void {
+  const s = readExisting(rho, bound);
   const i = indexOfRho(s, rho);
   const n = s.notes[i]!;
   if (!isPendingDeposit(n)) {
@@ -411,17 +460,17 @@ export function confirmA0Deposit(rho: string, leaf: {leafIndex: number; commitme
   checkNote(confirmed);
   const notes = [...s.notes];
   notes[i] = confirmed;
-  write({...s, notes});
+  write({...s, notes}, bound);
 }
 
 /** §5 step 7: drop a pending deposit that can no longer land. The counter is NOT given back. */
-export function dropA0PendingDeposit(rho: string): void {
-  const s = read();
+export function dropA0PendingDeposit(rho: string, bound?: A0StoreBinding): void {
+  const s = readExisting(rho, bound);
   const i = indexOfRho(s, rho);
   if (!isPendingDeposit(s.notes[i]!)) {
     throw new A0NoteStoreError('E_A0_NOTE_STATE', `the note with rho ${rho} is not a pending deposit`);
   }
-  write({...s, notes: s.notes.filter((_n, j) => j !== i)});
+  write({...s, notes: s.notes.filter((_n, j) => j !== i)}, bound);
 }
 
 /** The stored note vs the chain's view of the same rho (the rules of `mergeA0RecoveredNotes`). */
@@ -447,10 +496,18 @@ function merged(stored: A0Note, chain: A0Note): A0Note {
  * step 7, not here). `nextDepositIndex` becomes the higher of the two. A CORRUPT record is
  * replaced by the recovery alone (`replacedCorrupt: true`): its pending entries are lost, which
  * the deposit pre-check covers (a landed one is found by its rho PDA, §5 step 2). Atomic: one write.
+ *
+ * STATED HAZARD (Task 3 review m2): that replace is the ONE by-design path that can lower
+ * `nextDepositIndex` — the unreadable record's counter is not known, so the counter becomes the
+ * recovery's (highest hit + 1). The pending deposits' counters the record held are lost with it;
+ * a counter handed out again is caught by the pre-check once the earlier deposit has landed (its
+ * rho PDA exists); one still in flight at that moment can be raced — the later of the two fails
+ * at the rho PDA's `init` (a paid, rejected tx) and the one that landed is found by a restore.
  */
 export function mergeA0RecoveredNotes(
   recovered: readonly A0Note[],
   nextDepositIndex: bigint,
+  bound?: A0StoreBinding,
 ): {replacedCorrupt: boolean} {
   const checked = recovered.map(checkNote);
   checkUnique(checked);
@@ -460,7 +517,7 @@ export function mergeA0RecoveredNotes(
   let base: A0NoteStoreState;
   let replacedCorrupt = false;
   try {
-    base = read();
+    base = read(bound);
   } catch (e) {
     if (!(e instanceof A0NoteStoreError && e.code === 'E_A0_STORE_CORRUPT')) {
       throw e;
@@ -478,6 +535,6 @@ export function mergeA0RecoveredNotes(
     }
   }
   checkUnique(notes);
-  write({nextDepositIndex: bigMax(base.nextDepositIndex, nextDepositIndex), notes});
+  write({nextDepositIndex: bigMax(base.nextDepositIndex, nextDepositIndex), notes}, bound);
   return {replacedCorrupt};
 }

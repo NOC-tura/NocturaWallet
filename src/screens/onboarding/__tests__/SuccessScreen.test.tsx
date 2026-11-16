@@ -47,6 +47,7 @@ jest.mock('../../../store/mmkv/instances', () => ({
   mmkvSecure: jest.fn().mockReturnValue(null),
   initSecureMmkv: jest.fn(),
   onSecureMmkvReady: jest.fn(),
+  onSecureMmkvReset: jest.fn(), // a0/startup.ts registers its reset hook at import (R3-N5 N6)
 }));
 
 // Mock walletStore to avoid persist side effects

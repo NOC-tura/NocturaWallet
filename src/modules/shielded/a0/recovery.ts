@@ -48,6 +48,7 @@ import {
 } from '../../zkProver/nativeProverBridge';
 import type {A0Handle} from '../../zkProver/nativeProverBridge';
 import {A0NoteStoreError, mergeA0RecoveredNotes} from './noteStore';
+import type {A0StoreBinding} from './noteStore';
 import type {A0Note} from './noteStore';
 import type {A0DepositRecord, A0SyncedTx} from './syncedTx';
 import {syncA0Tree} from './treeSync';
@@ -226,17 +227,26 @@ export function a0R13TriggerReached(s: {treeTransactions: number; durationMs: nu
  * path. Throws the sync's `A0SyncError`, an `A0RecoveryError`, the native core's `E_A0_…`
  * refusals, or the note store's `A0NoteStoreError` (e.g. `E_A0_STORE_LOCKED`); on any throw the
  * store is unchanged.
+ *
+ * BOUND (R1-C1): the restore is bound to the encrypted instance open at its start (or the one its
+ * caller captured, `options.bound` — the startup run's). If a wipe + import replaced it while the
+ * walk was in flight, the merge and the R13 stats write refuse with `E_A0_STORE_CHANGED`: nothing
+ * of this wallet lands in the new one, whose record stays absent so it restores itself.
  */
 export async function restoreA0FromSeed(
   connection: Connection,
   seed: Uint8Array,
-  options: {sync?: A0SyncOptions} = {},
+  options: {sync?: A0SyncOptions; bound?: A0StoreBinding} = {},
 ): Promise<A0RestoreResult> {
   const started = Date.now();
   try {
-    if (!mmkvSecure()) {
+    const bound = options.bound ?? mmkvSecure();
+    if (!bound || !mmkvSecure()) {
       // before the walk, not after it: a restore that cannot keep its result does not start
       throw new A0NoteStoreError('E_A0_STORE_LOCKED', 'the encrypted store is not open');
+    }
+    if (mmkvSecure() !== bound) {
+      throw new A0NoteStoreError('E_A0_STORE_CHANGED', 'the encrypted store was replaced before the restore started');
     }
     const {tree, stats: sync} = await syncA0Tree(connection, options.sync);
     const handle = await a0KeysOpen(seed);
@@ -246,7 +256,7 @@ export async function restoreA0FromSeed(
     } finally {
       await a0KeysClose(handle);
     }
-    mergeA0RecoveredNotes(rec.notes, rec.nextDepositIndex);
+    mergeA0RecoveredNotes(rec.notes, rec.nextDepositIndex, bound);
     const durationMs = Date.now() - started;
     const stats: A0RestoreStats = {
       treeTransactions: sync.totalTransactions,
@@ -265,7 +275,11 @@ export async function restoreA0FromSeed(
       finishedAt: new Date().toISOString(),
       r13TriggerReached: a0R13TriggerReached({treeTransactions: sync.totalTransactions, durationMs}),
     };
-    mmkvSecure()?.set(MMKV_KEYS.A0_LAST_RESTORE, JSON.stringify(stats));
+    if (mmkvSecure() !== bound) {
+      // no await since the merge, so not reachable today; kept so a later await cannot open it
+      throw new A0NoteStoreError('E_A0_STORE_CHANGED', 'the encrypted store was replaced during the restore');
+    }
+    bound.set(MMKV_KEYS.A0_LAST_RESTORE, JSON.stringify(stats));
     return {notes: rec.notes, nextDepositIndex: rec.nextDepositIndex, stats};
   } finally {
     seed.fill(0);

@@ -31,7 +31,7 @@ import type {LiveDevnet} from '../__testing__/liveDevnet';
 import {deriveTransparentKeypair} from '../../../keyDerivation/transparent';
 import type {AssetIO} from '../../../zkProver/provingAssets';
 import {loadA0NoteStore} from '../noteStore';
-import {prepareA0Deposit, reconcileA0PendingDeposits, submitA0Deposit} from '../depositFlow';
+import {clearA0SettleTimersForTests, prepareA0Deposit, reconcileA0PendingDeposits, submitA0Deposit} from '../depositFlow';
 import type {A0DepositOutcome} from '../depositFlow';
 import {runA0Startup} from '../startup';
 
@@ -64,6 +64,10 @@ beforeEach(() => {
   fundTokenAccount(net, DEPOSITOR, 5_000_000n);
   loadA0NoteStore();
 });
+afterEach(() => {
+  clearA0SettleTimersForTests(); // R1-m7: no settle pause outlives its test
+});
+
 
 /** Deposit until the app dies right after the send (the flow's promise is abandoned, never awaited). */
 async function depositAndKill(lands: boolean): Promise<{rho: string; flow: Promise<A0DepositOutcome>; lvbh: number}> {

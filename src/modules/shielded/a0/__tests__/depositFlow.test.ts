@@ -34,10 +34,11 @@ import {DEVNET_GENESIS, LIVE_BLOCKHASH, fundTokenAccount, liveDevnet} from '../_
 import type {LiveDevnet} from '../__testing__/liveDevnet';
 import {deriveTransparentKeypair} from '../../../keyDerivation/transparent';
 import type {AssetIO} from '../../../zkProver/provingAssets';
-import {loadA0NoteStore, setA0NextDepositIndex} from '../noteStore';
+import {addA0PendingDeposit, hasA0NoteRecord, loadA0NoteStore, setA0NextDepositIndex} from '../noteStore';
 import {
   A0_MINT_HASH,
   A0DepositError,
+  clearA0SettleTimersForTests,
   prepareA0Deposit,
   reconcileA0PendingDeposits,
   simulateA0Deposit,
@@ -100,6 +101,10 @@ beforeEach(() => {
   dta = fundTokenAccount(net, DEPOSITOR, 10_000_000n);
   loadA0NoteStore(); // the A0 record exists (the startup step ran)
 });
+afterEach(() => {
+  clearA0SettleTimersForTests(); // R1-m7: no settle pause outlives its test
+});
+
 
 const prepare = (amount = AMOUNT, io: AssetIO = memoryIO(), seed = seedBytes(TEST_SEED)) =>
   prepareA0Deposit(net.connection, seed, amount, {io, sync: {useCache: false}});
@@ -482,5 +487,232 @@ describe('submit refusals and outcomes that leave the note pending', () => {
     });
     expect(out).toMatchObject({status: 'pending', reason: 'not-in-sync'});
     expect(loadA0NoteStore().notes[0]!.status).toBe('pending');
+  });
+});
+
+describe('R1-I2: the pre-check\'s GAP and LIMIT refusals', () => {
+  const ownDeposit = (i: bigint, amount: bigint) => {
+    const rho = own.rho(i);
+    appendDeposit(net.chain, {amount, rho, commitment: own.commitment(amount, rho)});
+    net.accounts.set(rhoPda(rho), {owner: PROGRAM, finalized: true});
+  };
+
+  it('(a) the store counter is 21 past the last own hit, its PDA present and its deposit SYNCED → E_A0_DEPOSIT_PRECHECK_GAP; the store byte-identical, keys closed', async () => {
+    ownDeposit(0n, 700n);
+    ownDeposit(21n, 800n); // in the synced history (else UNSYNCED fires first), past the gap limit of 20
+    setA0NextDepositIndex(21n);
+    const before = raw();
+    await expect(prepare()).rejects.toMatchObject({code: 'E_A0_DEPOSIT_PRECHECK_GAP'});
+    expect(raw()).toBe(before);
+    expect(fake.liveHandle()).toBeNull();
+    expect(callsOf('keysClose')).toHaveLength(1);
+    expect(callsOf('prove')).toHaveLength(0);
+    expect(net.sent).toHaveLength(0);
+  });
+
+  it('(a) control: 20 past (inside the gap limit) → recovery reaches it, both imported, the deposit proceeds at 21', async () => {
+    ownDeposit(0n, 700n);
+    ownDeposit(20n, 800n);
+    setA0NextDepositIndex(20n);
+    await expect(prepare()).resolves.toMatchObject({depositIndex: 21n, importedNotes: 2});
+    expect(loadA0NoteStore().notes.map(n => n.depositIndex)).toEqual([0n, 20n]);
+  });
+
+  /** `n` consecutive pool-owned PDAs from counter 0 whose deposits appear one per check (another
+   *  device on this seed one counter ahead each time): each check is a hit the sync then shows. */
+  const growing = (n: number) => {
+    const rhos = Array.from({length: n}, (_v, k) => own.rho(BigInt(k)));
+    rhos.forEach(r => net.accounts.set(rhoPda(r), {owner: PROGRAM, finalized: true}));
+    let landed = 0;
+    net.onRequest = (m, params) => {
+      if (m === 'getAccountInfo' && landed < n && params[0] === rhoPda(rhos[landed]!)) {
+        const amount = 100n + BigInt(landed);
+        appendDeposit(net.chain, {amount, rho: rhos[landed]!, commitment: own.commitment(amount, rhos[landed]!)});
+        landed++;
+      }
+    };
+  };
+
+  it('(b) five consecutive pool-owned PDAs → E_A0_DEPOSIT_PRECHECK_LIMIT, nothing proven, nothing sent, keys closed', async () => {
+    growing(5);
+    await expect(prepare()).rejects.toMatchObject({code: 'E_A0_DEPOSIT_PRECHECK_LIMIT'});
+    expect(callsOf('prove')).toHaveLength(0);
+    expect(net.sent).toHaveLength(0);
+    expect(fake.liveHandle()).toBeNull();
+    // the four hits before the refusal were imported exactly as recovery does
+    expect(loadA0NoteStore()).toMatchObject({nextDepositIndex: 4n, notes: [{depositIndex: 0n}, {depositIndex: 1n}, {depositIndex: 2n}, {depositIndex: 3n}]});
+  });
+
+  it('(b) control: four consecutive hits → the deposit proceeds at counter 4', async () => {
+    growing(4);
+    const stages: string[] = [];
+    const p = await prepareA0Deposit(net.connection, seedBytes(TEST_SEED), AMOUNT, {io: memoryIO(), sync: {useCache: false}, onStage: s => stages.push(s)});
+    expect(p).toMatchObject({depositIndex: 4n, importedNotes: 4});
+    expect(stages.filter(s => s === 'precheck')).toHaveLength(5);
+  });
+});
+
+describe('double submit: one prepared deposit is sent at most once (CLAUDE.md rule 6)', () => {
+  it('the same prepared deposit submitted twice at once → one pending write, one send; the other E_A0_COUNTER_MISMATCH', async () => {
+    const p = await prepare();
+    const [x, y] = await Promise.allSettled([submit(p), submit(p)]);
+    const outcomes = [x, y].map(r => (r.status === 'fulfilled' ? r.value.status : (r.reason as {code: string}).code)).sort();
+    expect(outcomes).toEqual(['E_A0_COUNTER_MISMATCH', 'unspent']);
+    expect(net.sent).toHaveLength(1);
+    expect(loadA0NoteStore().notes).toHaveLength(1);
+  });
+});
+
+/** Every access to the note record on `store` from now on. */
+function watch(store: NonNullable<ReturnType<typeof mmkvSecure>>): string[] {
+  const log: string[] = [];
+  const get = store.getString.bind(store);
+  const set = store.set.bind(store);
+  store.getString = (k: string) => {
+    log.push(`get ${k}`);
+    return get(k);
+  };
+  store.set = (k: string, v: boolean | string | number | ArrayBuffer) => {
+    log.push(`set ${k}`);
+    set(k, v);
+  };
+  return log;
+}
+
+async function until(cond: () => boolean, what: string): Promise<void> {
+  for (let k = 0; k < 1000; k++) {
+    if (cond()) {
+      return;
+    }
+    await new Promise(r => setTimeout(r, 2));
+  }
+  throw new Error(`timed out waiting for ${what}`);
+}
+
+/** In-app "Wipe wallet", then an import in the same process; returns the new instance's access log. */
+function wipeAndImport(): string[] {
+  clearAllStores();
+  initSecureMmkv('the-imported-wallet');
+  return watch(mmkvSecure()!);
+}
+
+describe('R3-N5: each writer outside the startup run is bound to the instance it started on', () => {
+  /** our deposit at counter 0, landed and marked, and pending in the store (a kill before settle) */
+  const landedPending = () => {
+    const rho = own.rho(0n);
+    const commitment = own.commitment(AMOUNT, rho);
+    appendDeposit(net.chain, {amount: AMOUNT, rho, commitment});
+    net.accounts.set(rhoPda(rho), {owner: PROGRAM, finalized: true});
+    addA0PendingDeposit({commitment, amount: AMOUNT, rho, depositIndex: 0n, lastValidBlockHeight: 1});
+    return rho;
+  };
+
+  it('reconcileA0PendingDeposits ("Check again") in flight across wipe + import → E_A0_STORE_CHANGED; the new instance never touched', async () => {
+    landedPending();
+    net.holdWhen = m => m === 'getSignaturesForAddress';
+    const run = reconcileA0PendingDeposits(net.connection, {sync: {useCache: false}});
+    await until(() => net.held > 0, 'the reconcile to reach its sync');
+    const touched = wipeAndImport();
+    net.release();
+    await expect(run).rejects.toMatchObject({code: 'E_A0_STORE_CHANGED'});
+    expect(touched).toEqual([]);
+    expect(hasA0NoteRecord()).toBe(false);
+  });
+
+  it('control: the same held reconcile without the wipe confirms the note', async () => {
+    const rho = landedPending();
+    net.holdWhen = m => m === 'getSignaturesForAddress';
+    const run = reconcileA0PendingDeposits(net.connection, {sync: {useCache: false}});
+    await until(() => net.held > 0, 'the reconcile to reach its sync');
+    net.release();
+    await expect(run).resolves.toMatchObject({confirmed: [{rho, leafIndex: RECORDED_LEAVES}]});
+  });
+
+  it('prepareA0Deposit with a pre-check hit in flight across wipe + import → E_A0_STORE_CHANGED; no record and no foreign note in the new instance', async () => {
+    const rho0 = own.rho(0n);
+    appendDeposit(net.chain, {amount: 700n, rho: rho0, commitment: own.commitment(700n, rho0)});
+    net.accounts.set(rhoPda(rho0), {owner: PROGRAM, finalized: true});
+    net.holdWhen = m => m === 'getTransaction'; // the pre-check's sync, before its merge
+    const seed = seedBytes(TEST_SEED);
+    const run = prepare(AMOUNT, memoryIO(), seed);
+    await until(() => net.held > 0, 'the pre-check to reach its sync');
+    const touched = wipeAndImport();
+    net.release();
+    await expect(run).rejects.toMatchObject({code: 'E_A0_STORE_CHANGED'});
+    expect(touched).toEqual([]);
+    expect(hasA0NoteRecord()).toBe(false);
+    expect(fake.liveHandle()).toBeNull();
+    expect([...seed].every(b => b === 0)).toBe(true);
+  });
+
+  it('control: the same held pre-check without the wipe imports the note', async () => {
+    const rho0 = own.rho(0n);
+    appendDeposit(net.chain, {amount: 700n, rho: rho0, commitment: own.commitment(700n, rho0)});
+    net.accounts.set(rhoPda(rho0), {owner: PROGRAM, finalized: true});
+    net.holdWhen = m => m === 'getTransaction';
+    const run = prepare();
+    await until(() => net.held > 0, 'the pre-check to reach its sync');
+    net.release();
+    await expect(run).resolves.toMatchObject({depositIndex: 1n, importedNotes: 1});
+  });
+
+  it('submitA0Deposit in flight before its pending write (wipe + import) → E_A0_STORE_CHANGED, nothing sent, the new instance never touched', async () => {
+    const p = await prepare();
+    net.holdWhen = m => m === 'getLatestBlockhash';
+    const run = submit(p);
+    await until(() => net.held > 0, 'submit to ask for its blockhash');
+    const touched = wipeAndImport();
+    net.release();
+    await expect(run).rejects.toMatchObject({code: 'E_A0_STORE_CHANGED'});
+    expect(net.sent).toHaveLength(0);
+    expect(touched).toEqual([]);
+    expect(hasA0NoteRecord()).toBe(false);
+  });
+
+  it('submitA0Deposit in its settle loop across wipe + import → E_A0_STORE_CHANGED (sent, landed), the new instance never touched', async () => {
+    const p = await prepare();
+    net.holdWhen = m => m === 'getSignaturesForAddress'; // the settle sync, after the confirmation
+    const run = submit(p);
+    await until(() => net.held > 0, 'submit to reach its settle sync');
+    expect(net.sent).toHaveLength(1);
+    const touched = wipeAndImport();
+    net.release();
+    await expect(run).rejects.toMatchObject({code: 'E_A0_STORE_CHANGED'});
+    expect(touched).toEqual([]);
+    expect(hasA0NoteRecord()).toBe(false);
+  });
+});
+
+describe('R1-m7: the settle loop\'s pause is cleared at teardown', () => {
+  it('a submit waiting in its settle pause → clearA0SettleTimersForTests clears exactly that timer', async () => {
+    const p = await prepare();
+    const listing = net.chain.signatures;
+    const setSpy = jest.spyOn(global, 'setTimeout');
+    const clearSpy = jest.spyOn(global, 'clearTimeout');
+    let synced = 0;
+    net.onRequest = m => {
+      if (m === 'getSignaturesForAddress' && net.sent.length === 1) {
+        synced++;
+      }
+    };
+    // abandoned with the test once its pause is cleared (it never resumes)
+    submitA0Deposit(net.connection, p, seedBytes(TEST_SEED), {
+      sync: {useCache: false},
+      settleAttempts: 2,
+      settleDelayMs: 600_000,
+      onStage: s => {
+        if (s === 'settling') {
+          net.chain.signatures = listing.filter(x => x.signature !== net.sent[0]!.signature); // never in sync
+        }
+      },
+    }).catch(() => undefined);
+    await until(() => setSpy.mock.calls.some(c => c[1] === 600_000), 'the settle pause');
+    expect(synced).toBe(1);
+    const k = setSpy.mock.calls.findIndex(c => c[1] === 600_000);
+    const timer = setSpy.mock.results[k]!.value as ReturnType<typeof setTimeout>;
+    clearA0SettleTimersForTests();
+    expect(clearSpy).toHaveBeenCalledWith(timer);
+    setSpy.mockRestore();
+    clearSpy.mockRestore();
   });
 });

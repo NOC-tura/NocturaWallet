@@ -31,6 +31,12 @@
  * files (`keyAssets.ts`); no witness leaves the device. A deposit needs no native confirmation:
  * the circuit binds the note to the user's own `nk`, so a deposit cannot pay anyone else (§5.5).
  *
+ * BOUND TO ONE WALLET (R3-N5): `prepareA0Deposit`, `submitA0Deposit` and
+ * `reconcileA0PendingDeposits` each capture the encrypted instance at their own entry
+ * (`options.bound ?? mmkvSecure()`) and pass it to every note-store call, so a flow still in
+ * flight across an in-app wipe + import refuses with `E_A0_STORE_CHANGED` before it writes
+ * anything of the old wallet into the new one (or creates the new one's record).
+ *
  * THE TRANSACTION: [ComputeBudget.setComputeUnitLimit(200,000), deposit] in a LEGACY message
  * signed by the depositor alone (the fee payer) — the format of the landed deposit `3DR6F7oW…`,
  * whose whole signed message our builder reproduces byte for byte (`depositTx.golden.test.ts`).
@@ -44,6 +50,7 @@ import {
 } from '@solana/web3.js';
 import type {Commitment, Connection, TransactionInstruction} from '@solana/web3.js';
 import {base58} from '@scure/base';
+import {mmkvSecure} from '../../../store/mmkv/instances';
 import {A0, A0_CU} from './constants';
 import {a0RhoMarkerPda, buildA0DepositIx} from './depositIx';
 import {FIELD_MODULUS, toBe32Hex} from './fieldEquations';
@@ -56,7 +63,7 @@ import {
   loadA0NoteStore,
   mergeA0RecoveredNotes,
 } from './noteStore';
-import type {A0Note} from './noteStore';
+import type {A0Note, A0StoreBinding} from './noteStore';
 import {recoverA0Deposits} from './recovery';
 import {syncA0Tree} from './treeSync';
 import type {A0SyncOptions, A0VerifiedTree} from './treeSync';
@@ -154,6 +161,8 @@ export interface A0PrepareOptions {
   io?: AssetIO;
   sync?: A0SyncOptions;
   onStage?: (stage: A0PrepareStage) => void;
+  /** the encrypted instance to stay on (default: the one open at entry) — R3-N5 */
+  bound?: A0StoreBinding;
 }
 
 const bytesOfHex = (h: string): Uint8Array => Uint8Array.from(Buffer.from(h, 'hex'));
@@ -191,12 +200,13 @@ async function precheck(
   connection: Connection,
   handle: A0Handle,
   options: A0PrepareOptions,
+  bound: A0StoreBinding,
 ): Promise<{depositIndex: bigint; rho: string; importedNotes: number; foreignRhoHits: number}> {
   let importedNotes = 0;
   let foreignRhoHits = 0;
   for (let hits = 0; ; hits++) {
     options.onStage?.('precheck');
-    const depositIndex = loadA0NoteStore().nextDepositIndex;
+    const depositIndex = loadA0NoteStore(bound).nextDepositIndex;
     const rho = await a0DepositRho(handle, depositIndex);
     if (!(await rhoMarkerExists(connection, rho, 'confirmed'))) {
       return {depositIndex, rho, importedNotes, foreignRhoHits};
@@ -218,8 +228,8 @@ async function precheck(
         `counter ${depositIndex} is past recovery's gap limit (recovered next = ${rec.nextDepositIndex})`,
       );
     }
-    const before = new Set(loadA0NoteStore().notes.map(n => n.rho));
-    mergeA0RecoveredNotes(rec.notes, rec.nextDepositIndex);
+    const before = new Set(loadA0NoteStore(bound).notes.map(n => n.rho));
+    mergeA0RecoveredNotes(rec.notes, rec.nextDepositIndex, bound);
     importedNotes += rec.notes.filter(n => !before.has(n.rho)).length;
     foreignRhoHits = rec.foreignRhoHits;
   }
@@ -235,6 +245,7 @@ export async function prepareA0Deposit(
   amount: bigint,
   options: A0PrepareOptions = {},
 ): Promise<A0PreparedDeposit> {
+  const bound = options.bound ?? mmkvSecure();
   try {
     options.onStage?.('checking');
     if (typeof amount !== 'bigint' || amount < 1n || amount > U64_MAX) {
@@ -243,10 +254,10 @@ export async function prepareA0Deposit(
     if (!isProverSupported()) {
       throw new A0DepositError('E_A0_DEPOSIT_UNSUPPORTED', 'the on-device prover is not available');
     }
-    if (!hasA0NoteRecord()) {
+    if (!hasA0NoteRecord(bound)) {
       throw new A0DepositError('E_A0_DEPOSIT_NOT_READY', 'no A0 note record yet: the startup restore has not run');
     }
-    loadA0NoteStore(); // CORRUPT throws here, before any request
+    loadA0NoteStore(bound); // CORRUPT throws here, before any request
     await assertDevnet(connection);
     const depositor = depositorOf(seed);
     const tokenAccount = await resolveSourceTokenAccount(connection, depositor, new PublicKey(A0.mint), amount);
@@ -258,7 +269,7 @@ export async function prepareA0Deposit(
 
     const handle = await a0KeysOpen(seed);
     try {
-      const pre = await precheck(connection, handle, options);
+      const pre = await precheck(connection, handle, options, bound);
       options.onStage?.('commitment');
       const commitment = await a0Commitment(handle, amount, pre.rho);
       options.onStage?.('proving');
@@ -401,9 +412,31 @@ export interface A0SubmitOptions {
   /** pause between them (default 1500 ms) */
   settleDelayMs?: number;
   onStage?: (stage: A0SubmitStage, signature?: string) => void;
+  /** the encrypted instance to stay on (default: the one open at entry) — R3-N5 */
+  bound?: A0StoreBinding;
 }
 
-const sleep = (ms: number): Promise<void> => new Promise(r => setTimeout(r, ms));
+/** The settle loop's pending pauses (R1-m7: a test's teardown clears them; RN's setTimeout
+ *  returns a number, so there is no `unref`). */
+const settleTimers = new Set<ReturnType<typeof setTimeout>>();
+
+const sleep = (ms: number): Promise<void> =>
+  new Promise(r => {
+    const t = setTimeout(() => {
+      settleTimers.delete(t);
+      r();
+    }, ms);
+    settleTimers.add(t);
+  });
+
+/** TEST-ONLY teardown (R1-m7): clear every pending settle-loop pause; a flow waiting on one never
+ *  resumes (it is abandoned with its test). */
+export function clearA0SettleTimersForTests(): void {
+  for (const t of settleTimers) {
+    clearTimeout(t);
+  }
+  settleTimers.clear();
+}
 
 /**
  * Steps 5–6 (#21). `seed` is CONSUMED (the depositor's key is derived from it, checked against
@@ -418,6 +451,7 @@ export async function submitA0Deposit(
   seed: Uint8Array,
   options: A0SubmitOptions = {},
 ): Promise<A0DepositOutcome> {
+  const bound = options.bound ?? mmkvSecure();
   options.onStage?.('signing');
   let secretKey: Uint8Array | null = null;
   let tx: VersionedTransaction;
@@ -445,7 +479,7 @@ export async function submitA0Deposit(
     rho: p.rho,
     depositIndex: p.depositIndex,
     lastValidBlockHeight,
-  });
+  }, bound);
   options.onStage?.('recorded', signature);
 
   try {
@@ -474,11 +508,11 @@ export async function submitA0Deposit(
     const {tree} = await syncA0Tree(connection, options.sync);
     const s = settle(tree, p);
     if (s.kind === 'ours') {
-      confirmA0Deposit(p.rho, {leafIndex: s.leafIndex, commitment: p.commitment});
+      confirmA0Deposit(p.rho, {leafIndex: s.leafIndex, commitment: p.commitment}, bound);
       return {status: 'unspent', signature, leafIndex: s.leafIndex, root: s.root};
     }
     if (s.kind === 'foreign') {
-      dropA0PendingDeposit(p.rho);
+      dropA0PendingDeposit(p.rho, bound);
       return {status: 'dropped', signature, reason: 'foreign', foreignSignature: s.signature};
     }
   }
@@ -504,10 +538,11 @@ export interface A0ReconcileReport {
  */
 export async function reconcileA0PendingDeposits(
   connection: Connection,
-  options: {sync?: A0SyncOptions} = {},
+  options: {sync?: A0SyncOptions; bound?: A0StoreBinding} = {},
 ): Promise<A0ReconcileReport> {
+  const bound = options.bound ?? mmkvSecure();
   const report: A0ReconcileReport = {confirmed: [], dropped: [], stillPending: []};
-  const pending = loadA0NoteStore().notes.filter(n => n.status === 'pending' && n.lastValidBlockHeight !== undefined);
+  const pending = loadA0NoteStore(bound).notes.filter(n => n.status === 'pending' && n.lastValidBlockHeight !== undefined);
   let tree: A0VerifiedTree | null = null;
   let finalizedHeight: number | null = null;
   for (const n of pending) {
@@ -515,10 +550,10 @@ export async function reconcileA0PendingDeposits(
       tree ??= (await syncA0Tree(connection, options.sync)).tree;
       const s = settle(tree, n);
       if (s.kind === 'ours') {
-        confirmA0Deposit(n.rho, {leafIndex: s.leafIndex, commitment: n.commitment});
+        confirmA0Deposit(n.rho, {leafIndex: s.leafIndex, commitment: n.commitment}, bound);
         report.confirmed.push({rho: n.rho, leafIndex: s.leafIndex, signature: s.signature});
       } else if (s.kind === 'foreign') {
-        dropA0PendingDeposit(n.rho);
+        dropA0PendingDeposit(n.rho, bound);
         report.dropped.push({rho: n.rho, reason: 'foreign'});
       } else {
         report.stillPending.push({rho: n.rho, reason: 'not-in-sync'});
@@ -535,7 +570,7 @@ export async function reconcileA0PendingDeposits(
       report.stillPending.push({rho: n.rho, reason: 'not-in-sync'});
       continue;
     }
-    dropA0PendingDeposit(n.rho);
+    dropA0PendingDeposit(n.rho, bound);
     report.dropped.push({rho: n.rho, reason: 'expired'});
   }
   return report;

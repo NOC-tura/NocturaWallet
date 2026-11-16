@@ -10,6 +10,17 @@ let _mmkvSecure: MMKV | null = null;
 /** Callbacks to fire after secure MMKV is initialized (e.g., replay queued writes). */
 const _initCallbacks: Array<(store: MMKV) => void> = [];
 
+/**
+ * Hooks fired whenever the encrypted instance is replaced: a new one created
+ * (`initSecureMmkv`) or the open one wiped and dropped (`clearAllStores`). Unlike
+ * `_initCallbacks` they stay registered across a wipe — module state that belongs
+ * to ONE wallet (the A0 startup step's session state, `shielded/a0/startup.ts`)
+ * registers here and resets itself, so an in-app "Wipe wallet" followed by an
+ * import in the same process starts from nothing. Registered through this hook so
+ * this module imports no shielded code. A hook must not throw.
+ */
+const _resetHooks = new Set<() => void>();
+
 export function mmkvSecure(): MMKV | null {
   return _mmkvSecure;
 }
@@ -23,8 +34,26 @@ export function onSecureMmkvReady(cb: (store: MMKV) => void): void {
   }
 }
 
+/**
+ * Register a hook fired every time the encrypted instance is replaced (created or
+ * wiped); kept across wipes. Returns the unregister.
+ */
+export function onSecureMmkvReset(hook: () => void): () => void {
+  _resetHooks.add(hook);
+  return () => {
+    _resetHooks.delete(hook);
+  };
+}
+
+function fireResetHooks(): void {
+  for (const hook of [..._resetHooks]) {
+    hook();
+  }
+}
+
 export function initSecureMmkv(encryptionKey: string): void {
   _mmkvSecure = createMMKV({id: 'noctura-secure', encryptionKey});
+  fireResetHooks(); // a new instance: per-wallet state starts over (before anything uses it)
   // Replay any queued operations
   for (const cb of _initCallbacks) {
     cb(_mmkvSecure);
@@ -49,4 +78,5 @@ export function clearAllStores(): void {
   _mmkvSecure?.clearAll();
   _mmkvSecure = null;
   _initCallbacks.length = 0;
+  fireResetHooks();
 }

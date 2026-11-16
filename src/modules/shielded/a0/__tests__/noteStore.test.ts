@@ -16,6 +16,7 @@ import {
   a0UnspentBalance,
   confirmA0Deposit,
   dropA0PendingDeposit,
+  hasA0NoteRecord,
   loadA0NoteStore,
   mergeA0RecoveredNotes,
   setA0NextDepositIndex,
@@ -282,5 +283,80 @@ describe('the v1 note schema is cleared on the first A0 run (§8, §12), once', 
     mmkvSecure()!.set(V1_A, '[]');
     loadA0NoteStore();
     expect(mmkvSecure()!.getString(V1_A)).toBe('[]');
+  });
+});
+
+/** Every access to the note record on `store` (reads and writes), from now on. */
+function watch(store: NonNullable<ReturnType<typeof mmkvSecure>>): string[] {
+  const log: string[] = [];
+  const get = store.getString.bind(store);
+  const set = store.set.bind(store);
+  const keys = store.getAllKeys.bind(store);
+  store.getString = (k: string) => {
+    log.push(`get ${k}`);
+    return get(k);
+  };
+  store.set = (k: string, v: boolean | string | number | ArrayBuffer) => {
+    log.push(`set ${k}`);
+    set(k, v);
+  };
+  store.getAllKeys = () => {
+    log.push('getAllKeys');
+    return keys();
+  };
+  return log;
+}
+
+describe('a call bound to the encrypted instance it started on (R2-N1, R3-N5)', () => {
+  it('bound to an instance that is no longer the open one (wipe + import) → E_A0_STORE_CHANGED, the new instance never read or written', () => {
+    addA0PendingDeposit(pending(N0, 0n));
+    const a = mmkvSecure()!;
+    clearAllStores(); // "Wipe wallet"
+    initSecureMmkv('another-wallet'); // the import
+    const touched = watch(mmkvSecure()!);
+    expect(code(() => hasA0NoteRecord(a))).toBe('E_A0_STORE_CHANGED');
+    expect(code(() => loadA0NoteStore(a))).toBe('E_A0_STORE_CHANGED');
+    expect(code(() => addA0PendingDeposit(pending(N1, 0n), a))).toBe('E_A0_STORE_CHANGED');
+    expect(code(() => confirmA0Deposit(N0.rho, {leafIndex: 17, commitment: cm(N0, '1000000000')}, a))).toBe('E_A0_STORE_CHANGED');
+    expect(code(() => dropA0PendingDeposit(N0.rho, a))).toBe('E_A0_STORE_CHANGED');
+    expect(code(() => mergeA0RecoveredNotes([unspent(N0, 0n, 17)], 1n, a))).toBe('E_A0_STORE_CHANGED');
+    expect(code(() => setA0NextDepositIndex(5n, a))).toBe('E_A0_STORE_CHANGED');
+    expect(touched).toEqual([]);
+    expect(hasA0NoteRecord()).toBe(false);
+  });
+
+  it('bound and no instance open → E_A0_STORE_LOCKED; bound to null while one is open → E_A0_STORE_CHANGED', () => {
+    const a = mmkvSecure()!;
+    clearAllStores();
+    expect(code(() => loadA0NoteStore(a))).toBe('E_A0_STORE_LOCKED');
+    initSecureMmkv('another-wallet');
+    expect(code(() => loadA0NoteStore(null))).toBe('E_A0_STORE_CHANGED');
+  });
+
+  it('positive control: bound to the open instance, every call works as unbound', () => {
+    const b = mmkvSecure()!;
+    expect(hasA0NoteRecord(b)).toBe(false);
+    expect(loadA0NoteStore(b)).toEqual({nextDepositIndex: 0n, notes: []});
+    addA0PendingDeposit(pending(N0, 0n), b);
+    confirmA0Deposit(N0.rho, {leafIndex: 17, commitment: cm(N0, '1000000000')}, b);
+    setA0NextDepositIndex(3n, b);
+    mergeA0RecoveredNotes([], 2n, b);
+    expect(loadA0NoteStore()).toEqual({nextDepositIndex: 3n, notes: [unspent(N0, 0n, 17)]});
+  });
+});
+
+describe('confirm and drop never create the record (R3-N5 hardening)', () => {
+  it('on an ABSENT record → E_A0_NOTE_UNKNOWN, and still no record (only the startup step and the explicit first read create it)', () => {
+    expect(hasA0NoteRecord()).toBe(false);
+    expect(code(() => confirmA0Deposit(N0.rho, {leafIndex: 17, commitment: cm(N0, '1000000000')}))).toBe('E_A0_NOTE_UNKNOWN');
+    expect(code(() => dropA0PendingDeposit(N0.rho))).toBe('E_A0_NOTE_UNKNOWN');
+    expect(hasA0NoteRecord()).toBe(false);
+    expect(mmkvSecure()!.getAllKeys()).toEqual([]);
+  });
+
+  it('negative control: the explicit first read does create it', () => {
+    loadA0NoteStore();
+    expect(hasA0NoteRecord()).toBe(true);
+    expect(code(() => dropA0PendingDeposit(N0.rho))).toBe('E_A0_NOTE_UNKNOWN');
   });
 });
