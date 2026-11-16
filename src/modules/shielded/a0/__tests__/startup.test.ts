@@ -24,6 +24,7 @@ import type {RecordedChain, RecordedFixture} from '../__testing__/recordedRpc';
 import {liveDevnet} from '../__testing__/liveDevnet';
 import {addA0PendingDeposit, a0UnspentBalance, hasA0NoteRecord, loadA0NoteStore} from '../noteStore';
 import * as recovery from '../recovery';
+import {resetA0ReadoutForTests, setA0ReadoutDefaultsForTests} from '../checkpointReadout';
 import {
   a0StartupState,
   ensureA0Startup,
@@ -64,7 +65,7 @@ describe('runA0Startup', () => {
     const res = await runA0Startup(net.connection, seed, SYNC);
     expect(res.restoredBecause).toBe('no-record');
     expect(res.restore).toMatchObject({ownNotes: 1, treeTransactions: TREE.signatures.length + 1});
-    expect(res.reconcile).toEqual({confirmed: [], dropped: [], stillPending: []});
+    expect(res.reconcile).toEqual({confirmed: [], dropped: [], stillPending: [], skipped: 0});
     expect(a0UnspentBalance()).toBe(4_000_000n);
     expect(loadA0NoteStore().nextDepositIndex).toBe(1n);
     expect(callsOf('keysOpen')).toHaveLength(1);
@@ -76,7 +77,7 @@ describe('runA0Startup', () => {
     const net = liveDevnet(chainWithOwnDeposit());
     const seed = seedBytes(TEST_SEED);
     const res = await runA0Startup(net.connection, seed, SYNC);
-    expect(res).toEqual({restoredBecause: null, restore: null, reconcile: {confirmed: [], dropped: [], stillPending: []}});
+    expect(res).toEqual({restoredBecause: null, restore: null, reconcile: {confirmed: [], dropped: [], stillPending: [], skipped: 0}});
     expect(fake.calls).toEqual([]);
     expect(net.requests).toEqual([]);
     expect(zeroed(seed)).toBe(true);
@@ -277,3 +278,44 @@ describe('a wipe and an import in one process (R1-C1, R2-N1)', () => {
     expect(a0UnspentBalance()).toBe(4_000_000n);
   });
 });
+describe('the M1b checkpoint readout of the startup step (wipe + restore, what the desk reads)', () => {
+  afterEach(() => resetA0ReadoutForTests());
+
+  it('a wiped app: ONE "startup" line — restoredBecause no-record, R13\'s two numbers as the restore measured them, the note unspent at its leaf', async () => {
+    const lines: string[] = [];
+    resetA0ReadoutForTests();
+    setA0ReadoutDefaultsForTests({enabled: true, sink: l => lines.push(l)});
+    const net = liveDevnet(chainWithOwnDeposit());
+    const state = await ensureA0Startup(net.connection, seedBytes(TEST_SEED), SYNC);
+    if (state.phase !== 'ready') {
+      throw new Error(`startup ${state.phase}`);
+    }
+    const r = state.result.restore!;
+    const texts = new Map<string, string>();
+    for (const l of lines) {
+      const m = /^NOCTURA-A0-READOUT (\S+) \d+\/\d+ (.*)$/.exec(l)!;
+      texts.set(m[1]!, (texts.get(m[1]!) ?? '') + m[2]!);
+    }
+    const payloads = [...texts.values()].map(t => JSON.parse(t));
+    expect(payloads.map(p => [p.event, p.phase])).toEqual([['startup', 'ready']]);
+    const rho = own.rho(0n);
+    expect(payloads[0]).toMatchObject({
+      restoredBecause: 'no-record',
+      restore: {treeTransactions: TREE.signatures.length + 1, durationMs: r.durationMs, ownNotes: 1, r13TriggerReached: false},
+      notes: {unspent: 1, unspentBalance: '4000000', unspentNotes: [{leafIndex: 17, commitment: own.commitment(4_000_000n, rho), amount: '4000000'}]},
+    });
+    expect(lines.join('')).not.toContain(rho);
+  });
+
+  it('a locked store: the "startup" line carries the error CODE only', async () => {
+    const lines: string[] = [];
+    resetA0ReadoutForTests();
+    setA0ReadoutDefaultsForTests({enabled: true, sink: l => lines.push(l)});
+    clearAllStores(); // no encrypted instance
+    const state = await ensureA0Startup(liveDevnet(chainWithOwnDeposit()).connection, seedBytes(TEST_SEED), SYNC);
+    expect(state).toMatchObject({phase: 'error', code: 'E_A0_STORE_LOCKED'});
+    expect(lines).toHaveLength(1);
+    expect(JSON.parse(lines[0]!.split(' ').slice(3).join(' '))).toMatchObject({event: 'startup', phase: 'error', code: 'E_A0_STORE_LOCKED'});
+  });
+});
+

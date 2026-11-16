@@ -33,7 +33,8 @@ import type {AssetIO} from '../../../zkProver/provingAssets';
 import {loadA0NoteStore} from '../noteStore';
 import {clearA0SettleTimersForTests, prepareA0Deposit, reconcileA0PendingDeposits, submitA0Deposit} from '../depositFlow';
 import type {A0DepositOutcome} from '../depositFlow';
-import {runA0Startup} from '../startup';
+import {ensureA0Startup, resetA0StartupForTests, runA0Startup} from '../startup';
+import {resetA0ReadoutForTests, setA0ReadoutDefaultsForTests} from '../checkpointReadout';
 
 const TREE = JSON.parse(readFileSync(join(__dirname, 'fixtures/devnet-tree-5URd.json'), 'utf8')) as RecordedFixture;
 const fake = NativeModules.NocturaProver as unknown as FakeProverNative;
@@ -132,6 +133,7 @@ describe('killed between submit and confirmation', () => {
       confirmed: [{rho, leafIndex: RECORDED_LEAVES, signature: net.sent[0]!.signature}],
       dropped: [],
       stillPending: [],
+      skipped: 0,
     });
     expect(loadA0NoteStore()).toEqual({
       nextDepositIndex: 1n,
@@ -153,7 +155,7 @@ describe('killed between submit and confirmation', () => {
     const next = restart();
     next.height.finalized = lvbh; // not PAST it
     const res = await runA0Startup(next.connection, seedBytes(TEST_SEED));
-    expect(res.reconcile).toEqual({confirmed: [], dropped: [], stillPending: [{rho, reason: 'not-expired'}]});
+    expect(res.reconcile).toEqual({confirmed: [], dropped: [], stillPending: [{rho, reason: 'not-expired'}], skipped: 0});
     expect(loadA0NoteStore().notes).toHaveLength(1);
   });
 
@@ -162,7 +164,7 @@ describe('killed between submit and confirmation', () => {
     const next = restart();
     next.height.finalized = lvbh + 1;
     const res = await runA0Startup(next.connection, seedBytes(TEST_SEED));
-    expect(res.reconcile).toEqual({confirmed: [], dropped: [{rho, reason: 'expired'}], stillPending: []});
+    expect(res.reconcile).toEqual({confirmed: [], dropped: [{rho, reason: 'expired'}], stillPending: [], skipped: 0});
     expect(loadA0NoteStore()).toEqual({nextDepositIndex: 1n, notes: []});
     // the next deposit takes counter 1, never the dropped 0 again
     fake.setProver(offlineDepositProver);
@@ -200,13 +202,84 @@ describe('killed between submit and confirmation', () => {
       return realGet(k);
     };
     const res = await reconcileA0PendingDeposits(next.connection);
-    expect(res).toEqual({confirmed: [], dropped: [], stillPending: [{rho, reason: 'not-in-sync'}]});
+    expect(res).toEqual({confirmed: [], dropped: [], stillPending: [{rho, reason: 'not-in-sync'}], skipped: 0});
     expect(loadA0NoteStore().notes).toHaveLength(1);
   });
 
   it('no pending deposit → the reconciliation makes no request', async () => {
     const res = await reconcileA0PendingDeposits(net.connection);
-    expect(res).toEqual({confirmed: [], dropped: [], stillPending: []});
+    expect(res).toEqual({confirmed: [], dropped: [], stillPending: [], skipped: 0});
     expect(net.requests).toEqual([]);
+  });
+});
+
+/** The readout lines, re-assembled per id, as the desk script parses them. */
+function readouts(lines: readonly string[]): Record<string, unknown>[] {
+  const byId = new Map<string, string>();
+  for (const l of lines) {
+    const m = /^NOCTURA-A0-READOUT (\S+) \d+\/\d+ (.*)$/.exec(l)!;
+    byId.set(m[1]!, (byId.get(m[1]!) ?? '') + m[2]!);
+  }
+  return [...byId.values()].map(t => JSON.parse(t) as Record<string, unknown>);
+}
+
+describe('the M1b checkpoint readout across the kill (what the desk sees on the phone)', () => {
+  const lines: string[] = [];
+  beforeEach(() => {
+    lines.length = 0;
+    resetA0ReadoutForTests();
+    resetA0StartupForTests();
+    setA0ReadoutDefaultsForTests({enabled: true, sink: l => lines.push(l)});
+  });
+  afterEach(() => {
+    resetA0ReadoutForTests();
+    resetA0StartupForTests();
+  });
+
+  it('killed session: "deposit-submitted" and NO outcome; next session\'s startup: the same signature confirmed at its leaf, the note unspent', async () => {
+    const {rho} = await depositAndKill(true);
+    const signature = net.sent[0]!.signature;
+    const killed = readouts(lines);
+    expect(killed.map(r => r.event)).toEqual(['deposit-submitted']);
+    expect(killed[0]).toMatchObject({signature, depositor: DEPOSITOR, amount: AMOUNT.toString(), commitment: own.commitment(AMOUNT, rho)});
+    const next = restart();
+    const state = await ensureA0Startup(next.connection, seedBytes(TEST_SEED), {sync: {useCache: false}});
+    expect(state.phase).toBe('ready');
+    const after = readouts(lines).slice(1);
+    expect(after.map(r => r.event)).toEqual(['startup']);
+    expect(after[0]).toMatchObject({
+      phase: 'ready',
+      restoredBecause: null,
+      restore: null,
+      reconcile: {confirmed: [{leafIndex: RECORDED_LEAVES, signature}], dropped: [], stillPending: [], skipped: 0},
+      notes: {
+        pending: 0,
+        unspent: 1,
+        spent: 0,
+        unspentBalance: AMOUNT.toString(),
+        unspentNotes: [{leafIndex: RECORDED_LEAVES, commitment: own.commitment(AMOUNT, rho), amount: AMOUNT.toString()}],
+      },
+    });
+    expect(lines.join('\n')).not.toContain(rho);
+  });
+
+  it('the kill window opens only once the send was ACCEPTED: a refused send reads out no "deposit-submitted", only its pending outcome', async () => {
+    const p = await prepareA0Deposit(net.connection, seedBytes(TEST_SEED), AMOUNT, {io, sync: {useCache: false}});
+    net.sendError = 'Transaction simulation failed';
+    const out = await submitA0Deposit(net.connection, p, seedBytes(TEST_SEED), {sync: {useCache: false}, settleAttempts: 1});
+    expect(out).toMatchObject({status: 'pending', reason: 'send-failed'});
+    const r = readouts(lines);
+    expect(r.map(x => x.event)).toEqual(['deposit-outcome']);
+    expect(r[0]).toMatchObject({status: 'pending', reason: 'send-failed', signature: out.signature});
+    expect(JSON.stringify(r[0])).not.toContain('simulation failed'); // the detail (an RPC message) is not read out
+  });
+
+  it('positive control: an unkilled deposit reads out "deposit-submitted" then "deposit-outcome" unspent at the same leaf', async () => {
+    const p = await prepareA0Deposit(net.connection, seedBytes(TEST_SEED), AMOUNT, {io, sync: {useCache: false}});
+    const out = await submitA0Deposit(net.connection, p, seedBytes(TEST_SEED), {sync: {useCache: false}, settleAttempts: 1});
+    expect(out.status).toBe('unspent');
+    const r = readouts(lines);
+    expect(r.map(x => x.event)).toEqual(['deposit-submitted', 'deposit-outcome']);
+    expect(r[1]).toMatchObject({signature: out.signature, status: 'unspent', leafIndex: RECORDED_LEAVES, commitment: p.commitment});
   });
 });

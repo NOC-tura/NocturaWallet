@@ -15,13 +15,15 @@ name: Native prover
 # the key generator imports), the vector generators (scripts/a0-vectors/**) and the lockfile that
 # pins the libraries they derive the fixtures with, the source of the asset host's base URL
 # (src/modules/shielded/a0/keyAssets.ts — the v1 pin file is gone since M1b), the NDK version (android/build.gradle) and the M1a
-# checkpoint's desk scripts and their tests (scripts/m1a-checkpoint/**).
+# checkpoint's desk scripts and their tests (scripts/m1a-checkpoint/**), and the M1b checkpoint's
+# (scripts/m1b-checkpoint/**: they import M1a's install.mjs and read the recorded devnet tree under
+# src/modules/shielded/a0/__tests__/fixtures/, both already in this list).
 on:
   push:
     branches: [main]
-    paths: ['native/**', '.github/workflows/native-prover.yml', 'android/build.gradle', 'src/modules/shielded/a0/**', 'scripts/a0-vectors/**', 'scripts/m1a-checkpoint/**', 'package-lock.json']
+    paths: ['native/**', '.github/workflows/native-prover.yml', 'android/build.gradle', 'src/modules/shielded/a0/**', 'scripts/a0-vectors/**', 'scripts/m1a-checkpoint/**', 'scripts/m1b-checkpoint/**', 'package-lock.json']
   pull_request:
-    paths: ['native/**', '.github/workflows/native-prover.yml', 'android/build.gradle', 'src/modules/shielded/a0/**', 'scripts/a0-vectors/**', 'scripts/m1a-checkpoint/**', 'package-lock.json']
+    paths: ['native/**', '.github/workflows/native-prover.yml', 'android/build.gradle', 'src/modules/shielded/a0/**', 'scripts/a0-vectors/**', 'scripts/m1a-checkpoint/**', 'scripts/m1b-checkpoint/**', 'package-lock.json']
   workflow_dispatch:
 
 permissions:
@@ -137,6 +139,19 @@ jobs:
         run: |
           files=(scripts/m1a-checkpoint/*.test.mjs)
           [ "${#files[@]}" -ge 2 ] && [ -f "${files[0]}" ] || { echo "::error::no desk test files matched: ${files[*]}"; exit 1; }
+          node --no-warnings --test "${files[@]}"
+
+      # THE M1b CHECKPOINT'S DESK TESTS: the readout parser against the hand-written sample (the app's
+      # Jest suite holds its lines to the same file), the devnet tx decoder against the recorded tree
+      # and the program side's landed public inputs, the BuildConfig reader, the §16 M1b judge with
+      # a negative control per line, and the wipe's rules over a mocked adb (only `pm clear
+      # com.nocturawallet.devnet`, only confirmed, only our signer; the guard refuses the same
+      # arguments). No network, no device. The glob is asserted to match, as above.
+      - name: The M1b checkpoint desk tests (node --test scripts/m1b-checkpoint/*.test.mjs)
+        working-directory: .
+        run: |
+          files=(scripts/m1b-checkpoint/*.test.mjs)
+          [ "${#files[@]}" -ge 2 ] && [ -f "${files[0]}" ] || { echo "::error::no M1b desk test files matched: ${files[*]}"; exit 1; }
           node --no-warnings --test "${files[@]}"
 
       - uses: dtolnay/rust-toolchain@stable

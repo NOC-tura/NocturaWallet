@@ -34,6 +34,7 @@ import type {A0RestoreStats} from './recovery';
 import {reconcileA0PendingDeposits} from './depositFlow';
 import type {A0ReconcileReport} from './depositFlow';
 import type {A0SyncOptions} from './treeSync';
+import {readA0Startup} from './checkpointReadout';
 
 export interface A0StartupResult {
   /** why a restore ran, or null when the record existed and decoded */
@@ -95,6 +96,8 @@ function setState(s: A0StartupState): void {
   for (const l of listeners) {
     l(s);
   }
+  // The M1b checkpoint's readout (devnet build only; public values only — checkpointReadout.ts).
+  readA0Startup(s, () => loadA0NoteStore().notes);
 }
 
 /** The session's startup state (for the shielded balance, Task 5 (screens)). */

@@ -93,6 +93,7 @@ import {simulateTransaction} from '../../solana/simulation';
 import {checkInstructions} from '../../solana/instructionChecks';
 import type {TransferCheck} from '../../solana/simulationChecks';
 import type {SimulationResult} from '../../solana/types';
+import {readA0DepositOutcome, readA0DepositSubmitted} from './checkpointReadout';
 import {pollConfirmation} from '../../solana/signAndSend';
 import {zeroize} from '../../session/zeroize';
 
@@ -461,6 +462,28 @@ export async function submitA0Deposit(
   seed: Uint8Array,
   options: A0SubmitOptions = {},
 ): Promise<A0DepositOutcome> {
+  // The M1b checkpoint's readout (devnet build only; public values only — checkpointReadout.ts):
+  // the send accepted (the kill window opens), then the outcome.
+  const pub = {depositor: p.depositor, amount: p.amount, commitment: p.commitment};
+  const outcome = await submitOnce(connection, p, seed, {
+    ...options,
+    onStage: (stage, signature) => {
+      if (stage === 'submitted' && signature) {
+        readA0DepositSubmitted({...pub, signature});
+      }
+      options.onStage?.(stage, signature);
+    },
+  });
+  readA0DepositOutcome(pub, outcome);
+  return outcome;
+}
+
+async function submitOnce(
+  connection: Connection,
+  p: A0PreparedDeposit,
+  seed: Uint8Array,
+  options: A0SubmitOptions,
+): Promise<A0DepositOutcome> {
   const bound = options.bound ?? mmkvSecure();
   options.onStage?.('signing');
   let secretKey: Uint8Array | null = null;
@@ -559,11 +582,16 @@ const stillPendingDeposit = (rho: string, bound: A0StoreBinding): boolean => {
   return n !== undefined && n.status === 'pending' && n.lastValidBlockHeight !== undefined;
 };
 
-/** A note settled by another flow while this run reached it (`skipped`) is in none of the lists. */
+/**
+ * A note settled by another flow while this run reached it is in none of the lists; `skipped`
+ * counts those (Task 7: the checkpoint readout reports it, so a note missing from all three lists
+ * is accounted for).
+ */
 export interface A0ReconcileReport {
   confirmed: {rho: string; leafIndex: number; signature: string}[];
   dropped: {rho: string; reason: 'expired' | 'foreign'}[];
   stillPending: {rho: string; reason: 'not-expired' | 'not-in-sync'}[];
+  skipped: number;
 }
 
 /**
@@ -584,18 +612,20 @@ export async function reconcileA0PendingDeposits(
   options: {sync?: A0SyncOptions; bound?: A0StoreBinding} = {},
 ): Promise<A0ReconcileReport> {
   const bound = options.bound ?? mmkvSecure();
-  const report: A0ReconcileReport = {confirmed: [], dropped: [], stillPending: []};
+  const report: A0ReconcileReport = {confirmed: [], dropped: [], stillPending: [], skipped: 0};
   const pending = loadA0NoteStore(bound).notes.filter(n => n.status === 'pending' && n.lastValidBlockHeight !== undefined);
   let tree: A0VerifiedTree | null = null;
   let finalizedHeight: number | null = null;
   for (const n of pending) {
     if (!stillPendingDeposit(n.rho, bound)) {
+      report.skipped += 1;
       continue; // settled elsewhere before its turn
     }
     if (await rhoMarkerExists(connection, n.rho, 'confirmed')) {
       tree ??= (await syncA0Tree(connection, options.sync)).tree;
       const s = settle(tree, n);
       if (!stillPendingDeposit(n.rho, bound)) {
+        report.skipped += 1;
         continue; // settled elsewhere while this run read the chain
       }
       if (s.kind === 'ours') {
@@ -620,6 +650,7 @@ export async function reconcileA0PendingDeposits(
       continue;
     }
     if (!stillPendingDeposit(n.rho, bound)) {
+      report.skipped += 1;
       continue; // settled elsewhere while this run read the chain
     }
     dropA0PendingDeposit(n.rho, bound);

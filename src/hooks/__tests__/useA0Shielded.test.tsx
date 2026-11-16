@@ -46,7 +46,7 @@ jest.mock('../../modules/shielded/a0/depositFlow', () => ({
 const note = (amount: bigint, status: A0Note['status']): A0Note => ({commitment: 'c', amount, rho: 'r', status});
 const READY: A0StartupState = {
   phase: 'ready',
-  result: {restoredBecause: null, restore: null, reconcile: {confirmed: [], dropped: [], stillPending: []}},
+  result: {restoredBecause: null, restore: null, reconcile: {confirmed: [], dropped: [], stillPending: [], skipped: 0}},
 };
 
 beforeEach(() => {
@@ -58,7 +58,7 @@ beforeEach(() => {
   mockEnsure.mockReset();
   mockRetrieve.mockReset().mockResolvedValue('words');
   mockInstance.current = {instance: 'A'};
-  mockReconcile.mockReset().mockResolvedValue({confirmed: [], dropped: [], stillPending: []});
+  mockReconcile.mockReset().mockResolvedValue({confirmed: [], dropped: [], stillPending: [], skipped: 0});
 });
 
 describe('a0ShieldedView', () => {
@@ -129,7 +129,7 @@ describe('retryA0Startup', () => {
 });
 
 describe('R1-m9 / R2-N2 / R3-N5: "Check again" on a pending deposit', () => {
-  const EMPTY = {confirmed: [], dropped: [], stillPending: []};
+  const EMPTY = {confirmed: [], dropped: [], stillPending: [], skipped: 0};
 
   it('runs reconcileA0PendingDeposits bound to the instance open NOW (no seed, no keychain read)', async () => {
     const open = mockInstance.current;
@@ -179,7 +179,7 @@ describe('R1-m9 / R2-N2 / R3-N5: "Check again" on a pending deposit', () => {
     mockNotes = [note(1_000n, 'unspent'), note(40n, 'pending')];
     mockReconcile.mockImplementation(async () => {
       mockNotes = [note(1_000n, 'unspent'), note(40n, 'unspent')]; // the reconcile confirmed it
-      return {confirmed: [{rho: 'r', leafIndex: 17, signature: 's'}], dropped: [], stillPending: []};
+      return {confirmed: [{rho: 'r', leafIndex: 17, signature: 's'}], dropped: [], stillPending: [], skipped: 0};
     });
     const r = render(<Probe />);
     expect(r.getByTestId('v').props.children).toBe('ready 1000 40');
@@ -203,7 +203,7 @@ describe('R1-m9 / R2-N2 / R3-N5: "Check again" on a pending deposit', () => {
       mockListeners.forEach(l => l(READY));
     });
     expect(r.getByTestId('disabled').props.children).toBe('false');
-    mockReconcile.mockResolvedValue({confirmed: [], dropped: [], stillPending: [{rho: 'r', reason: 'not-expired'}]});
+    mockReconcile.mockResolvedValue({confirmed: [], dropped: [], stillPending: [{rho: 'r', reason: 'not-expired'}], skipped: 0});
     await act(async () => {
       fireEvent.press(r.getByTestId('run'));
     });

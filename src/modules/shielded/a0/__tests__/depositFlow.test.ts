@@ -460,6 +460,7 @@ describe('submit refusals and outcomes that leave the note pending', () => {
       confirmed: [],
       dropped: [{rho: p.rho, reason: 'expired'}],
       stillPending: [],
+      skipped: 0,
     });
     expect(loadA0NoteStore()).toEqual({nextDepositIndex: 1n, notes: []});
   });
@@ -474,6 +475,7 @@ describe('submit refusals and outcomes that leave the note pending', () => {
       confirmed: [],
       dropped: [{rho: p.rho, reason: 'foreign'}],
       stillPending: [],
+      skipped: 0,
     });
     expect(loadA0NoteStore()).toEqual({nextDepositIndex: 1n, notes: []});
   });
@@ -820,7 +822,7 @@ describe('Task 5 controller ruling: "Check again" overlaps a submit\'s settle lo
     await expect(sending).resolves.toMatchObject({status: 'unspent', leafIndex: RECORDED_LEAVES});
     const afterSubmit = raw();
     net.release();
-    await expect(checking).resolves.toEqual({confirmed: [], dropped: [], stillPending: []});
+    await expect(checking).resolves.toEqual({confirmed: [], dropped: [], stillPending: [], skipped: 1});
     expect(raw()).toBe(afterSubmit);
     expect(noteOf(p.rho)).toEqual([expect.objectContaining({status: 'unspent', leafIndex: RECORDED_LEAVES})]);
   });
@@ -837,7 +839,7 @@ describe('Task 5 controller ruling: "Check again" overlaps a submit\'s settle lo
     dropA0PendingDeposit(rho);
     const before = raw();
     net.release();
-    await expect(checking).resolves.toEqual({confirmed: [], dropped: [], stillPending: []});
+    await expect(checking).resolves.toEqual({confirmed: [], dropped: [], stillPending: [], skipped: 1});
     expect(raw()).toBe(before);
   });
 
@@ -850,7 +852,7 @@ describe('Task 5 controller ruling: "Check again" overlaps a submit\'s settle lo
     dropA0PendingDeposit(rho);
     const before = raw();
     net.release();
-    await expect(checking).resolves.toEqual({confirmed: [], dropped: [], stillPending: []});
+    await expect(checking).resolves.toEqual({confirmed: [], dropped: [], stillPending: [], skipped: 1});
     expect(raw()).toBe(before);
   });
 
@@ -872,6 +874,7 @@ describe('Task 5 controller ruling: "Check again" overlaps a submit\'s settle lo
       confirmed: [{rho: rhoA, leafIndex: RECORDED_LEAVES, signature: expect.any(String)}],
       dropped: [],
       stillPending: [],
+      skipped: 1,
     });
     const asked = net.requests.filter(r => r.method === 'getAccountInfo').map(r => String(r.params[0]));
     expect(asked).toContain(rhoPda(rhoA)); // positive control: A's marker was read
