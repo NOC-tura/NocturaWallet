@@ -116,3 +116,30 @@ describe('poolLeafBlobs — per-instruction merkle scoping', () => {
     expect(poolLeafBlobs({meta: {logMessages: [LEAF]}}, POOL_PROG, OUR_TREE)).toHaveLength(0);
   });
 });
+
+describe('poolLeafBlobs — an isOurs(ix) predicate (A0, R1-I1: the IDL positions, not `includes`)', () => {
+  const POOL = 'OurPool11111111111111111111111111111111111';
+  const atIdlPositions = (ix: {programId: string; accounts: string[]}) =>
+    ix.accounts[0] === POOL && ix.accounts[1] === OUR_TREE;
+  const frame = (accounts: string[]) =>
+    tx([`Program ${POOL_PROG} invoke [1]`, LEAF, `Program ${POOL_PROG} success`], [
+      {programId: POOL_PROG, accounts},
+    ]);
+
+  it('admits a frame whose instruction the predicate accepts', () => {
+    expect(poolLeafBlobs(frame([POOL, OUR_TREE, THEIR_TREE]), POOL_PROG, atIdlPositions)).toHaveLength(1);
+  });
+
+  it('REJECTS a frame that lists our tree elsewhere ([x, pool, tree]) — `includes` would admit it', () => {
+    const t = frame([THEIR_TREE, POOL, OUR_TREE]);
+    expect(poolLeafBlobs(t, POOL_PROG, atIdlPositions)).toHaveLength(0);
+    expect(poolLeafBlobs(t, POOL_PROG, OUR_TREE)).toHaveLength(1); // the v1 string form: includes
+  });
+
+  it('the predicate never overrides the program checks: a foreign program\'s frame is not admitted', () => {
+    const t = tx([`Program ${EVIL_PROG} invoke [1]`, LEAF, `Program ${EVIL_PROG} success`], [
+      {programId: EVIL_PROG, accounts: [POOL, OUR_TREE]},
+    ]);
+    expect(poolLeafBlobs(t, POOL_PROG, () => true)).toHaveLength(0);
+  });
+});

@@ -135,7 +135,7 @@ function rpcRefusal(u) {
   // before any network call — not merely stripped when recording — so a keyed URL cannot even
   // be used by accident.
   if (u.pathname !== '/') {
-    return `the RPC URL must carry no path (a provider key is often placed there): ${u.origin}${u.pathname}`;
+    return `the RPC URL must carry no path (a provider key is often placed there): ${u.origin}`;
   }
   if (u.search !== '') {
     return `the RPC URL must carry no query string (a provider key would leak into the fixture): ${u.origin}`;
@@ -163,7 +163,8 @@ let parsedRpc;
 try {
   parsedRpc = new URL(rpc);
 } catch {
-  fail(`not a URL: ${rpc}`);
+  // Not echoed: an unparseable string may still carry a key.
+  fail('--rpc is not a URL');
 }
 const refusal = rpcRefusal(parsedRpc);
 if (refusal) {

@@ -119,9 +119,9 @@ describe('parseDepositEvents — forgery resistance', () => {
     expect(parseDepositEvents(logs, TREE)[0]!.leafIndex).toBe(3);
   });
 
-  it('still accepts the legacy Deposit discriminator (pre-rename leaves)', () => {
-    const logs = txFrom(POOL, leafBlob(EVENT_DISC.depositLegacy, 1));
-    expect(parseDepositEvents(logs, TREE)).toHaveLength(1);
+  it('REJECTS the pre-rename Deposit discriminator (m8)', () => {
+    const logs = txFrom(POOL, leafBlob('3ecdf2aff4a98834', 1));
+    expect(parseDepositEvents(logs, TREE)).toHaveLength(0);
   });
 
   it('REJECTS a correctly-shaped leaf forged by another program', () => {

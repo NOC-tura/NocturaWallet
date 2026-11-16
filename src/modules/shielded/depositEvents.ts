@@ -14,11 +14,8 @@ const LEAF_INDEX = 8;
 const ROOT = 32;
 const EVENT_LEN = DISC + COMMITMENT + LEAF_INDEX + ROOT;
 
-/** LeafInserted, plus the pre-rename Deposit event with the identical layout. */
-const LEAF_DISCRIMINATORS: readonly string[] = [
-  EVENT_DISC.leafInserted,
-  EVENT_DISC.depositLegacy,
-];
+/** LeafInserted only — the pre-rename Deposit discriminator is no longer accepted (m8). */
+const LEAF_DISCRIMINATORS: readonly string[] = [EVENT_DISC.leafInserted];
 
 /**
  * Parse Anchor leaf-insertion events from a transaction's log messages:

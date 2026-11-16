@@ -79,7 +79,8 @@ describe('EVENT_DISC', () => {
   it('pins the discriminators published by the program side', () => {
     // sha256("event:<Name>")[0..8], supplied by the program repo 2026-08-08.
     expect(EVENT_DISC.leafInserted).toBe('59f3d408d7bfbb98');
-    expect(EVENT_DISC.depositLegacy).toBe('3ecdf2aff4a98834');
+    // m8: the pre-rename Deposit discriminator is not a key any more.
+    expect(Object.values(EVENT_DISC)).not.toContain('3ecdf2aff4a98834');
     expect(EVENT_DISC.noteCiphertext).toBe('6c50afa0eadfd292');
   });
 });
