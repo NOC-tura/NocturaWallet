@@ -1,0 +1,620 @@
+{
+  "schema": "noctura.relayer.a0-golden/1",
+  "cluster": "devnet",
+  "genesisHash": "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG",
+  "programId": "FeGSSsJtmA7GnMgnpj33JsiceSk1NyFopff2FtQFsMuH",
+  "pool": "8VMe4iZWiq3xQySywih9cciAmzTxMtkawMRYK6JuDdoT",
+  "mint": "ERkpCFGaoWmeZPhKTUHumrqHTP1QmyHVhMJUnxbRPKCs",
+  "_provenance": "Extracted from transactions that LANDED on devnet against the deployed binary (sha256 24775d75…). expectedIxDataHex and accountMetas are the exact bytes and metas the chain accepted; payload is the instruction decoded into the proposed relayer payload fields.",
+  "_feePayer": "fee_payer here is the acceptance payer, not the relayer key. fee_destination = ATA(fee_payer, mint), re-derived on chain; both are encoder inputs.",
+  "vectors": {
+    "transfer": {
+      "landedSignature": "2Av5eFNYPeTUEFsEbuzRfDpQ5KnzK5dwsu6KT2tkmhtegSiZHLxf91o191YHU1Y1noSH92ivWBh5htDAJtP3BATh",
+      "discriminatorHex": "a334c8e78c0345ba",
+      "payload": {
+        "kind": "transfer",
+        "pool": "8VMe4iZWiq3xQySywih9cciAmzTxMtkawMRYK6JuDdoT",
+        "mint": "ERkpCFGaoWmeZPhKTUHumrqHTP1QmyHVhMJUnxbRPKCs",
+        "merkleRoot": "2cc5ef04f99075e36919a39dcbe8e664e8a93be48de26b54a57e38148703b3b7",
+        "nullifier0": "07879537c889c91334ba3845b79d240d8def1cf3d1d2d658e82592ffcc68d955",
+        "nullifier1": "004481212baae85a5fb3b316b7342155e71ab20727bf0ef32111f3eb0dbc6304",
+        "outCommitment0": "2e021968086978f70b1df28529f024295529bf4c6a203733267c6b4b696769f8",
+        "outCommitment1": "21b0239c2f110656ea900099446ab14a21638099ff9bdd8af408dc07fe0f8e00",
+        "fee": "50000",
+        "proofBytes": "0f35e8c7cb21293611981950bbaee78481ee8997ae38ea828929f03cd2cb1a320551f25c603f39c726745a1e6e45e9f796fb7d2002e13fc9ffa8222e4e9eb9e51967d7f0e02b383c41109a40f4d1615a54fb33374f644566a8118af68a2799e704c9fbe45a450e8e06b2a517f0cd0d572b18964fb60821adb6e3ea22be0ff17a235631f3be4627576d85ea7adc1da8155129b22106b5206d9def96edde65a02522f98adef81b5e6ae64bfd4d81fb4bb8f43e41e9d1d6eb2432a4ee04a3dffe37234b0c91848c01890696d0efb5a9b8850c8cd2244a8a09141de1c5cf5b4fed2728354c22449e0b137729987a7b470892570b90bc5c5542f6022603daf2f9b4e8",
+        "publicInputs": [
+          "20251483860923920643466552130369168058933952718515115409783390225134889710519",
+          "3405744157949825070300921049802965629869555250310934224657072562070473988437",
+          "121036819960641995457496113945067050720907446714669614011592652403664249604",
+          "20810100077338820992853468950478139622789585812021453390959132151609370831352",
+          "15237534858479285493559999517463989505812239959405258305284296991323532004864",
+          "2682398932710728289451863586583737043718296808864885766580558010318135811236",
+          "50000"
+        ],
+        "ciphertext0": "0707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707",
+        "ciphertext1": "0707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707"
+      },
+      "expectedIxDataHex": "a334c8e78c0345ba2cc5ef04f99075e36919a39dcbe8e664e8a93be48de26b54a57e38148703b3b707879537c889c91334ba3845b79d240d8def1cf3d1d2d658e82592ffcc68d955004481212baae85a5fb3b316b7342155e71ab20727bf0ef32111f3eb0dbc63042e021968086978f70b1df28529f024295529bf4c6a203733267c6b4b696769f821b0239c2f110656ea900099446ab14a21638099ff9bdd8af408dc07fe0f8e0050c3000000000000000100000f35e8c7cb21293611981950bbaee78481ee8997ae38ea828929f03cd2cb1a320551f25c603f39c726745a1e6e45e9f796fb7d2002e13fc9ffa8222e4e9eb9e51967d7f0e02b383c41109a40f4d1615a54fb33374f644566a8118af68a2799e704c9fbe45a450e8e06b2a517f0cd0d572b18964fb60821adb6e3ea22be0ff17a235631f3be4627576d85ea7adc1da8155129b22106b5206d9def96edde65a02522f98adef81b5e6ae64bfd4d81fb4bb8f43e41e9d1d6eb2432a4ee04a3dffe37234b0c91848c01890696d0efb5a9b8850c8cd2244a8a09141de1c5cf5b4fed2728354c22449e0b137729987a7b470892570b90bc5c5542f6022603daf2f9b4e8800000000707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707800000000707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707",
+      "accountMetas": [
+        {
+          "pubkey": "8VMe4iZWiq3xQySywih9cciAmzTxMtkawMRYK6JuDdoT",
+          "isSigner": false,
+          "isWritable": false
+        },
+        {
+          "pubkey": "5URdh1uLKXPh28AbcXBK1oWYGpQjVbMSjrKiAkt1q1Gc",
+          "isSigner": false,
+          "isWritable": true
+        },
+        {
+          "pubkey": "EmvGkNukYsCbXRkGyDpfo1mfAUe9cXfzSBradyPT7GW9",
+          "isSigner": false,
+          "isWritable": true
+        },
+        {
+          "pubkey": "G7DqR6gbuESPKAoRehfKimznTz3zEVAbGoHnHPQ4VvgG",
+          "isSigner": false,
+          "isWritable": true
+        },
+        {
+          "pubkey": "GoBAmZzHvD6F4KHLNmBFh2wZAGE1dwwufeTbifSHEYfd",
+          "isSigner": true,
+          "isWritable": true
+        },
+        {
+          "pubkey": "3A7JjFg4ZbZrEsvAZReSaWxjCvi5NZUTAyAZaLfQjuYC",
+          "isSigner": false,
+          "isWritable": true
+        },
+        {
+          "pubkey": "9hZSf8jMxBdqcvnYzj6EkQ2gPoZCoX2GcF8f1dgkyLsn",
+          "isSigner": false,
+          "isWritable": true
+        },
+        {
+          "pubkey": "BXSjh2cE3TgrpBaj2v8S844UTWZrg366JA8RWnWJ5CuD",
+          "isSigner": false,
+          "isWritable": false
+        },
+        {
+          "pubkey": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+          "isSigner": false,
+          "isWritable": false
+        },
+        {
+          "pubkey": "11111111111111111111111111111111",
+          "isSigner": false,
+          "isWritable": false
+        }
+      ]
+    },
+    "withdraw_change": {
+      "landedSignature": "2mfMYnbtkXU2cHEyoBXSrCMiiv1goih17wcYhbZRPSsaTUmSHX4mcFgsjiqXE9PHxzdxmttf7TGcZrhGWnW8F92g",
+      "discriminatorHex": "6cf44379ecf67997",
+      "payload": {
+        "kind": "withdraw_change",
+        "pool": "8VMe4iZWiq3xQySywih9cciAmzTxMtkawMRYK6JuDdoT",
+        "mint": "ERkpCFGaoWmeZPhKTUHumrqHTP1QmyHVhMJUnxbRPKCs",
+        "merkleRoot": "298f91ce8da85fdd485f6ea585f56bd92b36b8f9720caa751a6443fcef1c2250",
+        "nullifier": "225b8fd72df5630bad50f3f4d6ea6a5dc50ae599eb8410ccea0fe30e72e1f53a",
+        "withdrawAmount": "700000",
+        "destination": "FDdgBME2Ff66K4LcmGHWsxaphMPWYuoG2d1qiPxoC2d3",
+        "changeCommitment": "0bb46d5008b14dd034a1b6dba8eba671626931a0ea68e8628f703226f4a2f2d5",
+        "fee": "50000",
+        "proofBytes": "2c404a55bea09aebee279f5e412c6da83f94d6c9b70c3b44ffb27d6fbd8997b61b0c45f2c08f0f8b958067c5a6756561ca5ec00ae947b805745b6588d01cb10721d43701caa9ca7327bb1316e34713130872d54f2c83bac3b44e8758684fd07e2f7122bb769d18c357b8a04a681618ef5ab41f5ecef1d018892dbad6d37259132db01f1b8025b3ca23e5e8cff025f08af943c71d815b05f8b4b68f16a2941c0707f2522b53134bf490af445b08279f6c7d4fbf117b00fae91de246749b3b9c251a1c3cb2c19fdd6792a39974258ff1e2665ca1bcd3985ca12287a6788bacc553221eb19ce2f9d432b79b5b1c12fe3cd40f08765c20daaa8e7ea78b4de3985c8d",
+        "publicInputs": [
+          "18798492244064827312019995407268665515553296475709485151037642008318923514448",
+          "15540412685682014106079459953057903894120633988804816554838096547849399563578",
+          "700000",
+          "7998216342418354151397457150926322972010870761521092944670067602276196787010",
+          "2682398932710728289451863586583737043718296808864885766580558010318135811236",
+          "5294228254139009946102588479303389505016871370361601454790233698992985928405",
+          "50000"
+        ]
+      },
+      "expectedIxDataHex": "6cf44379ecf67997298f91ce8da85fdd485f6ea585f56bd92b36b8f9720caa751a6443fcef1c2250225b8fd72df5630bad50f3f4d6ea6a5dc50ae599eb8410ccea0fe30e72e1f53a60ae0a00000000000bb46d5008b14dd034a1b6dba8eba671626931a0ea68e8628f703226f4a2f2d550c3000000000000000100002c404a55bea09aebee279f5e412c6da83f94d6c9b70c3b44ffb27d6fbd8997b61b0c45f2c08f0f8b958067c5a6756561ca5ec00ae947b805745b6588d01cb10721d43701caa9ca7327bb1316e34713130872d54f2c83bac3b44e8758684fd07e2f7122bb769d18c357b8a04a681618ef5ab41f5ecef1d018892dbad6d37259132db01f1b8025b3ca23e5e8cff025f08af943c71d815b05f8b4b68f16a2941c0707f2522b53134bf490af445b08279f6c7d4fbf117b00fae91de246749b3b9c251a1c3cb2c19fdd6792a39974258ff1e2665ca1bcd3985ca12287a6788bacc553221eb19ce2f9d432b79b5b1c12fe3cd40f08765c20daaa8e7ea78b4de3985c8d",
+      "accountMetas": [
+        {
+          "pubkey": "8VMe4iZWiq3xQySywih9cciAmzTxMtkawMRYK6JuDdoT",
+          "isSigner": false,
+          "isWritable": false
+        },
+        {
+          "pubkey": "5URdh1uLKXPh28AbcXBK1oWYGpQjVbMSjrKiAkt1q1Gc",
+          "isSigner": false,
+          "isWritable": true
+        },
+        {
+          "pubkey": "3A7JjFg4ZbZrEsvAZReSaWxjCvi5NZUTAyAZaLfQjuYC",
+          "isSigner": false,
+          "isWritable": true
+        },
+        {
+          "pubkey": "FDdgBME2Ff66K4LcmGHWsxaphMPWYuoG2d1qiPxoC2d3",
+          "isSigner": false,
+          "isWritable": true
+        },
+        {
+          "pubkey": "5VHSihtWx2TEXUaMAWUk5rVcHj5f9UE24ZEdjnBEUnqN",
+          "isSigner": false,
+          "isWritable": true
+        },
+        {
+          "pubkey": "GoBAmZzHvD6F4KHLNmBFh2wZAGE1dwwufeTbifSHEYfd",
+          "isSigner": true,
+          "isWritable": true
+        },
+        {
+          "pubkey": "9hZSf8jMxBdqcvnYzj6EkQ2gPoZCoX2GcF8f1dgkyLsn",
+          "isSigner": false,
+          "isWritable": true
+        },
+        {
+          "pubkey": "9FMFVzo1ZKnrGc36te21evEwgSB5nv2FooY77RVJP7H",
+          "isSigner": false,
+          "isWritable": false
+        },
+        {
+          "pubkey": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+          "isSigner": false,
+          "isWritable": false
+        },
+        {
+          "pubkey": "11111111111111111111111111111111",
+          "isSigner": false,
+          "isWritable": false
+        }
+      ]
+    }
+  },
+  "relayerLanded": {
+    "feePayer": "3jvhiz9qcJAe2zGHvRAiRYXiaFCdjEQrB9KuE5NuFaGe",
+    "date": "2026-11-08",
+    "vectors": {
+      "transfer": {
+        "landedSignature": "53JHT6SgR8oYJ4piH9VmqShnsH92yJGgw7aG4zqKkkkkAFv77XbJrjepUnFA1i2V2iyEE3uYNoq8Q4ZaRFNvFBoN",
+        "programOrder": [
+          "ComputeBudget111111111111111111111111111111",
+          "FeGSSsJtmA7GnMgnpj33JsiceSk1NyFopff2FtQFsMuH"
+        ],
+        "sizeBytes": 1208,
+        "computeUnits": 188701,
+        "payload": {
+          "kind": "transfer",
+          "pool": "8VMe4iZWiq3xQySywih9cciAmzTxMtkawMRYK6JuDdoT",
+          "mint": "ERkpCFGaoWmeZPhKTUHumrqHTP1QmyHVhMJUnxbRPKCs",
+          "merkleRoot": "1b483398c0f6201b602f5d38e2cfc65fe9d20dcf3f85d16b74e96d612716d684",
+          "nullifier0": "08074f329a81296c74136fdd669fe80ab544cf8c89d01df4a65f435f0e61b008",
+          "nullifier1": "08ea96d556952c6a799a87bfb279e16ed644d38d5a81415f34f9437ca9c1f91e",
+          "outCommitment0": "0762411db344985d3563cb7426059a72203ebe91a2ccfa69c0da1a7865fb3e2d",
+          "outCommitment1": "19fecfdd0ee4eec193dcefbe944578232f457af89db4abd0f61d09b612a7ebad",
+          "fee": "10000",
+          "proofBytes": "245172b6ea5f2dd9c5e6a2f10b42e96c11c7bc3b0b637ce176ea18773eb8e7d32420037216eeaf54b1ce4a0d81c882dc3fd817d0d710921702ce4bf080ccc48d2b12e23096e7bded549b7600e0bc763ef6e0c6bb0a70f116761712b5c1ee64c014d015c7bb280ae19f3c3872f85d26fa6daeb6c273fb5e6770abf3c9e3e85a571abf6f67f6acac4f730d9981bb1329604e09b974b19afe7514f25138a3cbdd9f2a2093a33a2fb47726d9aaba79c295a8339f754d2943b3e4044beb8161eeab2e2cbcd0ead341a64138ed0350ba32cdfc5b2e8b45f96c62394dcc63632310e0ea1cf2eb27ac74773b19600ea545b00636601576715b6951a5010ab7ef9c33b96a",
+          "publicInputs": [
+            "12340016007709026007956004602837039705125966734041773120387222375208590956164",
+            "3631417320349536613529264545702404820155488162098626552047438757204284518408",
+            "4032986015363155229648053128159915219495821997725739714337863834455785994526",
+            "3339790366661259742735669915887483160675523211893744400593023748780563578413",
+            "11758034990245917925530524138157303382630222317120066688444575658572423621549",
+            "2682398932710728289451863586583737043718296808864885766580558010318135811236",
+            "10000"
+          ],
+          "ciphertext0": "00c91ee994675e8dc58b336608620d59f621b4dc714640c3809cb1140c338669babdff3d350c8ade3362f2e4dcb8206b89bffd167638e5e55b004187861bf930da9cea38081bf6d544dac028f889140c50aab2317d7b7a414fdd6f5664991816456e36897987ca4be02e1a359c7e326b8b92877e8284c89908348718c26f6762",
+          "ciphertext1": "0c01d25eab74791b4db472acf99f4eea2156dfef50a5900f0935c265b9a14175c23910e6efe24b5d6cba96f00649c8b69923e2b222fa2c4c9eaa6088c820bae74380e68f28d33533c61bf6a717f455b6c63f9cbf2b5a6f881be311e3e3bdad7f3e0b389671a4e461da7ecdaa00b4333198cfdd281530562612da124a72a470cd",
+          "cuLimit": 220000
+        },
+        "expectedIxDataHex": "a334c8e78c0345ba1b483398c0f6201b602f5d38e2cfc65fe9d20dcf3f85d16b74e96d612716d68408074f329a81296c74136fdd669fe80ab544cf8c89d01df4a65f435f0e61b00808ea96d556952c6a799a87bfb279e16ed644d38d5a81415f34f9437ca9c1f91e0762411db344985d3563cb7426059a72203ebe91a2ccfa69c0da1a7865fb3e2d19fecfdd0ee4eec193dcefbe944578232f457af89db4abd0f61d09b612a7ebad102700000000000000010000245172b6ea5f2dd9c5e6a2f10b42e96c11c7bc3b0b637ce176ea18773eb8e7d32420037216eeaf54b1ce4a0d81c882dc3fd817d0d710921702ce4bf080ccc48d2b12e23096e7bded549b7600e0bc763ef6e0c6bb0a70f116761712b5c1ee64c014d015c7bb280ae19f3c3872f85d26fa6daeb6c273fb5e6770abf3c9e3e85a571abf6f67f6acac4f730d9981bb1329604e09b974b19afe7514f25138a3cbdd9f2a2093a33a2fb47726d9aaba79c295a8339f754d2943b3e4044beb8161eeab2e2cbcd0ead341a64138ed0350ba32cdfc5b2e8b45f96c62394dcc63632310e0ea1cf2eb27ac74773b19600ea545b00636601576715b6951a5010ab7ef9c33b96a8000000000c91ee994675e8dc58b336608620d59f621b4dc714640c3809cb1140c338669babdff3d350c8ade3362f2e4dcb8206b89bffd167638e5e55b004187861bf930da9cea38081bf6d544dac028f889140c50aab2317d7b7a414fdd6f5664991816456e36897987ca4be02e1a359c7e326b8b92877e8284c89908348718c26f6762800000000c01d25eab74791b4db472acf99f4eea2156dfef50a5900f0935c265b9a14175c23910e6efe24b5d6cba96f00649c8b69923e2b222fa2c4c9eaa6088c820bae74380e68f28d33533c61bf6a717f455b6c63f9cbf2b5a6f881be311e3e3bdad7f3e0b389671a4e461da7ecdaa00b4333198cfdd281530562612da124a72a470cd",
+        "accountMetas": [
+          {
+            "pubkey": "8VMe4iZWiq3xQySywih9cciAmzTxMtkawMRYK6JuDdoT",
+            "isSigner": false,
+            "isWritable": false
+          },
+          {
+            "pubkey": "5URdh1uLKXPh28AbcXBK1oWYGpQjVbMSjrKiAkt1q1Gc",
+            "isSigner": false,
+            "isWritable": true
+          },
+          {
+            "pubkey": "H2wyvwmAiLkcqx6gizYv3EimAhMiSHEYFGooPAUM8r9i",
+            "isSigner": false,
+            "isWritable": true
+          },
+          {
+            "pubkey": "6MSnpSSmXihFrXcHWZbmgyAYq7nfva5yLVSkoFa21nFJ",
+            "isSigner": false,
+            "isWritable": true
+          },
+          {
+            "pubkey": "3jvhiz9qcJAe2zGHvRAiRYXiaFCdjEQrB9KuE5NuFaGe",
+            "isSigner": true,
+            "isWritable": true
+          },
+          {
+            "pubkey": "3A7JjFg4ZbZrEsvAZReSaWxjCvi5NZUTAyAZaLfQjuYC",
+            "isSigner": false,
+            "isWritable": true
+          },
+          {
+            "pubkey": "9643JXJm5ZZwv8yaTozQ2qMeVw6xHQWhquGsD87knME9",
+            "isSigner": false,
+            "isWritable": true
+          },
+          {
+            "pubkey": "BXSjh2cE3TgrpBaj2v8S844UTWZrg366JA8RWnWJ5CuD",
+            "isSigner": false,
+            "isWritable": false
+          },
+          {
+            "pubkey": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "isSigner": false,
+            "isWritable": false
+          },
+          {
+            "pubkey": "11111111111111111111111111111111",
+            "isSigner": false,
+            "isWritable": false
+          }
+        ]
+      },
+      "withdraw_change": {
+        "landedSignature": "3UfCx5TDkpXJsUkYJPcoY7Y8gi1vrSDzgNyt9DixWRAMVdbmCypCXn3nEg4vfWv3n7zpbvSSAz6AmtbLDFjGRn2F",
+        "programOrder": [
+          "ComputeBudget111111111111111111111111111111",
+          "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+          "FeGSSsJtmA7GnMgnpj33JsiceSk1NyFopff2FtQFsMuH"
+        ],
+        "sizeBytes": 994,
+        "computeUnits": 187126,
+        "payload": {
+          "kind": "withdraw_change",
+          "pool": "8VMe4iZWiq3xQySywih9cciAmzTxMtkawMRYK6JuDdoT",
+          "mint": "ERkpCFGaoWmeZPhKTUHumrqHTP1QmyHVhMJUnxbRPKCs",
+          "merkleRoot": "0514c8374f9a62553555855aa476c8764d36c2b9953913aa1b02ba863509696c",
+          "nullifier": "2123772ec3ef328c887d88e87b2d2ee4c7860677850473bbc260321916ea74ac",
+          "withdrawAmount": "400000",
+          "destination": "DzU8HkTy7b5jK8LvahytrsgimF9Navxc9HgzA7y167Zt",
+          "destinationOwner": "HV996fcQT193sXfh3fgCEDjxsWwWxQC6cVdb1EyZxdJR",
+          "changeCommitment": "02c05cd117088e5df06d12ca5bea3d4d76343ebc7e182729f59d330138db0a79",
+          "fee": "10000",
+          "proofBytes": "1046ded90959286fcce9ca6a0d1a00a6b322888086193e4937c29fd226c161a02957cb0c2e2b1f021ade43ba5e224b054e66321ad7559d6c877d367c4d9d500d0c8f0405a74f1726d0f8b428e4b39d78c88ff11204cfc7ec89a6abb040fec8f0291f168987fee1c87f8103cab0f99c567b548d95ced1a422ae96f0aa4baa9fd51a37bc5afb81ce3504f283a9509b56fc179d5d87db461a998463e4276916b2702a29bf7f47aa940994b216bae2cde05083a23095708244f321cb00a6465d9dd40f340bd8f72b8a3d83eb6179c4eff48b4aec62ab89523e0ae2fca524fa46693d0764fabba5f48e58c32d889212806dd9beef8796dd4a8f35fdc21a25a2ebfd3c",
+          "publicInputs": [
+            "2298283024661505416563578974394380226484884360416599517120471905470455048556",
+            "14988986219122146035587031501944129150124246717078974378411767040640933328044",
+            "400000",
+            "21640521307275688592030626077255356052101577676078190368976047196079175571216",
+            "2682398932710728289451863586583737043718296808864885766580558010318135811236",
+            "1244500931322443226738236430330139399338433614630062116300282784498300160633",
+            "10000"
+          ],
+          "cuLimit": 200000
+        },
+        "expectedIxDataHex": "6cf44379ecf679970514c8374f9a62553555855aa476c8764d36c2b9953913aa1b02ba863509696c2123772ec3ef328c887d88e87b2d2ee4c7860677850473bbc260321916ea74ac801a06000000000002c05cd117088e5df06d12ca5bea3d4d76343ebc7e182729f59d330138db0a791027000000000000000100001046ded90959286fcce9ca6a0d1a00a6b322888086193e4937c29fd226c161a02957cb0c2e2b1f021ade43ba5e224b054e66321ad7559d6c877d367c4d9d500d0c8f0405a74f1726d0f8b428e4b39d78c88ff11204cfc7ec89a6abb040fec8f0291f168987fee1c87f8103cab0f99c567b548d95ced1a422ae96f0aa4baa9fd51a37bc5afb81ce3504f283a9509b56fc179d5d87db461a998463e4276916b2702a29bf7f47aa940994b216bae2cde05083a23095708244f321cb00a6465d9dd40f340bd8f72b8a3d83eb6179c4eff48b4aec62ab89523e0ae2fca524fa46693d0764fabba5f48e58c32d889212806dd9beef8796dd4a8f35fdc21a25a2ebfd3c",
+        "accountMetas": [
+          {
+            "pubkey": "8VMe4iZWiq3xQySywih9cciAmzTxMtkawMRYK6JuDdoT",
+            "isSigner": false,
+            "isWritable": false
+          },
+          {
+            "pubkey": "5URdh1uLKXPh28AbcXBK1oWYGpQjVbMSjrKiAkt1q1Gc",
+            "isSigner": false,
+            "isWritable": true
+          },
+          {
+            "pubkey": "3A7JjFg4ZbZrEsvAZReSaWxjCvi5NZUTAyAZaLfQjuYC",
+            "isSigner": false,
+            "isWritable": true
+          },
+          {
+            "pubkey": "DzU8HkTy7b5jK8LvahytrsgimF9Navxc9HgzA7y167Zt",
+            "isSigner": false,
+            "isWritable": true
+          },
+          {
+            "pubkey": "2AWBo9WERfbSoTveYAYjHS2i25Q7Lf95Qy81D3FZ49WM",
+            "isSigner": false,
+            "isWritable": true
+          },
+          {
+            "pubkey": "3jvhiz9qcJAe2zGHvRAiRYXiaFCdjEQrB9KuE5NuFaGe",
+            "isSigner": true,
+            "isWritable": true
+          },
+          {
+            "pubkey": "9643JXJm5ZZwv8yaTozQ2qMeVw6xHQWhquGsD87knME9",
+            "isSigner": false,
+            "isWritable": true
+          },
+          {
+            "pubkey": "9FMFVzo1ZKnrGc36te21evEwgSB5nv2FooY77RVJP7H",
+            "isSigner": false,
+            "isWritable": false
+          },
+          {
+            "pubkey": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "isSigner": false,
+            "isWritable": false
+          },
+          {
+            "pubkey": "11111111111111111111111111111111",
+            "isSigner": false,
+            "isWritable": false
+          }
+        ]
+      }
+    }
+  },
+  "relayerLandedP1P2": {
+    "feePayer": "3jvhiz9qcJAe2zGHvRAiRYXiaFCdjEQrB9KuE5NuFaGe",
+    "date": "2026-11-08",
+    "gasGrantLamports": "3000000",
+    "vectors": {
+      "transfer": {
+        "landedSignature": "4NvsT8goDZy7vrVM8rF1P9BQTZPyCwAcTkMzWRx7N36JSvzbEdAUZNkqaecwUiffmynaLLvypodjZvPvdcy3Y969",
+        "programOrder": [
+          "ComputeBudget111111111111111111111111111111",
+          "FeGSSsJtmA7GnMgnpj33JsiceSk1NyFopff2FtQFsMuH"
+        ],
+        "sizeBytes": 1208,
+        "computeUnits": 191888,
+        "payload": {
+          "kind": "transfer",
+          "pool": "8VMe4iZWiq3xQySywih9cciAmzTxMtkawMRYK6JuDdoT",
+          "mint": "ERkpCFGaoWmeZPhKTUHumrqHTP1QmyHVhMJUnxbRPKCs",
+          "merkleRoot": "0b5a46aba6255bc9acd1903e9353576e54047ba652972692869af13f5bbcb7fc",
+          "nullifier0": "0d1c0d20d53746019eb7d4768ca37e3d4e5b72b412edbcdff4c00abec8c5e9df",
+          "nullifier1": "2b8fa2b097cabc9ba0358cb7f2cce987776e40a30ccdf28cf62db4989d19bb33",
+          "outCommitment0": "01f9ded863146ed95354bedcd3dc0fa0fd481577cba2d0c4dd8b8028af76b70b",
+          "outCommitment1": "132086b2dc68c645c9b31d84c8050073003a0bc2c8d3ee50997f6b8d57725595",
+          "fee": "10000",
+          "proofBytes": "27add5c37517efd9694a9f93c76d3f170acea9ecf64faf21e97c23ef048e3be70970a0e2e2e2fc79fa82d4acf1b908eaa4e88d0c7b637a6ac4415969451c78f92e66abed4714daf58a1a8c5c5282c4141b3cad99fcd50e40811368324f88b2ff07b2ceb367fb8e7c72e3c4016414ce7b05f05f5c7ffe9c6efc2dc5c20f7bc3fc291efc44aaaf926c9b00cb9fada8bb662b7467c2ede9060be868b9cb77d0a4900c04b7d9375b6fd4ccecee137003d26e0b16e5e2099733ae1135f7e87cde8e38297e1bd1a9549dc43313d349d1253a4cbb65fcd38ff7263bfa6da8a5ee4507940824681773a08e3dc622e8e8e5967ac5cdc8019b9adf6095f4b0e772c2c4f800",
+          "publicInputs": [
+            "5134945320138349115426278306427121502915041162546579494406993590311871887356",
+            "5929629357271315745129059845040646141089518731934919109308481844364169308639",
+            "19703234463188114252357782119405817738120535297228916131049409089002224073523",
+            "893795789184874221471555072935503987552664065959057363511818531975432943371",
+            "8651412885247752263372601221581502036123301629278974264709726728469966116245",
+            "2682398932710728289451863586583737043718296808864885766580558010318135811236",
+            "10000"
+          ],
+          "ciphertext0": "366307c359b78b362f4948a4a4995bca27be1da8123d0f4ba569053da4830a6f041562b0c28f85c3afbff008926bb13d441a116b1a82e5f04dda708373ee0379e42baf10834ee14c283ab7405816e5f3c52b6ecfdeca73d1110fda516fc82ef150d5aacb4b84feb41a820e006930ab45a441cba278e41cedc4b73b86d99906c0",
+          "ciphertext1": "7f26a1fb6c19e18b80e58b82d38cd92f3b85d5097cbf0d7c9db8fcbc9650bf82ca51b928c48cf7dae901874cd906e555848311727afa293c94f01c7ecb338f19865f638fff4e178cbf2f53943ca57935859ad57aa55c2f28062ff576a1a3218c8599c9a051cbb8b5c2a1904d1d1ee2383fefa07a3d2925554ae3db2fc1fc4b2d",
+          "cuLimit": 220000
+        },
+        "expectedIxDataHex": "a334c8e78c0345ba0b5a46aba6255bc9acd1903e9353576e54047ba652972692869af13f5bbcb7fc0d1c0d20d53746019eb7d4768ca37e3d4e5b72b412edbcdff4c00abec8c5e9df2b8fa2b097cabc9ba0358cb7f2cce987776e40a30ccdf28cf62db4989d19bb3301f9ded863146ed95354bedcd3dc0fa0fd481577cba2d0c4dd8b8028af76b70b132086b2dc68c645c9b31d84c8050073003a0bc2c8d3ee50997f6b8d5772559510270000000000000001000027add5c37517efd9694a9f93c76d3f170acea9ecf64faf21e97c23ef048e3be70970a0e2e2e2fc79fa82d4acf1b908eaa4e88d0c7b637a6ac4415969451c78f92e66abed4714daf58a1a8c5c5282c4141b3cad99fcd50e40811368324f88b2ff07b2ceb367fb8e7c72e3c4016414ce7b05f05f5c7ffe9c6efc2dc5c20f7bc3fc291efc44aaaf926c9b00cb9fada8bb662b7467c2ede9060be868b9cb77d0a4900c04b7d9375b6fd4ccecee137003d26e0b16e5e2099733ae1135f7e87cde8e38297e1bd1a9549dc43313d349d1253a4cbb65fcd38ff7263bfa6da8a5ee4507940824681773a08e3dc622e8e8e5967ac5cdc8019b9adf6095f4b0e772c2c4f80080000000366307c359b78b362f4948a4a4995bca27be1da8123d0f4ba569053da4830a6f041562b0c28f85c3afbff008926bb13d441a116b1a82e5f04dda708373ee0379e42baf10834ee14c283ab7405816e5f3c52b6ecfdeca73d1110fda516fc82ef150d5aacb4b84feb41a820e006930ab45a441cba278e41cedc4b73b86d99906c0800000007f26a1fb6c19e18b80e58b82d38cd92f3b85d5097cbf0d7c9db8fcbc9650bf82ca51b928c48cf7dae901874cd906e555848311727afa293c94f01c7ecb338f19865f638fff4e178cbf2f53943ca57935859ad57aa55c2f28062ff576a1a3218c8599c9a051cbb8b5c2a1904d1d1ee2383fefa07a3d2925554ae3db2fc1fc4b2d",
+        "accountMetas": [
+          {
+            "pubkey": "8VMe4iZWiq3xQySywih9cciAmzTxMtkawMRYK6JuDdoT",
+            "isSigner": false,
+            "isWritable": false
+          },
+          {
+            "pubkey": "5URdh1uLKXPh28AbcXBK1oWYGpQjVbMSjrKiAkt1q1Gc",
+            "isSigner": false,
+            "isWritable": true
+          },
+          {
+            "pubkey": "3LJuE7huNJSb2oNt8bxFURSyUG6NXmRJsRHQPvr38sJw",
+            "isSigner": false,
+            "isWritable": true
+          },
+          {
+            "pubkey": "HKtAqfEt4GrHEXSqBw7jQe1jQhPA9BwG3z3EctiB9ReH",
+            "isSigner": false,
+            "isWritable": true
+          },
+          {
+            "pubkey": "3jvhiz9qcJAe2zGHvRAiRYXiaFCdjEQrB9KuE5NuFaGe",
+            "isSigner": true,
+            "isWritable": true
+          },
+          {
+            "pubkey": "3A7JjFg4ZbZrEsvAZReSaWxjCvi5NZUTAyAZaLfQjuYC",
+            "isSigner": false,
+            "isWritable": true
+          },
+          {
+            "pubkey": "9643JXJm5ZZwv8yaTozQ2qMeVw6xHQWhquGsD87knME9",
+            "isSigner": false,
+            "isWritable": true
+          },
+          {
+            "pubkey": "BXSjh2cE3TgrpBaj2v8S844UTWZrg366JA8RWnWJ5CuD",
+            "isSigner": false,
+            "isWritable": false
+          },
+          {
+            "pubkey": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "isSigner": false,
+            "isWritable": false
+          },
+          {
+            "pubkey": "11111111111111111111111111111111",
+            "isSigner": false,
+            "isWritable": false
+          }
+        ]
+      },
+      "withdraw_change": {
+        "landedSignature": "47k56NfBWLTijeeSqfkW484fSZxSweVFdtPVsRM5qixRrGvBxWs8vRfaHXG6yFa36cBStRmXFyNTk5wq1NJvxuko",
+        "programOrder": [
+          "ComputeBudget111111111111111111111111111111",
+          "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+          "11111111111111111111111111111111",
+          "FeGSSsJtmA7GnMgnpj33JsiceSk1NyFopff2FtQFsMuH"
+        ],
+        "sizeBytes": 1011,
+        "computeUnits": 188914,
+        "gasGrant": {
+          "from": "3jvhiz9qcJAe2zGHvRAiRYXiaFCdjEQrB9KuE5NuFaGe",
+          "to": "C3XoBqjEZWEvdrzNHCHfKp3RefSBEq8rRwNDZc5t5tvo",
+          "lamports": "3000000",
+          "dataHex": "02000000c0c62d0000000000"
+        },
+        "payload": {
+          "kind": "withdraw_change",
+          "pool": "8VMe4iZWiq3xQySywih9cciAmzTxMtkawMRYK6JuDdoT",
+          "mint": "ERkpCFGaoWmeZPhKTUHumrqHTP1QmyHVhMJUnxbRPKCs",
+          "merkleRoot": "2d04b345607ccec586932cefe2aef8401aba2deffac9899188904fb9c508da4c",
+          "nullifier": "14f7d42bc135444a3dcbed0c1c92b97f8d343148f9573f08ee26a658fcc9401c",
+          "withdrawAmount": "400000",
+          "destination": "51cFpuvtAdvoKs5sSG7LuDSkPYTkRRSVAg5W6DeWyH3K",
+          "destinationOwner": "C3XoBqjEZWEvdrzNHCHfKp3RefSBEq8rRwNDZc5t5tvo",
+          "changeCommitment": "18b0003b7cdf503fed59ca10a88b91ca9e4718a3ebd05cdb4acab7bf1efae8c2",
+          "fee": "10000",
+          "proofBytes": "20020029af4a2642e26ef8dddf534af43e92dcb25e5ba2ebdb242690bff2e33c070b64155076fe6b2a89b5a5fa30e2fd46b5c1be7898b9494935d6e3bb6716b72db2ef636d2fdbfdc942989cd9f678d6dfbe7232a87d4da98bba1fcc058af59e2bdfb7f68790346548117c7f85f3250604e62f75971c08488ef0e3ebababa12f035dfb16077d3ad1db1499c73507d6de16eeaca408f07d59fc0aca149d24e54c21884dd9df7e101c4d58a9f221c59cbafecc0d2e727e2d2b60c59d9313704f7518c8eb7b55377292d871f6634ac08c5be66cb83c6a231f26391a52ef19c7bd6f14282df89441f80fb049bc220f4422056fa462038dcd4d2dc8717eb19e6f8dc0",
+          "publicInputs": [
+            "20362382857499819469014390640710227543553580360459472082668504213049538304588",
+            "9484132546515999949097833943109868296293479121732867268691073131375445491740",
+            "400000",
+            "5064322441591233162875927939727956236971877724975220739510091876697745059573",
+            "2682398932710728289451863586583737043718296808864885766580558010318135811236",
+            "11166475053186832327146709724952477461438244094763070403995664262326646401218",
+            "10000"
+          ],
+          "cuLimit": 200000
+        },
+        "expectedIxDataHex": "6cf44379ecf679972d04b345607ccec586932cefe2aef8401aba2deffac9899188904fb9c508da4c14f7d42bc135444a3dcbed0c1c92b97f8d343148f9573f08ee26a658fcc9401c801a06000000000018b0003b7cdf503fed59ca10a88b91ca9e4718a3ebd05cdb4acab7bf1efae8c210270000000000000001000020020029af4a2642e26ef8dddf534af43e92dcb25e5ba2ebdb242690bff2e33c070b64155076fe6b2a89b5a5fa30e2fd46b5c1be7898b9494935d6e3bb6716b72db2ef636d2fdbfdc942989cd9f678d6dfbe7232a87d4da98bba1fcc058af59e2bdfb7f68790346548117c7f85f3250604e62f75971c08488ef0e3ebababa12f035dfb16077d3ad1db1499c73507d6de16eeaca408f07d59fc0aca149d24e54c21884dd9df7e101c4d58a9f221c59cbafecc0d2e727e2d2b60c59d9313704f7518c8eb7b55377292d871f6634ac08c5be66cb83c6a231f26391a52ef19c7bd6f14282df89441f80fb049bc220f4422056fa462038dcd4d2dc8717eb19e6f8dc0",
+        "accountMetas": [
+          {
+            "pubkey": "8VMe4iZWiq3xQySywih9cciAmzTxMtkawMRYK6JuDdoT",
+            "isSigner": false,
+            "isWritable": false
+          },
+          {
+            "pubkey": "5URdh1uLKXPh28AbcXBK1oWYGpQjVbMSjrKiAkt1q1Gc",
+            "isSigner": false,
+            "isWritable": true
+          },
+          {
+            "pubkey": "3A7JjFg4ZbZrEsvAZReSaWxjCvi5NZUTAyAZaLfQjuYC",
+            "isSigner": false,
+            "isWritable": true
+          },
+          {
+            "pubkey": "51cFpuvtAdvoKs5sSG7LuDSkPYTkRRSVAg5W6DeWyH3K",
+            "isSigner": false,
+            "isWritable": true
+          },
+          {
+            "pubkey": "5BewTGM1iJdX2xYtPvtxf2SaS5oJSxdRpFaV7z97yBRj",
+            "isSigner": false,
+            "isWritable": true
+          },
+          {
+            "pubkey": "3jvhiz9qcJAe2zGHvRAiRYXiaFCdjEQrB9KuE5NuFaGe",
+            "isSigner": true,
+            "isWritable": true
+          },
+          {
+            "pubkey": "9643JXJm5ZZwv8yaTozQ2qMeVw6xHQWhquGsD87knME9",
+            "isSigner": false,
+            "isWritable": true
+          },
+          {
+            "pubkey": "9FMFVzo1ZKnrGc36te21evEwgSB5nv2FooY77RVJP7H",
+            "isSigner": false,
+            "isWritable": false
+          },
+          {
+            "pubkey": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "isSigner": false,
+            "isWritable": false
+          },
+          {
+            "pubkey": "11111111111111111111111111111111",
+            "isSigner": false,
+            "isWritable": false
+          }
+        ]
+      },
+      "withdraw_change_existing": {
+        "landedSignature": "3oHktG2XKhxoQQbNX4KfoANb8wJovtfHhduz2nA8G94yX2ctuiyDYbSHECdJkjtKh7uRRPssRUUyNQ7uHovutVw7",
+        "programOrder": [
+          "ComputeBudget111111111111111111111111111111",
+          "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+          "FeGSSsJtmA7GnMgnpj33JsiceSk1NyFopff2FtQFsMuH"
+        ],
+        "sizeBytes": 994,
+        "computeUnits": 179744,
+        "payload": {
+          "kind": "withdraw_change",
+          "pool": "8VMe4iZWiq3xQySywih9cciAmzTxMtkawMRYK6JuDdoT",
+          "mint": "ERkpCFGaoWmeZPhKTUHumrqHTP1QmyHVhMJUnxbRPKCs",
+          "merkleRoot": "158c1368f6f8bd1f9879d02f7bcd3d48504bb0c5a2cbb90651351dc8c64b3e68",
+          "nullifier": "12bf8ff8389acf35c98b65fccfc269d675090d5bdb7ac80261c12f4036fcf3c5",
+          "withdrawAmount": "400000",
+          "destination": "9hZSf8jMxBdqcvnYzj6EkQ2gPoZCoX2GcF8f1dgkyLsn",
+          "destinationOwner": "GoBAmZzHvD6F4KHLNmBFh2wZAGE1dwwufeTbifSHEYfd",
+          "changeCommitment": "05ea606f1869e62f1728a05e745b4a77d2cce7f36e9d8eaa6cad964df903b2e4",
+          "fee": "10000",
+          "proofBytes": "094925d03211bedf2abe9f6a74b426d96dd30d44d9ae28274910a83f715efe340a5a383399072968556b3e14be117535c05f4b637f43245756ba8becb8720db52227959e1819e1f0574d9830a002e5a01b3786f6b044ccfc88dcebf90d285a45272d4cb665666f4f57729c619c4dc1c476d3ba3b2ce725b2b6e837f8c61262bf00e6b8d87f449fb0934ab4ded29640e85f9502fc9c7b754da7019cb0ad696d4c142a21ef3f83a290f1e2ef970f535f8acd234be675420ddd9752f46e1a26266e1e2e45ef21f4ea643c130bfa2dc0f3485db7aeb83f5bfa6bed4b9800626a3b251fd81553957b9851835467fd1300ede794300bbcaf84ab0c82e77ff4385f2bc4",
+          "publicInputs": [
+            "9746062372341759308998166912629699250599389662428510634202666263773516086888",
+            "8480092705627004134349996800267621753274045443023333606521739878870026089413",
+            "400000",
+            "14687442035909879238328172768290267683111510669125216878377864740814573082619",
+            "2682398932710728289451863586583737043718296808864885766580558010318135811236",
+            "2675672018848905208850588230063512632820578489822661659407606148566412931812",
+            "10000"
+          ],
+          "cuLimit": 200000
+        },
+        "expectedIxDataHex": "6cf44379ecf67997158c1368f6f8bd1f9879d02f7bcd3d48504bb0c5a2cbb90651351dc8c64b3e6812bf8ff8389acf35c98b65fccfc269d675090d5bdb7ac80261c12f4036fcf3c5801a06000000000005ea606f1869e62f1728a05e745b4a77d2cce7f36e9d8eaa6cad964df903b2e4102700000000000000010000094925d03211bedf2abe9f6a74b426d96dd30d44d9ae28274910a83f715efe340a5a383399072968556b3e14be117535c05f4b637f43245756ba8becb8720db52227959e1819e1f0574d9830a002e5a01b3786f6b044ccfc88dcebf90d285a45272d4cb665666f4f57729c619c4dc1c476d3ba3b2ce725b2b6e837f8c61262bf00e6b8d87f449fb0934ab4ded29640e85f9502fc9c7b754da7019cb0ad696d4c142a21ef3f83a290f1e2ef970f535f8acd234be675420ddd9752f46e1a26266e1e2e45ef21f4ea643c130bfa2dc0f3485db7aeb83f5bfa6bed4b9800626a3b251fd81553957b9851835467fd1300ede794300bbcaf84ab0c82e77ff4385f2bc4",
+        "accountMetas": [
+          {
+            "pubkey": "8VMe4iZWiq3xQySywih9cciAmzTxMtkawMRYK6JuDdoT",
+            "isSigner": false,
+            "isWritable": false
+          },
+          {
+            "pubkey": "5URdh1uLKXPh28AbcXBK1oWYGpQjVbMSjrKiAkt1q1Gc",
+            "isSigner": false,
+            "isWritable": true
+          },
+          {
+            "pubkey": "3A7JjFg4ZbZrEsvAZReSaWxjCvi5NZUTAyAZaLfQjuYC",
+            "isSigner": false,
+            "isWritable": true
+          },
+          {
+            "pubkey": "9hZSf8jMxBdqcvnYzj6EkQ2gPoZCoX2GcF8f1dgkyLsn",
+            "isSigner": false,
+            "isWritable": true
+          },
+          {
+            "pubkey": "Csq8xvXAn7w16UJG2dnnaZSe5awnWQJw67aETj8ebcYi",
+            "isSigner": false,
+            "isWritable": true
+          },
+          {
+            "pubkey": "3jvhiz9qcJAe2zGHvRAiRYXiaFCdjEQrB9KuE5NuFaGe",
+            "isSigner": true,
+            "isWritable": true
+          },
+          {
+            "pubkey": "9643JXJm5ZZwv8yaTozQ2qMeVw6xHQWhquGsD87knME9",
+            "isSigner": false,
+            "isWritable": true
+          },
+          {
+            "pubkey": "9FMFVzo1ZKnrGc36te21evEwgSB5nv2FooY77RVJP7H",
+            "isSigner": false,
+            "isWritable": false
+          },
+          {
+            "pubkey": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "isSigner": false,
+            "isWritable": false
+          },
+          {
+            "pubkey": "11111111111111111111111111111111",
+            "isSigner": false,
+            "isWritable": false
+          }
+        ]
+      }
+    }
+  }
+}

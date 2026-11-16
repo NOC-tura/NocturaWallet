@@ -1,5 +1,5 @@
 import React from 'react';
-import {render} from '@testing-library/react-native';
+import {render, fireEvent} from '@testing-library/react-native';
 import {SettingsScreen} from '../SettingsScreen';
 
 jest.mock('../../../store/zustand/useSettings', () => ({
@@ -32,9 +32,20 @@ jest.mock('../../../store/zustand/walletStore', () => ({
   ),
 }));
 
+const mockNavigate = jest.fn();
 jest.mock('@react-navigation/native', () => ({
-  useNavigation: () => ({navigate: jest.fn()}),
+  useNavigation: () => ({navigate: mockNavigate}),
 }));
+
+const mockFlags = {shielded: false, presale: true};
+jest.mock('../../../constants/features', () => ({isShieldedEnabled: () => mockFlags.shielded}));
+jest.mock('../../../constants/chain', () => ({isPresaleEnabled: () => mockFlags.presale}));
+
+beforeEach(() => {
+  mockFlags.shielded = false;
+  mockFlags.presale = true;
+  mockNavigate.mockClear();
+});
 
 // mmkv instances are mocked globally via __mocks__/react-native-mmkv.ts
 jest.mock('../../../store/mmkv/instances', () => {
@@ -70,5 +81,39 @@ describe('SettingsScreen', () => {
   it('renders Accessibility section', () => {
     const {getByTestId} = render(<SettingsScreen />);
     expect(getByTestId('section-accessibility')).toBeTruthy();
+  });
+});
+
+describe('SettingsScreen — M1b (R10, S13)', () => {
+  it('shielded build: the Export View Key row stays, DISABLED, "Not available in this version." — pressing it goes nowhere', () => {
+    mockFlags.shielded = true;
+    const {getByTestId, getByText} = render(<SettingsScreen />);
+    const row = getByTestId('export-view-key-row');
+    expect(row.props.accessibilityState).toEqual({disabled: true});
+    expect(getByText('Export View Key')).toBeTruthy();
+    expect(getByText('Not available in this version.')).toBeTruthy();
+    fireEvent.press(getByText('Export View Key'));
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('production build: no Export View Key row', () => {
+    const {queryByText} = render(<SettingsScreen />);
+    expect(queryByText('Export View Key')).toBeNull();
+  });
+
+  it('the presale referral row only where presale exists (mainnet); none in the devnet build', () => {
+    const mainnet = render(<SettingsScreen />);
+    fireEvent.press(mainnet.getByText('Refer a friend'));
+    expect(mockNavigate).toHaveBeenCalledWith('Referral');
+    mainnet.unmount();
+    mockFlags.presale = false;
+    const devnet = render(<SettingsScreen />);
+    expect(devnet.queryByText('Refer a friend')).toBeNull();
+    expect(devnet.queryByTestId('section-rewards')).toBeNull();
+  });
+
+  it('no native prover debug row (the screen is removed)', () => {
+    const {queryByText} = render(<SettingsScreen />);
+    expect(queryByText(/Native prover test/)).toBeNull();
   });
 });

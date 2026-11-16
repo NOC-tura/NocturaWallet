@@ -1,7 +1,6 @@
 import {create} from 'zustand';
 import {useSecureSettingsStore} from './secureSettingsStore';
 import {sessionManager} from '../../modules/session/sessionModule';
-import {clearShieldedViewSession} from '../../modules/shielded/shieldedViewSession';
 
 const DEFAULT_TIMEOUT_MINUTES = 5;
 
@@ -40,7 +39,6 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   lock: () => {
     sessionManager.lock(); // Zeroizes in-memory keypair (Ed25519 private key)
-    clearShieldedViewSession(); // Drop cached view key — must not outlive the lock
     set({
       isUnlocked: false,
       unlockedAt: null,

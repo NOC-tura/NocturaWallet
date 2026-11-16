@@ -1,0 +1,1639 @@
+{
+  "address": "FeGSSsJtmA7GnMgnpj33JsiceSk1NyFopff2FtQFsMuH",
+  "metadata": {
+    "name": "shielded_pool",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Noctura shielded-pool POC (devnet) — deposit/withdraw shielded notes"
+  },
+  "instructions": [
+    {
+      "name": "deposit",
+      "docs": [
+        "A0 deposit. FOUR public inputs now: (commitment, amount, mintHash, rho), in the order the",
+        "circuit declares them — `component main {public [commitment, amount, mintHash, rho]}`.",
+        "",
+        "`rho` is public precisely so the program can `init` the PDA [\"rho\", rho] FROM THE VALUE THE",
+        "PROOF IS BOUND TO. Both appear inside cm === P5(TAG_CM, addrField, amount, mintHash, rho),",
+        "so the rho the marker reserves is provably the rho inside the note — a marker keyed off a",
+        "caller-supplied value the proof did not commit to would reserve a number and protect",
+        "nothing.",
+        "",
+        "`rho` sits BEFORE `proof_bytes` in the argument list because the seeds constraint needs it",
+        "in `#[instruction(..)]`, and every argument before it has to be listed there. Ordering an",
+        "instruction's arguments around an account constraint is not elegant, but the alternative is",
+        "carrying a Vec<u8> into the accounts context for no reason."
+      ],
+      "discriminator": [
+        242,
+        35,
+        198,
+        137,
+        82,
+        225,
+        242,
+        182
+      ],
+      "accounts": [
+        {
+          "name": "pool"
+        },
+        {
+          "name": "merkle_tree",
+          "writable": true
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "depositor",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "depositor_token_account",
+          "writable": true
+        },
+        {
+          "name": "rho_marker",
+          "docs": [
+            "§2.4.2 — rho uniqueness. `init` is the enforcement: a second deposit with the same rho",
+            "cannot create this account and the WHOLE TRANSACTION fails, so reuse is a rejected tx",
+            "instead of a note that proves fine and can never be spent. The depositor pays, because it",
+            "is the depositor's own rho and the alternative is a free way to make someone else's",
+            "account rent-exempt."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  104,
+                  111
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "rho"
+              }
+            ]
+          }
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        },
+        {
+          "name": "commitment",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "rho",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "proof_bytes",
+          "type": "bytes"
+        }
+      ]
+    },
+    {
+      "name": "initialize_pool",
+      "discriminator": [
+        95,
+        180,
+        10,
+        172,
+        84,
+        174,
+        232,
+        40
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "mint"
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "merkle_tree",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  101,
+                  114,
+                  107,
+                  108,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "pool"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "rent",
+          "address": "SysvarRent111111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "set_deposit_vk",
+      "discriminator": [
+        161,
+        215,
+        239,
+        63,
+        166,
+        158,
+        61,
+        226
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true
+        },
+        {
+          "name": "pool",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "deposit_vk",
+          "type": "bytes"
+        }
+      ]
+    },
+    {
+      "name": "set_deposits_paused",
+      "docs": [
+        "Sunset the pool: reject new deposits, leave withdrawals and transfers working. Authority-",
+        "gated and reversible, so a pause is not a one-way door either."
+      ],
+      "discriminator": [
+        160,
+        98,
+        241,
+        200,
+        54,
+        132,
+        77,
+        203
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true
+        },
+        {
+          "name": "pool",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "paused",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "name": "set_max_fee",
+      "docs": [
+        "§3a — authority-gated fee cap. Starts at 0, which means \"no relayed withdrawal can pay a",
+        "fee\": the safe default is the one where a mis-set pool cannot be drained, not the one where",
+        "it works out of the box."
+      ],
+      "discriminator": [
+        35,
+        55,
+        192,
+        242,
+        72,
+        189,
+        57,
+        178
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true
+        },
+        {
+          "name": "pool",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "max_fee",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "set_transfer_vk",
+      "docs": [
+        "CHUNKED. A TRANSFER_VK_LEN-byte VK plus its accounts, signature and blockhash no longer fits the",
+        "1232-byte transaction limit — the fee's eighth IC point is what pushed it over, so this is",
+        "a direct consequence of §3a and not an unrelated refactor. Send it in pieces, in order.",
+        "",
+        "`written` is the guard, not a convenience: a partly-written VK rejects EVERY proof, so a",
+        "suite of negative tests stays green while nothing works, and the error says `InvalidProof`",
+        "— about the proof, for a defect in the key. That is exactly what the truncated `ic` array",
+        "did. Completeness is therefore state the verifying paths check."
+      ],
+      "discriminator": [
+        21,
+        159,
+        117,
+        216,
+        161,
+        13,
+        129,
+        44
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "pool"
+        },
+        {
+          "name": "transfer_vk",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  114,
+                  97,
+                  110,
+                  115,
+                  102,
+                  101,
+                  114,
+                  95,
+                  118,
+                  107
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "offset",
+          "type": "u32"
+        },
+        {
+          "name": "chunk",
+          "type": "bytes"
+        }
+      ]
+    },
+    {
+      "name": "set_withdraw_change_vk",
+      "docs": [
+        "CHUNKED. A WITHDRAW_CHANGE_VK_LEN-byte VK plus its accounts, signature and blockhash no longer fits the",
+        "1232-byte transaction limit — the fee's eighth IC point is what pushed it over, so this is",
+        "a direct consequence of §3a and not an unrelated refactor. Send it in pieces, in order.",
+        "",
+        "`written` is the guard, not a convenience: a partly-written VK rejects EVERY proof, so a",
+        "suite of negative tests stays green while nothing works, and the error says `InvalidProof`",
+        "— about the proof, for a defect in the key. That is exactly what the truncated `ic` array",
+        "did. Completeness is therefore state the verifying paths check."
+      ],
+      "discriminator": [
+        135,
+        84,
+        249,
+        196,
+        65,
+        154,
+        140,
+        203
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "pool"
+        },
+        {
+          "name": "wchange_vk",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  119,
+                  99,
+                  104,
+                  97,
+                  110,
+                  103,
+                  101,
+                  95,
+                  118,
+                  107
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "offset",
+          "type": "u32"
+        },
+        {
+          "name": "chunk",
+          "type": "bytes"
+        }
+      ]
+    },
+    {
+      "name": "transfer",
+      "discriminator": [
+        163,
+        52,
+        200,
+        231,
+        140,
+        3,
+        69,
+        186
+      ],
+      "accounts": [
+        {
+          "name": "pool"
+        },
+        {
+          "name": "merkle_tree",
+          "writable": true
+        },
+        {
+          "name": "nullifier_record_0",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  110,
+                  117,
+                  108,
+                  108,
+                  105,
+                  102,
+                  105,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "nullifier_0"
+              }
+            ]
+          }
+        },
+        {
+          "name": "nullifier_record_1",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  110,
+                  117,
+                  108,
+                  108,
+                  105,
+                  102,
+                  105,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "nullifier_1"
+              }
+            ]
+          }
+        },
+        {
+          "name": "fee_payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "fee_destination_token_account",
+          "docs": [
+            "§3a — the fee payer's OWN ATA. Address re-derived in the handler and compared."
+          ],
+          "writable": true
+        },
+        {
+          "name": "transfer_vk"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "merkle_root",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "nullifier_0",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "nullifier_1",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "out_commitment_0",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "out_commitment_1",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "fee",
+          "type": "u64"
+        },
+        {
+          "name": "proof_bytes",
+          "type": "bytes"
+        },
+        {
+          "name": "ciphertext_0",
+          "type": "bytes"
+        },
+        {
+          "name": "ciphertext_1",
+          "type": "bytes"
+        }
+      ]
+    },
+    {
+      "name": "withdraw_with_change",
+      "discriminator": [
+        108,
+        244,
+        67,
+        121,
+        236,
+        246,
+        121,
+        151
+      ],
+      "accounts": [
+        {
+          "name": "pool"
+        },
+        {
+          "name": "merkle_tree",
+          "writable": true
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "destination_token_account",
+          "writable": true
+        },
+        {
+          "name": "nullifier_record",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  110,
+                  117,
+                  108,
+                  108,
+                  105,
+                  102,
+                  105,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "nullifier"
+              }
+            ]
+          }
+        },
+        {
+          "name": "fee_payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "fee_destination_token_account",
+          "docs": [
+            "§3a — the fee payer's OWN ATA over the pool mint. The address is re-derived in the handler",
+            "and compared; this is only the account slot. Present and transferred to even when fee == 0,",
+            "so relayed and self-relayed withdrawals have the same shape."
+          ],
+          "writable": true
+        },
+        {
+          "name": "wchange_vk"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "merkle_root",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "nullifier",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "amount",
+          "type": "u64"
+        },
+        {
+          "name": "change_commitment",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "fee",
+          "type": "u64"
+        },
+        {
+          "name": "proof_bytes",
+          "type": "bytes"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "MerkleTree",
+      "discriminator": [
+        98,
+        51,
+        51,
+        226,
+        162,
+        20,
+        73,
+        212
+      ]
+    },
+    {
+      "name": "Nullifier",
+      "discriminator": [
+        18,
+        56,
+        142,
+        165,
+        181,
+        158,
+        187,
+        133
+      ]
+    },
+    {
+      "name": "Pool",
+      "discriminator": [
+        241,
+        154,
+        109,
+        4,
+        17,
+        177,
+        109,
+        188
+      ]
+    },
+    {
+      "name": "RhoMarker",
+      "discriminator": [
+        154,
+        15,
+        82,
+        214,
+        205,
+        32,
+        27,
+        164
+      ]
+    },
+    {
+      "name": "TransferVkAccount",
+      "discriminator": [
+        161,
+        96,
+        232,
+        93,
+        158,
+        24,
+        237,
+        39
+      ]
+    },
+    {
+      "name": "WithdrawChangeVkAccount",
+      "discriminator": [
+        80,
+        107,
+        36,
+        130,
+        172,
+        209,
+        199,
+        156
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "LeafInserted",
+      "discriminator": [
+        89,
+        243,
+        212,
+        8,
+        215,
+        191,
+        187,
+        152
+      ]
+    },
+    {
+      "name": "NoteCiphertext",
+      "discriminator": [
+        108,
+        80,
+        175,
+        160,
+        234,
+        223,
+        210,
+        146
+      ]
+    },
+    {
+      "name": "Transfer",
+      "discriminator": [
+        25,
+        18,
+        23,
+        7,
+        172,
+        116,
+        130,
+        28
+      ]
+    },
+    {
+      "name": "Withdraw",
+      "discriminator": [
+        192,
+        241,
+        201,
+        217,
+        70,
+        150,
+        90,
+        247
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "BadVkLength",
+      "msg": "Verifying key blob has the wrong length"
+    },
+    {
+      "code": 6001,
+      "name": "BadProofLength",
+      "msg": "Proof bytes must be exactly 256 bytes"
+    },
+    {
+      "code": 6002,
+      "name": "InvalidProof",
+      "msg": "Groth16 proof verification failed"
+    },
+    {
+      "code": 6003,
+      "name": "Unauthorized",
+      "msg": "Only the pool authority may perform this action"
+    },
+    {
+      "code": 6004,
+      "name": "AccountMismatch",
+      "msg": "Account does not match pool"
+    },
+    {
+      "code": 6005,
+      "name": "TreeFull",
+      "msg": "Merkle tree is full"
+    },
+    {
+      "code": 6006,
+      "name": "RootNotFound",
+      "msg": "Merkle root not found in recent history"
+    },
+    {
+      "code": 6007,
+      "name": "FeeExceedsMax",
+      "msg": "Fee exceeds the pool's max_fee"
+    },
+    {
+      "code": 6008,
+      "name": "DepositsPaused",
+      "msg": "This pool is sunset: deposits are closed (withdrawals and transfers still work)"
+    },
+    {
+      "code": 6009,
+      "name": "VkChunkOutOfOrder",
+      "msg": "VK chunk offset does not continue from what has already been written"
+    },
+    {
+      "code": 6010,
+      "name": "VkIncomplete",
+      "msg": "Verifying key is only partially written — refusing to verify against it"
+    }
+  ],
+  "types": [
+    {
+      "name": "DepositVk",
+      "serialization": "bytemuck",
+      "repr": {
+        "kind": "c"
+      },
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "alpha_g1",
+            "type": {
+              "array": [
+                "u8",
+                64
+              ]
+            }
+          },
+          {
+            "name": "beta_g2",
+            "type": {
+              "array": [
+                "u8",
+                128
+              ]
+            }
+          },
+          {
+            "name": "gamma_g2",
+            "type": {
+              "array": [
+                "u8",
+                128
+              ]
+            }
+          },
+          {
+            "name": "delta_g2",
+            "type": {
+              "array": [
+                "u8",
+                128
+              ]
+            }
+          },
+          {
+            "name": "ic",
+            "type": {
+              "array": [
+                {
+                  "array": [
+                    "u8",
+                    64
+                  ]
+                },
+                5
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "LeafInserted",
+      "docs": [
+        "Emitted on EVERY leaf insertion (deposit AND withdraw_with_change). Byte layout is",
+        "IDENTICAL to the former `Deposit` event: {commitment[32], leaf_index u64 LE, root[32]}",
+        "= 80 bytes incl. the 8-byte event discriminator. The wallet leaf-scanner is length-based,",
+        "so historical `Deposit` events remain valid leaves across the program upgrade. Do NOT",
+        "change the field order/types."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "commitment",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "leaf_index",
+            "type": "u64"
+          },
+          {
+            "name": "root",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "MerkleTree",
+      "serialization": "bytemuck",
+      "repr": {
+        "kind": "c"
+      },
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "next_leaf_index",
+            "type": "u64"
+          },
+          {
+            "name": "zeros",
+            "type": {
+              "array": [
+                {
+                  "array": [
+                    "u8",
+                    32
+                  ]
+                },
+                20
+              ]
+            }
+          },
+          {
+            "name": "filled_subtrees",
+            "type": {
+              "array": [
+                {
+                  "array": [
+                    "u8",
+                    32
+                  ]
+                },
+                20
+              ]
+            }
+          },
+          {
+            "name": "root_history",
+            "type": {
+              "array": [
+                {
+                  "array": [
+                    "u8",
+                    32
+                  ]
+                },
+                64
+              ]
+            }
+          },
+          {
+            "name": "root_history_head",
+            "type": "u16"
+          },
+          {
+            "name": "_pad",
+            "type": {
+              "array": [
+                "u8",
+                6
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "NoteCiphertext",
+      "docs": [
+        "Per-output note ciphertext for recipient scanning. `ciphertext` is always 128 bytes",
+        "(Vec avoids the borsh >32 fixed-array limit for events). Carries ONLY leaf_index — no",
+        "output-index (privacy: outputs must be indistinguishable, payment-vs-change not leaked)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "leaf_index",
+            "type": "u64"
+          },
+          {
+            "name": "ciphertext",
+            "type": "bytes"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Nullifier",
+      "docs": [
+        "Double-spend marker. PDA [\"nullifier\", nullifier]. Existence = spent.",
+        "PRIVACY: stores ONLY the bump — never amount/destination/spender (would leak the",
+        "nullifier->deposit link). Regular #[account] (borsh-safe; u8 is not a large array)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Pool",
+      "serialization": "bytemuck",
+      "repr": {
+        "kind": "c"
+      },
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "merkle_tree",
+            "type": "pubkey"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "_pad",
+            "type": {
+              "array": [
+                "u8",
+                7
+              ]
+            }
+          },
+          {
+            "name": "deposit_vk",
+            "type": {
+              "defined": {
+                "name": "DepositVk"
+              }
+            }
+          },
+          {
+            "name": "max_fee",
+            "docs": [
+              "§3a — the largest fee a relayed withdraw/transfer may pay out of the pool, in mint units.",
+              "APPENDED, deliberately: every field above keeps its offset, so this is the one Pool change",
+              "that a byte-offset reader survives. It does NOT make Pool safe to parse by offset — the",
+              "deposit_vk growth above already moved everything after it — but it means the two changes",
+              "are separable when someone reconstructs the layout.",
+              "",
+              "A cap is not a policy choice deferred to the relayer. Without it, a compromised or greedy",
+              "relayer names any fee it likes and the circuit happily proves conservation: the user's",
+              "balance is conserved into the RELAYER's pocket. Conservation says value is not created; it",
+              "says nothing about who receives it."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "deposits_paused",
+            "docs": [
+              "SUNSET SWITCH — closes the ENTRANCE, never the exit. When true, `deposit` is rejected;",
+              "`withdraw_with_change` and `transfer` are deliberately NOT gated on it.",
+              "",
+              "THIS EXISTS BECAUSE IT CANNOT BE ADDED LATER. A superseded pool does not stop being usable",
+              "when a newer one is deployed: every installed wallet still pointing at the old program goes",
+              "on working against it, without a warning, under whatever key model that program had. On",
+              "devnet that is merely untidy. At mainnet the VK — and with it the program — must be",
+              "immutable, and immutability removes the ability to add this switch at the moment it is",
+              "first needed. \"Abandoned\" is not \"disabled\", and the difference is only decidable while the",
+              "program is still upgradeable.",
+              "",
+              "THE ASYMMETRY IS THE DESIGN. Disabling a pool by zeroing its VKs would also be one",
+              "transaction and would also stop deposits — and it would strand every existing note, because",
+              "the same verifying key is what lets a holder get their funds OUT. A sunset must close the",
+              "entrance and leave the exit open, or it is not a sunset, it is a seizure.",
+              "u8, not bool: `bool` is not `Pod`, and a zero-copy account cannot hold a type whose",
+              "invalid bit patterns are undefined. 0 = open, non-zero = sunset."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "_pad2",
+            "type": {
+              "array": [
+                "u8",
+                7
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "RhoMarker",
+      "docs": [
+        "§2.4.2 — rho uniqueness marker. PDA [\"rho\", rho]. Existence = that rho has been used by a",
+        "deposit, so a second deposit reusing it FAILS TO INITIALIZE and the transaction is rejected.",
+        "",
+        "WHY A WHOLE ACCOUNT FOR A DEPOSITOR'S OWN MISTAKE. `deposit`'s rho is prover-chosen, and two",
+        "notes sharing a rho share a nullifier: the second is permanently unspendable, and NOTHING",
+        "FAILS AT PROVING TIME. \"It is self-harm, so it is fine\" is the argument this design exists to",
+        "reject — silent fund loss is the failure mode, and a rejected transaction is the loud version",
+        "of the same event. Carries only the bump, for the same privacy reason as Nullifier."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Transfer",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "nullifier_0",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "nullifier_1",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "TransferVk",
+      "serialization": "bytemuck",
+      "repr": {
+        "kind": "c"
+      },
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "alpha_g1",
+            "type": {
+              "array": [
+                "u8",
+                64
+              ]
+            }
+          },
+          {
+            "name": "beta_g2",
+            "type": {
+              "array": [
+                "u8",
+                128
+              ]
+            }
+          },
+          {
+            "name": "gamma_g2",
+            "type": {
+              "array": [
+                "u8",
+                128
+              ]
+            }
+          },
+          {
+            "name": "delta_g2",
+            "type": {
+              "array": [
+                "u8",
+                128
+              ]
+            }
+          },
+          {
+            "name": "ic",
+            "type": {
+              "array": [
+                {
+                  "array": [
+                    "u8",
+                    64
+                  ]
+                },
+                8
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "TransferVkAccount",
+      "serialization": "bytemuck",
+      "repr": {
+        "kind": "c"
+      },
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "_pad",
+            "type": {
+              "array": [
+                "u8",
+                7
+              ]
+            }
+          },
+          {
+            "name": "written",
+            "docs": [
+              "See WithdrawChangeVkAccount::written — same reason, same guard."
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "_pad2",
+            "type": {
+              "array": [
+                "u8",
+                4
+              ]
+            }
+          },
+          {
+            "name": "vk",
+            "type": {
+              "defined": {
+                "name": "TransferVk"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Withdraw",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "nullifier",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "WithdrawChangeVk",
+      "serialization": "bytemuck",
+      "repr": {
+        "kind": "c"
+      },
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "alpha_g1",
+            "type": {
+              "array": [
+                "u8",
+                64
+              ]
+            }
+          },
+          {
+            "name": "beta_g2",
+            "type": {
+              "array": [
+                "u8",
+                128
+              ]
+            }
+          },
+          {
+            "name": "gamma_g2",
+            "type": {
+              "array": [
+                "u8",
+                128
+              ]
+            }
+          },
+          {
+            "name": "delta_g2",
+            "type": {
+              "array": [
+                "u8",
+                128
+              ]
+            }
+          },
+          {
+            "name": "ic",
+            "type": {
+              "array": [
+                {
+                  "array": [
+                    "u8",
+                    64
+                  ]
+                },
+                8
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "WithdrawChangeVkAccount",
+      "docs": [
+        "Standalone VK account for the change-withdraw circuit (kept out of `Pool` to avoid a",
+        "zero-copy realloc). PDA [\"wchange_vk\", pool]."
+      ],
+      "serialization": "bytemuck",
+      "repr": {
+        "kind": "c"
+      },
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "_pad",
+            "type": {
+              "array": [
+                "u8",
+                7
+              ]
+            }
+          },
+          {
+            "name": "written",
+            "docs": [
+              "Bytes of `vk` written so far. A VK that no longer fits in ONE transaction has to arrive in",
+              "chunks, and a partly-written key is the failure mode this whole review keeps finding: it",
+              "rejects every proof, so every negative test passes and the symptom is `InvalidProof` — a",
+              "message about the proof, for a defect in the key. Exactly what a truncated `ic` array did",
+              "in #35. So completeness is STATE, and the verifying paths require `written == VK_LEN`",
+              "before they will look at a proof at all."
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "_pad2",
+            "type": {
+              "array": [
+                "u8",
+                4
+              ]
+            }
+          },
+          {
+            "name": "vk",
+            "type": {
+              "defined": {
+                "name": "WithdrawChangeVk"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

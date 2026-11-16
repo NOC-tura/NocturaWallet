@@ -2,7 +2,21 @@ import {bls12_381} from '@noble/curves/bls12-381.js';
 import {hkdf} from '@noble/hashes/hkdf.js';
 import {sha256} from '@noble/hashes/sha2.js';
 import {xchacha20poly1305} from '@noble/ciphers/chacha.js';
-import {bytesToBigIntBE} from './noteCrypto';
+
+/**
+ * KEPT BUT UNUSED IN M1 (spec §12 "Kept but unused in M1"): the ECIES note encryption to a 48-byte
+ * G1 key. Its payload is still the v1 one (`{amount, noteSecret}`); M2 revalidates it against the
+ * A0 note plaintext before anything calls it. No module of the app imports it in M1.
+ */
+
+/** Big-endian bytes → BigInt, no reduction (byte[0] most significant). */
+function bytesToBigIntBE(bytes: Uint8Array): bigint {
+  let acc = 0n;
+  for (let i = 0; i < bytes.length; i++) {
+    acc = acc * 256n + BigInt(bytes[i]!);
+  }
+  return acc;
+}
 
 const G1 = bls12_381.G1.Point;
 // Domain tag — versions the scheme (a change here invalidates all ciphertexts).

@@ -13,6 +13,5 @@ Java_com_nocturawallet_prover_NocturaA0Native_keysOpen
 Java_com_nocturawallet_prover_NocturaA0Native_matchSpent
 Java_com_nocturawallet_prover_NocturaA0Native_parseUnshield
 Java_com_nocturawallet_prover_NocturaA0Native_prove
-# isSupported, and the v1 prove — nativeProve goes with the v1 path in M1b.
+# isSupported (the v1 prove binding is gone since M1b).
 Java_com_nocturawallet_prover_NocturaProverModule_nativeIsSupported
-Java_com_nocturawallet_prover_NocturaProverModule_nativeProve

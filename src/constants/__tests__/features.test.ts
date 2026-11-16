@@ -1,35 +1,51 @@
-import {
-  FEATURES,
-  isShieldedEnabled,
-  isLocalProvingEnabled,
-  isShieldedTransferEnabled,
-} from '../features';
+import {FEATURES, isShieldedEnabled, isLocalProvingEnabled} from '../features';
 
 describe('features flag', () => {
-  it('shielded is disabled in v1', () => {
+  it('shielded is disabled by default (the production build)', () => {
     expect(FEATURES.shielded).toBe(false);
     expect(isShieldedEnabled()).toBe(false);
   });
 
   it('localProving is off unless env LOCAL_PROVING=true', () => {
-    // Config is mocked to {} in the test env → flag false by default.
+    // Config is mocked without it in the test env → flag false by default.
     expect(isLocalProvingEnabled()).toBe(false);
   });
 
-  it('shieldedTransfer is off by default', () => {
-    // Private transfer is disabled pending the circuit redesign: the transfer
-    // circuit imposes no spend authorization, so the SENDER retains the full
-    // preimage of the recipient's note and can withdraw it back. Confirmed from
-    // transfer.circom by the program side on 2026-08-08.
-    expect(FEATURES.shieldedTransfer).toBe(false);
-    expect(isShieldedTransferEnabled()).toBe(false);
+  it('the v1 flags are gone (spec §12: the self-relay and the transfer flags)', () => {
+    expect(Object.keys(FEATURES).sort()).toEqual(['localProving', 'shielded']);
+  });
+});
+
+describe('features.ts applies the shielded guards at import', () => {
+  const load = (config: Record<string, string | undefined>) => {
+    jest.resetModules();
+    jest.doMock('react-native-config', () => ({
+      __esModule: true,
+      default: {API_BASE: 'https://x/v1', ...config},
+    }));
+    return () => require('../features');
+  };
+
+  afterEach(() => {
+    jest.resetModules();
+    jest.dontMock('react-native-config');
   });
 
-  it('shieldedTransfer requires shielded mode as well as its own flag', () => {
-    // Even with SHIELDED_TRANSFER=true, transfer stays off unless shielded mode
-    // is on — so one stray env var cannot re-enable the broken flow.
-    expect(isShieldedTransferEnabled()).toBe(
-      FEATURES.shielded && FEATURES.shieldedTransfer,
+  it('the devnet shielded build loads (NETWORK=devnet, FEATURES_SHIELDED, LOCAL_PROVING)', () => {
+    expect(load({NETWORK: 'devnet', FEATURES_SHIELDED: 'true', LOCAL_PROVING: 'true'})).not.toThrow();
+  });
+
+  it('REFUSES shielded on mainnet-beta (the old .env.devnet: NETWORK=mainnet-beta)', () => {
+    expect(load({NETWORK: 'mainnet-beta', FEATURES_SHIELDED: 'true', LOCAL_PROVING: 'true'})).toThrow(
+      /requires NETWORK=devnet/,
     );
+  });
+
+  it('REFUSES shielded without local proving', () => {
+    expect(load({NETWORK: 'devnet', FEATURES_SHIELDED: 'true'})).toThrow(/LOCAL_PROVING/);
+  });
+
+  it('the production build loads (NETWORK=mainnet-beta, shielded off)', () => {
+    expect(load({NETWORK: 'mainnet-beta'})).not.toThrow();
   });
 });

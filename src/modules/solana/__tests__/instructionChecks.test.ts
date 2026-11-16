@@ -51,6 +51,24 @@ describe('checkInstructions — the rows that used to be hardcoded PASS', () => 
     expect(rows.some(r => r.status !== 'ok')).toBe(true);
   });
 
+  it('the A0 pool program FeGSS… is known — the A0 deposit (M1b) is a Noctura-built tx calling it', () => {
+    const POOL_A0 = 'FeGSSsJtmA7GnMgnpj33JsiceSk1NyFopff2FtQFsMuH';
+    const rows = checkInstructions([ix(COMPUTE_BUDGET, [2, 0x40, 0x0d, 0x03, 0]), ix(POOL_A0, [0xf2, 0x23])]);
+    expect(rows.map(r => r.status)).toEqual(['ok', 'ok']);
+  });
+
+  it('the allowlist is exactly these programs (an addition is a deliberate edit of this test)', () => {
+    expect([...KNOWN_PROGRAM_IDS].sort()).toEqual(
+      [
+        SYSTEM,
+        TOKEN,
+        'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL',
+        COMPUTE_BUDGET,
+        'FeGSSsJtmA7GnMgnpj33JsiceSk1NyFopff2FtQFsMuH',
+      ].sort(),
+    );
+  });
+
   it('exposes the allowlist so the send path and the checks cannot drift', () => {
     expect(KNOWN_PROGRAM_IDS).toContain(SYSTEM);
     expect(KNOWN_PROGRAM_IDS).toContain(TOKEN);

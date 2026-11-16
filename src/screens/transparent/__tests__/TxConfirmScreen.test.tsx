@@ -6,6 +6,20 @@ import {SafeAreaProvider} from 'react-native-safe-area-context';
 
 jest.mock('../../../modules/solana/sendTransaction', () => ({}));
 
+// The chain identity, switchable per test (S13): CHAIN and the explorer link follow mockNetwork.
+const mockNetwork = {current: 'mainnet-beta' as 'devnet' | 'mainnet-beta'};
+jest.mock('../../../constants/chain', () => {
+  const actual = jest.requireActual('../../../constants/chain');
+  return {
+    ...actual,
+    get CHAIN() {
+      return actual.chainIdentity(mockNetwork.current);
+    },
+    explorerTxUrl: (sig: string, explorer?: 'solscan' | 'solanaexplorer' | 'solanafm') =>
+      actual.explorerTxUrl(sig, explorer, mockNetwork.current),
+  };
+});
+
 jest.mock('../../../modules/keyDerivation/derivationScheme', () => ({
   loadTransparentScheme: jest.fn().mockReturnValue({kind: 'slip10', account: 0}),
 }));
@@ -267,4 +281,17 @@ it('hides the first-time prompt after pressing Add', () => {
   expect(getByTestId('tx-confirm-add-contact')).toBeTruthy();
   fireEvent.press(getByTestId('tx-confirm-add-contact'));
   expect(queryByTestId('tx-confirm-add-contact')).toBeNull();
+});
+
+it('the devnet build names devnet in the Network row, never "Solana mainnet" (S13)', () => {
+  mockNetwork.current = 'devnet';
+  try {
+    const {getByText, queryByText} = render(
+      withSafeArea(<TxConfirmScreen intent={intent} onBroadcast={jest.fn()} onCancel={jest.fn()} />),
+    );
+    expect(getByText('Solana devnet')).toBeTruthy();
+    expect(queryByText(/mainnet/i)).toBeNull();
+  } finally {
+    mockNetwork.current = 'mainnet-beta';
+  }
 });

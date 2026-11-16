@@ -44,7 +44,6 @@ const EXPECTED_EXPORTS = [
   'a0MatchSpent',
   'a0Prove',
   'isProverSupported',
-  'nativeProve', // v1 — removed with the v1 path in M1b
 ];
 const EXPECTED_REACT_METHODS = [
   'commitment',
@@ -54,7 +53,6 @@ const EXPECTED_REACT_METHODS = [
   'keysOpen',
   'matchSpent',
   'prove',
-  'proveV1', // v1 — removed in M1b
 ];
 const KOTLIN_ONLY = ['authorizeUnshield', 'parseUnshield'];
 
@@ -112,7 +110,6 @@ describe('2. calling every export touches exactly the React methods JS may use',
     mockTouched.clear();
     const h = '1' as bridge.A0Handle;
     bridge.isProverSupported();
-    await bridge.nativeProve('deposit', '{}', '/z', '/w');
     await bridge.a0KeysOpen(new Uint8Array(64));
     await bridge.a0KeysClose(h);
     await bridge.a0DepositRho(h, 0n);
@@ -125,7 +122,7 @@ describe('2. calling every export touches exactly the React methods JS may use',
     }
   });
   it('covers every export (a new export must be added to the call list above)', () => {
-    expect(exportsOf(bridge).length).toBe(8);
+    expect(exportsOf(bridge).length).toBe(7);
   });
 });
 
@@ -149,7 +146,7 @@ describe('3. the Kotlin module', () => {
       ...nativesIn(kt, 'NocturaProverModule'),
     ].sort();
     const list = jniList(read('native/noctura-prover/jni-exports.txt'));
-    expect(list.length).toBe(10);
+    expect(list.length).toBe(9);
     expect(natives).toEqual(list);
     // negative control: a list with one symbol more does not match
     expect(natives).not.toEqual([...list, 'Java_com_nocturawallet_prover_NocturaA0Native_nullifier'].sort());

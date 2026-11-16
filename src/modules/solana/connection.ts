@@ -1,5 +1,5 @@
 import {Connection} from '@solana/web3.js';
-import {RPC_ENDPOINT, RPC_WEBSOCKET} from '../../constants/programs';
+import {NETWORK, RPC_ENDPOINT, RPC_WEBSOCKET} from '../../constants/programs';
 
 /**
  * SECURITY NOTE: RPC calls are NOT SSL-pinned.
@@ -19,8 +19,10 @@ import {RPC_ENDPOINT, RPC_WEBSOCKET} from '../../constants/programs';
  * uses pinnedFetch for the Helius endpoint. Requires Connection config
  * support for custom fetch (available in @solana/web3.js via fetchMiddleware).
  */
-const FALLBACK_RPC = 'https://api.mainnet-beta.solana.com';
-const FALLBACK_WS = 'wss://api.mainnet-beta.solana.com';
+// The public endpoint OF THIS BUILD'S CHAIN (S13): a devnet build whose RPC_ENDPOINT is missing
+// falls back to devnet, never to mainnet under a devnet label.
+const FALLBACK_RPC = NETWORK === 'devnet' ? 'https://api.devnet.solana.com' : 'https://api.mainnet-beta.solana.com';
+const FALLBACK_WS = NETWORK === 'devnet' ? 'wss://api.devnet.solana.com' : 'wss://api.mainnet-beta.solana.com';
 const COMMITMENT = 'confirmed' as const;
 
 let _connection: Connection | null = null;
@@ -30,9 +32,9 @@ export function getConnection(): Connection {
     const endpoint = RPC_ENDPOINT || FALLBACK_RPC;
     const wsEndpoint = RPC_WEBSOCKET || FALLBACK_WS;
     // If RPC_ENDPOINT didn't make it through react-native-config (missing .env
-    // in the bundle, build cache, etc.) we silently fall back to MAINNET. In a
-    // devnet bundle that means every getBalance returns 0 for a devnet-only
-    // address — surface it loudly so this doesn't waste another debugging cycle.
+    // in the bundle, build cache, etc.) we fall back to the public endpoint of
+    // the build's NETWORK (rate-limited) — surface it loudly so this doesn't
+    // waste another debugging cycle.
     if (!RPC_ENDPOINT) {
       console.warn(
         '[connection] RPC_ENDPOINT is empty — falling back to ' + FALLBACK_RPC +

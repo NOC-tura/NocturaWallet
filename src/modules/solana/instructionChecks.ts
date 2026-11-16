@@ -12,6 +12,9 @@ export const KNOWN_PROGRAM_IDS: readonly string[] = [
   'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA', // SPL Token
   'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL', // Associated Token Account
   'ComputeBudget111111111111111111111111111111', // ComputeBudget
+  // The A0 shielded pool (devnet), added deliberately for the A0 deposit (M1b, spec §5): the
+  // deposit is the only Noctura-built tx that calls it; a test pins this whole list.
+  'FeGSSsJtmA7GnMgnpj33JsiceSk1NyFopff2FtQFsMuH', // Noctura shielded pool A0
 ];
 
 /**

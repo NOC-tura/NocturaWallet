@@ -1,4 +1,4 @@
-import {assertKnownNetwork, assertShieldedRequiresLocalProving} from '../networkGuard';
+import {assertKnownNetwork, assertShieldedRequiresDevnet, assertShieldedRequiresLocalProving} from '../networkGuard';
 
 describe('assertKnownNetwork', () => {
   it('accepts the two supported clusters', () => {
@@ -36,6 +36,17 @@ describe('assertShieldedRequiresLocalProving', () => {
 
   it('accepts a coherent shielded build', () => {
     expect(() => assertShieldedRequiresLocalProving(true, true)).not.toThrow();
+  });
+});
+
+describe('assertShieldedRequiresDevnet (S13)', () => {
+  it('refuses shielded on mainnet-beta', () => {
+    expect(() => assertShieldedRequiresDevnet(true, 'mainnet-beta')).toThrow(/requires NETWORK=devnet/);
+  });
+  it('accepts shielded on devnet, and any network with shielded off', () => {
+    expect(() => assertShieldedRequiresDevnet(true, 'devnet')).not.toThrow();
+    expect(() => assertShieldedRequiresDevnet(false, 'mainnet-beta')).not.toThrow();
+    expect(() => assertShieldedRequiresDevnet(false, 'devnet')).not.toThrow();
   });
 });
 

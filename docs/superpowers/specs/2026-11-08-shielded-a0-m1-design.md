@@ -1,6 +1,7 @@
 # Shielded on A0 · Milestone 1 — shield and a private unshield on the deployed A0 pool (Android, devnet)
 
-**Status:** rev 3.2, 2026-11-09 — the M1a plan's execution (text only, no owner decision changed). Rev 3.1
+**Status:** rev 3.3, 2026-11-16 — the M1b plan's execution (text only, no owner decision changed). Rev 3.2
+(2026-11-09) was the M1a plan's execution. Rev 3.1
 (2026-11-08) was the program side's acceptance of P1/P2. Rev 3 (03c866e) was Fable review 2 + owner
 S10–S12, rulings R12–R13. Rev 2 (00e58fe) was Fable review 1 +
 owner decisions S6–S9, controller rulings R9–R11. Rev 1 (58c0c7a) was the design the owner approved in conversation
@@ -10,7 +11,205 @@ sections). Review 1 (`.superpowers/sdd/shielded-a0-m1-spec-review-1.md`) found 4
 issues; review 2 (`…-spec-review-2.md`) found 1 Critical, 8 Important and 10 Minor. Decisions and rulings:
 `.superpowers/sdd/shielded-a0-m1-decisions.md`. The program-side proposal text (P1, P2) is
 `.superpowers/sdd/shielded-a0-m1-ico-proposal.md`. The four plans of §16 each get their own Fable review; M1a is
-executed (rev 3.2), its on-phone checkpoint is next, then M1b's plan.
+executed (rev 3.2) and M1b is executed (rev 3.3); M1b's on-phone checkpoint (the owner's,
+`scripts/m1b-checkpoint/README.md`) is next, then M1c's plan.
+
+### Rev 3.3, 2026-11-16 — the M1b plan's execution: the departures of its seven tasks, the plan review's rulings and the task reports; text only, no owner decision changed
+
+Collected from the plan's per-task "Spec rev 3.3 lines" (`docs/superpowers/plans/2026-11-15-shielded-a0-m1b-deposit-recovery.md`),
+the rulings of the Fable plan reviews (R1-C1, R2-N1, R3-N5, R1-I1 … R1-I3, R1-m1 … R1-m9, R2-N2 … R2-N4; the plan's front
+matter) and the rev 3.3 additions of the task reports (`.superpowers/sdd/2026-11-15-shielded-a0-m1b-deposit-recovery/task-{1..7}-report.md`).
+Each line names the passage it changes; those passages are edited in place (marked *Rev 3.3*). The one owner question
+the execution raised (R1-m4, the gap limit) is recorded, not decided: the gap limit stays 20 as in the plan the owner approved; whether to raise it or count only landed deposits is open for the owner (asked at the M1b finish).
+
+*Task 1 — the landed deposit, the constants, the builder:*
+
+- **The I1 check passed** (2026-11-15): the landed deposit `3DR6F7oW…` (slot 520075903), decoded against the IDL
+  (`shielded_pool.json`, sha256 `cfd37078…ca0`, committed as a test fixture), agrees with the §1 text on the
+  discriminator, the four arguments in order (332 bytes after the discriminator) and the eight accounts with their
+  flags; the wallet's builder reproduces the instruction and, under the landed tx's CU limit, the whole signed message
+  byte for byte → §1 "Instructions".
+- **The vault is `3A7JjFg4ZbZrEsvAZReSaWxjCvi5NZUTAyAZaLfQjuYC`** = ATA(pool, mint); the tree `5URd…` = PDA(`["merkle",
+  pool]`) → §1 "Pool".
+- **The landed deposit consumed 142,287 CU** (tx) under a 1,400,000 limit; the wallet's limit stays 200,000 → §1 "CU",
+  §5 step 5.
+- **Jest suites that need the real `@solana/web3.js`** opt out of the app-wide mock per file through
+  `src/modules/shielded/a0/__testing__/realWeb3.ts`; a PDA or byte-level test under the mock is vacuous → §14 JS.
+- **The IDL is no longer an open point:** the wallet holds a byte copy pinned by its digest (the program side's
+  `target/` is untracked, so the digest is the only pin) → §15.
+
+*Task 2 — the tree sync and its `SyncedTx` record:*
+
+- **`withdraw_with_change`'s "(380 bytes)" is the whole instruction data** — 372 after the discriminator → §1.
+- **The MerkleTree account recorded at slot 522620135:** 17 leaves, head 17; the wallet's zeros equal the account's
+  `zeros @16`; the empty root `2134e76a…1f3e` is at ring index 0 and the root after leaf k at index k + 1 → §1.
+- **`SyncedTx`:** `deposits[]` / `withdrawals[]` are arrays (one tx may carry several pool instructions); added
+  `topLevelPrograms[]`; the token deltas are `vaultTokenDelta` and each withdrawal's `destinationTokenDelta` → §9
+  "What it retains".
+- **More checks:** at the account's own leaf count, the root at `rootHistoryHead` is ours and the filled subtrees
+  `@656` equal ours; every commitment and root is canonical (`< r`) → §9 "Checks".
+- **Source:** a signature the list marks failed is not fetched, and `meta.err` is honoured as well; the sync reads at
+  `confirmed` and caches only the finalized prefix; a cached run that fails a check is replaced by one full run → §9.
+- **The event scope (R1-I1):** event blobs are admitted only from a TOP-LEVEL `FeGSS…` instruction whose accounts at the
+  IDL positions are `[pool 8VMe…, merkle_tree 5URd…]` — the same predicate as the instruction decode; listing `5URd…`
+  elsewhere is not enough. `eventLogs.poolLeafBlobs` takes only that `isOurs(ix)` predicate (the v1 tree-string form is
+  removed; a non-function scope throws `E_POOL_SCOPE`) → §9, §12.
+- **`transfer` (M2) transactions' `LeafInserted` are admitted** (the tree needs every leaf), their `NoteCiphertext` /
+  `Transfer` are not (M2) → §9.
+- **`depositLegacy` is removed** from `eventLogs` and the v1 `depositEvents` → §9, §12 (m8).
+- **The sync's chain identity is the tree account itself** (absent or foreign-owned → refused); it makes no
+  `getGenesisHash` request, which keeps I-3's method set → §2, §9.
+- **A CPI deposit into `FeGSS…`** would stop every wallet's sync (its event is not attributable to our tree's
+  top-level instruction) — a question for the program side → §15.
+
+*Task 3 — the note store and recovery:*
+
+- **A present rho is ours only if its commitment is** (ruling (1)): `rho(i)` is public once our deposit is broadcast, and
+  a copied rho under another key's commitment can land first. Present → Rust's `commitment(amount, rho)` equal to the
+  synced deposit's → import; not equal → foreign: not imported, the counter moved past it. Recovery does the same and
+  counts such hits (`foreignRhoHits`); a hit resets the gap count either way, and `nextDepositIndex` after a restore is
+  the highest hit (own or not) + 1 → §5 step 2, §7 step 2, §8.
+- **The restore records `highestHit`** (R1-m4), the highest deposit counter with a hit (own or foreign), or none.
+  The hazard it shows, for the owner: with the gap limit at 20 and a counter that is never handed back, **20
+  consecutive expired or front-run deposits hide every later own deposit from a restore**. The gap limit stays 20 as in
+  the plan the owner approved; whether to raise it or count only landed deposits is open for the owner (R1-m4, asked
+  at the M1b finish) → §7 "Deposits", "Cost (R13)".
+- **Change-note attribution:** `matchSpent` returns indices into `ownRhos`, not the nullifier; the attribution is one
+  further local `matchSpent(handle, [n], spentRhos)` per synced `Withdraw` nullifier (M1c); M1b leaves `spentTx`
+  unset → §7 "Change notes".
+- **With no own deposit note there is no `matchSpent` call**; with any, exactly one → §7 step 3.
+- **The state rules:** `pending` is a pending deposit (`lastValidBlockHeight`, `depositIndex`, no `leafIndex`) or a
+  pending unshield (`pendingSince`, `leafIndex`); `unspent` / `spent` carry `leafIndex`; only `spent` carries
+  `spentTx` → §8 "Fields".
+- **The record is one value** under `v1_a0_notes` (`{schema: 1, programId, pool, nextDepositIndex, notes}`), so the
+  pending note and the counter are one write; a missing encrypted instance or an undecodable record is an error, never
+  an empty store; only a recovery replaces a corrupt record — the one path that lowers `nextDepositIndex` (that
+  record's counter and pending entries are unknowable; stated as a hazard) → §8 "Storage".
+- **The v1 clear** is the A0 store's first call (no `v1_a0_notes` record yet) and removes the `v1_notes_<mint>` keys of
+  the encrypted instance only → §8 "Old notes".
+- **R13's "duration" is the whole restore** (sync + matching + store write); the counters are kept in the encrypted
+  instance (`v1_a0_last_restore`); the trigger is strict (`> 5000`, `> 60 s`) → §7 "Cost (R13)".
+- **I-3 is stricter than the listed set:** the restore's requests equal the tree sync's (its three methods), own values
+  are searched in hex, base58 and base64, and a warm-cache restore makes exactly the plain cached sync's requests
+  (R1-m3) → §14 JS.
+
+*Task 4 — the deposit flow and the startup step:*
+
+- **"Present" is a rho marker OWNED BY THE POOL PROGRAM** (a system-owned account at the address is lamports someone
+  sent); a marker whose deposit the synced history does not show yet refuses the deposit for now (RPC lag), never a
+  guess; more than `A0_PRECHECK_MAX_HITS` = 4 consecutive hits refuse, four proceed; GAP fires when recovery's next
+  counter is ≤ the store's (by construction then at least 20 below, so `<=` vs `<` is unobservable) (R1-I2) → §5
+  step 2.
+- **A deposit refuses until the startup step has written the A0 record** (a first store read would write an empty
+  record, and the restore keys on the record's absence) → §5 step 2.
+- **The comparison also checks the count** (exactly 4 public inputs) and the proof's shape (256 bytes); `rho` is
+  compared with the `depositRho(i)` value the pre-check took for this counter, under the same handle → §5 step 4.
+- **One blockhash, one pending write, one send** — no re-sign on expiry; preflight on; a legacy message
+  `[setComputeUnitLimit(200,000), deposit]` signed by the depositor alone, in the landed deposit's account order;
+  before anything, the RPC's genesis hash must be devnet's → §5 step 5.
+- **The leaf is read from the tree sync** (the `SyncedTx` whose deposit carries the note's rho, commitment and amount),
+  never from a `getTransaction` of our own signature; a confirmed deposit the sync does not list yet stays `pending`;
+  after the send nothing throws on the chain's behalf (a failing settle sync leaves the deposit `pending`,
+  `not-in-sync`), only a note-store refusal still rejects → §5 step 6.
+- **Step 7:** "past the deposit's `lastValidBlockHeight`" is the FINALIZED height, and "absent" is a `finalized` read
+  made after that height was seen; a present marker whose deposit is foreign drops the pending note (counter kept) →
+  §5 step 7.
+- **The expiry drop waits a margin** (final review I-2): an absent marker drops a pending deposit only once the
+  finalized height is past its `lastValidBlockHeight` + `A0_DROP_MARGIN_BLOCKS` = 300 (≈ 2 minutes), because the height
+  and the `finalized` PDA read may come from two load-balanced RPC nodes out of step, and a deposit that landed late
+  then reads absent; a wait is harmless, a wrong drop hides landed tokens until a re-import. In the submit, a foreign
+  deposit at our rho after OUR confirmed send (a contradiction: the marker is `init`) leaves the note `pending`
+  (`not-in-sync`), never a drop; the reconciliation also makes no first-run write on an absent record (m-2) → §5
+  steps 6–7.
+- **One startup step per WALLET** (ruling (2), R1-C1, R2-N1): at unlock and onboarding (devnet build with the native
+  prover) — no `v1_a0_notes` record or an undecodable one → restore, then the reconciliation — and its state gates the
+  shielded balance. Replacing the encrypted instance (`clearAllStores` = the in-app wipe, `initSecureMmkv` = onboarding /
+  import) resets it; a run is bound to the instance it started on and refuses `E_A0_STORE_CHANGED` before any write to
+  another; a run made stale by a reset publishes nothing; an in-app wipe followed by an import in one process restores
+  the imported wallet → §5 step 7, §7.
+- **Every note-store writer is bound to the instance captured at its entry** (R3-N5): the startup run, the restore, the
+  reconciliation (including "Check again"), the pre-check's import, the submit's pending write and its settle;
+  `confirm` / `drop` never create the record; the tree-sync cache is the one unbound writer (public data that verifies
+  itself on read) → §8.
+- **The RPC also sees, at startup,** the rho-PDA lookup of every pending deposit (a rho already broadcast) and the
+  finalized block height → §2 "Who sees what".
+
+*Task 5 — the shield screens:*
+
+- **#19–#21 for the deposit are three deposit screens** to the design's SHIELDED states, carrying a `ShieldIntent`
+  that names an in-memory prepared deposit; the transparent screens are not reused (they re-sign on expiry) → §11.
+- **#18's four design rows are driven by the deposit's stages** and show measured times, no percentages; the hosted-prover
+  fallback is not built (A0 has no hosted proving) → §11.
+- **#19: a failed simulation cannot be continued** (no "Continue anyway") → §11.
+- **The screens state the deposit's SOL costs** as the network fee and the rho marker's rent (≈ 0.00069596 SOL), and no
+  ZK proof fee → §11.
+- **"Check again"** on a pending deposit (#16 and the dashboard's pending line, R1-m9): it runs step 7 on demand, with no
+  seed, bound to the instance open at the tap, refused while the startup step runs, and refreshes the screen's store read
+  → §5 step 7, §11.
+- **Two settlers of one note:** a submit finding its note already `unspent` with the same commitment at the same leaf
+  returns that outcome; a reconciliation skips a note no longer `pending` (at its turn, after its chain reads, before the
+  expiry drop) and counts it (`skipped`, Task 7); anything else still refuses in the store → §5 steps 6–7.
+- **#21:** a note-store refusal after the pending write is said with its code (`E_A0_STORE_CHANGED` there is "Not in
+  this wallet"); no stuck-tx redirect to #54 (a pending deposit is the reconciliation's) and "View details" is the
+  explorer, not #27 (R1-m2) → §11.
+- **"Hidden" means NO ROUTE** (and no deep link) in any build; the v1 `Deposit`, `ShieldedBalance` and `ShieldedTransfer`
+  screens go with their routes; the shield routes exist only in the shielded build → §12.
+- **The dashboard reads the A0 store and tree** (balance, assets row, anonymity set); the v1 warm-up (incl. `/zk/warm`)
+  is removed → §12.
+
+*Task 6 — the removals and the devnet chain identity:*
+
+- **"Removed", as built:** the v1 modules, `zkProver/{zkProverModule,proofQueue,localProver,types}`,
+  `constants/provingAssets.ts` (its shared types moved to `zkProver/provingAssets.ts`; the A0 pin set asserts itself
+  content-addressed at import), `solana/relayer.ts`, the `ExportViewKey` and `NativeProveDebug` screens and routes,
+  `PrivacyMeter` / `ShieldedAddressInput` / `ProofProgressOverlay`, `walletStore.shieldedBalances`,
+  `FEATURES.shieldedRelayer` / `shieldedTransfer`, and the v1 view key (`keyDerivation/shielded.ts`, its keychain entry
+  removed at unlock); a Jest guard (`v1Removed.test.ts`) checks the files, the resolved imports and the names → §12.
+- **The v1 native prover is deleted** with `proveV1`, its JNI export (9 symbols left), `src/prover.rs` and the v1
+  examples and artifacts; CI no longer fetches the v1 artifacts → §12.
+- **`noteEncryption` is kept** with its v1 `{amount, noteSecret}` payload, revalidated in M2 before use (the one listed
+  guard exception for `noteSecret`) → §12.
+- **Unlock also removes the v1 leftovers** of older installs (the `noc1…` address, the v1 sync caches and cursors, the v1
+  proof queue's record) → §8, §12.
+- **`SHIELDED_CU` is `A0_CU`** (deposit and `withdrawChange` 200,000) → §12.
+- **The shielded Receive, hidden:** the route ignores any `shielded` param and the dashboard offers no Receive in
+  shielded mode → §11.
+- **S13, as built:** the chain identity is `NETWORK`; the devnet build sets `NETWORK=devnet`; a shielded build on any other
+  network refuses to start (`assertShieldedRequiresDevnet`); `constants/chain.ts` names the network on every screen and
+  builds every explorer link (`?cluster=devnet` on devnet); "presale disabled" covers the Phase 1 program's surfaces
+  (presale, its geo gate, staking, the presale referral); `programs.ts` carries the mainnet literals and no placeholder
+  → §12 "Build".
+- **The JS source test (R1-I3, R2-N3/N4):** M1b deletes the permitted importer `keyDerivation/shielded.ts`, so the rule
+  is now "no JS module imports `deriveSeedTree`"; as built (`jsKeyBoundary.test.ts`) it reads module specifiers, not
+  text, refuses any `bls.js` specifier, the removed module and names, the string `12381/371/1` outside
+  `keyDerivation/paths.ts`, and any reference to `SHIELDED_PATHS.spend`; the third clause stays M1a's bridge surface
+  test → §14 Boundary.
+- **The boundary counts:** the bridge exports 7 functions, the React module 7 methods, the library 9 JNI symbols → §14.
+
+*Task 7 — the on-phone checkpoint:*
+
+- **The desk reads the phone through the devnet build's readout** (`a0/checkpointReadout.ts`): chunked log lines
+  `NOCTURA-A0-READOUT`, public values only (signature, main account, amount, commitment, leaf index, root, counts —
+  R13's two numbers, the restore's `highestHit`, the reconciliation's `skipped` — reasons, error codes), gated on
+  `FEATURES_SHIELDED=true` and `NETWORK=devnet`; it judges every value against devnet (the deposit's own transaction
+  and `LeafInserted`, the tree's signature list). The code is in both bundles; the gate is closed in the production APK
+  (its BuildConfig, read off the APK), and the production launch and unlock are checked to write no readout line →
+  §16 M1b.
+- **"Wipe the app" = `pm clear com.nocturawallet.devnet`**, the one clear any checkpoint sends (exact package, typed
+  confirmation, the installed app signed by the checkpoint's devnet key; never the production wallet); the in-app Wipe
+  wallet → import is a second, optional restore case, recorded not judged (R1-C1) → §16 M1b.
+- **"Kill the app between submit and confirmation" = the desk's `am force-stop`** on the "deposit-submitted" readout
+  (emitted once the send is accepted); a kill after the app saw the outcome is detected and repeated; the kill precedes
+  the wipe, so the restore must return both deposits → §16 M1b.
+- **R13 at the checkpoint:** the judged restore is the first after the wipe; its count must lie within the desk's own
+  walk of `5URd…`; the line records the numbers, the trigger and the highest counter hit, it does not fail on them; a
+  429 backoff or a timeout shows as a startup error with Retry, and the duration includes the backoff (R1-m5) → §16
+  M1b, §7 "Cost (R13)".
+- **I-3 is run by the desk's `verify`** at HEAD (clean, = the APKs' commit) and is a line of the record → §16 M1b.
+- **The production APK is launched AND unlocked** (the A0 modules — `startup.ts`'s reset hook among them — load at unlock
+  in every build), both checked for a clean crash buffer and no readout line → §16 M1b.
+- **The devnet A0 mint `ERkp…`** has mint authority `GoBAm…` (the pool authority's key), no freeze authority (slot
+  522688040); test tokens come from the program side → §1, §15.
 
 ### Rev 3.2, 2026-11-09 — the M1a plan's execution: the departures of its six tasks, their fix rounds and the final wave; text only, no owner decision changed
 
@@ -355,8 +554,11 @@ make the two sides agree by construction.
     canonical big-endian (`< r`). The nullifier PDA uses the nullifier the same way.
   - *Provenance:* read from the program side's source (`programs/shielded-pool/src/lib.rs`, `DepositCtx`, their HEAD
     `93a82a5`), not from the IDL. M1b's first task decodes the landed deposit `3DR6F7oW…` against the IDL and this text;
-    nothing in M1b is written before that passes.
-  - **`withdraw_with_change` arguments:** `merkle_root[32], nullifier[32], amount u64 LE, change_commitment[32], fee u64 LE, proof Vec<u8>(256)` (380 bytes).
+    nothing in M1b is written before that passes. *(Rev 3.3: passed — the IDL `cfd37078…ca0`, pinned as a test fixture,
+    and this text agree on the discriminator, the four arguments (332 bytes) and the eight accounts with their flags;
+    the wallet's builder reproduces the landed signed message byte for byte. The vault is
+    `3A7JjFg4ZbZrEsvAZReSaWxjCvi5NZUTAyAZaLfQjuYC` = ATA(pool, mint); the tree `5URd…` = PDA(`["merkle", pool]`).)*
+  - **`withdraw_with_change` arguments:** `merkle_root[32], nullifier[32], amount u64 LE, change_commitment[32], fee u64 LE, proof Vec<u8>(256)` (372 bytes after the discriminator, 380 with it — rev 3.3, measured on the four landed withdraws).
   - Its accounts: `pool(r), merkle_tree(w), vault(w), destination(w), nullifier_record(w), fee_payer(signer,w), fee_destination(w), wchange_vk(r), token_program, system_program`.
     `destination` is a **token account**; the program checks `recipientField == be_mod_f(destination)` and that its
     mint is the pool's.
@@ -364,7 +566,9 @@ make the two sides agree by construction.
   - `LeafInserted 59f3d408d7bfbb98` `{commitment[32], leaf_index u64 LE, root[32]}`. A deposit emits only this one.
   - `Withdraw c0f1c9d946965af7` `{nullifier[32]}`, after the change note's `LeafInserted`.
 - **MerkleTree account (3352 bytes):** `nextLeafIndex @8`, `zeros @16`, `filledSubtrees @656`, `rootHistory @1296`,
-  `rootHistoryHead @3344`; depth 20, history 64.
+  `rootHistoryHead @3344`; depth 20, history 64. *(Rev 3.3: recorded at slot 522620135 — 17 leaves, head 17; the
+  wallet's zeros equal `zeros @16`; the empty root `2134e76a…1f3e` is at ring index 0 and the root after leaf k at
+  index k + 1.)*
 - **Public inputs, in order:**
   - deposit: `commitment, amount, mintHash, rho`, with private `nk, d`;
   - withdraw_change: `merkleRoot, nullifier, withdrawAmount, recipientField, mintHash, changeCommitment, fee`, with private `nk, d, inputAmount, rho, pathElements[20], pathIndices[20], change_d`.
@@ -401,7 +605,11 @@ make the two sides agree by construction.
     "through the live route", `3UfCx5TD…`; the wallet still waits for the announcement and the S6 change, §15.)
 - **Fee:** in the pool's token, `minFee` 10,000 base units, `max_fee` 100,000 (on chain: `fee <= pool.max_fee`).
 - **CU measured by the program side:** deposit 139,135 / 140,627; `withdraw_with_change` 179,335 direct, 173,458
-  through the relayer.
+  through the relayer. *(Rev 3.3: the landed deposit `3DR6F7oW…` consumed 142,287 under a 1,400,000 limit; the
+  wallet's limit stays 200,000.)*
+- *(Rev 3.3, fact)* **The mint `ERkp…`** has mint authority `GoBAmZzHvD6F4KHLNmBFh2wZAGE1dwwufeTbifSHEYfd` (the pool
+  authority's key) and no freeze authority (read at slot 522688040); it has no faucet — test tokens come from the
+  program side.
 
 ## 2. Architecture
 
@@ -443,7 +651,9 @@ holds `nk` / `addrField`, or produces an unshield proof without the native autho
   balance polls of **every** account in the registry, the fresh-account history check and the deposit's rho-PDA
   check. It can link a wallet's accounts to each other by request pattern, fresh exit accounts included. The design
   keeps the app's requests that are *specific to one note* off the RPC (no lookup of an own nullifier, its PDA or a
-  relayed signature — §6.8, §7, §9), but it cannot hide the account polls.
+  relayed signature — §6.8, §7, §9), but it cannot hide the account polls. *(Rev 3.3: it also sees, at startup, the
+  rho-PDA lookup of every pending deposit — a rho already broadcast — and the finalized block height. The tree sync's
+  chain identity is the tree account itself; it makes no `getGenesisHash` request.)*
 
 Neither the relayer nor the RPC provider is "unable to link"; the success criteria claim nothing against them.
 
@@ -643,21 +853,49 @@ authorizeUnshield(handle, owner, amount, fee) -> authId                         
    - present → this is **one of our own notes the store does not know** (a deposit that landed while the app died, or
      before a restore). JS imports it exactly as recovery does (§7, deposits step 2), sets `nextDepositIndex = i + 1`
      and checks again. A collision therefore never becomes a paid, rejected tx, and a lost note is found instead of skipped.
+   *(Rev 3.3:)* "present" means a rho-marker account OWNED BY THE POOL PROGRAM (a system-owned account at the address is
+   lamports someone sent); and it is **ours only if its commitment is**: `rho(i)` is public once our deposit is
+   broadcast, so a copied rho under another key's commitment can land first. Present → Rust's `commitment(amount, rho)`
+   equal to the synced deposit's → import; not equal → foreign: not imported, never thrown on, `nextDepositIndex = i + 1`,
+   check again. A marker whose deposit the synced history does not show yet refuses the deposit for now (RPC lag); more
+   than `A0_PRECHECK_MAX_HITS` = 4 consecutive hits refuse (`E_A0_DEPOSIT_PRECHECK_LIMIT`); a store counter at or past
+   recovery's next counter while that counter's marker exists refuses (`…_GAP`). A deposit also refuses until the startup
+   step (step 7) has written the A0 record.
 3. Rust computes the commitment (`commitment(amount, rho)`, R9); JS never holds `addrField`.
 4. Rust proves the deposit circuit (`{amount, depositIndex: i}`). JS compares the returned public inputs, in order:
    `commitment` with Rust's `commitment()` return (the circuit's Poseidon against Rust's: two implementations),
-   `amount` and `mintHash` with its own values, `rho` with `depositRho(i)`. A mismatch aborts.
+   `amount` and `mintHash` with its own values, `rho` with `depositRho(i)`. A mismatch aborts. *(Rev 3.3: also exactly 4
+   public inputs and a 256-byte proof; `rho` is the value the pre-check took for this counter, under the same handle.)*
 5. **Before submitting**, JS writes the note as `{commitment, amount, rho, depositIndex: i, lastValidBlockHeight,
    status: pending}` and sets `nextDepositIndex = i + 1` in the same write. Then it
    builds the `deposit` instruction (§1 layout, IDL account order, CU limit 200,000) and the existing confirmation flow
    signs it with the selected transparent account (#19 → #20 → #21). No authorization is needed: the circuit binds the
-   note to the user's own `nk`, so a deposit cannot pay anyone else.
+   note to the user's own `nk`, so a deposit cannot pay anyone else. *(Rev 3.3: one blockhash, one pending write, one
+   send — no re-sign on expiry; preflight on; a legacy message `[setComputeUnitLimit(200,000), deposit]` signed by the
+   depositor alone, in the landed deposit's account order; first, the RPC's genesis hash must be devnet's.)*
 6. After confirmation on chain (the existing polling confirm, not a fixed wait), the note becomes `unspent` with the
-   `leafIndex` and root read from the tx's `LeafInserted`; JS checks that event's commitment equals the note's.
+   `leafIndex` and root read from the tx's `LeafInserted`; JS checks that event's commitment equals the note's. *(Rev 3.3:
+   the `LeafInserted` is read from the tree sync — the `SyncedTx` whose deposit carries the note's rho, commitment and
+   amount — never from a `getTransaction` of our own signature; a confirmed deposit the sync does not list yet stays
+   `pending` (`not-in-sync`), and so does one whose settle sync fails; after the send only a note-store refusal still
+   rejects. A submit that finds its note already `unspent` at the same leaf (a concurrent reconciliation settled it)
+   returns that outcome.)*
 7. **At startup**, every `pending` deposit is reconciled by its rho PDA: present → read the creating tx (§7 step 2) and
    mark it `unspent`; absent and the chain's block height past the deposit's `lastValidBlockHeight` (stored with the
    pending note) → drop the `pending` entry; `nextDepositIndex` is not lowered, so the counter is never reused (reuse
    would be safe — that `rho` never reached the chain — but one rule is easier to hold than two).
+   *(Rev 3.3:)* "past the `lastValidBlockHeight`" is the FINALIZED height past it by more than a margin of 300 blocks
+   (`A0_DROP_MARGIN_BLOCKS`, final review I-2: the height and the PDA read may come from two RPC nodes out of step), and
+   "absent" is a `finalized` read made after that height was seen; a present marker whose deposit is foreign drops the
+   pending note (counter kept) — but a foreign hit in the submit's own settle, after our confirmed send, leaves it
+   `pending`. The step runs
+   in **one startup step per wallet** with §7's restore (no `v1_a0_notes` record, or an undecodable one → restore first),
+   at unlock and onboarding of the devnet build with the native prover; its state gates the shielded balance (restoring /
+   error + Retry, never 0). Replacing the encrypted instance (the in-app wipe, an import) resets it; a run is bound to
+   the instance it started on and refuses `E_A0_STORE_CHANGED` before writing to another; a run made stale by a reset
+   publishes nothing. **"Check again"** (#16, the dashboard) runs this step on demand, without the seed, bound to the
+   instance open at the tap, refused while the startup step runs. A note no longer `pending` when its turn comes (or
+   after its reads) is skipped and counted (`skipped`), never a rejection of the run.
 
 ## 6. Unshield (withdraw with change, relayed)
 
@@ -772,15 +1010,23 @@ makes no RPC request specific to one of our notes (I3; m7 does not arise).
 - **Deposits:**
   1. From the synced history, collect the `rho` argument of every `deposit` tx. For `i = 0, 1, 2, …`, compute
      `depositRho(i)` and look for it in that set. Stop after 20 consecutive misses (the gap limit; deposits are
-     sequential, so a gap only comes from a failed or abandoned tx).
+     sequential, so a gap only comes from a failed or abandoned tx). *(Rev 3.3: a hit whose commitment is not ours is
+     counted (`foreignRhoHits`) and not imported; any hit resets the gap count; `nextDepositIndex` after a restore is
+     the highest hit, own or not, + 1. The restore records that `highestHit` (R1-m4). **Hazard, for the owner:** a
+     counter is never handed back, so 20 consecutive expired or front-run deposits hide every later own deposit from a
+     restore. The gap limit stays 20 as in the plan the owner approved; whether to raise it or count only landed
+     deposits is open for the owner, R1-m4.)*
   2. For each hit, read the creating tx (already synced): amount from the instruction, leaf index and commitment from
      `LeafInserted`, and check `commitment(amount, rho)` equals it.
   3. Spent-status for every own note at once: `matchSpent(handle, allSyncedWithdrawNullifiers, ownRhos)` (R12); JS
-     never computes or holds an own nullifier to look for.
+     never computes or holds an own nullifier to look for. *(Rev 3.3: with no own deposit note there is no call; with any,
+     exactly one.)*
 - **Change notes:** for each spent note, its spending tx is the `SyncedTx` whose `Withdraw` nullifier `matchSpent`
   attributed to it (already synced; that nullifier is public now). `rho_change = Poseidon3(TAG_RHO, nullifier, 0)` (JS can compute it: the nullifier is public), the amount is
   the input minus the instruction's `amount` minus its `fee`, the leaf index and commitment come from its
-  `LeafInserted`, and `commitment(changeAmount, rho_change)` must equal that commitment. Recurse.
+  `LeafInserted`, and `commitment(changeAmount, rho_change)` must equal that commitment. Recurse. *(Rev 3.3:
+  `matchSpent` returns indices into `ownRhos`, not the nullifier; the attribution is one further local
+  `matchSpent(handle, [n], spentRhos)` per synced `Withdraw` nullifier, in M1c; M1b leaves `spentTx` unset.)*
 - **Accounts (I6, `slip10` wallets only):** each recovered unshield's `destination` token account is compared with
   `ATA(slip10:n, mint)` for `n = 0, 1, 2, …` (derived locally); a match adds `slip10:n` to the registry as
   `fresh-exit`. Stop after 20 consecutive indices without a match past the highest match. This is the wallet's own rule
@@ -789,19 +1035,32 @@ makes no RPC request specific to one of our notes (I3; m7 does not arise).
 - **Cost (R13).** A restore reads the pool's whole history: one `getSignaturesForAddress` page walk over `5URd…` and a
   `getTransaction` per pool tx (a few dozen on devnet today). Accepted for devnet. **The indexer trigger:** a restore
   that reads more than 5,000 tree transactions, or takes more than 60 s on the acceptance phone, makes a coordinator
-  tree indexer a pre-mainnet item (§13). M1b's checkpoint records both numbers (§16).
+  tree indexer a pre-mainnet item (§13). M1b's checkpoint records both numbers (§16). *(Rev 3.3: "duration" is the whole
+  restore — sync, matching and the store write, retries and backoff included; the counters are kept in the encrypted
+  instance, `v1_a0_last_restore`; the trigger is strict, `> 5000` or `> 60 s`.)*
 
 ## 8. The note store
 
 - **Fields:** `{commitment, amount, rho, depositIndex?, lastValidBlockHeight?, leafIndex?, status: pending | unspent |
   spent, spentTx?, pendingSince?}` (`lastValidBlockHeight` for a pending deposit, `pendingSince` — chain time — for a
   pending unshield), all public or spend-irrelevant. No `noteSecret`, no diversifier (every own note is under `d_self`,
-  which stays in Rust, R9) and no nullifier of an unspent note (R12).
+  which stays in Rust, R9) and no nullifier of an unspent note (R12). *(Rev 3.3, the state rules: `pending` is a pending
+  deposit — `lastValidBlockHeight`, `depositIndex`, no `leafIndex` — or a pending unshield — `pendingSince`,
+  `leafIndex`; `unspent` / `spent` carry `leafIndex`; only `spent` carries `spentTx`.)*
 - **Metadata (I-4):** `nextDepositIndex`, the monotone deposit counter of §5.2 — never lowered, not even when a
-  `pending` deposit is dropped; after a restore it is the highest recovered `depositIndex` + 1.
+  `pending` deposit is dropped; after a restore it is the highest recovered `depositIndex` + 1 *(rev 3.3: the highest
+  hit, own or foreign, + 1)*. The one path that lowers it is the replace of an unreadable record by a recovery (that
+  record's counter and pending entries are unknowable) — a stated hazard.
 - **Storage:** the encrypted MMKV instance, schema `v1_a0_notes` (and the `SyncedTx` cache of §9 beside it).
+  *(Rev 3.3: one value, `{schema: 1, programId, pool, nextDepositIndex, notes}`, so the pending note and the counter are
+  one write; a missing encrypted instance or an undecodable record is an error, never an empty store. Every writer —
+  the startup run, the restore, the reconciliation incl. "Check again", the pre-check's import, the submit's pending
+  write and settle — is bound to the instance captured at its entry; `confirm` / `drop` never create the record; the
+  sync cache is the one unbound writer: public data that verifies itself on read.)*
 - **Old notes:** v1 notes (the old scheme) are not migrated; their schema is cleared on first A0 run in the devnet build.
-  They were devnet test notes, and the program side abandoned that pool.
+  They were devnet test notes, and the program side abandoned that pool. *(Rev 3.3: the clear is the A0 store's first
+  call and removes the `v1_notes_<mint>` keys of the encrypted instance only; unlock also removes the v1 leftovers of
+  older installs — the `noc1…` address, the v1 sync caches and cursors, the v1 proof queue's record.)*
 
 ## 9. Tree sync
 
@@ -811,7 +1070,12 @@ makes no RPC request specific to one of our notes (I3; m7 does not arise).
   discriminator), plus the `deposit` / `withdraw_with_change` instruction arguments recovery needs. Nothing else is
   accepted (m8: the v1 `depositLegacy` discriminator goes). Only successful transactions are kept; event blobs are
   admitted only from the pool program's own instruction on this tree (the existing per-instruction scoping of
-  `eventLogs`).
+  `eventLogs`). *(Rev 3.3, R1-I1: only from a TOP-LEVEL `FeGSS…` instruction whose accounts at the IDL positions are
+  `[pool 8VMe…, merkle_tree 5URd…]` — the instruction decode's predicate; `5URd…` listed elsewhere is not enough.
+  `transfer` (M2) transactions' `LeafInserted` are admitted, their `NoteCiphertext` / `Transfer` not yet. A signature
+  the list marks failed is not fetched and `meta.err` is honoured; the sync reads at `confirmed` and caches only the
+  finalized prefix; a cached run that fails a check is replaced by one full run; the tree account absent or
+  foreign-owned refuses.)*
 - **Every spend is in it.** Each A0 spend (`withdraw_with_change`, and M2's `transfer`) writes `merkle_tree` and emits
   its `LeafInserted` and spend event in the same instruction, so this one history is complete for spent-status and for
   the `confirmed` check (review 2 §2).
@@ -829,6 +1093,8 @@ makes no RPC request specific to one of our notes (I3; m7 does not arise).
   - the pre-balance (lamports) of every account the tx lists, as `preBalances` gives them (the grant check of §6.8
     needs the owner's);
   - the token-balance deltas of the vault and of the destination token account.
+  - *(Rev 3.3, as built: `deposits[]` / `withdrawals[]` are arrays — one tx may carry several pool instructions — plus
+    `topLevelPrograms[]`; the deltas are `vaultTokenDelta` and each withdrawal's `destinationTokenDelta`.)*
 
   The cache lives in the encrypted MMKV with the notes. It holds nothing secret — everything in it is public chain
   data — but *which* rows the wallet later reads is the pattern §2 keeps away from the RPC, so it stays with the notes,
@@ -836,7 +1102,9 @@ makes no RPC request specific to one of our notes (I3; m7 does not arise).
 - **Checks:**
   - the leaves are ordered by `leaf_index` with no gap;
   - the incremental root after each leaf equals the event's `root`;
-  - the final root is in the account's `rootHistory`.
+  - the final root is in the account's `rootHistory`;
+  - *(rev 3.3)* at the account's own leaf count, the root at `rootHistoryHead` is ours and the filled subtrees `@656`
+    equal ours; every commitment and root is canonical (`< r`).
 - On a mismatch, the sync refuses to build a path. It never proves against a root it could not reproduce.
 - `zeros` / `emptyRoot` are computed by the wallet and compared with the account's `zeros @16`.
 - The existing merkle and path code (`merkleSync`, `computeMerklePath`) is kept where it already matches A0 (depth 20,
@@ -877,13 +1145,22 @@ makes no RPC request specific to one of our notes (I3; m7 does not arise).
   - #16 shield-unshield (both sides);
   - #17 explainer;
   - #18 zk-proof, with real stages; its "Plonk/Halo2 simulation" wording in `screen.md` does not describe Groth16,
-    and the copy fix of 2026-11-07 already says Groth16;
-  - #19–#21 tx flow for the deposit;
+    and the copy fix of 2026-11-07 already says Groth16; *(rev 3.3: the four rows follow the deposit's reported stages
+    with measured times, no percentages; the hosted-prover fallback — button, sheet, "Local prover slow?" — is not
+    built: A0 has no hosted proving)*
+  - #19–#21 tx flow for the deposit; *(rev 3.3: three deposit screens to the design's SHIELDED states carrying a
+    `ShieldIntent` that names an in-memory prepared deposit — the transparent screens re-sign on expiry, a deposit must
+    not; #19 offers no "Continue anyway"; the screens state the network fee and the rho marker's rent (≈ 0.00069596
+    SOL) and no ZK proof fee; #21 says a note-store refusal after the pending write with its code — `E_A0_STORE_CHANGED`
+    is "Not in this wallet" —, has no stuck-tx redirect to #54 and its "View details" is the explorer, not #27; a
+    pending deposit offers "Check again" on #16 and the dashboard. Every departure from the design is listed for the
+    owner's visual pass in `scripts/m1b-checkpoint/README.md`)*
   - #11 with mode = shielded.
 - **Undrawn, built from the design system and shown to the owner in a visual pass:** the account switcher, the
   unshield destination choice, the warnings and the native confirmation dialog (Kotlin, styled with the design tokens).
 - **Deferred, said loudly:** the shielded Receive (no valid A0 receive address exists until M2; the shielded option of
-  Receive is hidden, §12) and the Export View Key screen (R10).
+  Receive is hidden, §12) and the Export View Key screen (R10). *(Rev 3.3: hidden = the route ignores any `shielded`
+  param and the dashboard offers no Receive in shielded mode.)*
 - **Copy (owner-delegated, D27; R10, R11).** No screen calls the exit "unlinkable", "untraceable" or "anonymous";
   privacy is described by who signs and what is public. The strings below are the rules; the plans may shorten them
   but not widen a claim:
@@ -938,9 +1215,22 @@ makes no RPC request specific to one of our notes (I3; m7 does not arise).
     but only rejects `E_V1_REMOVED`, synchronously, before any native call; no Kotlin code calls `nativeProve`; the v1
     JS callers, devnet-only, receive the refusal.)*
 - **Hidden until its plan lands:** between M1b and M1c, #16's unshield side and the shielded transfer entry are hidden
-  in the devnet build (their v1 flows are gone, the A0 one is not there yet).
+  in the devnet build (their v1 flows are gone, the A0 one is not there yet). *(Rev 3.3: hidden means NO ROUTE and no
+  deep link in any build; the v1 `Deposit`, `ShieldedBalance` and `ShieldedTransfer` screens go with their routes; the
+  shield routes exist only in the shielded build; the dashboard reads the A0 store and tree, and the v1 warm-up, incl.
+  `/zk/warm`, is removed.)*
+- *(Rev 3.3)* **Removed in M1b, as built:** the v1 modules of `src/modules/shielded/`, `zkProver/{zkProverModule,
+  proofQueue,localProver,types}`, `constants/provingAssets.ts` (its shared types moved to `zkProver/provingAssets.ts`;
+  the A0 pin set asserts itself content-addressed at import), `solana/relayer.ts`, the `ExportViewKey` and
+  `NativeProveDebug` screens and routes, `PrivacyMeter` / `ShieldedAddressInput` / `ProofProgressOverlay`,
+  `walletStore.shieldedBalances`, `FEATURES.shieldedRelayer` / `shieldedTransfer`, `depositLegacy`, and the v1 view key
+  (`keyDerivation/shielded.ts`; its keychain entry removed at unlock); the v1 native prover with `proveV1`, its JNI
+  export, `src/prover.rs` and the v1 examples and artifacts (CI no longer fetches them). `eventLogs.poolLeafBlobs` takes
+  only an `isOurs(ix)` predicate (a non-function scope throws `E_POOL_SCOPE`). A Jest guard (`v1Removed.test.ts`)
+  checks the files, the resolved imports and the names.
 - **Kept but unused in M1:** the M2 pieces that still match A0, such as `noteEncryption` (ECIES to `pk_enc_d`). They are
-  revalidated in M2.
+  revalidated in M2. *(Rev 3.3: `noteEncryption`'s payload is still the v1 `{amount, noteSecret}` — revalidated against
+  the A0 note plaintext before use; it is the one listed guard exception for `noteSecret`.)*
 - **Build** (M1b unless tagged):
   - the devnet build sets `FEATURES_SHIELDED=true`, `LOCAL_PROVING=true` (and no longer `SHIELDED_RELAYER`);
   - the production build keeps shielded off. Its build inputs change (Gradle / CMake stanzas, a module, a dependency),
@@ -948,7 +1238,14 @@ makes no RPC request specific to one of our notes (I3; m7 does not arise).
     commit that launches on the phone (the libc++ lesson);
   - `assertShieldedRequiresLocalProving` stays;
   - `SHIELDED_CU`: deposit and `withdrawChange` ceilings stay at 200,000 for M1's paths; the provenance comment cites
-    the program side's measurements (§1), not unmeasured figures (m9).
+    the program side's measurements (§1), not unmeasured figures (m9); *(rev 3.3: it is `A0_CU` in `a0/constants.ts`;
+    the v1 table is gone)*
+  - *(rev 3.3, S13 as built)* the chain identity is `NETWORK` (no second key): the devnet build sets `NETWORK=devnet`
+    and a shielded build on any other network refuses to start (`assertShieldedRequiresDevnet`, beside
+    `assertShieldedRequiresLocalProving`); `constants/chain.ts` names the network on every screen and builds every
+    explorer link (`?cluster=devnet` on devnet); the fallback RPC is the network's public endpoint; "presale disabled"
+    covers the Phase 1 program's surfaces — presale, its purchase geo gate, staking, the presale referral: no route, no
+    deep link, no request; `programs.ts` carries the mainnet literals in every build and no placeholder.
 - **The Rust `.so`** (M1a): built for `arm64-v8a` only. The devnet shielded build is **phone-only** (m14): on any other ABI,
   emulators included, `isSupported()` is false and shielded is hidden. Adding `hkdf`, `bs58`, a Poseidon crate,
   `curve25519-dalek`, `zeroize` derive means a `Cargo.lock` update in the same PR (CI runs `--locked`). A **CI step**,
@@ -1035,6 +1332,8 @@ Each line is tagged with the plan that delivers it (§16).
     parser refusing any other discriminator or payload length (M1b);
   - the deposit `pending` → `unspent` path, a rho-PDA hit for an unknown counter importing the note, startup
     reconciliation, and `nextDepositIndex` never lowered (a dropped `pending` does not hand its counter back) (M1b);
+  - *(rev 3.3)* suites that need the real `@solana/web3.js` opt out of the app-wide mock per file through
+    `a0/__testing__/realWeb3.ts` (a PDA or byte-level test under the mock is vacuous);
   - the `SyncedTx` record: every field of §9 decoded from recorded fixtures of a landed deposit and a landed relayed
     `withdraw_with_change` (`3UfCx5TD…`), and refusal of a failed tx or a blob from another program (M1b);
   - **restore makes no note-specific request (I-3, M1b):** a recording mock `Connection` logs every method and its
@@ -1043,6 +1342,8 @@ Each line is tagged with the plan that delivers it (§16).
     getMultipleAccounts(<registry accounts>), getTokenAccountBalance / getParsedTokenAccountsByOwner(<registry
     accounts>)}` and that no param equals any commitment, `rho`, nullifier, rho-PDA or nullifier-PDA of the fixtures'
     own notes (positive control: the same assertion fails on a restore variant that looks up one nullifier PDA);
+    *(rev 3.3, as built — stricter: the restore's requests equal the tree sync's own three methods; own values are
+    searched in hex, base58 and base64; a warm-cache restore makes exactly the plain cached sync's requests)*;
   - deposit recovery on recorded fixtures (M1b); change-note and account recovery on recorded fixtures, and our
     recomputed change commitment against the program side's golden `changeCommitment` row (§15) (M1c);
   - every relayer outcome, the quote validation (`gasGrantLamports` absent, below the floor, above the ceiling), the
@@ -1067,7 +1368,13 @@ Each line is tagged with the plan that delivers it (§16).
     stated limitation) and a reading of the Kotlin source (Jest, in CI))*;
   - a source test, scoped to `src/`, `core/`, `extension/src/` and `web/src/` (not `scripts/`, I-6), that no JS module outside `src/modules/keyDerivation/shielded.ts` imports `deriveSeedTree`, that no
     JS code passes `SHIELDED_PATHS.spend` (or the string `12381/371/1`) to a derive call (m6), and that no JS module
-    imports anything that could return a secret;
+    imports anything that could return a secret; *(rev 3.3: M1b deletes `keyDerivation/shielded.ts`, so the rule is
+    "no JS module imports `deriveSeedTree`". As built, `src/modules/shielded/__tests__/jsKeyBoundary.test.ts` reads
+    module specifiers, not text, and refuses any `bls` / `bls.js` specifier, the removed module, an import of
+    `deriveSeedTree` / `deriveShieldedViewKey`, the string `12381/371/1` outside `keyDerivation/paths.ts`, and any
+    reference to `SHIELDED_PATHS.spend`; it excludes itself and allows `v1Removed.test.ts`. The third clause stays
+    M1a's bridge surface test, `a0Boundary.test.ts`. After M1b the bridge exports 7 functions, the React module 7
+    methods, the library 9 JNI symbols)*;
   - Kotlin (M1c): a touch delivered with `FLAG_WINDOW_IS_OBSCURED` does not approve; a null `currentActivity` refuses;
     a second request while one is in flight refuses; activity recreation during the prompt fails closed.
 - **On the phone (devnet), the acceptance:** the checkpoints of §16 in order — M1a (native proof on the phone), M1b
@@ -1078,7 +1385,8 @@ Each line is tagged with the plan that delivers it (§16).
 - All gates of the repo stay green: tsc, jest, lint, no-TGE-date, the privacy claims, and the native-prover workflow.
   *(Rev 3.2: that workflow also re-derives the key and ATA vector fixtures with their generators' `--check` (Node 24,
   with a one-value-tamper negative control) and runs the M1a desk tests (`node --test
-  scripts/m1a-checkpoint/*.test.mjs`); its `paths` include every input of the Rust tests and generators
+  scripts/m1a-checkpoint/*.test.mjs`) *(rev 3.3: and the M1b desk tests, `scripts/m1b-checkpoint/*.test.mjs`, with
+  `scripts/m1b-checkpoint/**` in its `paths`)*; its `paths` include every input of the Rust tests and generators
   (`src/modules/shielded/a0/**` incl. `golden-vectors.json`, `scripts/a0-vectors/**`, `scripts/m1a-checkpoint/**`,
   `package-lock.json`, `android/build.gradle`); `gen-prove-vectors.mjs --check` needs the program side's repository and
   is a desk run.)*
@@ -1152,14 +1460,20 @@ Each line is tagged with the plan that delivers it (§16).
   - The A0 relayer announced live on devnet (`/relayer/submit` kind `withdraw_change`, `/relayer/quote`) against the
     frozen contract — enough for M1c's "Another address" and "My main account" (S11) — and the relayer-landed golden
     vector sent to the wallet (their `93a82a5` names one, `3UfCx5TD…`). P1 (and P2) later, for the fresh account.
-  - The IDL `shielded_pool.json` committed or sent (M1b's first task needs it).
+  - The IDL `shielded_pool.json` committed or sent (M1b's first task needs it). *(Rev 3.3: closed — the wallet holds a
+    byte copy pinned by its digest `cfd37078…ca0`; the program side's `target/` is untracked, so the digest is the only
+    pin.)*
+  - *(Rev 3.3, new)* **A CPI deposit into `FeGSS…`** would stop every wallet's sync: its `LeafInserted` is not
+    attributable to our tree's top-level instruction. Question for the program side: refuse CPI, or the wallet
+    attributes inner instructions (M2).
   - **The change-note equation confirmed (I8):** the `change rho` row of `gen-signal-table` for `withdraw_change`, and a
     golden `changeCommitment` row with its inputs (`nk` or a test `addrField`, `d`, the amounts, the nullifier) —
     needed for M1c's change-note recovery test; the landed `2mfMYnbt…` is checkable only with the test key's `nk`.
 
   M1a and M1b can be built and tested on the phone without the relayer. M1c's first checkpoint needs the live relayer
   on the frozen contract; its second (the fresh account) and M1d's checkpoint need P1.
-- **Owner:** none open after S1–S12. The rulings R1, R3–R13 are listed for the owner to overturn. One point for the
+- **Owner:** none open after S1–S12 *(rev 3.3: one question raised by M1b, R1-m4 — the deposit gap limit of 20 with a
+  never-reused counter, §7: the gap limit stays 20 as in the plan the owner approved; whether to raise it or count only landed deposits is open for the owner)*. The rulings R1, R3–R13 are listed for the owner to overturn. One point for the
   owner to know (not to decide in M1): S10's per-key gate is not an economic bound on mainnet (§15 P1, §13).
 
 ## 16. The four plans (S8)
@@ -1210,6 +1524,28 @@ same commit and launches it on the phone. Every requirement of §§3–12 belong
   §14, I-3, which must pass at this checkpoint.) The restore's tree-transaction count and its duration on the phone are
   recorded against R13's trigger (5,000 transactions, 60 s). Kill the app between the deposit's submit and its
   confirmation once: at the next start the note is reconciled, not lost.
+  *(Rev 3.3, as built:)*
+  - the desk reads the phone through the devnet build's readout (`src/modules/shielded/a0/checkpointReadout.ts`):
+    chunked log lines `NOCTURA-A0-READOUT`, public values only (signature, main account, amount, commitment, leaf index,
+    root, counts — R13's two numbers, the restore's `highestHit`, the reconciliation's `skipped` — reasons, error codes),
+    gated on `FEATURES_SHIELDED=true` and `NETWORK=devnet`; it judges every value against devnet (the deposit's own
+    transaction and `LeafInserted`, decoded by the desk's own log-frame walk; the tree's signature list). The code is in
+    both bundles; the gate is closed in the production APK (its BuildConfig, read off the APK);
+  - "Wipe the app" is `pm clear com.nocturawallet.devnet`, the one clear any checkpoint sends: exact package, typed
+    confirmation, the installed app signed by the checkpoint's devnet key; never the production wallet. The in-app Wipe
+    wallet → import is a second, optional restore case (R1-C1), recorded, not judged;
+  - "Kill the app between submit and confirmation" is the desk's `am force-stop` of the devnet app on the
+    "deposit-submitted" readout (emitted once the send is accepted); a kill after the app saw the outcome is detected and
+    repeated. The kill precedes the wipe, so the restore must return both deposits;
+  - R13: the judged restore is the first after the wipe; its count must lie within the desk's own walk of `5URd…`; the
+    line records the numbers, the trigger and the highest counter hit, it does not fail on them; a 429 backoff or a
+    timeout shows as a startup error with Retry, and the duration includes it;
+  - I-3: `restoreRequests.test.ts` is run by the desk's `verify` at HEAD (clean, = the APKs' commit) and is a line of
+    the record;
+  - the production APK of the same commit is launched AND unlocked (the A0 modules, `startup.ts`'s reset hook among
+    them, load at unlock in every build): both checked for a clean crash buffer and no readout line;
+  - the desk script is `scripts/m1b-checkpoint/m1b-checkpoint.mjs` (M1a's `install.mjs` reused unchanged for every
+    install), the owner's checklist `scripts/m1b-checkpoint/README.md`.
 - **M1c, first checkpoint (frozen contract, S11):** unshield part of the deposit through the relayer to "Another
   address" (a devnet address outside this seed), and once to "My main account" after its warning. The desk script,
   from each signature, asserts every §6.8 condition — above all, no signer of the tx is a key of this seed — and that

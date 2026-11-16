@@ -23,7 +23,9 @@ import {join} from 'path';
  */
 
 const SRC = join(__dirname, '..', '..', '..');
-const CALL_SITES_AT_LEAST = 13;
+// 14 caller files before M1b; it removed three with the v1 path (shielded/relayerSubmit.ts,
+// zkProver/zkProverModule.ts, solana/relayer.ts) — 11 measured after.
+const CALL_SITES_AT_LEAST = 11;
 
 function tsFiles(dir: string): string[] {
   return readdirSync(dir, {withFileTypes: true}).flatMap(entry => {

@@ -28,6 +28,7 @@ export const MMKV_KEYS = {
   // ─── Wallet [P] exists flag, [S] balance caches ─────────────────────
   WALLET_EXISTS: 'v1_wallet.exists',
   WALLET_PUBLIC_KEY: 'v1_wallet.publicKey',
+  /** The v1 noc1… shielded address an older version stored; only removed now (unlock). */
   WALLET_SHIELDED_ADDRESS: 'v1_wallet.shieldedAddress',
   WALLET_TRANSPARENT_DERIVATION: 'v1_wallet.transparentDerivation',
   WALLET_SHIELDED_BALANCE_CACHE: 'v1_wallet.shieldedBalanceCache',
@@ -37,11 +38,18 @@ export const MMKV_KEYS = {
   SHIELDED_NOTES_PREFIX: 'v1_notes_',
   SHIELDED_MERKLE_STATE: 'v1_merkle.state',
   SHIELDED_MERKLE_LEAVES_PREFIX: 'v1_merkle_leaves_',
+  /** A0 tree sync cache (spec §8/§9): the SyncedTx records of tree 5URd…, ENCRYPTED instance only. */
+  A0_SYNCED_TX: 'v1_a0_synced_tx',
+  /** A0 note store (spec §8): own notes' public fields + nextDepositIndex, ENCRYPTED instance only. */
+  A0_NOTES: 'v1_a0_notes',
+  /** The last A0 restore's R13 counters (tree tx count, duration), ENCRYPTED instance only. */
+  A0_LAST_RESTORE: 'v1_a0_last_restore',
 
   // ─── Address Book [S] ───────────────────────────────────────────────
   ADDRESS_BOOK_PREFIX: 'v1_contacts_',
 
   // ─── Proof Queue [S] ────────────────────────────────────────────────
+  /** The removed v1 proof queue's record (ENCRYPTED; it held witnesses): only removed now (unlock). */
   PROOF_QUEUE: 'v1_proofQueue',
 
   // ─── Geo [S] ────────────────────────────────────────────────────────

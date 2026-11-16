@@ -3,8 +3,8 @@
 //!
 //! Two Kotlin classes bind here, and `jni-exports.txt` lists every symbol (the export check
 //! compares it with the built library's dynamic symbols):
-//! - `com.nocturawallet.prover.NocturaProverModule` — `nativeIsSupported`, and the v1
-//!   `nativeProve` (removed with the v1 path in M1b);
+//! - `com.nocturawallet.prover.NocturaProverModule` — `nativeIsSupported` (the v1 prove binding
+//!   is gone since M1b);
 //! - `com.nocturawallet.prover.NocturaA0Native` — the A0 surface (spec §3): `keysOpen`,
 //!   `keysClose`, `depositRho`, `matchSpent`, `commitment`, `prove`, and the Kotlin-only
 //!   `parseUnshield` / `authorizeUnshield`. Each is marshalling only: the logic, the envelope
@@ -27,36 +27,6 @@ pub extern "system" fn Java_com_nocturawallet_prover_NocturaProverModule_nativeI
     _class: JClass,
 ) -> jboolean {
     JNI_TRUE
-}
-
-/// v1 prove (the NPkc pool's circuits) — unchanged; M1b removes it with the v1 path.
-#[no_mangle]
-pub extern "system" fn Java_com_nocturawallet_prover_NocturaProverModule_nativeProve<'a>(
-    mut env: JNIEnv<'a>,
-    _class: JClass<'a>,
-    circuit_id: JString<'a>,
-    witness_json: JString<'a>,
-    zkey_path: JString<'a>,
-    wasm_path: JString<'a>,
-) -> jstring {
-    let result = (|| -> Result<String, Box<dyn std::error::Error>> {
-        let cid: String = env.get_string(&circuit_id)?.into();
-        let wj: String = env.get_string(&witness_json)?.into();
-        let zk: String = env.get_string(&zkey_path)?.into();
-        let wp: String = env.get_string(&wasm_path)?.into();
-        let out = crate::prover::prove_to_bytes(&cid, &wj, &zk, &wp)?;
-        Ok(serde_json::json!({
-            "proofBytes": out.proof_bytes_hex,
-            "publicInputs": out.public_inputs,
-        })
-        .to_string())
-    })();
-
-    // Always return a JSON string; errors go in an `error` field for Kotlin to reject.
-    let json = result.unwrap_or_else(|e| serde_json::json!({ "error": e.to_string() }).to_string());
-    env.new_string(json)
-        .expect("failed to build result jstring")
-        .into_raw()
 }
 
 // ------------------------------------------------------------------------- the A0 surface

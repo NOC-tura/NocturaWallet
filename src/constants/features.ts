@@ -1,5 +1,6 @@
 import Config from 'react-native-config';
-import {assertShieldedRequiresLocalProving} from './networkGuard';
+import {assertShieldedRequiresDevnet, assertShieldedRequiresLocalProving} from './networkGuard';
+import {NETWORK} from './programs';
 
 /**
  * Build-time feature flags. Single source of truth for gating unfinished
@@ -9,78 +10,32 @@ export const FEATURES = {
   /**
    * Shielded (private) mode. OFF by default (mainnet/production builds); enabled
    * ONLY when the build's env sets FEATURES_SHIELDED=true (the devnet test build,
-   * `.env.devnet`). Keeps the committed default false while letting the devnet
-   * APK exercise the shielded UX (index.html s16–s18). NOTE: in the current
-   * devnet build only the shield/deposit flow is wired end-to-end; withdraw +
-   * transfer are not yet implemented.
+   * `.env.devnet`). The A0 pool exists on devnet only, so a shielded build must
+   * also be a devnet build (asserted below). In M1b only the shield (deposit) side
+   * is wired; the unshield side and the shielded transfer have no route until
+   * their plans land (spec §12).
    */
   shielded: Config.FEATURES_SHIELDED === 'true',
   /**
-   * Route shielded transfers through the coordinator relayer (coordinator is
-   * fee_payer → the sender's transparent key never appears on-chain). When OFF,
-   * transfers SELF-RELAY: the sender's own transparent key signs + pays, and is
-   * therefore visible on-chain — a devnet/debug mode only, NOT private. This is a
-   * deliberate hard switch, never a silent fallback: with the relayer ON, a
-   * relayer failure aborts the transfer rather than quietly leaking the sender.
-   * Enabled only when the build's env sets SHIELDED_RELAYER=true.
-   */
-  shieldedRelayer: Config.SHIELDED_RELAYER === 'true',
-  /**
-   * On-device ZK proving. OFF by default. When ON, shielded proofs are generated
-   * locally (noteSecret never leaves the device) and the hosted prover is NOT used
-   * for shielded ops — no silent fallback. Requires the native NocturaProver module
-   * + the circuit assets to be present; enable only once those ship.
+   * On-device ZK proving. OFF by default. A0 proves only on the device (the Rust
+   * core); there is no hosted prover. Shielded mode requires it (asserted below).
    */
   localProving: Config.LOCAL_PROVING === 'true',
-  /**
-   * Private p2p shielded transfer. OFF — and it must stay off until the circuits
-   * are redesigned.
-   *
-   * Confirmed from `transfer.circom` by the program side on 2026-08-08: no
-   * circuit imposes any spend authorization. Spend authority is knowledge of
-   * `noteSecret` alone, and in a transfer the SENDER generates the recipient's
-   * `out_noteSecret`. The sender therefore holds the entire withdraw witness for
-   * the note they just sent (`pkRecipientHash` is derivable from the public
-   * `noc1…` address, `leafIndex` and the Merkle path are public on-chain), and
-   * the nullifier is identical for both parties. Whoever proves first spends it.
-   * A sent note is permanently co-owned by its sender — this is fund loss, not a
-   * privacy weakness.
-   *
-   * Shield/unshield are NOT affected: there the depositor generates their own
-   * `noteSecret` and no counterparty ever learns it.
-   *
-   * Re-enable only once the nullifier keys off a secret the sender never learns.
-   */
-  shieldedTransfer: Config.SHIELDED_TRANSFER === 'true',
 } as const;
 
-// Fail-closed at import. Hosted proving POSTs the full private witness —
-// including the note secret, which is the entire spend authority — to the
-// coordinator. A build that enables shielded and forgets LOCAL_PROVING=true
-// hands custody away silently, with no UI difference. Asserted here rather than
-// in provingAssets so each check lives with the data it reads.
+// Fail-closed at import. Shielded mode without local proving is refused (A0 has no
+// hosted prover, and the check keeps any future one from being reached silently), and
+// shielded mode on any chain but devnet is refused (the A0 pool is a devnet deployment:
+// a shielded build pointed at mainnet would show mainnet labels over devnet facts).
 assertShieldedRequiresLocalProving(FEATURES.shielded, FEATURES.localProving);
+assertShieldedRequiresDevnet(FEATURES.shielded, NETWORK);
 
 /** Whether shielded mode is enabled in this build. */
 export function isShieldedEnabled(): boolean {
   return FEATURES.shielded;
 }
 
-/** Whether shielded transfers route through the privacy relayer (vs self-relay). */
-export function isShieldedRelayerEnabled(): boolean {
-  return FEATURES.shieldedRelayer;
-}
-
-/** Whether shielded proofs are generated on-device (vs the hosted prover). */
+/** Whether shielded proofs are generated on-device. */
 export function isLocalProvingEnabled(): boolean {
   return FEATURES.localProving;
-}
-
-/**
- * Whether private p2p transfer is available. Requires BOTH shielded mode and the
- * dedicated transfer flag, so a single stray env var cannot re-enable a flow that
- * currently lets the sender reclaim the note they sent (see FEATURES.shieldedTransfer).
- */
-export function isShieldedTransferEnabled(): boolean {
-  return FEATURES.shielded && FEATURES.shieldedTransfer;
 }

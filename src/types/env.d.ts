@@ -2,41 +2,23 @@ declare module 'react-native-config' {
   export interface NativeConfig {
     HELIUS_RPC_URL: string;
     HELIUS_WS_URL: string;
+    /**
+     * The build's chain identity (constants/chain.ts): the cluster the RPC is on, the network the
+     * screens name, the explorer cluster, and whether presale exists (mainnet-beta only). Required:
+     * a missing or unknown value refuses to start (networkGuard), never defaults to mainnet.
+     */
     NETWORK: 'devnet' | 'mainnet-beta';
     API_BASE: string;
     /** Optional CoinGecko Demo API key — lifts the price rate-limit. May be undefined. */
     COINGECKO_API_KEY?: string;
     /** TODO: integrate @sentry/react-native — DSN is declared but not yet consumed by any code */
     SENTRY_DSN: string;
-    /** Devnet test mint the shielded pool was initialized for. Optional; empty until configured. */
-    SHIELDED_DEVNET_MINT?: string;
-    /** 'true' enables shielded mode in this build (devnet test build only). Optional; absent = off. */
+    /** 'true' enables shielded mode in this build (the devnet build only: requires NETWORK=devnet). Optional; absent = off. */
     FEATURES_SHIELDED?: string;
-    /**
-     * 'true' routes shielded transfers through the coordinator relayer (private:
-     * coordinator is fee_payer). Absent/other = self-relay (sender's key visible
-     * on-chain, devnet/debug only). Optional; absent = off.
-     */
-    SHIELDED_RELAYER?: string;
-    /**
-     * 'true' generates shielded ZK proofs on-device (noteSecret never leaves the
-     * phone; hosted prover unused for shielded). Requires native prover + assets.
-     * Optional; absent = off.
-     */
+    /** 'true' generates shielded ZK proofs on-device (required with FEATURES_SHIELDED). Optional; absent = off. */
     LOCAL_PROVING?: string;
-    /**
-     * 'true' shows the dev-only "Native prover test" screen in Settings (devnet
-     * build). Runs on-device native prove + compares to hosted. Absent = hidden.
-     */
-    NATIVE_PROVER_DEBUG?: string;
     /** Dev-only TLS pin probe screen (positive + negative control). Never set in .env.production. */
     PIN_PROBE?: string;
-    /**
-     * 'true' enables private p2p shielded transfer. Absent/anything else = off.
-     * Keep it off: the deployed transfer circuit imposes no spend authorization,
-     * so the sender can reclaim the note they sent. See FEATURES.shieldedTransfer.
-     */
-    SHIELDED_TRANSFER?: string;
   }
   const Config: NativeConfig;
   export default Config;

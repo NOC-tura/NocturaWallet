@@ -1,0 +1,91 @@
+  Class descriptor  : 'Lcom/nocturawallet/BuildConfig;'
+  Access flags      : 0x0011 (PUBLIC FINAL)
+  Superclass        : 'Ljava/lang/Object;'
+  Interfaces        -
+  Static fields     -
+    #0              : (in Lcom/nocturawallet/BuildConfig;)
+      name          : 'API_BASE'
+      type          : 'Ljava/lang/String;'
+      access        : 0x0019 (PUBLIC STATIC FINAL)
+      value         : "https://api.noc-tura.io/api/v1"
+    #1              : (in Lcom/nocturawallet/BuildConfig;)
+      name          : 'APPLICATION_ID'
+      type          : 'Ljava/lang/String;'
+      access        : 0x0019 (PUBLIC STATIC FINAL)
+      value         : "com.nocturawallet.devnet"
+    #2              : (in Lcom/nocturawallet/BuildConfig;)
+      name          : 'APP_ID_SUFFIX'
+      type          : 'Ljava/lang/String;'
+      access        : 0x0019 (PUBLIC STATIC FINAL)
+      value         : ".devnet"
+    #3              : (in Lcom/nocturawallet/BuildConfig;)
+      name          : 'APP_LABEL'
+      type          : 'Ljava/lang/String;'
+      access        : 0x0019 (PUBLIC STATIC FINAL)
+      value         : "Noctura devnet"
+    #4              : (in Lcom/nocturawallet/BuildConfig;)
+      name          : 'BUILD_TYPE'
+      type          : 'Ljava/lang/String;'
+      access        : 0x0019 (PUBLIC STATIC FINAL)
+      value         : "release"
+    #5              : (in Lcom/nocturawallet/BuildConfig;)
+      name          : 'DEBUG'
+      type          : 'Z'
+      access        : 0x0019 (PUBLIC STATIC FINAL)
+      value         : false
+    #6              : (in Lcom/nocturawallet/BuildConfig;)
+      name          : 'FEATURES_SHIELDED'
+      type          : 'Ljava/lang/String;'
+      access        : 0x0019 (PUBLIC STATIC FINAL)
+      value         : "true"
+    #7              : (in Lcom/nocturawallet/BuildConfig;)
+      name          : 'HELIUS_RPC_URL'
+      type          : 'Ljava/lang/String;'
+      access        : 0x0019 (PUBLIC STATIC FINAL)
+      value         : "https://devnet.helius-rpc.com/?api-key=<redacted>"
+    #8              : (in Lcom/nocturawallet/BuildConfig;)
+      name          : 'HELIUS_WS_URL'
+      type          : 'Ljava/lang/String;'
+      access        : 0x0019 (PUBLIC STATIC FINAL)
+      value         : "wss://devnet.helius-rpc.com/?api-key=<redacted>"
+    #9              : (in Lcom/nocturawallet/BuildConfig;)
+      name          : 'IS_EDGE_TO_EDGE_ENABLED'
+      type          : 'Z'
+      access        : 0x0019 (PUBLIC STATIC FINAL)
+      value         : false
+    #10              : (in Lcom/nocturawallet/BuildConfig;)
+      name          : 'IS_HERMES_ENABLED'
+      type          : 'Z'
+      access        : 0x0019 (PUBLIC STATIC FINAL)
+      value         : true
+    #11              : (in Lcom/nocturawallet/BuildConfig;)
+      name          : 'IS_NEW_ARCHITECTURE_ENABLED'
+      type          : 'Z'
+      access        : 0x0019 (PUBLIC STATIC FINAL)
+      value         : true
+    #12              : (in Lcom/nocturawallet/BuildConfig;)
+      name          : 'LOCAL_PROVING'
+      type          : 'Ljava/lang/String;'
+      access        : 0x0019 (PUBLIC STATIC FINAL)
+      value         : "true"
+    #13              : (in Lcom/nocturawallet/BuildConfig;)
+      name          : 'NETWORK'
+      type          : 'Ljava/lang/String;'
+      access        : 0x0019 (PUBLIC STATIC FINAL)
+      value         : "devnet"
+    #14              : (in Lcom/nocturawallet/BuildConfig;)
+      name          : 'SENTRY_DSN'
+      type          : 'Ljava/lang/String;'
+      access        : 0x0019 (PUBLIC STATIC FINAL)
+      value         : ""
+    #15              : (in Lcom/nocturawallet/BuildConfig;)
+      name          : 'VERSION_CODE'
+      type          : 'I'
+      access        : 0x0019 (PUBLIC STATIC FINAL)
+      value         : 1
+    #16              : (in Lcom/nocturawallet/BuildConfig;)
+      name          : 'VERSION_NAME'
+      type          : 'Ljava/lang/String;'
+      access        : 0x0019 (PUBLIC STATIC FINAL)
+      value         : "1.0.0"
+  Instance fields   -

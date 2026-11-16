@@ -1,11 +1,11 @@
-//! M1 spike core — pure-Rust Groth16 prover for the Noctura shielded circuits.
-//! Stage 0 is exercised via examples/deposit_prove.rs (+ examples/zkey_check.rs).
+//! The Noctura shielded core — pure-Rust A0 keys, field values and Groth16 proving (arkworks +
+//! wasmi witnesses), with its JNI bridge. The v1 prover, its JNI binding and its examples are
+//! gone since M1b.
 
 pub use ark_circom;
 
 pub mod a0;
 pub mod proof_bytes;
-pub mod prover;
 pub mod witness_wasmi;
 
 // The JNI symbols: on Android, and on the host with `--features jni-host` (the Kotlin JVM test

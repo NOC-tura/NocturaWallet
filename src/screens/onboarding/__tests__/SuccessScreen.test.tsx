@@ -17,11 +17,21 @@ function withSafeArea(node: React.ReactElement) {
 
 jest.setTimeout(30_000); // Key derivation + keychain mocks can be slow in full suite
 
+const mockKeychainCalls: string[] = [];
 jest.mock('../../../modules/keychain/keychainModule', () => ({
-  KeychainManager: jest.fn().mockImplementation(() => ({
-    storeSeed: jest.fn().mockResolvedValue(undefined),
-    storeViewKey: jest.fn().mockResolvedValue(undefined),
-  })),
+  KeychainManager: jest.fn().mockImplementation(
+    () =>
+      new Proxy(
+        {},
+        {
+          get: (_t, prop) => {
+            mockKeychainCalls.push(String(prop));
+            return jest.fn().mockResolvedValue(undefined);
+          },
+        },
+      ),
+  ),
+  keychainManager: {dropV1ViewKey: jest.fn().mockResolvedValue(undefined)},
 }));
 jest.mock('../../../modules/keyDerivation/mnemonicUtils', () => ({
   mnemonicToSeed: jest.fn().mockResolvedValue(new Uint8Array(64)),
@@ -32,21 +42,21 @@ jest.mock('../../../modules/keyDerivation/transparent', () => ({
     secretKey: new Uint8Array(64),
   }),
 }));
-jest.mock('../../../modules/keyDerivation/shielded', () => ({
-  deriveShieldedViewKey: jest.fn().mockReturnValue(new Uint8Array(32)),
-}));
 jest.mock('../../../modules/keyDerivation/derivationScheme', () => ({
   storeTransparentScheme: jest.fn(),
 }));
 jest.mock('../../../store/mmkv/instances', () => ({
   mmkvPublic: {
     set: jest.fn(),
+    remove: jest.fn(),
+    getAllKeys: jest.fn().mockReturnValue([]),
     getString: jest.fn(),
     getBoolean: jest.fn().mockReturnValue(false),
   },
   mmkvSecure: jest.fn().mockReturnValue(null),
   initSecureMmkv: jest.fn(),
   onSecureMmkvReady: jest.fn(),
+  onSecureMmkvReset: jest.fn(), // a0/startup.ts registers its reset hook at import (R3-N5 N6)
 }));
 
 // Mock walletStore to avoid persist side effects
@@ -97,5 +107,8 @@ describe('SuccessScreen', () => {
     await waitFor(() => {
       expect(onComplete).toHaveBeenCalledTimes(1);
     });
+    // the seed is stored; no v1 view key is (M1b)
+    expect(mockKeychainCalls).toContain('storeSeed');
+    expect(mockKeychainCalls.filter(c => /view/i.test(c))).toEqual([]);
   });
 });

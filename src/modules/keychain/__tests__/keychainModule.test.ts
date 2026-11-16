@@ -31,21 +31,28 @@ describe('KeychainManager', () => {
     });
   });
 
-  describe('storeViewKey / retrieveViewKey', () => {
-    it('stores and retrieves a view key', async () => {
-      const viewKey = new Uint8Array(32);
-      viewKey.fill(0xab);
-      await manager.storeViewKey(viewKey);
-      const retrieved = await manager.retrieveViewKey();
-      expect(Buffer.from(retrieved).equals(Buffer.from(viewKey))).toBe(true);
+  describe('dropV1ViewKey (M1b: the v1 view key an older install stored)', () => {
+    it('present before → gone after, and only that entry', async () => {
+      // what an older version wrote at onboarding: the v1 view key as hex
+      await Keychain.setGenericPassword('viewKey', 'ab'.repeat(32), {service: 'noctura.viewKey'});
+      await manager.storeSeed('test mnemonic words');
+      expect(await Keychain.getGenericPassword({service: 'noctura.viewKey'})).not.toBe(false);
+      await manager.dropV1ViewKey();
+      expect(await Keychain.getGenericPassword({service: 'noctura.viewKey'})).toBe(false);
+      expect(await manager.hasWallet()).toBe(true); // the seed is untouched
+    });
+
+    it('is idempotent (nothing stored → no throw)', async () => {
+      await expect(manager.dropV1ViewKey()).resolves.toBeUndefined();
     });
   });
 
   describe('wipeKeys', () => {
     it('clears all stored keys', async () => {
       await manager.storeSeed('test mnemonic');
-      await manager.storeViewKey(new Uint8Array(32));
+      await Keychain.setGenericPassword('viewKey', 'ab'.repeat(32), {service: 'noctura.viewKey'});
       await manager.wipeKeys();
+      expect(await Keychain.getGenericPassword({service: 'noctura.viewKey'})).toBe(false);
       expect(await manager.hasWallet()).toBe(false);
     });
   });

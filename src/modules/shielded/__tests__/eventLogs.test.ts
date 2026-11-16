@@ -1,6 +1,6 @@
 import {EVENT_DISC, programDataBlobs} from '../eventLogs';
 
-const POOL = 'NPkcJPqrPjWa6Z8kUKuWZ4quzUKh6X8HYaCbmYQ4HfES';
+const POOL = 'FeGSSsJtmA7GnMgnpj33JsiceSk1NyFopff2FtQFsMuH'; // the A0 pool program (any program id parses)
 const EVIL = 'EViL1111111111111111111111111111111111111111';
 
 /** Build a `Program data:` line carrying `disc` + `payload`. */
@@ -79,7 +79,8 @@ describe('EVENT_DISC', () => {
   it('pins the discriminators published by the program side', () => {
     // sha256("event:<Name>")[0..8], supplied by the program repo 2026-08-08.
     expect(EVENT_DISC.leafInserted).toBe('59f3d408d7bfbb98');
-    expect(EVENT_DISC.depositLegacy).toBe('3ecdf2aff4a98834');
+    // m8: the pre-rename Deposit discriminator is not a key any more.
+    expect(Object.values(EVENT_DISC)).not.toContain('3ecdf2aff4a98834');
     expect(EVENT_DISC.noteCiphertext).toBe('6c50afa0eadfd292');
   });
 });

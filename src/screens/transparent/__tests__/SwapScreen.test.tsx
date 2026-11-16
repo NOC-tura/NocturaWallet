@@ -39,7 +39,6 @@ jest.mock('../../../constants/programs', () => ({
   RPC_ENDPOINT: 'https://rpc.helius.xyz',
   RPC_WEBSOCKET: 'wss://rpc.helius.xyz',
   API_BASE: 'https://api.noctura.io/v1',
-  SHIELDED_ADDRESS_HRP: 'noc',
   TRANSPARENT_FEES: {transferMarkup: 20000n},
   SHIELDED_FEES: {},
 }));

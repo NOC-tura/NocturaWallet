@@ -1,8 +1,22 @@
 import React from 'react';
-import {render, waitFor} from '@testing-library/react-native';
+import {render, waitFor, fireEvent} from '@testing-library/react-native';
 import {SafeAreaProvider} from 'react-native-safe-area-context';
 
 // ── Module mocks (jest.mock is hoisted above all imports) ─────────────────────
+
+// The chain identity, switchable per test (S13): CHAIN and the explorer link follow mockNetwork.
+const mockNetwork = {current: 'mainnet-beta' as 'devnet' | 'mainnet-beta'};
+jest.mock('../../../constants/chain', () => {
+  const actual = jest.requireActual('../../../constants/chain');
+  return {
+    ...actual,
+    get CHAIN() {
+      return actual.chainIdentity(mockNetwork.current);
+    },
+    explorerTxUrl: (sig: string, explorer?: 'solscan' | 'solanaexplorer' | 'solanafm') =>
+      actual.explorerTxUrl(sig, explorer, mockNetwork.current),
+  };
+});
 
 jest.mock('../../../modules/solana/priorityFee', () => ({
   estimatePriorityFee: jest.fn().mockResolvedValue(10_000),
@@ -30,9 +44,11 @@ jest.mock('../../../modules/solana/connection', () => ({
   }),
 }));
 
-jest.mock('react-native/Libraries/Linking/Linking', () => ({
-  openURL: jest.fn(),
-}));
+jest.mock('react-native/Libraries/Linking/Linking', () => {
+  // react-native's index reads the module's `default`; the same jest.fn under both names.
+  const openURL = jest.fn(() => Promise.resolve());
+  return {__esModule: true, default: {openURL}, openURL};
+});
 
 jest.mock('../../../store/mmkv/instances', () => ({
   mmkvPublic: {
@@ -183,3 +199,37 @@ it('expiry → resubmit: calls submitTransparentTransfer a second time when bloc
   // Unmount so the poll loop's `cancelled` cleanup stops it — no dangling timer.
   unmount();
 }, 15_000);
+
+describe('the chain the status names and links (S13)', () => {
+  const openURL = (jest.requireMock('react-native/Libraries/Linking/Linking') as {openURL: jest.Mock}).openURL;
+  beforeEach(() => openURL.mockImplementation(() => Promise.resolve()));
+  afterEach(() => {
+    mockNetwork.current = 'mainnet-beta';
+  });
+
+  it('devnet: "Confirmed on Solana devnet", and View details opens the explorer with ?cluster=devnet', async () => {
+    mockNetwork.current = 'devnet';
+    mockSubmit.mockResolvedValueOnce({signature: 'S', lastValidBlockHeight: 1000});
+    const {getByText, getByTestId, queryByText} = render(
+      withSafeArea(<TransactionStatusScreen intent={intent} onDashboard={jest.fn()} />),
+    );
+    await waitFor(() => {
+      expect(getByText('Confirmed on Solana devnet')).toBeTruthy();
+    });
+    expect(queryByText(/Solana mainnet/)).toBeNull();
+    fireEvent.press(getByTestId('tx-status-details'));
+    expect(openURL).toHaveBeenCalledWith('https://solscan.io/tx/S?cluster=devnet');
+  });
+
+  it('mainnet (control): "Confirmed on Solana mainnet", the link has no cluster', async () => {
+    mockSubmit.mockResolvedValueOnce({signature: 'S', lastValidBlockHeight: 1000});
+    const {getByText, getByTestId} = render(
+      withSafeArea(<TransactionStatusScreen intent={intent} onDashboard={jest.fn()} />),
+    );
+    await waitFor(() => {
+      expect(getByText('Confirmed on Solana mainnet')).toBeTruthy();
+    });
+    fireEvent.press(getByTestId('tx-status-details'));
+    expect(openURL).toHaveBeenCalledWith('https://solscan.io/tx/S');
+  });
+});

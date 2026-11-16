@@ -25,15 +25,12 @@
  * `sha256("event:<Name>")[0..8]`, hex, as emitted. Supplied by the program repo
  * on 2026-08-08 — do not recompute these from a local IDL guess.
  *
- * `depositLegacy` matters: `LeafInserted` was renamed from `Deposit` with a
- * deliberately identical 80-byte layout so the old length-based scanner kept
- * working, but the rename CHANGED the discriminator. A parser that accepts only
- * the new one silently drops every pre-upgrade leaf, which breaks
- * restore-from-seed for early notes.
+ * The pre-rename `Deposit` discriminator (`depositLegacy`, 3ecdf2af…) is gone (A0
+ * spec §9 / §12, m8): it only ever named leaves of the abandoned v1 pool, and the
+ * A0 parser (`a0/syncedTx.ts`) admits `LeafInserted` and `Withdraw` alone.
  */
 export const EVENT_DISC = {
   leafInserted: '59f3d408d7bfbb98',
-  depositLegacy: '3ecdf2aff4a98834',
   noteCiphertext: '6c50afa0eadfd292',
   withdraw: 'c0f1c9d946965af7',
   transfer: '19121707ac74821c',
@@ -105,8 +102,14 @@ function accountKeys(tx: TxLike): string[] {
   ];
 }
 
+/** A top-level instruction as the scoping sees it: its program and its accounts, in order. */
+export interface OuterIx {
+  programId: string;
+  accounts: string[];
+}
+
 /** Outer instructions as {programId, accounts}, in execution order. */
-function outerInstructions(tx: TxLike): {programId: string; accounts: string[]}[] {
+function outerInstructions(tx: TxLike): OuterIx[] {
   const msg = tx.transaction?.message;
   const keys = accountKeys(tx);
   const compiled =
@@ -121,22 +124,34 @@ function outerInstructions(tx: TxLike): {programId: string; accounts: string[]}[
 
 /**
  * Decode `Program data:` blobs that were emitted by `programId`, at TOP LEVEL,
- * from an instruction whose own account list contains `merkleTree`, in a
- * succeeding invocation.
+ * from an instruction that is OURS, in a succeeding invocation.
+ *
+ * `isOurs(ix)` says which instruction is ours. A0 (`a0/syncedTx.ts`, the one caller) admits
+ * only an instruction whose accounts at the IDL positions are [pool, merkle_tree], the same
+ * predicate as its instruction decode (Fable review R1-I1). Listing the tree at any other
+ * position (e.g. [vault, pool, tree]) is something any caller can do, and a leaf admitted from
+ * such a frame would stop every wallet's sync (a pool-wide denial of service). The v1 form — a
+ * tree address string read as `ix.accounts.includes(tree)` — is gone with the v1 modules (M1b
+ * Task 6); a non-function `isOurs` throws `E_POOL_SCOPE` rather than falling back to it.
+ * The predicate is consulted only after the program checks (the invoke line and the
+ * instruction's program id are both `programId`); it cannot widen them.
  *
  * CPI-emitted events (depth > 1) are rejected: a CPI's account list is not the
  * outer instruction's, so it cannot be attributed safely. The pool is only ever
  * invoked directly. This is fail-closed — but note that dropping a REAL leaf is
  * as damaging as accepting a fake one (the tree is index-ordered, so one missing
  * early leaf shifts every later index and invalidates the root pool-wide). The
- * root-in-ring invariant in merkleSync is what catches a mistake in either
- * direction; do not treat this filter as the last line of defence.
+ * A0 tree sync's checks against the tree account (`a0/treeSync.ts`) catch a
+ * mistake in either direction; do not treat this filter as the last line of defence.
  */
 export function poolLeafBlobs(
   tx: TxLike | null | undefined,
   programId: string,
-  merkleTree: string,
+  isOurs: (ix: OuterIx) => boolean,
 ): Uint8Array[] {
+  if (typeof isOurs !== 'function') {
+    throw new TypeError('E_POOL_SCOPE: poolLeafBlobs takes an isOurs(ix) predicate');
+  }
   if (!tx) return [];
   const logs = tx.meta?.logMessages ?? [];
   if (logs.length === 0) return [];
@@ -161,7 +176,7 @@ export function poolLeafBlobs(
           invoke[1] === programId &&
           ix !== undefined &&
           ix.programId === programId &&
-          ix.accounts.includes(merkleTree);
+          isOurs(ix);
       }
       continue;
     }

@@ -1,182 +1,97 @@
-import React, {useEffect, useReducer, useRef, useState, useCallback} from 'react';
-import {View, Pressable, ScrollView, Alert, Modal, BackHandler, Linking} from 'react-native';
-import Clipboard from '@react-native-clipboard/clipboard';
+import React, {useCallback, useEffect, useRef, useState} from 'react';
+import {View, Pressable, ScrollView, Alert, BackHandler} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
-import {ArrowLeft, ShieldCheck, Cpu, AlertTriangle, Check, Copy, ExternalLink} from 'lucide-react-native';
-import type {NativeStackScreenProps} from '@react-navigation/native-stack';
+import {ArrowLeft, ShieldCheck, Cpu, AlertTriangle, Check, X, RefreshCw} from 'lucide-react-native';
 import {Text} from '../../components/ui';
-import {Keypair} from '@solana/web3.js';
 import {ScreenSecurityManager} from '../../modules/screenSecurity/screenSecurityModule';
-import {depositShield} from '../../modules/shielded/depositFlow';
-import {unshieldWithChange} from '../../modules/shielded/withdrawFlow';
-import {selectInputNote} from '../../modules/shielded/noteSelect';
-import {formatTokenAmount} from '../../utils/parseTokenAmount';
+import {prepareA0Deposit} from '../../modules/shielded/a0/depositFlow';
+import type {A0PrepareStage, A0PreparedDeposit} from '../../modules/shielded/a0/depositFlow';
+import {A0_TOKEN, a0ErrorText, holdPreparedA0Deposit} from '../../modules/shielded/a0/screenSupport';
 import {keychainManager} from '../../modules/keychain/keychainModule';
 import {mnemonicToSeed} from '../../modules/keyDerivation/mnemonicUtils';
-import {deriveTransparentKeypair} from '../../modules/keyDerivation/transparent';
-import {loadTransparentScheme} from '../../modules/keyDerivation/derivationScheme';
-import {zeroize} from '../../modules/session/zeroize';
-import {SHIELDED_POOL_MINTS} from '../../constants/programs';
-import {poolTokenMeta} from '../../modules/shielded/poolTokens';
-import type {RootStackParamList} from '../../types/navigation';
+import {getConnection} from '../../modules/solana/connection';
+import type {ShieldIntent} from '../../types/shield';
+
+/**
+ * #18 zk-proof — mirror /home/user/Downloads/index.html §s18 (+ screen.md #18), for the A0 deposit
+ * (spec §5 steps 2–4, §11 "#18 zk-proof, with real stages").
+ *
+ * REAL STAGES, NO FIXED PERCENTAGES. The four rows of the design are driven by
+ * `prepareA0Deposit`'s `onStage` — nothing is timed or animated to look like progress:
+ *   1 Build witness   ← checking (amount, prover, store, cluster, token account) → keyFiles
+ *                        (the pinned A0 key files) → precheck (the deposit counter's rho PDA; repeats
+ *                        on a hit) → commitment (Rust's commitment(amount, rho));
+ *   2 Prove           ← proving (the Groth16 prover in the Rust core, on this device);
+ *   3 Verify locally  ← verifying (the proof's four public inputs against this deposit's values);
+ *   4 Ready           ← the prepared deposit returned.
+ * Each row shows its MEASURED time ("running · 2.1 s" from a clock while it runs, "done · 4.2 s"
+ * after), not a percentage: no stage reports a fraction, so the design's "42 %" is not drawn
+ * (deviation, said loudly). A failure marks the row it happened in and shows the E_A0_* code.
+ *
+ * NO HOSTED PROVER. The design's failed state offers "Use Noctura hosted prover" and its disclosure
+ * sheet, and the "Local prover slow?" link leads there. A0 has no hosted proving (spec §1: `/zk/prove`
+ * answers 410; the witness never leaves the device), so the failed state has one action, "Retry on
+ * this device", and neither the link nor the sheet exists (deviation, said loudly).
+ *
+ * The seed is read from the keychain (biometric) once per attempt and consumed by the prepare.
+ * Ready → 400 ms → #19 (replace: back from #19 returns to #16, as the design's Cancel does).
+ */
 
 const ACCENT = '#5BE3C2';
 const DANGER = '#FF5C6A';
 const securityManager = new ScreenSecurityManager();
 
-const SEES_ITEMS = ['Pedersen-hashed commitments', 'Network fee', 'Anonymity set ID'];
-const CANT_SEE_ITEMS = ['Spend key', 'Recipient address', 'Amount in clear'];
-
-type Props = NativeStackScreenProps<RootStackParamList, 'ZkProofModal'>;
-
-type StageNum = 1 | 2 | 3 | 4;
-type StageStatus = 'pending' | 'active' | 'done' | 'errored';
-
-type DepositOutcome = {txSignature: string; leafIndex: number; change?: bigint};
-
-type ChainResult =
-  | {kind: 'pending'}
-  | {kind: 'success'; outcome: DepositOutcome}
-  | {kind: 'failed'; reason: string};
-
-type ZkUiState =
-  | {kind: 'idle'}
-  | {kind: 'building'; pct: number}
-  | {kind: 'proving'; pct: number}
-  | {kind: 'verifying'; pct: number}
-  | {kind: 'ready'; outcome: DepositOutcome}
-  | {kind: 'failed'; erroredStage: 1 | 2 | 3; reason: string; hostedBanner?: string}
-  | {kind: 'sheet'; savedFailure: {erroredStage: 1 | 2 | 3; reason: string; hostedBanner?: string}}
-  | {kind: 'hosted-proving'};
-
-type Action =
-  | {type: 'START_BUILDING'}
-  | {type: 'TICK'; pct: number}
-  | {type: 'ADVANCE_TO_PROVING'}
-  | {type: 'ADVANCE_TO_VERIFYING'}
-  | {type: 'ADVANCE_TO_READY'; outcome: DepositOutcome}
-  | {type: 'FAIL'; erroredStage: 1 | 2 | 3; reason: string; hostedBanner?: string}
-  | {type: 'OPEN_SHEET'}
-  | {type: 'CLOSE_SHEET'}
-  | {type: 'START_HOSTED'}
-  | {type: 'RESET'};
-
-function reducer(state: ZkUiState, action: Action): ZkUiState {
-  switch (action.type) {
-    case 'START_BUILDING':
-      return {kind: 'building', pct: 0};
-    case 'TICK':
-      if (
-        state.kind === 'building' ||
-        state.kind === 'proving' ||
-        state.kind === 'verifying'
-      ) {
-        return {...state, pct: action.pct};
-      }
-      return state;
-    case 'ADVANCE_TO_PROVING':
-      return {kind: 'proving', pct: 0};
-    case 'ADVANCE_TO_VERIFYING':
-      return {kind: 'verifying', pct: 0};
-    case 'ADVANCE_TO_READY':
-      return {kind: 'ready', outcome: action.outcome};
-    case 'FAIL':
-      return {
-        kind: 'failed',
-        erroredStage: action.erroredStage,
-        reason: action.reason,
-        hostedBanner: action.hostedBanner,
-      };
-    case 'OPEN_SHEET':
-      if (state.kind === 'failed') {
-        return {
-          kind: 'sheet',
-          savedFailure: {
-            erroredStage: state.erroredStage,
-            reason: state.reason,
-            hostedBanner: state.hostedBanner,
-          },
-        };
-      }
-      return state;
-    case 'CLOSE_SHEET':
-      if (state.kind === 'sheet') {
-        return {kind: 'failed', ...state.savedFailure};
-      }
-      return state;
-    case 'START_HOSTED':
-      return {kind: 'hosted-proving'};
-    case 'RESET':
-      return {kind: 'idle'};
-    default:
-      return state;
-  }
+interface ZkProofScreenProps {
+  /** base units, decimal string */
+  amount: string;
+  onReady: (intent: ShieldIntent) => void;
+  onCancel: () => void;
 }
 
-/**
- * Dispatcher for shield/unshield operations:
- *   direction === 'private' → depositShield (build note → prove → submit → store)
- *   direction === 'public'  → unshieldWithChange (best-fit note → partial unshield)
- *
- * Seed derivation and zeroization are shared across both paths via try/finally.
- * `params.amount` is the raw token amount string (smallest unit). Throws on
- * failure (mapped to the screen's failed state).
- */
-async function runShieldOp(
-  params: Props['route']['params'],
-  onStep?: (label: string, detail?: string) => void,
-): Promise<DepositOutcome> {
-  let seed: Uint8Array | null = null;
-  try {
-    const mnemonic = await keychainManager.retrieveSeed();
-    seed = await mnemonicToSeed(mnemonic);
-    const scheme = loadTransparentScheme();
-    const {secretKey} = deriveTransparentKeypair(seed, scheme);
-    const feePayer = Keypair.fromSecretKey(secretKey);
-    const mint = params.mint ?? SHIELDED_POOL_MINTS[0] ?? '';
+type Row = 1 | 2 | 3 | 4;
 
-    if (params.direction === 'private') {
-      const result = await depositShield(
-        seed,
-        feePayer,
-        mint,
-        BigInt(params.amount),
-        onStep,
-      );
-      return {txSignature: result.txSignature, leafIndex: result.leafIndex};
-    }
+const ROW_OF: Record<A0PrepareStage, Row> = {
+  checking: 1,
+  keyFiles: 1,
+  precheck: 1,
+  commitment: 1,
+  proving: 2,
+  verifying: 3,
+};
 
-    // direction === 'public' → partial unshield (change-output).
-    const W = BigInt(params.amount);
-    const note = selectInputNote(mint, W);
-    if (!note) {
-      throw new Error('No single shielded note covers this amount — unshield a smaller amount');
-    }
-    const result = await unshieldWithChange(seed, feePayer, mint, note, W, onStep);
-    return {txSignature: result.txSignature, leafIndex: note.index, change: result.change};
-  } finally {
-    if (seed) zeroize(seed);
-  }
+const SUBSTEP: Record<A0PrepareStage, string> = {
+  checking: 'checking the network and your account',
+  keyFiles: 'loading the proving key files',
+  precheck: 'checking the deposit counter on chain',
+  commitment: 'computing the note commitment',
+  proving: 'running the Groth16 prover',
+  verifying: 'comparing the public inputs',
+};
+
+type Phase =
+  | {kind: 'auth'}
+  | {kind: 'running'; stage: A0PrepareStage}
+  | {kind: 'ready'}
+  | {kind: 'failed'; row: Row; code: string | null; message: string};
+
+const TITLES: Record<Row, string> = {1: 'Build witness', 2: 'Prove', 3: 'Verify locally', 4: 'Ready'};
+
+function seconds(ms: number): string {
+  return `${(ms / 1000).toFixed(1)} s`;
 }
 
-function extractErrorMessage(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  return String(err);
-}
+export function ZkProofScreen({amount, onReady, onCancel}: ZkProofScreenProps) {
+  const [phase, setPhase] = useState<Phase>({kind: 'auth'});
+  const [attempt, setAttempt] = useState(0);
+  const [now, setNow] = useState(() => Date.now());
+  const rowStart = useRef<Partial<Record<Row, number>>>({});
+  const rowDone = useRef<Partial<Record<Row, number>>>({});
+  const lastTapRef = useRef(0);
+  // The latest callback, read when the proof is ready: a new callback identity from a re-render
+  // must never restart the prepare (it would make a second proof).
+  const onReadyRef = useRef(onReady);
+  onReadyRef.current = onReady;
 
-export function ZkProofScreen({navigation, route}: Props) {
-  const [state, dispatch] = useReducer(reducer, {kind: 'idle'} as ZkUiState);
-  const chainResultRef = useRef<ChainResult>({kind: 'pending'});
-  const [retryCounter, setRetryCounter] = useState(0);
-  const [isRetrying, setIsRetrying] = useState(false);
-  const [isProceeding, setIsProceeding] = useState(false);
-  const guardTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
-  // Live sub-step label (e.g. "3/5 proving…") shown under the stage hero so a
-  // slow op reads as progress, not a stall.
-  const [diag, setDiag] = useState('');
-  const onStep = useCallback((label: string) => setDiag(label), []);
-
-  // FLAG_SECURE on mount, off on unmount
   useEffect(() => {
     void securityManager.enableSecureScreen();
     return () => {
@@ -184,327 +99,102 @@ export function ZkProofScreen({navigation, route}: Props) {
     };
   }, []);
 
-  // Clear all pending guard timers on unmount to prevent setState-on-unmounted warnings.
+  // A clock for the running row's elapsed time — display only, it drives no stage.
+  const running = phase.kind === 'running' || phase.kind === 'auth';
   useEffect(() => {
-    return () => {
-      guardTimersRef.current.forEach(clearTimeout);
-      guardTimersRef.current = [];
-    };
-  }, []);
+    if (!running) return;
+    const t = setInterval(() => setNow(Date.now()), 100);
+    return () => clearInterval(t);
+  }, [running]);
 
-  // Chain effect — runs on mount + every retry. Resets chainResultRef and
-  // kicks off zkProver.prove() in the background. Result lands in the ref.
   useEffect(() => {
     let cancelled = false;
-    chainResultRef.current = {kind: 'pending'};
+    rowStart.current = {};
+    rowDone.current = {};
+    setPhase({kind: 'auth'});
+    let current: Row = 1;
 
-    async function runChain() {
-      try {
-        const outcome = await runShieldOp(route.params, onStep);
-        if (cancelled) return;
-        chainResultRef.current = {kind: 'success', outcome};
-      } catch (err) {
-        if (cancelled) return;
-        chainResultRef.current = {kind: 'failed', reason: extractErrorMessage(err)};
+    const onStage = (stage: A0PrepareStage) => {
+      if (cancelled) return;
+      const row = ROW_OF[stage];
+      const t = Date.now();
+      if (row !== current) {
+        rowDone.current[current] = t;
+        current = row;
       }
-    }
-
-    void runChain();
-    return () => {
-      cancelled = true;
+      rowStart.current[row] ??= t;
+      setNow(t);
+      setPhase({kind: 'running', stage});
     };
-  }, [retryCounter, route.params, onStep]);
 
-  // Mount + retry → kick off the state machine
-  useEffect(() => {
-    dispatch({type: 'START_BUILDING'});
-  }, [retryCounter]);
-
-  // Stage timer — runs once per stage transition (building/proving/verifying).
-  // At end of each stage, reads chainResultRef.current and dispatches:
-  //   - success → ADVANCE_TO_READY (fast-forward)
-  //   - failed  → FAIL (with current stage as erroredStage)
-  //   - pending → next stage (or finalize if we're in verifying)
-  useEffect(() => {
-    if (
-      state.kind !== 'building' &&
-      state.kind !== 'proving' &&
-      state.kind !== 'verifying'
-    ) {
-      return;
-    }
-
-    const duration =
-      state.kind === 'building' ? 2000 : state.kind === 'proving' ? 3000 : 2000;
-    const totalTicks = Math.floor(duration / 200);
-    let tick = 0;
-
-    const interval = setInterval(() => {
-      tick++;
-      if (tick < totalTicks) {
-        dispatch({type: 'TICK', pct: Math.round((tick / totalTicks) * 100)});
-      }
-    }, 200);
-
-    const timeout = setTimeout(() => {
-      const result = chainResultRef.current;
-      const currentStage: 1 | 2 | 3 =
-        state.kind === 'building' ? 1 : state.kind === 'proving' ? 2 : 3;
-
-      if (result.kind === 'success') {
-        dispatch({type: 'ADVANCE_TO_READY', outcome: result.outcome});
-      } else if (result.kind === 'failed') {
-        dispatch({type: 'FAIL', erroredStage: currentStage, reason: result.reason});
-      } else if (state.kind === 'building') {
-        dispatch({type: 'ADVANCE_TO_PROVING'});
-      } else if (state.kind === 'proving') {
-        dispatch({type: 'ADVANCE_TO_VERIFYING'});
-      } else {
-        // Verifying ended but the chain op is still running (op slower than the
-        // ~7s animation). Drive pct to 100 so the polling-fallback effect below
-        // engages and transitions to ready/failed once the op resolves. WITHOUT
-        // this the bar sat at 90% forever whenever the op outlasted the animation.
-        dispatch({type: 'TICK', pct: 100});
-      }
-    }, duration);
-
-    return () => {
-      clearInterval(interval);
-      clearTimeout(timeout);
-    };
-  }, [state.kind]);
-
-  // Polling fallback — if chain still hasn't returned when verifying ends,
-  // poll every 200ms until it does. Rare in practice (would mean total
-  // animation time of 7s elapsed without hosted/local resolving).
-  //
-  // Gated on pct === 100 so the chain race rule (min 2 s visible per stage)
-  // is preserved. Previously the polling ran throughout the 2 s animation
-  // and could early-skip it when chain succeeded mid-stage.
-  useEffect(() => {
-    if (state.kind !== 'verifying') return;
-    if (state.pct < 100) return; // wait for animation to elapse
-    const interval = setInterval(() => {
-      const result = chainResultRef.current;
-      if (result.kind === 'success') {
-        clearInterval(interval);
-        dispatch({type: 'ADVANCE_TO_READY', outcome: result.outcome});
-      } else if (result.kind === 'failed') {
-        clearInterval(interval);
-        dispatch({type: 'FAIL', erroredStage: 3, reason: result.reason});
-      }
-    }, 200);
-    return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.kind, 'pct' in state ? state.pct : 0]);
-
-  // Ready → 400ms hold → Alert → popToTop
-  // 'ready' renders a dedicated success screen (below) with a Done button —
-  // no auto-dismiss, no system Alert.
-
-  // Hosted-proving — retry with explicit consent. Calls zkProver.prove() again.
-  // The module's chain (hosted-first → local → queue) means the user-visible
-  // semantics are "another attempt with the user's explicit awareness". A
-  // future module refactor will introduce proveHostedOnly().
-  useEffect(() => {
-    if (state.kind !== 'hosted-proving') return;
-    let cancelled = false;
-    async function runHosted() {
+    (async () => {
+      let prepared: A0PreparedDeposit;
       try {
-        const outcome = await runShieldOp(route.params, onStep);
+        const seed = await mnemonicToSeed(await keychainManager.retrieveSeed());
+        if (cancelled) {
+          seed.fill(0);
+          return;
+        }
+        prepared = await prepareA0Deposit(getConnection(), seed, BigInt(amount), {onStage});
+      } catch (e) {
         if (cancelled) return;
-        dispatch({type: 'ADVANCE_TO_READY', outcome});
-      } catch (err) {
+        setPhase({kind: 'failed', row: current, ...a0ErrorText(e)});
+        return;
+      }
+      if (cancelled) return;
+      const t = Date.now();
+      rowDone.current[current] = t;
+      rowStart.current[4] = t;
+      rowDone.current[4] = t;
+      setNow(t);
+      setPhase({kind: 'ready'});
+      const preparedId = holdPreparedA0Deposit(prepared);
+      setTimeout(() => {
         if (cancelled) return;
-        dispatch({
-          type: 'FAIL',
-          erroredStage: 2,
-          reason: "Couldn't generate proof",
-          hostedBanner: `Hosted prover also failed: ${extractErrorMessage(err)}`,
+        onReadyRef.current({
+          kind: 'shield',
+          preparedId,
+          amount,
+          tokenSymbol: A0_TOKEN.symbol,
+          decimals: A0_TOKEN.decimals,
+          depositor: prepared.depositor,
         });
-      }
-    }
-    void runHosted();
+      }, 400);
+    })();
     return () => {
       cancelled = true;
     };
-  // Note: route.params is intentionally NOT in deps. The hosted-proving
-  // flow is state-triggered (user tapped Proceed in the sheet), not
-  // param-triggered, so re-firing on a stale params reference would
-  // cancel an in-flight hosted proof for no reason.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.kind]);
+  }, [attempt, amount]);
 
-  // Android hardware back — confirm during proof, otherwise dismiss/close sheet
   const handleBack = useCallback(() => {
-    const midProof =
-      state.kind === 'building' ||
-      state.kind === 'proving' ||
-      state.kind === 'verifying' ||
-      state.kind === 'hosted-proving';
-    if (midProof) {
-      Alert.alert('Cancel proof generation?', 'Your transaction will not be sent.', [
+    if (phase.kind === 'auth' || phase.kind === 'running') {
+      Alert.alert('Cancel proof generation?', 'Nothing has been sent. The proof is discarded.', [
         {text: 'Continue proving', style: 'cancel'},
-        {text: 'Cancel', style: 'destructive', onPress: () => navigation.goBack()},
+        {text: 'Cancel', style: 'destructive', onPress: onCancel},
       ]);
       return true;
     }
-    if (state.kind === 'sheet') {
-      dispatch({type: 'CLOSE_SHEET'});
-      return true;
-    }
-    navigation.goBack();
+    onCancel();
     return true;
-  }, [state.kind, navigation]);
+  }, [phase.kind, onCancel]);
 
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', handleBack);
     return () => sub.remove();
   }, [handleBack]);
 
-  function handleRetryLocal() {
-    if (isRetrying) return;
-    setIsRetrying(true);
-    setRetryCounter(c => c + 1);
-    dispatch({type: 'RESET'});
-    const t = setTimeout(() => setIsRetrying(false), 500);
-    guardTimersRef.current.push(t);
-  }
+  const handleRetry = () => {
+    const t = Date.now();
+    if (t - lastTapRef.current < 500) return;
+    lastTapRef.current = t;
+    setAttempt(a => a + 1);
+  };
 
-  function handleOpenSheet() {
-    dispatch({type: 'OPEN_SHEET'});
-  }
-
-  function handleCloseSheet() {
-    dispatch({type: 'CLOSE_SHEET'});
-  }
-
-  function handleProceedHosted() {
-    if (isProceeding) return;
-    setIsProceeding(true);
-    dispatch({type: 'START_HOSTED'});
-    const t = setTimeout(() => setIsProceeding(false), 500);
-    guardTimersRef.current.push(t);
-  }
-
-  const stages = computeStages(state);
-  const hero = computeHero(state);
-
-  // ── Success screen (deposit confirmed on-chain) ──────────────────────────
-  if (state.kind === 'ready') {
-    const {txSignature, leafIndex} = state.outcome;
-    const change = state.outcome.change ?? 0n;
-    const mint = route.params.mint ?? SHIELDED_POOL_MINTS[0] ?? '';
-    const {symbol, decimals} = poolTokenMeta(mint);
-    const amountTokens = (
-      Number(BigInt(route.params.amount)) / 10 ** decimals
-    ).toLocaleString(undefined, {maximumFractionDigits: decimals});
-    const shortSig =
-      txSignature.length > 16
-        ? `${txSignature.slice(0, 8)}…${txSignature.slice(-8)}`
-        : txSignature;
-    const explorerUrl = `https://explorer.solana.com/tx/${txSignature}?cluster=devnet`;
-    const isPublic = route.params.direction === 'public';
-    const heroTitle = isPublic ? 'Unshielded' : 'Shielded';
-    const heroSub = isPublic
-      ? 'Your funds are public again in your transparent balance.'
-      : 'Your deposit is now private. Only you can spend it.';
-    const heroAmount = isPublic
-      ? `${amountTokens} ${symbol} unshielded`
-      : `${amountTokens} ${symbol} shielded`;
-    return (
-      <SafeAreaView
-        edges={['top', 'bottom', 'left', 'right']}
-        className="flex-1 bg-bg-base">
-        <ScrollView
-          style={{flex: 1}}
-          contentContainerStyle={{
-            paddingHorizontal: 20,
-            paddingTop: 24,
-            paddingBottom: 24,
-            flexGrow: 1,
-          }}>
-          <View className="flex-1 items-center justify-center">
-            <View
-              className="rounded-full items-center justify-center"
-              style={{width: 96, height: 96, backgroundColor: 'rgba(91,227,194,0.14)'}}>
-              <Check size={48} color={ACCENT} strokeWidth={2} />
-            </View>
-            <Text variant="h1" className="text-fg-primary mt-6 text-center">
-              {heroTitle}
-            </Text>
-            <Text variant="body" className="text-fg-secondary mt-2 text-center max-w-xs">
-              {heroSub}
-            </Text>
-            <Text variant="h2" className="text-accent-shielded mt-5">
-              {heroAmount}
-            </Text>
-            {change > 0n ? (
-              <Text variant="body" className="text-fg-secondary mt-2 text-center">
-                {`Kept private: ${formatTokenAmount(change, decimals)} ${symbol}`}
-              </Text>
-            ) : null}
-
-            <View className="w-full bg-bg-surface-1 rounded-md mt-8 p-4 gap-3">
-              <View className="flex-row items-center justify-between">
-                <Text variant="body-sm" className="text-fg-tertiary">
-                  Note position
-                </Text>
-                <Text variant="body-sm" mono className="text-fg-primary">
-                  {leafIndex < 0 ? 'pending' : `#${leafIndex}`}
-                </Text>
-              </View>
-              <View className="h-px bg-bg-surface-3" />
-              <Pressable
-                onPress={() => Clipboard.setString(txSignature)}
-                accessibilityRole="button"
-                accessibilityLabel="Copy transaction signature"
-                className="flex-row items-center justify-between active:opacity-70">
-                <Text variant="body-sm" className="text-fg-tertiary">
-                  Transaction
-                </Text>
-                <View className="flex-row items-center gap-2">
-                  <Text variant="body-sm" mono className="text-fg-primary">
-                    {shortSig}
-                  </Text>
-                  <Copy size={14} color="#A8ACB5" strokeWidth={1.75} />
-                </View>
-              </Pressable>
-              <View className="h-px bg-bg-surface-3" />
-              <Pressable
-                onPress={() => Linking.openURL(explorerUrl).catch(() => {})}
-                accessibilityRole="button"
-                accessibilityLabel="View on devnet explorer"
-                className="flex-row items-center justify-center gap-2 active:opacity-70">
-                <Text variant="body-sm" className="text-accent-shielded">
-                  View on devnet explorer
-                </Text>
-                <ExternalLink size={14} color={ACCENT} strokeWidth={1.75} />
-              </Pressable>
-            </View>
-          </View>
-        </ScrollView>
-        <View className="px-5 pb-4">
-          <Pressable
-            testID="shield-done-button"
-            onPress={() => navigation.popToTop()}
-            accessibilityRole="button"
-            accessibilityLabel="Done"
-            className="h-14 rounded-pill bg-accent-shielded items-center justify-center active:opacity-90">
-            <Text variant="body-lg" className="font-geist-semibold text-bg-base">
-              Done
-            </Text>
-          </Pressable>
-        </View>
-      </SafeAreaView>
-    );
-  }
+  const hero = heroOf(phase);
+  const rows = ([1, 2, 3, 4] as Row[]).map(r => rowOf(r, phase, rowStart.current, rowDone.current, now));
 
   return (
-    <SafeAreaView
-      edges={['top', 'bottom', 'left', 'right']}
-      className="flex-1 bg-bg-base">
-      {/* Top bar */}
+    <SafeAreaView edges={['top', 'bottom', 'left', 'right']} className="flex-1 bg-bg-base">
       <View className="flex-row items-center justify-between px-5 h-12">
         <Pressable
           onPress={handleBack}
@@ -516,364 +206,183 @@ export function ZkProofScreen({navigation, route}: Props) {
         </Pressable>
         <View className="flex-row items-center gap-2">
           <ShieldCheck size={12} color={ACCENT} strokeWidth={2} />
-          <Text variant="overline" className="text-accent-shielded">SHIELDED</Text>
+          <Text variant="overline" className="text-accent-shielded">
+            SHIELDED
+          </Text>
         </View>
-        <Text variant="overline" className="text-fg-tertiary">ZK</Text>
+        <Text variant="overline" className="text-fg-tertiary">
+          ZK
+        </Text>
       </View>
 
-      <ScrollView
-        style={{flex: 1}}
-        contentContainerStyle={{paddingHorizontal: 20, paddingBottom: 24}}>
-        {/* Hero */}
-        <View className="items-center mt-6">
+      <ScrollView style={{flex: 1}} contentContainerStyle={{paddingHorizontal: 20, paddingBottom: 24}}>
+        <View
+          className={`items-center mt-4 p-5 rounded-lg border ${
+            phase.kind === 'failed' ? 'border-[rgba(255,92,106,0.32)]' : 'border-[rgba(91,227,194,0.32)]'
+          }`}>
           <View
-            className="rounded-full items-center justify-center border border-accent-shielded"
-            style={{
-              width: 88,
-              height: 88,
-              shadowColor: ACCENT,
-              shadowOpacity: hero.spinning ? 0.5 : 0.25,
-              shadowRadius: 16,
-              shadowOffset: {width: 0, height: 0},
-              elevation: 6,
-            }}>
-            <Cpu size={44} color={ACCENT} strokeWidth={1.75} />
+            className={`rounded-full items-center justify-center border ${
+              phase.kind === 'failed' ? 'border-danger' : 'border-accent-shielded'
+            }`}
+            style={{width: 72, height: 72}}>
+            {phase.kind === 'failed' ? (
+              <X size={34} color={DANGER} strokeWidth={2} />
+            ) : phase.kind === 'ready' ? (
+              <Check size={34} color={ACCENT} strokeWidth={2} />
+            ) : (
+              <Cpu size={34} color={ACCENT} strokeWidth={1.75} />
+            )}
           </View>
-          <Text variant="h2" className="text-fg-primary mt-4 text-center">
+          <Text
+            variant="h2"
+            testID="zk-hero"
+            className={`mt-4 text-center ${
+              phase.kind === 'failed' ? 'text-danger' : phase.kind === 'ready' ? 'text-accent-shielded' : 'text-fg-primary'
+            }`}>
             {hero.label}
           </Text>
-          <Text variant="body-sm" className="text-fg-secondary mt-2 text-center max-w-xs">
+          <Text
+            variant="body-sm"
+            testID="zk-hero-sub"
+            className={`mt-2 text-center max-w-xs ${phase.kind === 'failed' ? 'text-danger' : 'text-fg-secondary'}`}>
             {hero.sub}
           </Text>
-          {diag ? (
-            <Text variant="caption" mono className="text-accent-shielded mt-3 text-center">
-              {diag}
-            </Text>
-          ) : null}
         </View>
 
-        {/* Hosted banner (only on failed with hostedBanner) */}
-        {state.kind === 'failed' && state.hostedBanner ? (
-          <View className="bg-[rgba(255,92,106,0.12)] border border-[rgba(255,92,106,0.32)] rounded-md p-3 mt-6">
-            <Text variant="body-sm" className="text-fg-primary">
-              {state.hostedBanner}
-            </Text>
-          </View>
-        ) : null}
-
-        {/* Stages */}
-        <View className="mt-8 gap-3">
-          {stages.map(stage => (
-            <StageRow key={stage.num} stage={stage} />
+        <View className="mt-6 gap-3">
+          {rows.map(r => (
+            <StageRow key={r.num} {...r} />
           ))}
         </View>
-
-        {/* "Local prover slow?" hint — visible during active stages. Static
-            informational text per spec §G (out of scope: tap action deferred
-            to v0.3 docs WebView, same as #17 Learn more). Rendered as View
-            (not Pressable) so accessibility doesn't falsely promise an action. */}
-        {state.kind === 'building' ||
-        state.kind === 'proving' ||
-        state.kind === 'verifying' ? (
-          <View className="mt-4 self-center">
-            <Text variant="body-sm" className="text-accent-shielded">
-              Local prover slow?
-            </Text>
-          </View>
-        ) : null}
       </ScrollView>
 
-      {/* Footer note (always visible above sticky bar) */}
-      <View className="flex-row items-center gap-2 px-5 mb-3">
+      <View className="flex-row items-center justify-center gap-2 px-5 mb-3">
         <ShieldCheck size={14} color={ACCENT} strokeWidth={1.75} />
         <Text variant="body-sm" className="text-accent-shielded">
           FLAG_SECURE · screenshots blocked
         </Text>
       </View>
 
-      {/* Sticky bar — only on failed state */}
-      {state.kind === 'failed' ? (
-        <View className="px-5 pb-4 gap-3">
+      {phase.kind === 'failed' ? (
+        <View className="px-5 pb-4">
           <Pressable
             testID="retry-local-button"
-            onPress={handleRetryLocal}
-            disabled={isRetrying}
+            onPress={handleRetry}
             accessibilityRole="button"
-            accessibilityLabel="Retry locally"
-            className={`h-14 rounded-pill ${isRetrying ? 'bg-accent-shielded opacity-60' : 'bg-accent-shielded'} items-center justify-center active:opacity-90`}>
+            accessibilityLabel="Retry on this device"
+            className="h-14 rounded-pill bg-accent-shielded items-center justify-center flex-row gap-2 active:opacity-90">
+            <RefreshCw size={18} color="#0A0A0A" strokeWidth={2} />
             <Text variant="body-lg" className="font-geist-semibold text-bg-base">
-              Retry locally
-            </Text>
-          </Pressable>
-          <Pressable
-            testID="use-hosted-button"
-            onPress={handleOpenSheet}
-            accessibilityRole="button"
-            accessibilityLabel="Use Noctura hosted prover"
-            className="h-14 rounded-pill bg-bg-surface-1 items-center justify-center active:opacity-90 border border-bg-surface-3">
-            <Text variant="body-lg" className="font-geist-semibold text-fg-primary">
-              Use Noctura hosted prover
+              Retry on this device
             </Text>
           </Pressable>
         </View>
       ) : null}
-
-      {/* Hosted prover sheet (Modal) */}
-      <Modal
-        visible={state.kind === 'sheet'}
-        animationType="slide"
-        transparent
-        onRequestClose={handleCloseSheet}>
-        <View className="flex-1 bg-[rgba(0,0,0,0.5)] justify-end">
-          <View className="bg-bg-surface-1 rounded-t-lg p-5">
-            {/* Grabber */}
-            <View className="self-center w-10 h-1 rounded-pill bg-fg-tertiary mb-4" />
-            <Text variant="h2" className="text-fg-primary mb-4">
-              Use Noctura hosted prover
-            </Text>
-            <View className="flex-row gap-3 mb-4">
-              <DisclosureCard accent="warn" title="Server SEES" items={SEES_ITEMS} />
-              <DisclosureCard
-                accent="shield"
-                title="Server CAN'T SEE"
-                items={CANT_SEE_ITEMS}
-              />
-            </View>
-            <Text variant="body-sm" className="text-accent-shielded mb-4">
-              By proceeding you opt in to a one-time hosted proof. You'll be asked again on the next failure.
-            </Text>
-            <Pressable
-              testID="cancel-hosted-button"
-              onPress={handleCloseSheet}
-              accessibilityRole="button"
-              accessibilityLabel="Cancel hosted proof"
-              className="h-12 rounded-pill bg-bg-surface-2 items-center justify-center active:opacity-90 mb-3 border border-bg-surface-3">
-              <Text variant="body-lg" className="font-geist-semibold text-fg-primary">
-                Cancel
-              </Text>
-            </Pressable>
-            <Pressable
-              testID="proceed-hosted-button"
-              onPress={handleProceedHosted}
-              disabled={isProceeding}
-              accessibilityRole="button"
-              accessibilityLabel="Proceed with hosted proof"
-              className={`h-14 rounded-pill ${isProceeding ? 'bg-accent-shielded opacity-60' : 'bg-accent-shielded'} items-center justify-center active:opacity-90`}>
-              <Text variant="body-lg" className="font-geist-semibold text-bg-base">
-                Proceed with hosted proof
-              </Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }
 
-// ── StageRow ─────────────────────────────────────────────────────────────
-interface StageRowProps {
-  stage: {
-    num: StageNum;
-    title: string;
-    status: StageStatus;
-    meta: string;
-    statusDisplay: string;
-  };
+function heroOf(phase: Phase): {label: string; sub: string} {
+  switch (phase.kind) {
+    case 'auth':
+      return {
+        label: 'Preparing proof',
+        sub: 'Unlock with your fingerprint or passcode. The proof is generated on this device.',
+      };
+    case 'running': {
+      const row = ROW_OF[phase.stage];
+      const label = row === 1 ? 'Building witness' : row === 2 ? 'Proving' : 'Verifying';
+      const sub =
+        row === 2
+          ? 'Running the Groth16 prover on this device.'
+          : row === 3
+            ? "Checking the proof's public inputs against this deposit."
+            : `Building the deposit: ${SUBSTEP[phase.stage]}.`;
+      return {label, sub};
+    }
+    case 'ready':
+      return {label: 'Proof ready', sub: 'Continuing to transaction preview…'};
+    case 'failed':
+      return {label: 'Proof failed', sub: phase.code ? `${phase.code} · ${phase.message}` : phase.message};
+  }
 }
 
-function StageRow({stage}: StageRowProps) {
-  const isActive = stage.status === 'active';
-  const isDone = stage.status === 'done';
-  const isErrored = stage.status === 'errored';
+interface RowView {
+  num: Row;
+  title: string;
+  status: 'pending' | 'active' | 'done' | 'errored' | 'skipped';
+  meta: string;
+  mark: string;
+}
+
+function rowOf(
+  num: Row,
+  phase: Phase,
+  start: Partial<Record<Row, number>>,
+  done: Partial<Record<Row, number>>,
+  now: number,
+): RowView {
+  const title = TITLES[num];
+  const s = start[num];
+  const d = done[num];
+  if (phase.kind === 'failed') {
+    if (num < phase.row && s !== undefined && d !== undefined) {
+      return {num, title, status: 'done', meta: `done · ${seconds(d - s)}`, mark: '✓'};
+    }
+    if (num === phase.row) {
+      return {num, title, status: 'errored', meta: `failed · ${phase.code ?? 'error'}`, mark: 'ERR'};
+    }
+    return {num, title, status: 'skipped', meta: '— · skipped', mark: '·'};
+  }
+  if (d !== undefined && s !== undefined) {
+    return {num, title, status: 'done', meta: num === 4 ? 'ready' : `done · ${seconds(d - s)}`, mark: '✓'};
+  }
+  if (phase.kind === 'running' && ROW_OF[phase.stage] === num && s !== undefined) {
+    return {num, title, status: 'active', meta: `${SUBSTEP[phase.stage]} · ${seconds(now - s)}`, mark: '…'};
+  }
+  if (phase.kind === 'auth' && num === 1) {
+    return {num, title, status: 'active', meta: 'waiting for you to unlock', mark: '…'};
+  }
+  return {num, title, status: 'pending', meta: '— · pending', mark: '·'};
+}
+
+function StageRow({num, title, status, meta, mark}: RowView) {
+  const isActive = status === 'active';
+  const isDone = status === 'done';
+  const isErrored = status === 'errored';
   const containerCls = isActive
     ? 'bg-[rgba(91,227,194,0.08)] border border-[rgba(91,227,194,0.32)]'
     : isErrored
-    ? 'bg-[rgba(255,92,106,0.08)] border border-[rgba(255,92,106,0.32)]'
-    : 'bg-bg-surface-1';
+      ? 'bg-[rgba(255,92,106,0.08)] border border-[rgba(255,92,106,0.32)]'
+      : 'bg-bg-surface-1';
   const discCls = isDone || isActive ? 'bg-accent-shielded-tint' : 'bg-bg-surface-2';
-  const numTextColor = isActive ? 'text-accent-shielded' : 'text-fg-tertiary';
   return (
-    <View className={`flex-row items-center gap-3 p-3 rounded-md ${containerCls}`}>
-      <View
-        className={`w-7 h-7 rounded-full items-center justify-center ${discCls}`}>
+    <View
+      testID={`zk-stage-${num}`}
+      accessibilityLabel={`${title}: ${status}`}
+      className={`flex-row items-center gap-3 p-3 rounded-md ${containerCls} ${status === 'skipped' ? 'opacity-50' : ''}`}>
+      <View className={`w-7 h-7 rounded-full items-center justify-center ${discCls}`}>
         {isDone ? (
           <Check size={14} color={ACCENT} strokeWidth={2} />
         ) : isErrored ? (
           <AlertTriangle size={14} color={DANGER} strokeWidth={2} />
         ) : (
-          <Text variant="body-sm" mono numeral className={numTextColor}>
-            {stage.num}
+          <Text variant="body-sm" mono numeral className={isActive ? 'text-accent-shielded' : 'text-fg-tertiary'}>
+            {num}
           </Text>
         )}
       </View>
       <View className="flex-1">
         <Text variant="body-sm" className="text-fg-primary">
-          {stage.title}
+          {title}
         </Text>
-        <Text variant="caption" className="text-fg-tertiary">
-          {stage.meta}
+        <Text variant="caption" className="text-fg-tertiary" testID={`zk-stage-${num}-meta`}>
+          {meta}
         </Text>
       </View>
-      <Text
-        variant="body-sm"
-        mono
-        numeral
-        className={isErrored ? 'text-danger' : 'text-fg-tertiary'}>
-        {stage.statusDisplay}
+      <Text variant="body-sm" mono numeral className={isErrored ? 'text-danger' : 'text-fg-tertiary'}>
+        {mark}
       </Text>
     </View>
   );
-}
-
-// ── DisclosureCard ───────────────────────────────────────────────────────
-interface DisclosureCardProps {
-  accent: 'warn' | 'shield';
-  title: string;
-  items: string[];
-}
-
-function DisclosureCard({accent, title, items}: DisclosureCardProps) {
-  const tintBg =
-    accent === 'warn' ? 'bg-[rgba(255,184,77,0.12)]' : 'bg-[rgba(91,227,194,0.12)]';
-  const tintBorder =
-    accent === 'warn' ? 'border-[rgba(255,184,77,0.32)]' : 'border-[rgba(91,227,194,0.32)]';
-  const titleColor = accent === 'warn' ? 'text-warning' : 'text-accent-shielded';
-  return (
-    <View className={`flex-1 p-3 rounded-md border ${tintBg} ${tintBorder}`}>
-      <Text variant="overline" className={`${titleColor} mb-2`}>
-        {title}
-      </Text>
-      {items.map(item => (
-        <Text key={item} variant="body-sm" className="text-fg-secondary mb-1">
-          {item}
-        </Text>
-      ))}
-    </View>
-  );
-}
-
-// ── helpers ──────────────────────────────────────────────────────────────
-function computeHero(state: ZkUiState): {label: string; sub: string; spinning: boolean} {
-  switch (state.kind) {
-    case 'idle':
-      return {
-        label: 'Preparing proof',
-        sub: 'Securely generating a zero-knowledge proof of ownership for this transfer. Stays on-device.',
-        spinning: false,
-      };
-    case 'building':
-      return {
-        label: 'Building witness',
-        sub: 'Loading commitment tree and constructing the witness. About 4 seconds.',
-        spinning: true,
-      };
-    case 'proving':
-      return {
-        label: 'Proving',
-        sub: 'Running the Groth16 prover on this device.',
-        spinning: true,
-      };
-    case 'verifying':
-      return {
-        label: 'Verifying',
-        sub: 'Sanity-checking the proof on-device before broadcast.',
-        spinning: true,
-      };
-    case 'ready':
-      return {
-        label: 'Proof ready',
-        sub: 'Proof generated. Submitting to the network.',
-        spinning: false,
-      };
-    case 'failed':
-      return {label: "Couldn't generate proof", sub: state.reason, spinning: false};
-    case 'sheet':
-      return {
-        label: "Couldn't generate proof",
-        sub: state.savedFailure.reason,
-        spinning: false,
-      };
-    case 'hosted-proving':
-      return {
-        label: 'Generating on hosted prover',
-        sub: 'Connecting to the Noctura proving service.',
-        spinning: true,
-      };
-  }
-}
-
-function computeStages(
-  state: ZkUiState,
-): Array<{
-  num: StageNum;
-  title: string;
-  status: StageStatus;
-  meta: string;
-  statusDisplay: string;
-}> {
-  const titles: Record<StageNum, string> = {
-    1: 'Build witness',
-    2: 'Prove',
-    3: 'Verify locally',
-    4: 'Ready',
-  };
-  const row = (num: StageNum, status: StageStatus, meta: string, statusDisplay: string) => ({
-    num,
-    title: titles[num],
-    status,
-    meta,
-    statusDisplay,
-  });
-
-  if (state.kind === 'idle' || state.kind === 'hosted-proving') {
-    return ([1, 2, 3, 4] as StageNum[]).map(n => row(n, 'pending', '— · pending', '·'));
-  }
-  if (state.kind === 'building') {
-    return [
-      row(1, 'active', 'running · 2.0 s', `${state.pct} %`),
-      row(2, 'pending', '— · pending', '·'),
-      row(3, 'pending', '— · pending', '·'),
-      row(4, 'pending', '— · pending', '·'),
-    ];
-  }
-  if (state.kind === 'proving') {
-    return [
-      row(1, 'done', 'done · 2.0 s', '✓'),
-      row(2, 'active', 'running · 3.0 s', `${state.pct} %`),
-      row(3, 'pending', '— · pending', '·'),
-      row(4, 'pending', '— · pending', '·'),
-    ];
-  }
-  if (state.kind === 'verifying') {
-    return [
-      row(1, 'done', 'done · 2.0 s', '✓'),
-      row(2, 'done', 'done · 3.0 s', '✓'),
-      row(3, 'active', 'running · 2.0 s', `${state.pct} %`),
-      row(4, 'pending', '— · pending', '·'),
-    ];
-  }
-  if (state.kind === 'ready') {
-    return [
-      row(1, 'done', 'done · 2.0 s', '✓'),
-      row(2, 'done', 'done · 3.0 s', '✓'),
-      row(3, 'done', 'done · 2.0 s', '✓'),
-      row(4, 'done', 'ready', '✓'),
-    ];
-  }
-  // failed or sheet
-  const failure = state.kind === 'failed' ? state : state.savedFailure;
-  // Hosted-proving failures: no local stages ran, so show all 4 as pending
-  // with stage 4 marked errored. The hostedBanner above the stages list
-  // already explains what happened — no need to falsely imply local progress.
-  if (failure.hostedBanner) {
-    return ([1, 2, 3, 4] as StageNum[]).map(n => {
-      if (n === 4) return row(n, 'errored', 'hosted attempt · failed', '!');
-      return row(n, 'pending', '— · pending', '·');
-    });
-  }
-  return ([1, 2, 3, 4] as StageNum[]).map(n => {
-    if (n < failure.erroredStage) return row(n, 'done', 'done', '✓');
-    if (n === failure.erroredStage) return row(n, 'errored', `error · ${failure.reason}`, '!');
-    return row(n, 'pending', '— · pending', '·');
-  });
 }

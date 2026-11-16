@@ -76,26 +76,6 @@ const TARGETS = {
     },
   },
 
-  // The MerkleTree account is parsed at a HARDCODED byte offset, and the A0
-  // program change will alter that layout. These two guards exist to break at
-  // that moment rather than mis-parse: without them a longer or reordered
-  // account returns 64 entirely plausible 32-byte values read from the wrong
-  // place, and the failure surfaces downstream as "our root is not in the ring".
-  merkleTreeAccountGuards: {
-    file: 'src/modules/shielded/merkleTreeAccount.ts',
-    // Both readers, so a guard that only one of them exercises is visible.
-    testPattern: 'merkleTreeAccount|merkleSync.test|poolState',
-    noop: ["const disc = toHex8(data);", "const disc: string = toHex8(data);"],
-    mutants: {
-      discriminator: [
-        'if (data.length < 8 || disc !== MERKLE_TREE_DISCRIMINATOR) {',
-        'if (false) {',
-      ],
-      'exact-size': ['if (data.length !== MERKLE_TREE_SIZE) {', 'if (false) {'],
-    },
-    expectedSurvivors: {},
-  },
-
   // The A0 field equations. These are our independent path from the frozen spec
   // to a test, so if they can be wrong without a test failing, the whole
   // names-not-values boundary is decorative.
