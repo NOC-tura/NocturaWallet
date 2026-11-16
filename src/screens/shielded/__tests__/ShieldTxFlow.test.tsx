@@ -37,6 +37,11 @@ jest.mock('../../../modules/keyDerivation/mnemonicUtils', () => ({
 jest.mock('../../../modules/solana/connection', () => ({getConnection: () => ({rpc: 'fake'})}));
 jest.mock('@react-native-clipboard/clipboard', () => ({setString: jest.fn()}));
 
+// I-1 (final review): the first test pays the suite's first render — React Native's lazy component
+// modules, lucide and nativewind loaded on first use (~0.4 s solo, 7.7 s measured under the full
+// run's contention) — so Jest's 5 s default made a full run red on a test that proves nothing.
+jest.setTimeout(30_000);
+
 const PREPARED: A0PreparedDeposit = {
   amount: 2_500_000_000n,
   depositIndex: 0n,
