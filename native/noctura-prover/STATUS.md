@@ -1,5 +1,9 @@
 # noctura-prover — M1 spike status
 
+> **M1b (2026-11): the v1 pieces below are deleted** — `src/prover.rs`, the `nativeProve` JNI
+> export, `tests/prove_to_bytes.rs`, `examples/` and `artifacts/deposit_input.json`. This file is
+> the spike's history; the live core is `src/a0/`.
+
 Desktop-first Groth16 prover over the deployed devnet shielded circuits, using the
 exact snarkjs `.zkey` + circom `.wasm` the wallet downloads. Pure-Rust (arkworks).
 Plan: `docs/superpowers/plans/2026-07-17-m1-native-prover-spike.md`.

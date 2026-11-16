@@ -1,6 +1,7 @@
 import type {LinkingOptions} from '@react-navigation/native';
 import type {RootStackParamList} from '../types/navigation';
 import {isShieldedEnabled} from '../constants/features';
+import {isPresaleEnabled} from '../constants/chain';
 
 // NOTE: Auth guard for deep links is handled by useSessionGuard in App.tsx.
 // Previously had getInitialURL/subscribe overrides here but they caused
@@ -16,6 +17,12 @@ import {isShieldedEnabled} from '../constants/features';
 // path with no config entry never reaches a shielded screen.
 const shieldedDeepLinks = isShieldedEnabled() ? {ShieldUnshieldModal: 'deposit' as const} : {};
 
+// The Phase 1 program's links (presale, staking, the presale referral) exist only where presale
+// does — mainnet (S13); in the devnet build their routes are not registered either.
+const presaleDeepLinks = isPresaleEnabled()
+  ? {Presale: 'presale' as const, Staking: 'stake' as const, Referral: 'referral' as const}
+  : {};
+
 export const deepLinkConfig: LinkingOptions<RootStackParamList> = {
   prefixes: ['noctura://', 'https://noc-tura.io', 'https://noc-tura.io/wallet'],
   config: {
@@ -25,9 +32,7 @@ export const deepLinkConfig: LinkingOptions<RootStackParamList> = {
           HomeTab: {
             screens: {
               Dashboard: 'dashboard',
-              Presale: 'presale',
-              Staking: 'stake',
-              Referral: 'referral',
+              ...presaleDeepLinks,
             },
           },
           PortfolioTab: 'portfolio',

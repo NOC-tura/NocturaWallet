@@ -43,6 +43,7 @@ import {ReferralScreen as ReferralScreenImpl} from '../screens/referral/Referral
 import {GeoBlockedScreen as GeoBlockedScreenImpl} from '../screens/compliance/GeoBlockedScreen';
 import {TokenDetailScreen} from '../screens/transparent/TokenDetailScreen';
 import {isShieldedEnabled} from '../constants/features';
+import {isPresaleEnabled} from '../constants/chain';
 import type {
   RootStackParamList,
   OnboardingStackParamList,
@@ -54,11 +55,9 @@ import type {
 
 // Screen placeholders (replaced in later implementation steps)
 import {SettingsScreen} from '../screens/settings/SettingsScreen';
-import {NativeProveDebugScreen} from '../screens/debug/NativeProveDebugScreen';
 import {PinProbeScreen} from '../screens/debug/PinProbeScreen';
 import {SecuritySettingsScreen} from '../screens/settings/SecuritySettingsScreen';
 import {ChangePinScreen} from '../screens/settings/ChangePinScreen';
-import {ExportViewKeyScreen} from '../screens/settings/ExportViewKeyScreen';
 import {BackupSettingsScreen} from '../screens/settings/BackupSettingsScreen';
 import {NotificationSettingsScreen} from '../screens/settings/NotificationSettingsScreen';
 import {WipeWalletScreen} from '../screens/settings/WipeWalletScreen';
@@ -272,13 +271,19 @@ function BiometricSetupScreenNav() {
 function SuccessScreenNav() {
   const {mnemonic, scheme, clearMnemonic} = useOnboarding();
   const navigation = useNavigation<NativeStackNavigationProp<OnboardingStackParamList>>();
+  const rootNavigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   return (
     <SuccessScreen
       mnemonic={mnemonic ?? ''}
       scheme={scheme}
       onComplete={() => {
         clearMnemonic();
-        navigation.navigate('Presale');
+        // Presale exists on mainnet only (S13): the devnet build goes straight to the wallet.
+        if (isPresaleEnabled()) {
+          navigation.navigate('Presale');
+        } else {
+          rootNavigation.replace('MainTabs');
+        }
       }}
     />
   );
@@ -301,25 +306,28 @@ function DashboardScreenNav() {
   const rootNav = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const dashNav = useNavigation<NativeStackNavigationProp<DashboardStackParamList>>();
   const tabNav = useNavigation();
+  // Presale (and its Buy entry, banner and routes) exists on mainnet only (S13).
+  const presale = isPresaleEnabled();
   return (
     <DashboardScreen
       // The shielded transfer is HIDDEN until its plan lands (spec §12): no route exists for it, and
       // the dashboard shows no Send action in shielded mode — Send is always the transparent send.
       onSend={() => rootNav.navigate('SendModal')}
-      onReceive={shielded =>
-        rootNav.navigate('ReceiveModal', shielded ? {shielded: true} : undefined)
-      }
+      // Receive is the transparent address only: no valid shielded receive address exists until
+      // M2 (I9), so the dashboard offers no Receive in shielded mode and this route has no
+      // shielded variant.
+      onReceive={() => rootNav.navigate('ReceiveModal')}
       onShield={() => {
         if (isShieldedEnabled()) {
           rootNav.navigate('ShieldUnshieldModal', {direction: 'private'});
         }
       }}
       onSwap={() => rootNav.navigate('SwapModal')}
-      onBuy={() => dashNav.navigate('Presale')}
+      onBuy={presale ? () => dashNav.navigate('Presale') : undefined}
       onScan={() => rootNav.navigate('ScanModal')}
       onNotifications={() => rootNav.navigate('NotificationsModal')}
       onProfileTap={() => tabNav.getParent()?.navigate('ProfileTab' as never)}
-      onPresale={() => dashNav.navigate('Presale')}
+      onPresale={presale ? () => dashNav.navigate('Presale') : undefined}
       onFirstShieldedToggle={() => {
         if (isShieldedEnabled()) {
           rootNav.navigate('ShieldedExplainer');
@@ -381,27 +389,18 @@ function StakingScreenNav() {
   return <StakingScreen />;
 }
 
+// #13 Receive — the TRANSPARENT address only, whatever the params say (a stale or deep-linked
+// `shielded` is ignored). The shielded option is hidden until M2 (spec §11 "Deferred", §12 I9):
+// no valid A0 receive address exists yet, and the v1 noc1… address it used to show is gone.
 function ReceiveScreenNav() {
   const publicKey = useWalletStore().publicKey;
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const route = useRoute<RouteProp<RootStackParamList, 'ReceiveModal'>>();
-  const shielded = route.params?.shielded === true;
   const {mmkvPublic} = require('../store/mmkv/instances');
   const {MMKV_KEYS} = require('../constants/mmkvKeys');
-  // Shielded: the noc1… receive address is persisted (public data) at secure-store
-  // unlock; the dashboard unlocks the store on shielded view, so it's present here.
-  // Transparent: prefer walletStore, fall back to mmkvPublic if zustand hasn't
-  // hydrated the publicKey yet (e.g., cold launch into a Receive deeplink).
-  const address = shielded
-    ? mmkvPublic.getString(MMKV_KEYS.WALLET_SHIELDED_ADDRESS) ?? ''
-    : publicKey ?? mmkvPublic.getString(MMKV_KEYS.WALLET_PUBLIC_KEY) ?? '';
-  return (
-    <ReceiveScreen
-      address={address}
-      shielded={shielded}
-      onBack={() => navigation.goBack()}
-    />
-  );
+  // Prefer walletStore, fall back to mmkvPublic if zustand hasn't hydrated the publicKey yet
+  // (e.g., cold launch into a Receive deeplink).
+  const address = publicKey ?? mmkvPublic.getString(MMKV_KEYS.WALLET_PUBLIC_KEY) ?? '';
+  return <ReceiveScreen address={address} onBack={() => navigation.goBack()} />;
 }
 
 function TokenDetailScreenNav() {
@@ -674,7 +673,9 @@ function OnboardingStack() {
         <OnboardingNav.Screen name="SetPin" component={SetPinScreenNav} />
         <OnboardingNav.Screen name="BiometricSetup" component={BiometricSetupScreenNav} />
         <OnboardingNav.Screen name="Success" component={SuccessScreenNav} />
-        <OnboardingNav.Screen name="Presale" component={PresaleScreenOnboarding} />
+        {isPresaleEnabled() ? (
+          <OnboardingNav.Screen name="Presale" component={PresaleScreenOnboarding} />
+        ) : null}
       </OnboardingNav.Navigator>
     </OnboardingProvider>
   );
@@ -686,11 +687,18 @@ function DashboardStack() {
   return (
     <DashboardNav.Navigator screenOptions={defaultScreenOptions}>
       <DashboardNav.Screen name="Dashboard" component={DashboardScreenNav} />
-      <DashboardNav.Screen name="Presale" component={PresaleScreenDashboard} />
-      <DashboardNav.Screen name="PresaleBuyConfirm" component={PresaleBuyConfirmNav} />
-      <DashboardNav.Screen name="PresaleBuyStatus" component={PresaleBuyStatusNav} />
-      <DashboardNav.Screen name="Staking" component={StakingScreenNav} />
-      <DashboardNav.Screen name="GeoBlocked" component={GeoBlockedNav} />
+      {/* The Phase 1 program's screens — presale, its purchase geo gate, staking — exist on
+          mainnet only (S13): the ROUTES are gated, so the devnet build cannot reach them by name
+          or by deep link (deepLinkConfig drops their paths too). */}
+      {isPresaleEnabled() ? (
+        <>
+          <DashboardNav.Screen name="Presale" component={PresaleScreenDashboard} />
+          <DashboardNav.Screen name="PresaleBuyConfirm" component={PresaleBuyConfirmNav} />
+          <DashboardNav.Screen name="PresaleBuyStatus" component={PresaleBuyStatusNav} />
+          <DashboardNav.Screen name="Staking" component={StakingScreenNav} />
+          <DashboardNav.Screen name="GeoBlocked" component={GeoBlockedNav} />
+        </>
+      ) : null}
     </DashboardNav.Navigator>
   );
 }
@@ -720,22 +728,15 @@ function SettingsStack() {
   return (
     <SettingsNav.Navigator screenOptions={defaultScreenOptions}>
       <SettingsNav.Screen name="Settings" component={SettingsScreen} />
-      <SettingsNav.Screen name="Referral" component={ReferralScreenNav} />
+      {/* The presale referral (mainnet only, S13). */}
+      {isPresaleEnabled() ? <SettingsNav.Screen name="Referral" component={ReferralScreenNav} /> : null}
       <SettingsNav.Screen name="SecuritySettings" component={SecuritySettingsScreen} />
       <SettingsNav.Screen name="ChangePin" component={ChangePinScreen} />
-      <SettingsNav.Screen name="ExportViewKey" component={ExportViewKeyScreen} />
       <SettingsNav.Screen name="BackupSettings" component={BackupSettingsScreen} />
       <SettingsNav.Screen name="NotificationSettings" component={NotificationSettingsScreen} />
       <SettingsNav.Screen name="WipeWallet" component={WipeWalletScreen} />
-      {/* Dev-only. The Settings entry is Config-gated, but the ROUTE was
-          registered unconditionally, so it stayed navigable by name in a
-          release build. Gate the route itself. */}
-      {__DEV__ || Config.NATIVE_PROVER_DEBUG === 'true' ? (
-        <SettingsNav.Screen name="NativeProveDebug" component={NativeProveDebugScreen} />
-      ) : null}
-      {/* Same rule as above: gate the ROUTE, not only the Settings row — a
-          registered route stays navigable by name (and by deep link) even with
-          its entry point hidden. */}
+      {/* Dev-only: gate the ROUTE, not only the Settings row — a registered route
+          stays navigable by name (and by deep link) even with its entry point hidden. */}
       {__DEV__ || Config.PIN_PROBE === 'true' ? (
         <SettingsNav.Screen name="PinProbe" component={PinProbeScreen} />
       ) : null}

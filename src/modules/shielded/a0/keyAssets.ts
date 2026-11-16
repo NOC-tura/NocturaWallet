@@ -15,8 +15,13 @@
  * pin cannot be written down here, and the mutable `/a0/zkey-manifest.json` pointer is never
  * consulted at run time: pins fetched at run time would let a compromised host choose the zkey.
  */
-import {ensurePinnedAssets, type AssetIO} from '../../zkProver/provingAssets';
-import type {CircuitAssets, PinnedAsset} from '../../../constants/provingAssets';
+import {
+  assertContentAddressed,
+  ensurePinnedAssets,
+  type AssetIO,
+  type CircuitAssets,
+  type PinnedAsset,
+} from '../../zkProver/provingAssets';
 import type {A0Circuit} from '../../zkProver/nativeProverBridge';
 
 const BASE = 'https://api.noc-tura.io/api/v1/zk-assets';
@@ -38,13 +43,15 @@ export const A0_KEY_ASSETS: Readonly<Record<A0Circuit, CircuitAssets>> = {
   },
 };
 
+assertContentAddressed(A0_KEY_ASSETS);
+
 /** The circuit's public-input count (the zkey's nPublic, §14 m-5): deposit 4, withdraw_change 7. */
 export const A0_NPUBLIC: Readonly<Record<A0Circuit, number>> = {deposit: 4, withdraw_change: 7};
 
 /**
  * Local paths of the circuit's zkey and wasm, each re-verified against its pin on this call
  * (downloaded first when missing; a mismatch deletes the file and throws). The cache files are
- * keyed `a0-<circuit>` (`noctura-a0-deposit.zkey`, …) so they never collide with the v1 set's `noctura-deposit.zkey`.
+ * keyed `a0-<circuit>` (`noctura-a0-deposit.zkey`, …) so they never collide with an older install's `noctura-deposit.zkey`.
  */
 export function ensureA0KeyFiles(
   circuit: A0Circuit,

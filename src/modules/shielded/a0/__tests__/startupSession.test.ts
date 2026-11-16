@@ -6,8 +6,8 @@
  *
  * Real: the MMKV instances (+ the reset hook), the session module, the startup step, the restore,
  * the tree sync over the recorded devnet history (liveDevnet), the bridge over the offline fake.
- * Mocked: the build gate (the devnet build), the connection (the live devnet fake's), and the v1
- * view-session helpers the session module still calls (Task 6 removes them).
+ * Mocked: the build gate (the devnet build), the connection (the live devnet fake's), and the
+ * keychain (the session module drops the v1 view key at unlock, M1b Task 6).
  */
 jest.mock('@solana/web3.js', () =>
   jest.requireActual<typeof import('../__testing__/realWeb3')>('../__testing__/realWeb3').loadRealWeb3(),
@@ -18,10 +18,9 @@ jest.mock('react-native', () => ({
   },
   Platform: {OS: 'android', select: (o: {android?: unknown; default?: unknown}) => o.android ?? o.default},
 }));
-jest.mock('../../../keychain/keychainModule', () => ({keychainManager: {retrieveSeed: jest.fn()}}));
-jest.mock('../../shieldedViewSession', () => ({setShieldedViewSession: jest.fn()}));
-jest.mock('../../shieldedIdentity', () => ({getViewPublicKey: jest.fn(() => new Uint8Array(32))}));
-jest.mock('../../shieldedAddressCodec', () => ({encodeShieldedAddress: jest.fn(() => 'noc1-test')}));
+jest.mock('../../../keychain/keychainModule', () => ({
+  keychainManager: {retrieveSeed: jest.fn(), dropV1ViewKey: jest.fn().mockResolvedValue(undefined)},
+}));
 jest.mock('../../../../constants/features', () => ({isShieldedEnabled: jest.fn(() => true)}));
 const live: {connection: unknown} = {connection: null};
 jest.mock('../../../solana/connection', () => ({getConnection: jest.fn(() => live.connection)}));

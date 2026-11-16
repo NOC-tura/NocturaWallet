@@ -1,6 +1,6 @@
 import {EVENT_DISC, programDataBlobs} from '../eventLogs';
 
-const POOL = 'NPkcJPqrPjWa6Z8kUKuWZ4quzUKh6X8HYaCbmYQ4HfES';
+const POOL = 'FeGSSsJtmA7GnMgnpj33JsiceSk1NyFopff2FtQFsMuH'; // the A0 pool program (any program id parses)
 const EVIL = 'EViL1111111111111111111111111111111111111111';
 
 /** Build a `Program data:` line carrying `disc` + `payload`. */

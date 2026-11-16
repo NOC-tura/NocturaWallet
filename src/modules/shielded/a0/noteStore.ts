@@ -3,7 +3,7 @@
  * spend-irrelevant fields only, and the monotone deposit counter.
  *
  * FIELDS — exactly §8's: `{commitment, amount, rho, depositIndex?, lastValidBlockHeight?,
- * leafIndex?, status: pending | unspent | spent, spentTx?, pendingSince?}`. No `noteSecret`, no
+ * leafIndex?, status: pending | unspent | spent, spentTx?, pendingSince?}`. No spend secret, no
  * diversifier (every own note is under `d_self`, which stays in Rust, R9) and no nullifier of an
  * unspent note (R12) — there is no field to put one in, and a record carrying any other field
  * does not decode.
@@ -366,6 +366,31 @@ const bigMax = (a: bigint, b: bigint): bigint => (a > b ? a : b);
  */
 export function hasA0NoteRecord(bound?: A0StoreBinding): boolean {
   return storage(bound).getString(KEY) !== undefined;
+}
+
+/**
+ * What wiping the app would lose from this store (the wipe warning, WipeWalletScreen) — read
+ * WITHOUT any write, never throws:
+ *  - `'notes'` — an `unspent` or `pending` note is recorded (a pending deposit may be landing);
+ *  - `'unreadable'` — the encrypted store is not open or the record does not decode: what it
+ *    holds is unknown, so the caller must warn as if it held notes;
+ *  - `'none'` — no record, or a record with only `spent` notes.
+ * Notes are recoverable from the seed phrase (restore), which is what the warning must say.
+ */
+export function a0WipeRisk(): 'none' | 'notes' | 'unreadable' {
+  const store = mmkvSecure();
+  if (!store) {
+    return 'unreadable';
+  }
+  const raw = store.getString(KEY);
+  if (raw === undefined) {
+    return 'none';
+  }
+  try {
+    return decode(raw).notes.some(n => n.status !== 'spent') ? 'notes' : 'none';
+  } catch {
+    return 'unreadable';
+  }
 }
 
 /** The store (and, on the first A0 run, the v1 notes cleared). Throws LOCKED / CORRUPT / CHANGED. */

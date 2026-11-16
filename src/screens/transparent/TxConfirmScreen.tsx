@@ -12,6 +12,7 @@ import {useWalletStore} from '../../store/zustand/walletStore';
 import {awaitUserAuth} from '../../modules/session/pendingAuth';
 import type {RootStackParamList} from '../../types/navigation';
 import type {TransferIntent} from '../../types/transfer';
+import {CHAIN} from '../../constants/chain';
 import {
   isHighValueTransfer,
   formatChecksumParts,
@@ -127,7 +128,7 @@ export function TxConfirmScreen({intent, onBroadcast, onCancel}: TxConfirmScreen
 
         {/* Detail rows */}
         <Card className="mb-4 gap-3">
-          <DetailRow label="Network" value="Solana mainnet" />
+          <DetailRow label="Network" value={CHAIN.label} />
           <DetailRow
             label="Fee"
             value={`${formatTokenAmount(BASE_FEE_LAMPORTS, SOL_DECIMALS)} SOL`}

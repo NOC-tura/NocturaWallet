@@ -12,6 +12,7 @@ import {Check, X, AlertTriangle, Copy} from 'lucide-react-native';
 import {Text, Button} from '../../components/ui';
 import {cn} from '../../utils/cn';
 import {getExplorerUrl} from '../../utils/explorerUrl';
+import {CHAIN} from '../../constants/chain';
 import {formatAddress} from '../../utils/formatAddress';
 import {ERROR_CODES} from '../../constants/errors';
 import {parseTokenAmount, formatTokenAmount} from '../../utils/parseTokenAmount';
@@ -314,9 +315,9 @@ export function TransactionStatusScreen({
 
   // ── Per-stage copy ─────────────────────────────────────────────────────────
   const COPY: Record<Stage, {label: string; sub: string; warn?: boolean}> = {
-    submitting:   {label: 'Broadcasting transaction…', sub: 'Submitted to Solana mainnet · waiting for first confirmation'},
-    broadcasting: {label: 'Broadcasting transaction…', sub: 'Submitted to Solana mainnet · waiting for first confirmation'},
-    success:      {label: 'Sent successfully', sub: 'Confirmed on Solana mainnet'},
+    submitting:   {label: 'Broadcasting transaction…', sub: `Submitted to ${CHAIN.label} · waiting for first confirmation`},
+    broadcasting: {label: 'Broadcasting transaction…', sub: `Submitted to ${CHAIN.label} · waiting for first confirmation`},
+    success:      {label: 'Sent successfully', sub: `Confirmed on ${CHAIN.label}`},
     failed:       {label: 'Transaction failed', sub: errorMessage ?? 'The transaction did not go through.'},
     stuck:        {label: 'Taking longer than usual', sub: 'Network is congested · the tx is in the mempool but hasn\'t been included yet', warn: true},
   };

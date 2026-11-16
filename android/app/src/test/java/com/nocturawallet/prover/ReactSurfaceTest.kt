@@ -22,7 +22,6 @@ class ReactSurfaceTest {
 
     private val expected = setOf(
         "isSupported",
-        "proveV1", // v1 (the NPkc pool) — removed with the v1 path in M1b
         "keysOpen",
         "keysClose",
         "depositRho",
@@ -70,7 +69,7 @@ class ReactSurfaceTest {
             .map { it.trim() }
             .filter { it.isNotEmpty() && !it.startsWith("#") }
             .toSet()
-        assertEquals(10, list.size)
+        assertEquals(9, list.size)
         assertEquals(list, natives)
         // every A0 native is static (an `object` with @JvmStatic): the symbol takes a jclass
         for (m in NocturaA0Native::class.java.declaredMethods.filter { Modifier.isNative(it.modifiers) }) {

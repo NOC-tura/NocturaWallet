@@ -10,8 +10,8 @@
  * derives them at run time, and `__tests__/depositIx.golden.test.ts` derives each one with the
  * real @solana/web3.js and compares it with this literal AND with the landed deposit 3DR6F7oW….
  *
- * Devnet only (R8): shielded ships only in the devnet build. These replace the v1 program
- * NPkc… constants of `src/constants/programs.ts`, which M1b's removal task deletes (§12).
+ * Devnet only (R8): shielded ships only in the devnet build. They replaced the v1 pool's
+ * constants, which M1b removed (§12).
  * Strings, not PublicKeys: a module-load PublicKey would be a side effect for every importer.
  */
 

@@ -18,6 +18,7 @@ function fromHex(hex: string): Uint8Array {
 }
 
 const SERVICE_SEED = 'noctura.seed';
+/** The v1 view key's entry — never written since M1b, only removed (dropV1ViewKey, wipeKeys). */
 const SERVICE_VIEW_KEY = 'noctura.viewKey';
 const SERVICE_PIN_HASH = 'noctura.pinHash';
 const SERVICE_PIN_SALT = 'noctura.pinSalt';
@@ -121,18 +122,13 @@ export class KeychainManager {
     }
   }
 
-  async storeViewKey(viewKey: Uint8Array): Promise<void> {
-    const hex = toHex(viewKey);
-    await Keychain.setGenericPassword('viewKey', hex, {
-      ...KEYCHAIN_OPTIONS,
-      service: SERVICE_VIEW_KEY,
-    });
-  }
-
-  async retrieveViewKey(): Promise<Uint8Array> {
-    const result = await Keychain.getGenericPassword({service: SERVICE_VIEW_KEY});
-    if (!result) throw new Error('No view key found in keychain');
-    return fromHex(result.password);
+  /**
+   * Remove the v1 view key an older version stored at onboarding (EIP-2333 m/12381/371/2/0, as
+   * hex). A0 never reads it — its keys are derived from the seed inside the Rust core — so it is
+   * seed-derived key material on disk with no use (M1b). Called at unlock; idempotent.
+   */
+  async dropV1ViewKey(): Promise<void> {
+    await Keychain.resetGenericPassword({service: SERVICE_VIEW_KEY});
   }
 
   async wipeKeys(): Promise<void> {

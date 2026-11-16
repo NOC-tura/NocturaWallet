@@ -21,6 +21,8 @@ import {keychainManager} from '../../modules/keychain/keychainModule';
 import {mnemonicToSeed} from '../../modules/keyDerivation/mnemonicUtils';
 import {getConnection} from '../../modules/solana/connection';
 import type {ShieldIntent} from '../../types/shield';
+import {A0} from '../../modules/shielded/a0/constants';
+import {explorerTxUrl} from '../../constants/chain';
 
 /**
  * #21 tx-status for the A0 deposit — mirror /home/user/Downloads/index.html §s21: the loading state
@@ -217,7 +219,7 @@ export function ShieldStatusScreen({intent, onDone}: ShieldStatusScreenProps) {
               <Pressable
                 testID="shield-status-details"
                 onPress={() => {
-                  Linking.openURL(`https://explorer.solana.com/tx/${signature}?cluster=devnet`).catch(() => {});
+                  Linking.openURL(explorerTxUrl(signature, 'solanaexplorer', A0.cluster)).catch(() => {});
                 }}
                 accessibilityRole="button"
                 accessibilityLabel="View details"

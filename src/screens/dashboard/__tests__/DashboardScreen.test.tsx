@@ -126,14 +126,14 @@ import {DashboardScreen} from '../DashboardScreen';
 // Render + flush all async effects (fetchAnonymitySet promise) in one go so
 // assertions against async-resolved state work without extra await in each test.
 
-async function renderDashboard() {
+async function renderDashboard(props: React.ComponentProps<typeof DashboardScreen> = {}) {
   const result = render(
     <SafeAreaProvider
       initialMetrics={{
         frame: {x: 0, y: 0, width: 390, height: 844},
         insets: {top: 0, left: 0, right: 0, bottom: 0},
       }}>
-      <DashboardScreen />
+      <DashboardScreen {...props} />
     </SafeAreaProvider>,
   );
   // Flush all enqueued micro-tasks (resolves the fetchAnonymitySet promise and
@@ -290,5 +290,29 @@ describe('DashboardScreen — transparent mode keeps Send', () => {
     mockMode.current = 'transparent';
     const {getByText} = await renderDashboard();
     expect(getByText('Send')).toBeTruthy();
+  });
+});
+
+describe('DashboardScreen — Receive and Buy (M1b: I9, S13)', () => {
+  it('no Receive in shielded mode (no valid shielded receive address until M2); Receive in transparent mode', async () => {
+    mockMode.current = 'shielded';
+    const shielded = await renderDashboard({onReceive: jest.fn()});
+    expect(shielded.queryByText('Receive')).toBeNull();
+    shielded.unmount();
+    mockMode.current = 'transparent';
+    const onReceive = jest.fn();
+    const transparent = await renderDashboard({onReceive});
+    fireEvent.press(transparent.getByText('Receive'));
+    expect(onReceive).toHaveBeenCalledWith();
+  });
+
+  it('Buy (the presale) is shown only with an onBuy — the devnet build passes none', async () => {
+    const without = await renderDashboard({});
+    expect(without.queryByText('Buy')).toBeNull();
+    without.unmount();
+    const onBuy = jest.fn();
+    const withBuy = await renderDashboard({onBuy});
+    fireEvent.press(withBuy.getByText('Buy'));
+    expect(onBuy).toHaveBeenCalledTimes(1);
   });
 });

@@ -75,10 +75,6 @@ jni-host = ["dep:jni"]
 [target.'cfg(any(target_os = "linux", target_os = "android"))'.dependencies]
 libc = "0.2"
 
-[[example]]
-name = "zkey_check"
-path = "examples/zkey_check.rs"
-
 # `cargo test` optimized. The A0 key-file tests read the 4.4 MB withdraw_change zkey and prove
 # with it: read_zkey alone took 68 s unoptimized even with every dependency at opt-level 3 (its
 # point deserialization is generic, so it is compiled in this crate), 4.6 s optimized. Debug

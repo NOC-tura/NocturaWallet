@@ -5,6 +5,7 @@ import {fetchPresaleStats, fetchUserAllocation} from '../modules/presale/presale
 import {fetchOnChainAllocation, fetchTgeTimestamp} from '../modules/presale/presaleBuyModule';
 import {usePresaleStore} from '../store/zustand/presaleStore';
 import {useWalletStore} from '../store/zustand/walletStore';
+import {isPresaleEnabled} from '../constants/chain';
 
 /**
  * Resolve the user's presale allocation, preferring the AUTHORITATIVE on-chain
@@ -35,6 +36,8 @@ async function resolveAllocation(
  */
 export function usePresaleSync(): {isPaused: boolean} {
   const address = useWalletStore(s => s.publicKey);
+  // Presale exists on mainnet only (S13): the devnet build asks nothing about it.
+  const presale = isPresaleEnabled();
   const setStageInfo = usePresaleStore(s => s.setStageInfo);
   const setAllocation = usePresaleStore(s => s.setAllocation);
   const setTgeTimestamp = usePresaleStore(s => s.setTgeTimestamp);
@@ -42,6 +45,7 @@ export function usePresaleSync(): {isPaused: boolean} {
   const statsQ = useQuery({
     queryKey: ['presaleStats'],
     queryFn: fetchPresaleStats,
+    enabled: presale,
     staleTime: 30_000,
     refetchInterval: 60_000,
     retry: 1,
@@ -50,7 +54,7 @@ export function usePresaleSync(): {isPaused: boolean} {
   const allocQ = useQuery({
     queryKey: ['presaleAllocation', address],
     queryFn: () => resolveAllocation(address as string),
-    enabled: address != null,
+    enabled: presale && address != null,
     staleTime: 60_000,
     retry: 1,
   });
@@ -59,6 +63,7 @@ export function usePresaleSync(): {isPaused: boolean} {
   const tgeQ = useQuery({
     queryKey: ['tgeTimestamp'],
     queryFn: fetchTgeTimestamp,
+    enabled: presale,
     staleTime: 60 * 60_000,
     retry: 1,
   });

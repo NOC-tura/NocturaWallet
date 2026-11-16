@@ -1,12 +1,6 @@
-const EXPLORERS = {
-  solscan: 'https://solscan.io/tx/',
-  solanaexplorer: 'https://explorer.solana.com/tx/',
-  solanafm: 'https://solana.fm/tx/',
-} as const;
+import {explorerTxUrl, type Explorer} from '../constants/chain';
 
-export function getExplorerUrl(
-  signature: string,
-  explorer: 'solscan' | 'solanaexplorer' | 'solanafm' = 'solscan',
-): string {
-  return `${EXPLORERS[explorer]}${signature}`;
+/** A transaction's explorer link on this build's chain (`?cluster=devnet` on devnet — S13). */
+export function getExplorerUrl(signature: string, explorer: Explorer = 'solscan'): string {
+  return explorerTxUrl(signature, explorer);
 }

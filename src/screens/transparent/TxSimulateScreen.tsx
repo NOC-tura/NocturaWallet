@@ -17,6 +17,7 @@ import {cn} from '../../utils/cn';
 import type {TransferIntent} from '../../types/transfer';
 import type {TransferCheck} from '../../modules/solana/simulationChecks';
 import {computeUnitLimitFor} from '../../modules/solana/transactionBuilder';
+import {CHAIN} from '../../constants/chain';
 
 // ── Lazy imports — wrapped in try/catch so Jest/stub envs don't crash ────────
 let getConnection: (() => import('@solana/web3.js').Connection) | null = null;
@@ -389,7 +390,7 @@ export function TxSimulateScreen({intent, onContinue, onCancel}: TxSimulateScree
           <Text variant="caption" className={accentText}>
             {intent.mode === 'shielded'
               ? 'Simulating shielded transfer'
-              : 'Simulating on mainnet RPC'}
+              : `Simulating on ${CHAIN.short} RPC`}
           </Text>
         </View>
       );

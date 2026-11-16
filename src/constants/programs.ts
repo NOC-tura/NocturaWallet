@@ -20,31 +20,19 @@ assertKnownNetwork(RAW_NETWORK);
 export const NETWORK = RAW_NETWORK;
 export const IS_DEVNET = NETWORK === 'devnet';
 
+// The Phase 1 program (presale + staking + airdrop + referral) and the NOC mint exist on MAINNET
+// only. There are no devnet values (spec S13): the devnet build disables every presale surface
+// (`isPresaleEnabled()`, constants/chain.ts) instead of running it on placeholders, so these are
+// the mainnet literals in every build. NOC_MINT names the token; on devnet no account of it exists.
+
 // $NOC SPL Token
-export const NOC_MINT = IS_DEVNET
-  ? 'TODO_DEVNET_MINT'
-  : MAINNET_NOC_MINT;
+export const NOC_MINT = MAINNET_NOC_MINT;
 export const NOC_DECIMALS = 9;
 
 // Noctura On-Chain Program (Phase 1 — unified: presale + staking + airdrop + referral)
-export const PROGRAM_ID = IS_DEVNET
-  ? 'TODO_DEVNET_PROGRAM'
-  : MAINNET_PROGRAM_ID;
-
-export const PROGRAMS = {
-  icoProgram: PROGRAM_ID,
-  verifier: null as string | null,
-  tree: null as string | null,
-  nullifiers: null as string | null,
-} as const;
-
-export const ADMIN_ADDRESS = IS_DEVNET
-  ? 'TODO_DEVNET_ADMIN'
-  : MAINNET_ADMIN_ADDRESS;
-
-export const SOL_TREASURY = IS_DEVNET
-  ? 'TODO_DEVNET_TREASURY'
-  : MAINNET_SOL_TREASURY;
+export const PROGRAM_ID = MAINNET_PROGRAM_ID;
+export const ADMIN_ADDRESS = MAINNET_ADMIN_ADDRESS;
+export const SOL_TREASURY = MAINNET_SOL_TREASURY;
 
 // Pyth SOL/USD price account (read-only) required by presale_purchase_with_sol.
 export const PYTH_SOL_USD_ACCOUNT = CORE_PYTH_SOL_USD_ACCOUNT;
@@ -52,10 +40,7 @@ export const PYTH_SOL_USD_ACCOUNT = CORE_PYTH_SOL_USD_ACCOUNT;
 // Squads multisig vault (System-owned, mainnet) — the same vault used as
 // SOL_TREASURY, so all Noctura SOL (presale revenue + wallet fee markup)
 // consolidates into one multisig. Receives the transparent-transfer fee markup.
-// Only this literal changes; no other code.
-export const NOCTURA_FEE_TREASURY = IS_DEVNET
-  ? 'TODO_DEVNET_FEE_TREASURY'
-  : MAINNET_FEE_TREASURY;
+export const NOCTURA_FEE_TREASURY = MAINNET_FEE_TREASURY;
 
 export const RPC_ENDPOINT = Config.HELIUS_RPC_URL;
 export const RPC_WEBSOCKET = Config.HELIUS_WS_URL;
@@ -74,37 +59,6 @@ export const API_ORIGIN = (() => {
 // Optional: when empty, requests fall back to the (heavily rate-limited) public
 // tier. For a production launch this is replaced by a backend price proxy.
 export const COINGECKO_API_KEY = Config.COINGECKO_API_KEY ?? '';
-
-export const SHIELDED_ADDRESS_HRP = 'noc' as const;
-
-// ---- Startup guards for TODO addresses ------------------------------------
-// Prevents runtime crashes from `new PublicKey('TODO_...')`.
-// These fire on module load — if any TODO address is active for the current
-// NETWORK, a warning is logged so developers know transactions will fail.
-//
-// DEVNET: All 5 addresses are TODO. To populate, deploy the Phase 1 programs
-// to devnet and copy the resulting program ID, mint, admin, treasury, and fee
-// treasury addresses here. See Phase 1 repo deployment instructions.
-//
-// MAINNET: all addresses populated. NOCTURA_FEE_TREASURY now points to the
-// Squads multisig vault (= SOL_TREASURY); no TODOs remain.
-
-const TODO_GUARD_ADDRESSES = {
-  NOC_MINT,
-  PROGRAM_ID,
-  ADMIN_ADDRESS,
-  SOL_TREASURY,
-  NOCTURA_FEE_TREASURY,
-} as const;
-
-for (const [name, value] of Object.entries(TODO_GUARD_ADDRESSES)) {
-  if (value.startsWith('TODO')) {
-    console.warn(
-      `[NOCTURA] ${name} is not configured for ${NETWORK}: "${value}". ` +
-      `Transactions using this address will fail. Set the real address before production.`,
-    );
-  }
-}
 
 export const TRANSPARENT_FEES = {
   /** Fixed SOL markup added to every transparent transfer (lamports, BigInt). */
@@ -127,48 +81,3 @@ export const SHIELDED_FEES = {
   crossModeDeposit: 1_000_000n,
   crossModeWithdraw: 2_000_000n,
 } as const;
-
-// ---- Shielded pool (devnet POC) ----------------------------------------------
-// Deployed devnet program. The mainnet pool is a separate, audited deployment.
-export const SHIELDED_POOL_PROGRAM_ID =
-  'NPkcpUdnm1JZhndur3ggQZwo86yWgcU6Ry28T3zHfES' as const;
-
-// Devnet test mint the pool was initialized for. Sourced from the env so the
-// devnet build can override it; falls back to empty until configured.
-export const SHIELDED_DEVNET_MINT =
-  Config.SHIELDED_DEVNET_MINT ?? '';
-
-// Compute-unit limits. The wallet prepends setComputeUnitLimit, so these are
-// ceilings and every one of them sits above anything yet observed — nothing here
-// can fail for being too small.
-//
-// PROVENANCE, because the previous comment said "measured" and we never measured
-// anything. The figures deposit ~132,256 / withdraw ~152,508 came from the
-// program side's C2 contract and were copied here under a word we had not earned.
-// Asked to confirm them on 2026-09-23, that side reported: no withdraw test
-// exists at all, and no measurement is written down anywhere — the CU tests
-// println! their result, so the number survives only as long as someone is
-// watching stdout. One real figure exists: transfer = 172,805 CU.
-//
-// So: deposit and withdrawChange are UNCONFIRMED, withdraw is unmeasured on
-// either side, and these ceilings stay where they are until the program side
-// runs deposit.rs and withdraw_change.rs, writes the results to a file, and a
-// withdraw test is written. Tightening any of them before that would be trading
-// a safe ceiling for an inherited guess.
-export const SHIELDED_CU = {deposit: 200_000, withdraw: 250_000, withdrawChange: 250_000, transfer: 250_000} as const;
-
-/**
- * SPL mints that have a shielded pool (i.e. what can be shielded/displayed).
- * Devnet: the test mint. Mainnet: NOC (extend when more pools ship — keep the
- * set small; anonymity favors fewer, busier pools).
- *
- * NOTE: SHIELDED_DEVNET_MINT may be '' if the env isn't set, so we filter it
- * out to avoid an empty-string "mint" appearing in the list.
- */
-// Key off whether the devnet test mint is CONFIGURED, not IS_DEVNET: the devnet
-// shielded test build runs with NETWORK=mainnet-beta (to avoid the unfinished
-// TODO_DEVNET_* presale placeholders), so IS_DEVNET is false there even though the
-// shielded pool is the devnet AtjVK test mint. Presence of SHIELDED_DEVNET_MINT =
-// "use the devnet test pool"; otherwise (production) the pool is NOC.
-export const SHIELDED_POOL_MINTS: readonly string[] =
-  SHIELDED_DEVNET_MINT.length > 0 ? [SHIELDED_DEVNET_MINT] : [NOC_MINT];

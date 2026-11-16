@@ -4,9 +4,9 @@
  * yes/no). Read from the MerkleTree account `5URd…` (`nextLeafIndex` = the leaves the program has
  * inserted), one `getAccountInfo` of a public account every client reads — nothing of the user's.
  *
- * Replaces the v1 `poolState.fetchAnonymitySet` (the NPkc pool) for the screens. "unavailable"
- * (RPC down, no account) and "incompatible" (the account is not the layout Task 2 decodes) stay
- * apart, as the v1 reader learned to keep them.
+ * It replaced the v1 pool's anonymity-set reader (removed in M1b). "unavailable" (RPC down, no
+ * account) and "incompatible" (the account is not the layout Task 2 decodes) stay apart, as the
+ * v1 reader learned to keep them.
  */
 import {PublicKey} from '@solana/web3.js';
 import type {Connection} from '@solana/web3.js';

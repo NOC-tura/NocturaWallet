@@ -14,6 +14,7 @@ import {
   A0NoteStoreError,
   addA0PendingDeposit,
   a0UnspentBalance,
+  a0WipeRisk,
   confirmA0Deposit,
   dropA0PendingDeposit,
   hasA0NoteRecord,
@@ -358,5 +359,40 @@ describe('confirm and drop never create the record (R3-N5 hardening)', () => {
     loadA0NoteStore();
     expect(hasA0NoteRecord()).toBe(true);
     expect(code(() => dropA0PendingDeposit(N0.rho))).toBe('E_A0_NOTE_UNKNOWN');
+  });
+});
+
+describe('a0WipeRisk — what a wipe would lose (WipeWalletScreen, M1b), read without writing', () => {
+  it('no record → none, and the read writes nothing (no first-run record, no v1 clear)', () => {
+    mmkvSecure()!.set('v1_notes_X', '[]');
+    expect(a0WipeRisk()).toBe('none');
+    expect(mmkvSecure()!.getString(KEY)).toBeUndefined();
+    expect(mmkvSecure()!.getString('v1_notes_X')).toBe('[]');
+  });
+
+  it('an empty record → none; a pending deposit → notes; then unspent → notes', () => {
+    loadA0NoteStore();
+    expect(a0WipeRisk()).toBe('none');
+    addA0PendingDeposit(pending(N0, 0n));
+    expect(a0WipeRisk()).toBe('notes');
+    confirmA0Deposit(N0.rho, {leafIndex: 7, commitment: cm(N0, '1000000000')});
+    expect(a0WipeRisk()).toBe('notes');
+  });
+
+  it('only spent notes → none', () => {
+    mergeA0RecoveredNotes([{...unspent(N1, 0n, 3), status: 'spent'}], 1n);
+    expect(loadA0NoteStore().notes.map(n => n.status)).toEqual(['spent']);
+    expect(a0WipeRisk()).toBe('none');
+  });
+
+  it('a record that does not decode → unreadable (may hold notes), never none', () => {
+    mmkvSecure()!.set(KEY, '{"schema":1}');
+    expect(a0WipeRisk()).toBe('unreadable');
+  });
+
+  it('no encrypted instance → unreadable, never none and never a throw', () => {
+    clearAllStores();
+    expect(mmkvSecure()).toBeNull();
+    expect(a0WipeRisk()).toBe('unreadable');
   });
 });

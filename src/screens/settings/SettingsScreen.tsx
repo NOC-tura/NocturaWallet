@@ -13,6 +13,7 @@ import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import {useSettings} from '../../store/zustand/useSettings';
 import {useWalletStore} from '../../store/zustand/walletStore';
 import {isShieldedEnabled} from '../../constants/features';
+import {isPresaleEnabled} from '../../constants/chain';
 import Config from 'react-native-config';
 
 type RootStackParamList = {
@@ -20,10 +21,8 @@ type RootStackParamList = {
   ChangePin: undefined;
   BackupSettings: undefined;
   NotificationSettings: undefined;
-  ExportViewKey: undefined;
   WipeWallet: undefined;
   Referral: undefined;
-  NativeProveDebug: undefined;
   PinProbe: undefined;
 };
 
@@ -60,6 +59,16 @@ function NavRow({label, onPress, danger}: {label: string; onPress: () => void; d
       <Text style={[styles.rowLabel, danger && styles.dangerText]}>{label}</Text>
       <Text style={[styles.chevron, danger && styles.dangerText]}>{'›'}</Text>
     </TouchableOpacity>
+  );
+}
+
+/** A row that cannot be opened in this version: label, the reason, no chevron, not pressable. */
+function DisabledRow({label, reason, testID}: {label: string; reason: string; testID?: string}) {
+  return (
+    <View style={styles.row} testID={testID} accessible accessibilityLabel={`${label}. ${reason}`} accessibilityState={{disabled: true}}>
+      <Text style={[styles.rowLabel, styles.disabledText]}>{label}</Text>
+      <Text style={styles.valueText}>{reason}</Text>
+    </View>
   );
 }
 
@@ -128,9 +137,13 @@ export function SettingsScreen() {
       <SectionHeader title="Backup" testID="section-backup" />
       <NavRow label="Backup Settings" onPress={() => navigation.navigate('BackupSettings')} />
 
-      {/* ── Rewards ───────────────────────────────────────────────────── */}
-      <SectionHeader title="Rewards" testID="section-rewards" />
-      <NavRow label="Refer a friend" onPress={() => navigation.navigate('Referral')} />
+      {/* ── Rewards (the presale referral: mainnet only, S13) ──────────── */}
+      {isPresaleEnabled() ? (
+        <>
+          <SectionHeader title="Rewards" testID="section-rewards" />
+          <NavRow label="Refer a friend" onPress={() => navigation.navigate('Referral')} />
+        </>
+      ) : null}
 
       {/* ── Notifications ─────────────────────────────────────────────── */}
       <SectionHeader title="Notifications" testID="section-notifications" />
@@ -189,12 +202,6 @@ export function SettingsScreen() {
 
       {/* ── Advanced ──────────────────────────────────────────────────── */}
       <SectionHeader title="Advanced" testID="section-advanced" />
-      {Config.NATIVE_PROVER_DEBUG === 'true' && (
-        <NavRow
-          label="🔧 Native prover test (dev)"
-          onPress={() => navigation.navigate('NativeProveDebug')}
-        />
-      )}
       {Config.PIN_PROBE === 'true' && (
         <NavRow
           label="🔒 TLS pin probe (dev)"
@@ -206,8 +213,9 @@ export function SettingsScreen() {
           {publicKey ? truncateAddress(publicKey) : '—'}
         </Text>
       </SettingsRow>
+      {/* R10: the row stays, disabled — the A0 viewing key is not exported in this version. */}
       {isShieldedEnabled() ? (
-        <NavRow label="Export View Key" onPress={() => navigation.navigate('ExportViewKey')} />
+        <DisabledRow label="Export View Key" reason="Not available in this version." testID="export-view-key-row" />
       ) : null}
       <NavRow
         label="Wipe Wallet"
@@ -272,6 +280,9 @@ const styles = StyleSheet.create({
   },
   dangerText: {
     color: '#FF4D4D',
+  },
+  disabledText: {
+    color: '#666',
   },
   chevron: {
     fontSize: 20,

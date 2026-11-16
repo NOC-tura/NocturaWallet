@@ -4,13 +4,16 @@
  * These exist because every misconfiguration in this app previously failed
  * OPEN, and in the expensive direction:
  *
- *  - `Config.NETWORK as 'devnet' | 'mainnet-beta'` is an unchecked cast, and
- *    `IS_DEVNET = NETWORK === 'devnet'` makes MAINNET the default branch of five
- *    ternaries (NOC_MINT, PROGRAM_ID, ADMIN_ADDRESS, SOL_TREASURY,
- *    NOCTURA_FEE_TREASURY). A missing dotenv wiring — a documented hazard in
- *    this project — therefore selected real money silently.
- *  - Shielded mode without `LOCAL_PROVING=true` routes the full private witness
- *    to the hosted prover, handing over spend authority with no UI difference.
+ *  - `Config.NETWORK as 'devnet' | 'mainnet-beta'` was an unchecked cast whose
+ *    default branch was MAINNET. A missing dotenv wiring — a documented hazard in
+ *    this project — therefore selected real money silently. NETWORK is the build's
+ *    chain identity (constants/chain.ts: the network the screens name, the
+ *    explorer cluster, whether presale exists), so an unknown or missing value is
+ *    refused, never read as mainnet.
+ *  - Shielded mode without `LOCAL_PROVING=true` would reach a hosted prover with
+ *    the private witness, with no UI difference.
+ *  - Shielded mode on mainnet: the A0 pool is a devnet deployment; a shielded build
+ *    with NETWORK=mainnet-beta would name mainnet over devnet facts (spec S13).
  *
  * A guard that throws at import is noisy and unmissable. A default that picks
  * mainnet is quiet and wrong, which is the worse failure for a wallet.
@@ -24,8 +27,8 @@ export function assertKnownNetwork(value: string | undefined): asserts value is 
   if (!KNOWN_NETWORKS.includes(value as KnownNetwork)) {
     throw new Error(
       `[NOCTURA] NETWORK is ${value === undefined ? 'not set' : `"${value}"`} — ` +
-        `expected one of ${KNOWN_NETWORKS.join(' | ')}. Refusing to start: an ` +
-        'unrecognised value would select the mainnet mint, program and treasuries.',
+        `expected one of ${KNOWN_NETWORKS.join(' | ')}. Refusing to start: the ` +
+        'network decides what the app shows and links to, and it is never guessed.',
     );
   }
 }
@@ -37,11 +40,18 @@ export function assertShieldedRequiresLocalProving(
 ): void {
   if (shielded && !localProving) {
     throw new Error(
-      '[NOCTURA] FEATURES_SHIELDED=true requires LOCAL_PROVING=true. Without it ' +
-        'the full private witness — including the note secret, which is the ' +
-        'entire spend authority — is sent to the hosted prover.',
+      '[NOCTURA] FEATURES_SHIELDED=true requires LOCAL_PROVING=true: shielded ' +
+        'proofs are made on this device only, never by a hosted prover.',
     );
   }
 }
 
-
+/** Shielded mode exists only on devnet (the A0 pool is a devnet deployment). */
+export function assertShieldedRequiresDevnet(shielded: boolean, network: KnownNetwork): void {
+  if (shielded && network !== 'devnet') {
+    throw new Error(
+      `[NOCTURA] FEATURES_SHIELDED=true requires NETWORK=devnet (it is "${network}"): ` +
+        'the shielded pool is a devnet deployment, and the build would name the wrong network.',
+    );
+  }
+}

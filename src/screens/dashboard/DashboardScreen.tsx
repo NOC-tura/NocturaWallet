@@ -92,7 +92,7 @@ const tokenManager = new TokenManager();
 
 interface DashboardScreenProps {
   onSend?: (shielded?: boolean) => void;
-  onReceive?: (shielded?: boolean) => void;
+  onReceive?: () => void;
   onShield?: () => void;
   onSwap?: () => void;
   onBuy?: () => void;
@@ -412,7 +412,7 @@ interface DashboardHeaderProps {
   onToggleBalance: () => void;
   onModeToggle: (target: 'transparent' | 'shielded') => void;
   onSend?: (shielded?: boolean) => void;
-  onReceive?: (shielded?: boolean) => void;
+  onReceive?: () => void;
   onShield?: () => void;
   onSwap?: () => void;
   onBuy?: () => void;
@@ -658,12 +658,15 @@ function DashboardHeader({
               mode={mode}
             />
           )}
-          <QuickAction
-            Icon={ArrowDownToLine}
-            label="Receive"
-            onPress={() => onReceive?.(isShielded)}
-            mode={mode}
-          />
+          {/* No Receive in shielded mode: no valid shielded receive address exists until M2 (I9). */}
+          {isShielded ? null : (
+            <QuickAction
+              Icon={ArrowDownToLine}
+              label="Receive"
+              onPress={() => onReceive?.()}
+              mode={mode}
+            />
+          )}
           {isShielded ? (
             <QuickAction
               Icon={ShieldCheck}
@@ -679,12 +682,15 @@ function DashboardHeader({
               mode={mode}
             />
           )}
-          <QuickAction
-            Icon={CreditCard}
-            label="Buy"
-            onPress={onBuy}
-            mode={mode}
-          />
+          {/* Buy is the presale: offered only where presale exists (mainnet, S13). */}
+          {onBuy ? (
+            <QuickAction
+              Icon={CreditCard}
+              label="Buy"
+              onPress={onBuy}
+              mode={mode}
+            />
+          ) : null}
         </View>
       </View>
 

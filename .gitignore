@@ -99,11 +99,8 @@ android/app/src/main/assets/index.android.bundle
 android/app/src/main/assets/index.android.bundle.hbc
 android/app/src/main/assets/index.android.bundle.map
 
-# M1 prover spike (large ZK artifacts + Rust build)
+# The native prover's downloaded key files (artifacts/a0/, fetched by digest) + Rust build
 native/noctura-prover/artifacts/*
-# The witness fixture is not a served artifact — the coordinator hosts the zkey
-# and wasm, not this. Without it the interop test cannot run from a clean clone.
-!native/noctura-prover/artifacts/deposit_input.json
 native/noctura-prover/target/
 
 # Rust prover .so (build output of cargo-ndk; rebuild, do not commit)

@@ -28,6 +28,7 @@ export const MMKV_KEYS = {
   // ─── Wallet [P] exists flag, [S] balance caches ─────────────────────
   WALLET_EXISTS: 'v1_wallet.exists',
   WALLET_PUBLIC_KEY: 'v1_wallet.publicKey',
+  /** The v1 noc1… shielded address an older version stored; only removed now (unlock). */
   WALLET_SHIELDED_ADDRESS: 'v1_wallet.shieldedAddress',
   WALLET_TRANSPARENT_DERIVATION: 'v1_wallet.transparentDerivation',
   WALLET_SHIELDED_BALANCE_CACHE: 'v1_wallet.shieldedBalanceCache',
@@ -48,6 +49,7 @@ export const MMKV_KEYS = {
   ADDRESS_BOOK_PREFIX: 'v1_contacts_',
 
   // ─── Proof Queue [S] ────────────────────────────────────────────────
+  /** The removed v1 proof queue's record (ENCRYPTED; it held witnesses): only removed now (unlock). */
   PROOF_QUEUE: 'v1_proofQueue',
 
   // ─── Geo [S] ────────────────────────────────────────────────────────

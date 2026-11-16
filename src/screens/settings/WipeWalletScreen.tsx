@@ -17,6 +17,8 @@ import {useSecureSettingsStore} from '../../store/zustand/secureSettingsStore';
 import {useShieldedStore} from '../../store/zustand/shieldedStore';
 import {useSessionStore} from '../../store/zustand/sessionStore';
 import {clearAllStores} from '../../store/mmkv/instances';
+import {isShieldedEnabled} from '../../constants/features';
+import {a0WipeRisk} from '../../modules/shielded/a0/noteStore';
 
 type RootStackParamList = {
   Onboarding: undefined;
@@ -31,9 +33,11 @@ export function WipeWalletScreen() {
   const [confirmText, setConfirmText] = useState('');
   const [wiping, setWiping] = useState(false);
 
-  const {shieldedBalances} = useWalletStore();
-
-  const hasShieldedFunds = Object.values(shieldedBalances).some(v => v !== '0');
+  // The A0 note store, read without writing (spec §8): an unspent or pending note — or a store
+  // that cannot be read, which may hold one — must raise the warning. Only the shielded build
+  // can hold A0 notes (the production app never runs A0 and has its own app data).
+  const [shieldedRisk] = useState(() => (isShieldedEnabled() ? a0WipeRisk() : 'none'));
+  const hasShieldedFunds = shieldedRisk !== 'none';
 
   const canWipe = confirmText === CONFIRM_WORD && !wiping;
 
@@ -74,8 +78,9 @@ export function WipeWalletScreen() {
         {hasShieldedFunds && (
           <View style={styles.shieldedWarningBox} testID="shielded-warning">
             <Text style={styles.shieldedWarningText}>
-              You have funds in your private balance. Without backup, these funds will
-              be PERMANENTLY LOST.
+              {shieldedRisk === 'notes'
+                ? 'You have funds in your private balance, or a deposit that is still landing. Wiping deletes them from this device: only your recovery phrase restores them. Without it, these funds will be PERMANENTLY LOST.'
+                : 'Your private balance could not be read, so it may hold funds. Wiping deletes them from this device: only your recovery phrase restores them. Without it, these funds will be PERMANENTLY LOST.'}
             </Text>
           </View>
         )}

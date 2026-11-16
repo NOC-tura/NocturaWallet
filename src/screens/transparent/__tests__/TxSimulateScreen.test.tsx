@@ -7,6 +7,18 @@ import {SafeAreaProvider} from 'react-native-safe-area-context';
 // TxSimulateScreen.tsx, making all four solana modules available so the real
 // simulation path is exercised rather than the stub/best-effort fallback.
 
+// The chain identity, switchable per test (S13).
+const mockNetwork = {current: 'mainnet-beta' as 'devnet' | 'mainnet-beta'};
+jest.mock('../../../constants/chain', () => {
+  const actual = jest.requireActual('../../../constants/chain');
+  return {
+    ...actual,
+    get CHAIN() {
+      return actual.chainIdentity(mockNetwork.current);
+    },
+  };
+});
+
 jest.mock('../../../modules/solana/connection', () => ({
   getConnection: jest.fn().mockReturnValue({}),
 }));
@@ -152,4 +164,14 @@ it('reaches failed state and shows retry button when simulation returns an error
   await waitFor(() => {
     expect(getByTestId('tx-simulate-retry')).toBeTruthy();
   });
+});
+
+it('while simulating, the eyebrow names the build\'s chain: devnet RPC on devnet, mainnet RPC on mainnet (S13)', () => {
+  for (const [network, text] of [['devnet', 'Simulating on devnet RPC'], ['mainnet-beta', 'Simulating on mainnet RPC']] as const) {
+    mockNetwork.current = network;
+    const r = render(withSafeArea(<TxSimulateScreen intent={intent} onContinue={jest.fn()} onCancel={jest.fn()} />));
+    expect(r.getByText(text)).toBeTruthy();
+    r.unmount();
+  }
+  mockNetwork.current = 'mainnet-beta';
 });

@@ -16,6 +16,7 @@ import {
   resetPreparedA0DepositsForTests,
 } from '../../../modules/shielded/a0/screenSupport';
 import type {ShieldIntent} from '../../../types/shield';
+import {Linking} from 'react-native';
 
 const mockSimulate = jest.fn();
 type Submit = (c: unknown, p: A0PreparedDeposit, seed: Uint8Array, o: {onStage: (s: A0SubmitStage, sig?: string) => void}) => Promise<A0DepositOutcome>;
@@ -220,6 +221,18 @@ describe('#21 ShieldStatus', () => {
     expect(r.getByText('CONFIRMED')).toBeTruthy();
     expect(r.getByText('#17 in the pool')).toBeTruthy();
     expect(r.getByTestId('shield-status-balance').props.children).toBe('Shielded balance now 4 TEST');
+  });
+
+  it('View details opens the deposit on the devnet explorer (?cluster=devnet — S13)', async () => {
+    const open = jest.spyOn(Linking, 'openURL').mockImplementation(() => Promise.resolve());
+    const id = holdPreparedA0Deposit(PREPARED);
+    const ctl = controlledSubmit();
+    const r = render(<ShieldStatusScreen intent={intentFor(id)} onDone={jest.fn()} />);
+    await waitFor(() => expect(mockSubmit).toHaveBeenCalledTimes(1));
+    await act(async () => ctl.stage('recorded', SIG));
+    await act(async () => ctl.resolve({status: 'unspent', signature: SIG, leafIndex: 17, root: 'ee'.repeat(32)}));
+    fireEvent.press(r.getByTestId('shield-status-details'));
+    expect(open).toHaveBeenCalledWith(`https://explorer.solana.com/tx/${SIG}?cluster=devnet`);
   });
 
   it('a second mount for the same intent finds nothing to send (no double submit)', async () => {

@@ -20,7 +20,6 @@ interface WalletState {
   solBalance: string;
   nocBalance: string;
   tokenBalances: Record<string, string>;
-  shieldedBalances: Record<string, string>;
   totalUsdValue: number;
   nocUsdPrice: number;
   tokens: TokenMetadata[];
@@ -29,7 +28,6 @@ interface WalletState {
   setPublicKey: (pk: string) => void;
   setPkShielded: (pk: Uint8Array) => void;
   updateBalances: (sol: string, noc: string, tokens: Record<string, string>) => void;
-  updateShieldedBalance: (mint: string, balance: string) => void;
   setNocUsdPrice: (price: number) => void;
   setTokens: (tokens: TokenMetadata[]) => void;
   reset: () => void;
@@ -41,7 +39,6 @@ const DEFAULTS = {
   solBalance: '0',
   nocBalance: '0',
   tokenBalances: {},
-  shieldedBalances: {},
   totalUsdValue: 0,
   nocUsdPrice: 0,
   tokens: [],
@@ -56,8 +53,6 @@ export const useWalletStore = create<WalletState>()(
       setPkShielded: (pk: Uint8Array) => set({pkShielded: pk}),
       updateBalances: (sol, noc, tokens) =>
         set({solBalance: sol, nocBalance: noc, tokenBalances: tokens, lastSyncedAt: Date.now()}),
-      updateShieldedBalance: (mint, balance) =>
-        set(state => ({shieldedBalances: {...state.shieldedBalances, [mint]: balance}})),
       setNocUsdPrice: (price: number) => set({nocUsdPrice: price}),
       setTokens: (tokens: TokenMetadata[]) => set({tokens}),
       reset: () => set(DEFAULTS),

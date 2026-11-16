@@ -194,7 +194,6 @@ export const offlineDepositProver: FakeProver = (keys, req) => {
 
 export interface FakeProverNative {
   isSupported(): boolean;
-  proveV1(): Promise<never>;
   keysOpen(seed: number[]): Promise<string>;
   keysClose(handle: string): Promise<null>;
   depositRho(handle: string, depositIndex: string): Promise<string>;
@@ -258,9 +257,6 @@ export function createFakeProverNative(): FakeProverNative {
       prover = null;
     },
     isSupported: () => true,
-    proveV1: async () => {
-      throw new NativeRefusal('E_V1_REMOVED', 'the v1 prover is removed');
-    },
     prove: async (handle, circuit, witnessJson, authId, zkeyPath, wasmPath) => {
       // the witness is logged (it is a test's own data); the app never logs it
       enter('prove', [handle, circuit, witnessJson, authId, zkeyPath, wasmPath]);

@@ -19,7 +19,6 @@ import {
   type TransparentScheme,
 } from '../../modules/keyDerivation/transparent';
 import {storeTransparentScheme} from '../../modules/keyDerivation/derivationScheme';
-import {deriveShieldedViewKey} from '../../modules/keyDerivation/shielded';
 import {useWalletStore} from '../../store/zustand/walletStore';
 import {mmkvPublic} from '../../store/mmkv/instances';
 import {MMKV_KEYS} from '../../constants/mmkvKeys';
@@ -40,15 +39,15 @@ import {unlockSecureStorageWithSeed} from '../../modules/session/secureStorageSe
  *
  * On mount: derive the Solana public key from the mnemonic so the user can see
  * + copy their address BEFORE confirming entry. Seed material zeroized
- * immediately after derivation; view key held in ref until "Open wallet"
- * persists it, then zeroized.
+ * immediately after derivation. No shielded key is derived or stored here: the
+ * A0 keys live in the Rust core and are derived from the seed there (M1b
+ * removed the v1 view key this screen used to store).
  *
  * On "Open wallet":
  *   1. storeSeed (Keychain BIOMETRY_ANY_OR_DEVICE_PASSCODE access control)
- *   2. storeViewKey
- *   3. Update Zustand wallet store
- *   4. Set MMKV WALLET_EXISTS + ONBOARDING_COMPLETED flags
- *   5. Zeroize cached buffers, onComplete()
+ *   2. Update Zustand wallet store
+ *   3. Set MMKV WALLET_EXISTS + ONBOARDING_COMPLETED flags
+ *   4. onComplete()
  *
  * Clipboard auto-clear: 30 s timeout only. Earlier iteration also wiped on
  * AppState 'background' (per design note), but that BROKE the legitimate paste
@@ -86,7 +85,6 @@ export function SuccessScreen({mnemonic, scheme, onComplete}: SuccessScreenProps
   const [referralApplied, setReferralApplied] = useState(alreadyApplied);
 
   // Refs for sensitive buffers — held until "Open wallet" persists them
-  const viewKeyRef = useRef<Uint8Array | null>(null);
   const publicKeyBytesRef = useRef<Uint8Array | null>(null);
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -98,14 +96,11 @@ export function SuccessScreen({mnemonic, scheme, onComplete}: SuccessScreenProps
       try {
         const seed = await mnemonicToSeed(mnemonic);
         const keypair = deriveTransparentKeypair(seed, scheme);
-        const viewKey = deriveShieldedViewKey(seed);
         zeroize(seed);
         zeroize(keypair.secretKey);
         if (cancelled) {
-          zeroize(viewKey);
           return;
         }
-        viewKeyRef.current = viewKey;
         publicKeyBytesRef.current = keypair.publicKey;
         setPublicKeyBase58(new PublicKey(keypair.publicKey).toBase58());
       } catch {
@@ -115,7 +110,6 @@ export function SuccessScreen({mnemonic, scheme, onComplete}: SuccessScreenProps
     derive();
     return () => {
       cancelled = true;
-      if (viewKeyRef.current) zeroize(viewKeyRef.current);
       if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
       if (clearTimerRef.current) clearTimeout(clearTimerRef.current);
     };
@@ -150,7 +144,7 @@ export function SuccessScreen({mnemonic, scheme, onComplete}: SuccessScreenProps
 
   const handleOpenWallet = async () => {
     if (persisting) return;
-    if (!publicKeyBase58 || !viewKeyRef.current) {
+    if (!publicKeyBase58) {
       setPersistError('Wallet not ready yet. Please wait.');
       return;
     }
@@ -158,7 +152,6 @@ export function SuccessScreen({mnemonic, scheme, onComplete}: SuccessScreenProps
     setPersistError(null);
     try {
       await keychainManager.storeSeed(mnemonic);
-      await keychainManager.storeViewKey(viewKeyRef.current);
       useWalletStore.getState().setPublicKey(publicKeyBase58);
       storeTransparentScheme(scheme);
       mmkvPublic.set(MMKV_KEYS.WALLET_EXISTS, 'true');
@@ -167,8 +160,6 @@ export function SuccessScreen({mnemonic, scheme, onComplete}: SuccessScreenProps
       // path. The walletStore.persist also writes there, but this redundant
       // write protects against any zustand hydration timing issues.
       mmkvPublic.set(MMKV_KEYS.WALLET_PUBLIC_KEY, publicKeyBase58);
-      zeroize(viewKeyRef.current);
-      viewKeyRef.current = null;
       // Initialize the encrypted note store for this session so the dashboard
       // can read shielded notes immediately after onboarding completes.
       const sessionSeed = await mnemonicToSeed(mnemonic);

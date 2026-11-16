@@ -13,7 +13,7 @@ export type RootStackParamList = {
   Onboarding: undefined;
   MainTabs: undefined;
   SendModal: {initialMint?: string} | undefined; // Send flow as root-level modal (was tab)
-  ReceiveModal: {shielded?: boolean} | undefined; // Receive as root-level modal (was tab)
+  ReceiveModal: undefined; // Receive as root-level modal (was tab); transparent only until M2 (I9)
   ScanModal: undefined; // QR scanner (#14)
   NotificationsModal: undefined; // Notifications inbox (#29)
   AddressBookModal: undefined; // Saved contacts (#15)
@@ -66,12 +66,10 @@ export type SettingsStackParamList = {
   Settings: undefined;
   SecuritySettings: undefined;
   ChangePin: undefined;
-  ExportViewKey: undefined;
   BackupSettings: undefined;
   NotificationSettings: undefined;
   WipeWallet: undefined;
   Referral: undefined;
-  NativeProveDebug: undefined;
   PinProbe: undefined;
 };
 
