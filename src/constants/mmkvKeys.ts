@@ -39,6 +39,10 @@ export const MMKV_KEYS = {
   SHIELDED_MERKLE_LEAVES_PREFIX: 'v1_merkle_leaves_',
   /** A0 tree sync cache (spec §8/§9): the SyncedTx records of tree 5URd…, ENCRYPTED instance only. */
   A0_SYNCED_TX: 'v1_a0_synced_tx',
+  /** A0 note store (spec §8): own notes' public fields + nextDepositIndex, ENCRYPTED instance only. */
+  A0_NOTES: 'v1_a0_notes',
+  /** The last A0 restore's R13 counters (tree tx count, duration), ENCRYPTED instance only. */
+  A0_LAST_RESTORE: 'v1_a0_last_restore',
 
   // ─── Address Book [S] ───────────────────────────────────────────────
   ADDRESS_BOOK_PREFIX: 'v1_contacts_',
