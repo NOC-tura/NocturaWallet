@@ -42,6 +42,8 @@ const own = offlineKeys(TEST_SEED);
 const DEPOSITOR = new PublicKey(deriveTransparentKeypair(seedBytes(TEST_SEED)).publicKey).toBase58();
 const AMOUNT = 1_000_000n;
 const RECORDED_LEAVES = 17;
+/** the drop margin of the final review's I-2, written out (not imported from the code under test) */
+const MARGIN = 300;
 
 const io: AssetIO = {
   cachePath: (id, kind) => `/cache/${id}.${kind}`,
@@ -159,10 +161,10 @@ describe('killed between submit and confirmation', () => {
     expect(loadA0NoteStore().notes).toHaveLength(1);
   });
 
-  it('it did NOT land and the finalized height is past its lastValidBlockHeight → dropped; the counter is NOT lowered', async () => {
+  it('it did NOT land and the finalized height is past its lastValidBlockHeight + the 300-block margin → dropped; the counter is NOT lowered', async () => {
     const {rho, lvbh} = await depositAndKill(false);
     const next = restart();
-    next.height.finalized = lvbh + 1;
+    next.height.finalized = lvbh + MARGIN + 1;
     const res = await runA0Startup(next.connection, seedBytes(TEST_SEED));
     expect(res.reconcile).toEqual({confirmed: [], dropped: [{rho, reason: 'expired'}], stillPending: [], skipped: 0});
     expect(loadA0NoteStore()).toEqual({nextDepositIndex: 1n, notes: []});
@@ -183,10 +185,32 @@ describe('killed between submit and confirmation', () => {
     expect(next.requests.find(r => r.method === 'getBlockHeight')!.params).toEqual([{commitment: 'finalized'}]);
   });
 
+  it('final review I-2: past expiry by no more than the margin, the late-landed deposit absent at a LAGGING node → kept (not-expired), never dropped', async () => {
+    const {rho, lvbh} = await depositAndKill(false);
+    const next = restart();
+    // One node answers the height (past the deposit's expiry); the PDA reads go to a node whose
+    // view lags it, where the deposit that landed late — near its lastValidBlockHeight — is not
+    // there yet: both PDA reads say absent. On one node "past expiry + absent" is exact; across two
+    // it is not, so the drop waits for the margin.
+    for (const h of [lvbh + 1, lvbh + MARGIN]) {
+      next.height.finalized = h;
+      next.requests.length = 0;
+      const res = await reconcileA0PendingDeposits(next.connection);
+      expect(res).toEqual({confirmed: [], dropped: [], stillPending: [{rho, reason: 'not-expired'}], skipped: 0});
+      expect(loadA0NoteStore().notes).toEqual([expect.objectContaining({rho, status: 'pending', lastValidBlockHeight: lvbh})]);
+      expect(loadA0NoteStore().nextDepositIndex).toBe(1n);
+    }
+    // control: one block past the margin, the same absent reads drop it (counter kept)
+    next.height.finalized = lvbh + MARGIN + 1;
+    const res = await reconcileA0PendingDeposits(next.connection);
+    expect(res).toEqual({confirmed: [], dropped: [{rho, reason: 'expired'}], stillPending: [], skipped: 0});
+    expect(loadA0NoteStore()).toEqual({nextDepositIndex: 1n, notes: []});
+  });
+
   it('absent at the confirmed read, present at the finalized one (landed in between) → kept, never dropped', async () => {
     const {rho, lvbh} = await depositAndKill(false);
     const next = restart();
-    next.height.finalized = lvbh + 1;
+    next.height.finalized = lvbh + MARGIN + 1;
     const pda = PublicKey.findProgramAddressSync(
       [Buffer.from('rho'), Buffer.from(rho, 'hex')],
       new PublicKey('FeGSSsJtmA7GnMgnpj33JsiceSk1NyFopff2FtQFsMuH'),

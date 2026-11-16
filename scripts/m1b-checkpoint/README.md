@@ -172,7 +172,8 @@ that is new on the live stream does. Start the watch **before** you tap through 
 
 - [ ] Reopen the devnet app and unlock it. The watch prints `readout … startup ready` — the reconciliation ran.
 - [ ] The dashboard shows the second deposit in the balance (it landed), or — rare: if it did not land — no pending
-      line after ~2 minutes and a restart (dropped exactly once its blockhash expired; nothing left the account).
+      line after ~4 minutes and a restart (dropped once its blockhash expired and a further 300-block safety margin
+      passed — the final review's I-2; nothing left the account).
 - [ ] If the watch printed `deposit-outcome` for the killed signature BEFORE the kill, the kill came too late (the app
       had already settled it) — `verify` says so; repeat this step with a third deposit.
 

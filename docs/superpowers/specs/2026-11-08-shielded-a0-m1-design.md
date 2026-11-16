@@ -114,6 +114,13 @@ the execution raised (R1-m4, the gap limit) is recorded, not decided: the gap li
 - **Step 7:** "past the deposit's `lastValidBlockHeight`" is the FINALIZED height, and "absent" is a `finalized` read
   made after that height was seen; a present marker whose deposit is foreign drops the pending note (counter kept) →
   §5 step 7.
+- **The expiry drop waits a margin** (final review I-2): an absent marker drops a pending deposit only once the
+  finalized height is past its `lastValidBlockHeight` + `A0_DROP_MARGIN_BLOCKS` = 300 (≈ 2 minutes), because the height
+  and the `finalized` PDA read may come from two load-balanced RPC nodes out of step, and a deposit that landed late
+  then reads absent; a wait is harmless, a wrong drop hides landed tokens until a re-import. In the submit, a foreign
+  deposit at our rho after OUR confirmed send (a contradiction: the marker is `init`) leaves the note `pending`
+  (`not-in-sync`), never a drop; the reconciliation also makes no first-run write on an absent record (m-2) → §5
+  steps 6–7.
 - **One startup step per WALLET** (ruling (2), R1-C1, R2-N1): at unlock and onboarding (devnet build with the native
   prover) — no `v1_a0_notes` record or an undecodable one → restore, then the reconciliation — and its state gates the
   shielded balance. Replacing the encrypted instance (`clearAllStores` = the in-app wipe, `initSecureMmkv` = onboarding /
@@ -877,8 +884,11 @@ authorizeUnshield(handle, owner, amount, fee) -> authId                         
    mark it `unspent`; absent and the chain's block height past the deposit's `lastValidBlockHeight` (stored with the
    pending note) → drop the `pending` entry; `nextDepositIndex` is not lowered, so the counter is never reused (reuse
    would be safe — that `rho` never reached the chain — but one rule is easier to hold than two).
-   *(Rev 3.3:)* "past the `lastValidBlockHeight`" is the FINALIZED height, and "absent" is a `finalized` read made after
-   that height was seen; a present marker whose deposit is foreign drops the pending note (counter kept). The step runs
+   *(Rev 3.3:)* "past the `lastValidBlockHeight`" is the FINALIZED height past it by more than a margin of 300 blocks
+   (`A0_DROP_MARGIN_BLOCKS`, final review I-2: the height and the PDA read may come from two RPC nodes out of step), and
+   "absent" is a `finalized` read made after that height was seen; a present marker whose deposit is foreign drops the
+   pending note (counter kept) — but a foreign hit in the submit's own settle, after our confirmed send, leaves it
+   `pending`. The step runs
    in **one startup step per wallet** with §7's restore (no `v1_a0_notes` record, or an undecodable one → restore first),
    at unlock and onboarding of the devnet build with the native prover; its state gates the shielded balance (restoring /
    error + Retry, never 0). Replacing the encrypted instance (the in-app wipe, an import) resets it; a run is bound to

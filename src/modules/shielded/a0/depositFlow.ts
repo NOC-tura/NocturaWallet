@@ -411,7 +411,12 @@ export type A0DepositOutcome =
   | {status: 'unspent'; signature: string; leafIndex: number; root: string}
   /** the note stays `pending`; the startup reconciliation decides it (§5 step 7) */
   | {status: 'pending'; signature: string; reason: 'send-failed' | 'not-confirmed' | 'not-in-sync'; detail?: string}
-  /** our tx did not land: a foreign deposit holds our rho; the pending note was dropped (counter kept) */
+  /**
+   * our tx did not land: a foreign deposit holds our rho; the pending note was dropped (counter
+   * kept). Since the final review's I-2 `submitA0Deposit` itself never returns it (a foreign hit
+   * after OUR confirmed send stays `pending`; the reconciliation drops a foreign-held rho); the
+   * variant stays so #21 and the readout keep saying a drop as what it is.
+   */
   | {status: 'dropped'; signature: string; reason: 'foreign'; foreignSignature: string};
 
 export interface A0SubmitOptions {
@@ -556,8 +561,16 @@ async function submitOnce(
         return {status: 'unspent', signature, leafIndex: s.leafIndex, root: s.root};
       }
       if (s.kind === 'foreign') {
-        dropA0PendingDeposit(p.rho, bound);
-        return {status: 'dropped', signature, reason: 'foreign', foreignSignature: s.signature};
+        // Final review I-2: OUR signature was just reported confirmed without an error, and the rho
+        // marker is `init` (two successful deposits of one rho cannot exist), so a foreign deposit
+        // at our rho contradicts the chain as this RPC told it. Never a drop on a contradiction:
+        // the note stays pending and the reconciliation decides it from its own reads.
+        return {
+          status: 'pending',
+          signature,
+          reason: 'not-in-sync',
+          detail: `the synced history shows another deposit (${s.signature}) at this rho after our confirmed send`,
+        };
       }
     }
   } catch (e) {
@@ -583,6 +596,17 @@ const stillPendingDeposit = (rho: string, bound: A0StoreBinding): boolean => {
 };
 
 /**
+ * Final review I-2: how far the FINALIZED block height must be past a pending deposit's
+ * `lastValidBlockHeight` before an absent rho marker drops it. The height and the `finalized` PDA
+ * read may be answered by different load-balanced RPC nodes; on one node the drop rule is exact,
+ * across two the PDA read may come from a node whose finalized view lags the height's, and a
+ * deposit that landed late (near its expiry) then reads absent. 300 blocks ≈ 2 minutes: a node
+ * lagging that far at `finalized` is not serving. A drop that waits is harmless (the note stays
+ * pending, the counter is kept); a wrong drop hides landed tokens until a wipe and re-import.
+ */
+export const A0_DROP_MARGIN_BLOCKS = 300;
+
+/**
  * A note settled by another flow while this run reached it is in none of the lists; `skipped`
  * counts those (Task 7: the checkpoint readout reports it, so a note missing from all three lists
  * is accounted for).
@@ -599,13 +623,15 @@ export interface A0ReconcileReport {
  *   - present (a pool account, `confirmed`) → its deposit from the synced history: ours →
  *     `unspent` at its leaf; foreign → dropped (our tx failed at `init`); not synced yet → kept;
  *   - absent → dropped only once the FINALIZED block height is past the note's
- *     `lastValidBlockHeight` AND a `finalized` read of the PDA, made after that height was seen,
- *     is still absent: a tx can only land in a block at or below its lastValidBlockHeight, and
- *     every block up to a finalized height is final, so the drop is exact; otherwise kept.
+ *     `lastValidBlockHeight` + `A0_DROP_MARGIN_BLOCKS` AND a `finalized` read of the PDA, made
+ *     after that height was seen, is still absent: a tx can only land in a block at or below its
+ *     lastValidBlockHeight, and every block up to a finalized height is final, so on one node the
+ *     drop is exact; the margin covers two out-of-step nodes (final review I-2); otherwise kept.
  * `nextDepositIndex` is never lowered (the store refuses it; a drop keeps the counter used).
  * No pending deposit → no request at all. A note that is no longer `pending` when its turn comes
  * — or when its reads return (a submit's settle loop, another "Check again") — is skipped, never a
- * rejection of the whole run (Task 5 ruling).
+ * rejection of the whole run (Task 5 ruling). No A0 record → an empty report and no write (the
+ * first-run write would suppress the restore of an imported wallet; final review m-2).
  */
 export async function reconcileA0PendingDeposits(
   connection: Connection,
@@ -613,6 +639,9 @@ export async function reconcileA0PendingDeposits(
 ): Promise<A0ReconcileReport> {
   const bound = options.bound ?? mmkvSecure();
   const report: A0ReconcileReport = {confirmed: [], dropped: [], stillPending: [], skipped: 0};
+  if (!hasA0NoteRecord(bound)) {
+    return report;
+  }
   const pending = loadA0NoteStore(bound).notes.filter(n => n.status === 'pending' && n.lastValidBlockHeight !== undefined);
   let tree: A0VerifiedTree | null = null;
   let finalizedHeight: number | null = null;
@@ -640,7 +669,7 @@ export async function reconcileA0PendingDeposits(
       continue;
     }
     finalizedHeight ??= await connection.getBlockHeight('finalized');
-    if (finalizedHeight <= n.lastValidBlockHeight!) {
+    if (finalizedHeight <= n.lastValidBlockHeight! + A0_DROP_MARGIN_BLOCKS) {
       report.stillPending.push({rho: n.rho, reason: 'not-expired'});
       continue;
     }

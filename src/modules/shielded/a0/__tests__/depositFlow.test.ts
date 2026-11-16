@@ -455,7 +455,7 @@ describe('submit refusals and outcomes that leave the note pending', () => {
     const out = await submit(p);
     expect(out).toMatchObject({status: 'pending', reason: 'send-failed'});
     expect(loadA0NoteStore().notes[0]!.status).toBe('pending');
-    net.height.finalized = net.height.confirmed + 151;
+    net.height.finalized = net.height.confirmed + 150 + 300 + 1; // past lastValidBlockHeight + the I-2 margin
     await expect(reconcileA0PendingDeposits(net.connection, {sync: {useCache: false}})).resolves.toEqual({
       confirmed: [],
       dropped: [{rho: p.rho, reason: 'expired'}],
@@ -471,6 +471,52 @@ describe('submit refusals and outcomes that leave the note pending', () => {
     const out = await submit(p);
     expect(out).toMatchObject({status: 'pending', reason: 'not-confirmed'});
     expect(net.sent[0]!.outcome).toBe('failed-init');
+    await expect(reconcileA0PendingDeposits(net.connection, {sync: {useCache: false}})).resolves.toEqual({
+      confirmed: [],
+      dropped: [{rho: p.rho, reason: 'foreign'}],
+      stillPending: [],
+      skipped: 0,
+    });
+    expect(loadA0NoteStore()).toEqual({nextDepositIndex: 1n, notes: []});
+  });
+
+  it('final review I-2: a FOREIGN deposit in the sync after OUR confirmed send → pending (not-in-sync), never a drop; the note and counter kept', async () => {
+    const p = await prepare();
+    // the RPC accepts our tx and reports it confirmed without an error, while the history it then
+    // serves shows somebody else's deposit at our rho — a contradiction (the marker is `init`)
+    net.onSend = () => 'drop';
+    const out = await submitA0Deposit(net.connection, p, seedBytes(TEST_SEED), {
+      sync: {useCache: false},
+      settleAttempts: 1,
+      onStage: s => {
+        if (s === 'submitted') {
+          net.landForeign({amount: 9n, rho: p.rho, commitment: other.commitment(9n, p.rho)});
+          net.statuses.set(net.sent[0]!.signature, {err: null, confirmationStatus: 'confirmed'});
+        }
+      },
+    });
+    expect(out).toMatchObject({status: 'pending', reason: 'not-in-sync', signature: net.sent[0]!.signature});
+    expect(out.status === 'pending' && out.detail).toMatch(/another deposit \(\w+\) at this rho after our confirmed send/);
+    expect(loadA0NoteStore()).toEqual({
+      nextDepositIndex: 1n,
+      notes: [expect.objectContaining({rho: p.rho, commitment: p.commitment, status: 'pending'})],
+    });
+  });
+
+  it('control: the same foreign hit WITHOUT a confirmation of ours (our tx failed at init) is still reconciled as foreign and dropped', async () => {
+    const p = await prepare();
+    net.onSend = () => 'drop';
+    const out = await submitA0Deposit(net.connection, p, seedBytes(TEST_SEED), {
+      sync: {useCache: false},
+      settleAttempts: 1,
+      onStage: s => {
+        if (s === 'submitted') {
+          net.landForeign({amount: 9n, rho: p.rho, commitment: other.commitment(9n, p.rho)});
+          net.statuses.set(net.sent[0]!.signature, {err: {InstructionError: [1, {Custom: 0}]}, confirmationStatus: 'confirmed'});
+        }
+      },
+    });
+    expect(out).toMatchObject({status: 'pending', reason: 'not-confirmed'});
     await expect(reconcileA0PendingDeposits(net.connection, {sync: {useCache: false}})).resolves.toEqual({
       confirmed: [],
       dropped: [{rho: p.rho, reason: 'foreign'}],
@@ -689,6 +735,30 @@ describe('R3-N5: each writer outside the startup run is bound to the instance it
     await expect(run).rejects.toMatchObject({code: 'E_A0_STORE_CHANGED'});
     expect(touched).toEqual([]);
     expect(hasA0NoteRecord()).toBe(false);
+  });
+});
+
+describe('final review m-2: the reconciliation never makes the first-run write', () => {
+  it('no A0 record → an empty report, no request, and still no record (an imported wallet\'s restore is not suppressed)', async () => {
+    clearAllStores();
+    initSecureMmkv('test-key');
+    expect(hasA0NoteRecord()).toBe(false);
+    await expect(reconcileA0PendingDeposits(net.connection, {sync: {useCache: false}})).resolves.toEqual({
+      confirmed: [],
+      dropped: [],
+      stillPending: [],
+      skipped: 0,
+    });
+    expect(hasA0NoteRecord()).toBe(false);
+    expect(raw()).toBeUndefined();
+    expect(net.requests).toEqual([]);
+  });
+
+  it('control: with the record present the same call reads the store and leaves it as it was', async () => {
+    expect(hasA0NoteRecord()).toBe(true);
+    const before = raw();
+    await reconcileA0PendingDeposits(net.connection, {sync: {useCache: false}});
+    expect(raw()).toBe(before);
   });
 });
 
