@@ -6,18 +6,20 @@
  * tests read only the fixtures — no test ever contacts a host).
  *
  * What it does, and nothing else:
- *   1. refuses any RPC that is not https, that carries a query string or userinfo (a keyed
- *      provider URL, e.g. `?api-key=…`, would otherwise be committed into the fixture), or whose
- *      host is noc-tura.io, solscan.io or names mainnet; then asks the RPC for its genesis hash
- *      and refuses anything but devnet's (a URL can lie, the genesis cannot);
+ *   1. refuses any RPC that is not https, that carries a query string, a hash, userinfo, or a
+ *      path other than exactly `/` (a keyed provider URL carries its key in any of these —
+ *      `?api-key=…`, or a path-keyed URL such as Alchemy's `/v2/<key>` or QuickNode's
+ *      `/<token>/` — and must never reach the committed fixture), or whose host is noc-tura.io,
+ *      solscan.io or names mainnet; then asks the RPC for its genesis hash and refuses anything
+ *      but devnet's (a URL can lie, the genesis cannot);
  *   2. `getTransaction(<signature>, {encoding: 'base64', maxSupportedTransactionVersion: 0,
  *      commitment: 'finalized'})`, exactly once;
  *   3. refuses an answer whose wire transaction's first signature is not the one asked for;
  *   4. writes `{schema, cluster, genesisHash, rpc, request, fetchedAt, slot, blockTime, signature,
- *      result}` — `rpc` is recorded as origin + pathname only (never a query string or userinfo,
- *      belt-and-suspenders with refusal 1 above); `result` is the RPC's answer, unedited — and
- *      refuses to overwrite an existing fixture unless `--force` is given (a re-fetch is a new
- *      recording, reviewed as such).
+ *      result}` — `rpc` is recorded as the origin alone (never a path, query string, hash or
+ *      userinfo — belt-and-suspenders with refusal 1 above); `result` is the RPC's answer,
+ *      unedited — and refuses to overwrite an existing fixture unless `--force` is given (a
+ *      re-fetch is a new recording, reviewed as such).
  *
  * No third-party import: base58 encode/decode is written out by hand below (the same method as
  * `depositIx.golden.test.ts`'s `base58()`), so this script depends on nothing beyond Node itself.
@@ -107,32 +109,42 @@ for (const k of Object.keys(args)) {
 const signature = args.signature;
 const out = args.out;
 const rpc = args.rpc ?? DEFAULT_RPC;
-if (typeof signature !== 'string' || base58.decode(signature).length !== 64) {
+let signatureBytes = null;
+if (typeof signature === 'string') {
+  try {
+    signatureBytes = base58.decode(signature);
+  } catch {
+    signatureBytes = null; // an invalid base58 character — fails the length check below
+  }
+}
+if (signatureBytes === null || signatureBytes.length !== 64) {
   fail('--signature=<base58 of 64 bytes> is required');
 }
 if (typeof out !== 'string') {
   fail('--out=<path.json> is required');
 }
 
-/** Why an RPC URL is refused, or null. */
-function rpcRefusal(url) {
-  let u;
-  try {
-    u = new URL(url);
-  } catch {
-    return `not a URL: ${url}`;
-  }
+/** Why a parsed RPC URL is refused, or null. */
+function rpcRefusal(u) {
   if (u.protocol !== 'https:') {
     return `the RPC must be https: ${u.origin}`;
   }
-  // A keyed provider URL (?api-key=…, or a userinfo) must never reach the committed fixture
-  // (Fable review round 1, Important #2). Refused here, fail closed, before any network call —
-  // not merely stripped when recording — so a keyed URL cannot even be used by accident.
+  // A keyed provider URL carries its key in the query string (?api-key=…), the userinfo, the
+  // hash, OR the path itself (Alchemy `/v2/<key>`, QuickNode `/<token>/`) — any of these must
+  // never reach the committed fixture (Fable review rounds 1-2). Refused here, fail closed,
+  // before any network call — not merely stripped when recording — so a keyed URL cannot even
+  // be used by accident.
+  if (u.pathname !== '/') {
+    return `the RPC URL must carry no path (a provider key is often placed there): ${u.origin}${u.pathname}`;
+  }
   if (u.search !== '') {
-    return `the RPC URL must carry no query string (a provider key would leak into the fixture): ${u.origin}${u.pathname}`;
+    return `the RPC URL must carry no query string (a provider key would leak into the fixture): ${u.origin}`;
+  }
+  if (u.hash !== '') {
+    return `the RPC URL must carry no fragment: ${u.origin}`;
   }
   if (u.username !== '' || u.password !== '') {
-    return `the RPC URL must carry no userinfo (a provider key would leak into the fixture): ${u.origin}${u.pathname}`;
+    return `the RPC URL must carry no userinfo (a provider key would leak into the fixture): ${u.origin}`;
   }
   const h = u.hostname.toLowerCase();
   if (
@@ -147,14 +159,20 @@ function rpcRefusal(url) {
   return null;
 }
 
-const refusal = rpcRefusal(rpc);
+let parsedRpc;
+try {
+  parsedRpc = new URL(rpc);
+} catch {
+  fail(`not a URL: ${rpc}`);
+}
+const refusal = rpcRefusal(parsedRpc);
 if (refusal) {
   fail(refusal);
 }
-// The fixture records only origin + pathname — never the query string or userinfo — even though
-// rpcRefusal above already refuses either; this is the recorded VALUE's own guarantee, independent
-// of that check (Fable review round 1, Important #2).
-const rpcRecorded = new URL(rpc).origin + new URL(rpc).pathname;
+// The fixture records the origin alone — never the path, query string, hash or userinfo — even
+// though rpcRefusal above already refuses all of those; this is the recorded VALUE's own
+// guarantee, independent of that check (Fable review rounds 1-2).
+const rpcRecorded = parsedRpc.origin;
 const outPath = resolve(out);
 if (existsSync(outPath) && args.force !== true) {
   fail(
