@@ -1,7 +1,7 @@
 /**
  * The A0 startup step (the ledger's ruling (2)): no `v1_a0_notes` record → restore from the seed
  * BEFORE anything else reads the store (whose first read would write an empty record), then the
- * pending reconciliation; the session state that gates the shielded balance (Task 6).
+ * pending reconciliation; the session state that gates the shielded balance (Task 5 (screens)).
  */
 jest.mock('@solana/web3.js', () =>
   jest.requireActual<typeof import('../__testing__/realWeb3')>('../__testing__/realWeb3').loadRealWeb3(),

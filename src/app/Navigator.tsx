@@ -27,6 +27,12 @@ import {PresaleBuyConfirmScreen} from '../screens/presale/PresaleBuyConfirmScree
 import {PresaleBuyStatusScreen} from '../screens/presale/PresaleBuyStatusScreen';
 import {ShieldedExplainerScreen} from '../screens/shielded/ShieldedExplainerScreen';
 import {ZkProofScreen} from '../screens/shielded/ZkProofScreen';
+import {ShieldSimulateScreen} from '../screens/shielded/ShieldSimulateScreen';
+import {ShieldConfirmScreen} from '../screens/shielded/ShieldConfirmScreen';
+import {ShieldStatusScreen} from '../screens/shielded/ShieldStatusScreen';
+import {formatTokenAmount} from '../utils/parseTokenAmount';
+import {A0_DEPOSIT_FEE_LAMPORTS, A0_RHO_MARKER_RENT_LAMPORTS} from '../modules/shielded/a0/screenSupport';
+import type {ShieldIntent} from '../types/shield';
 import {StakingScreen} from '../screens/staking/StakingScreen';
 import {OnboardingProvider, useOnboarding} from '../contexts/OnboardingContext';
 import {useWalletStore} from '../store/zustand/walletStore';
@@ -36,7 +42,7 @@ import {TransactionDetailScreen as TransactionDetailScreenImpl} from '../screens
 import {ReferralScreen as ReferralScreenImpl} from '../screens/referral/ReferralScreen';
 import {GeoBlockedScreen as GeoBlockedScreenImpl} from '../screens/compliance/GeoBlockedScreen';
 import {TokenDetailScreen} from '../screens/transparent/TokenDetailScreen';
-import {isShieldedEnabled, isShieldedTransferEnabled} from '../constants/features';
+import {isShieldedEnabled} from '../constants/features';
 import type {
   RootStackParamList,
   OnboardingStackParamList,
@@ -56,11 +62,8 @@ import {ExportViewKeyScreen} from '../screens/settings/ExportViewKeyScreen';
 import {BackupSettingsScreen} from '../screens/settings/BackupSettingsScreen';
 import {NotificationSettingsScreen} from '../screens/settings/NotificationSettingsScreen';
 import {WipeWalletScreen} from '../screens/settings/WipeWalletScreen';
-import {ShieldedBalanceScreen} from '../screens/shielded/ShieldedBalanceScreen';
-import {DepositScreen} from '../screens/shielded/DepositScreen';
-import {ShieldedTransferScreen} from '../screens/shielded/ShieldedTransferScreen';
 import {AppUpdateModal} from '../components/AppUpdateModal';
-import {approveAuth, cancelAuth} from '../modules/session/pendingAuth';
+import {approveAuth, awaitUserAuth, cancelAuth} from '../modules/session/pendingAuth';
 import {Home, PieChart, Grid3x3, User} from 'lucide-react-native';
 import {PortfolioScreen} from '../screens/portfolio/PortfolioScreen';
 import {NftsScreen} from '../screens/nfts/NftsScreen';
@@ -300,11 +303,9 @@ function DashboardScreenNav() {
   const tabNav = useNavigation();
   return (
     <DashboardScreen
-      onSend={shielded =>
-        shielded && isShieldedTransferEnabled()
-          ? rootNav.navigate('ShieldedTransfer', {})
-          : rootNav.navigate('SendModal')
-      }
+      // The shielded transfer is HIDDEN until its plan lands (spec §12): no route exists for it, and
+      // the dashboard shows no Send action in shielded mode — Send is always the transparent send.
+      onSend={() => rootNav.navigate('SendModal')}
       onReceive={shielded =>
         rootNav.navigate('ReceiveModal', shielded ? {shielded: true} : undefined)
       }
@@ -339,15 +340,14 @@ function NotificationsScreenNav() {
   return <NotificationsScreen onBack={() => navigation.goBack()} />;
 }
 
+// #16 — the shield side only (spec §12 "Hidden until its plan lands"): any `direction` param, e.g.
+// a stale or deep-linked 'public', is ignored; the screen has no unshield side to open.
 function ShieldUnshieldScreenNav() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const route = useRoute();
-  const raw = (route.params ?? {}) as Record<string, unknown>;
-  const direction = raw.direction === 'public' ? 'public' : 'private';
   return (
     <ShieldUnshieldScreen
       onBack={() => navigation.goBack()}
-      initialDirection={direction}
+      onShield={amount => navigation.navigate('ZkProofModal', {amount})}
     />
   );
 }
@@ -472,10 +472,53 @@ function ShieldedExplainerScreenNav(
   return <ShieldedExplainerScreen {...props} />;
 }
 
-function ZkProofScreenNav(
-  props: NativeStackScreenProps<RootStackParamList, 'ZkProofModal'>,
-) {
-  return <ZkProofScreen {...props} />;
+// #18 → #19 → #20 → #21 for the A0 deposit (the ShieldIntent chain; types/shield.ts).
+function ZkProofScreenNav({navigation, route}: NativeStackScreenProps<RootStackParamList, 'ZkProofModal'>) {
+  const onReady = React.useCallback(
+    (intent: ShieldIntent) => navigation.replace('ShieldSimulate', {intent}),
+    [navigation],
+  );
+  return <ZkProofScreen amount={route.params.amount} onReady={onReady} onCancel={() => navigation.goBack()} />;
+}
+
+function ShieldSimulateScreenNav({navigation, route}: NativeStackScreenProps<RootStackParamList, 'ShieldSimulate'>) {
+  return (
+    <ShieldSimulateScreen
+      intent={route.params.intent}
+      onContinue={intent => navigation.navigate('ShieldConfirm', {intent})}
+      onCancel={() => navigation.goBack()}
+    />
+  );
+}
+
+function ShieldConfirmScreenNav({navigation, route}: NativeStackScreenProps<RootStackParamList, 'ShieldConfirm'>) {
+  return (
+    <ShieldConfirmScreen
+      intent={route.params.intent}
+      requestAuth={intent => {
+        // The existing re-auth (#10): open UnlockSend BEFORE awaiting, as TxConfirmScreen does.
+        const auth = awaitUserAuth();
+        navigation.navigate('UnlockSend', {
+          amount: formatTokenAmount(BigInt(intent.amount), intent.decimals),
+          ticker: intent.tokenSymbol,
+          recipient: 'Shielded pool',
+          networkFee: `${formatTokenAmount(A0_DEPOSIT_FEE_LAMPORTS + A0_RHO_MARKER_RENT_LAMPORTS, 9)} SOL`,
+        });
+        return auth;
+      }}
+      onAuthorized={intent => navigation.replace('ShieldStatus', {intent})}
+      onCancel={() => navigation.goBack()}
+    />
+  );
+}
+
+function ShieldStatusScreenNav({navigation, route}: NativeStackScreenProps<RootStackParamList, 'ShieldStatus'>) {
+  return (
+    <ShieldStatusScreen
+      intent={route.params.intent}
+      onDone={() => navigation.navigate('MainTabs', {screen: 'HomeTab'} as never)}
+    />
+  );
 }
 
 function SendScreenNav() {
@@ -613,15 +656,6 @@ const modalScreenOptions = {
   headerShown: false,
 };
 
-/** Modal options with a visible header + close button (for Android which lacks swipe-to-dismiss). */
-const modalWithCloseOptions = {
-  ...modalScreenOptions,
-  headerShown: true,
-  headerStyle: {backgroundColor: '#0C0C14'},
-  headerTintColor: '#FFFFFF',
-  headerTitle: '',
-  headerBackVisible: false,
-};
 
 // Onboarding Stack
 const OnboardingNav = createNativeStackNavigator<OnboardingStackParamList>();
@@ -790,19 +824,30 @@ export function RootNavigator() {
       <RootNav.Screen name="ScanModal" component={ScanScreenNav} options={modalScreenOptions} />
       <RootNav.Screen name="NotificationsModal" component={NotificationsScreenNav} options={modalScreenOptions} />
       <RootNav.Screen name="AddressBookModal" component={AddressBookScreenNav} options={modalScreenOptions} />
-      <RootNav.Screen name="ShieldUnshieldModal" component={ShieldUnshieldScreenNav} options={modalScreenOptions} />
       <RootNav.Screen name="TransactionHistory" component={TransactionHistoryScreenNav} options={modalScreenOptions} />
-      <RootNav.Screen name="ShieldedBalance" component={ShieldedBalanceScreen} options={modalScreenOptions} />
-      <RootNav.Screen name="Deposit" component={DepositScreen} options={modalWithCloseOptions} />
-      {isShieldedTransferEnabled() && (
-        <RootNav.Screen name="ShieldedTransfer" component={ShieldedTransferScreen} options={modalWithCloseOptions} />
-      )}
-      <RootNav.Screen name="ShieldedExplainer" component={ShieldedExplainerScreenNav} options={modalScreenOptions} />
-      <RootNav.Screen
-        name="ZkProofModal"
-        component={ZkProofScreenNav}
-        options={{...modalScreenOptions, gestureEnabled: false}}
-      />
+      {/* Shielded (the devnet build only): #17, #16's shield side, and #18 → #21 for the A0 deposit.
+          The ROUTES are gated, not only their entry points: a route that is not registered cannot be
+          reached by name or by deep link. Hidden until M1c (spec §12): #16's unshield side (the
+          screen has none) and the shielded transfer — no route; the v1 ShieldedTransfer,
+          ShieldedBalance and Deposit screens are gone. */}
+      {isShieldedEnabled() ? (
+        <>
+          <RootNav.Screen name="ShieldedExplainer" component={ShieldedExplainerScreenNav} options={modalScreenOptions} />
+          <RootNav.Screen name="ShieldUnshieldModal" component={ShieldUnshieldScreenNav} options={modalScreenOptions} />
+          <RootNav.Screen
+            name="ZkProofModal"
+            component={ZkProofScreenNav}
+            options={{...modalScreenOptions, gestureEnabled: false}}
+          />
+          <RootNav.Screen name="ShieldSimulate" component={ShieldSimulateScreenNav} options={modalScreenOptions} />
+          <RootNav.Screen name="ShieldConfirm" component={ShieldConfirmScreenNav} options={modalScreenOptions} />
+          <RootNav.Screen
+            name="ShieldStatus"
+            component={ShieldStatusScreenNav}
+            options={{...modalScreenOptions, gestureEnabled: false}}
+          />
+        </>
+      ) : null}
       <RootNav.Screen name="AppUpdateModal" component={AppUpdateModalScreenNav} options={{...modalScreenOptions, gestureEnabled: false}} />
     </RootNav.Navigator>
   );

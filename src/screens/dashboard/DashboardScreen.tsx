@@ -35,7 +35,7 @@ import {useNetworkStatus} from '../../hooks/useNetworkStatus';
 import {useAccentColor} from '../../hooks/useAccent';
 import {forceSync} from '../../modules/backgroundSync/backgroundSyncModule';
 import {TokenManager} from '../../modules/tokens/tokenModule';
-import {NOC_MINT, SHIELDED_POOL_MINTS} from '../../constants/programs';
+import {NOC_MINT} from '../../constants/programs';
 import {isShieldedEnabled} from '../../constants/features';
 import {formatBalanceForDisplay} from '../../utils/parseTokenAmount';
 import {mmkvPublic} from '../../store/mmkv/instances';
@@ -48,13 +48,14 @@ import {usePresaleSync} from '../../hooks/usePresaleSync';
 import {formatUsd, formatUsdString} from '../../utils/formatUsd';
 import {TokenLogo} from '../../components/TokenLogo';
 import {PresaleBanner} from '../../components/PresaleBanner';
-import {getShieldedBalances, type ShieldedBalanceRow} from '../../modules/shielded/shieldedBalances';
-import {fetchAnonymitySet} from '../../modules/shielded/poolState';
 import {mmkvSecure} from '../../store/mmkv/instances';
 import {unlockSecureStorage} from '../../modules/session/secureStorageSession';
-import {syncLeaves} from '../../modules/shielded/merkleSync';
-import {warmProver} from '../../modules/zkProver/zkProverModule';
-import {scanIncomingNotes} from '../../modules/shielded/noteScan';
+import {useA0Shielded} from '../../hooks/useA0Shielded';
+import type {A0CheckAgain, A0ShieldedView} from '../../hooks/useA0Shielded';
+import {CheckAgainLink} from '../../components/CheckAgainLink';
+import {readA0PoolNoteCount} from '../../modules/shielded/a0/poolSize';
+import {A0_TOKEN, displayAmount} from '../../modules/shielded/a0/screenSupport';
+import {getConnection} from '../../modules/solana/connection';
 
 
 /**
@@ -267,15 +268,12 @@ export function DashboardScreen({
     return tokenManager.sortTokens([...defaults, ...tokens]);
   }, [tokens]);
 
-  // ── Shielded balances ───────────────────────────────────────────────────────
-  // Re-read on focus so the vault total updates after returning from a shield tx.
-  const [shieldedTick, setShieldedTick] = useState(0);
-  useFocusEffect(useCallback(() => { setShieldedTick(t => t + 1); }, []));
-  const shieldedRows: ShieldedBalanceRow[] = useMemo(
-    () => getShieldedBalances(),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [shieldedTick],
-  );
+  // ── Shielded balance (the A0 note store) ────────────────────────────────────
+  // Shown ONLY once the startup restore/reconcile finished (`a0StartupState()` 'ready', Task 4);
+  // before that the view is a state (restoring / error / unsupported), never a 0. Re-read on focus
+  // so the balance updates after returning from a shield.
+  const {view: a0View, refresh: refreshA0, checkAgain: a0CheckAgain} = useA0Shielded();
+  useFocusEffect(useCallback(() => { refreshA0(); }, [])); // eslint-disable-line react-hooks/exhaustive-deps
 
   // If the user views the shielded vault but the encrypted note store isn't open
   // yet (unlock-time init was skipped/failed → the vault would show empty even
@@ -285,55 +283,25 @@ export function DashboardScreen({
     if (mode !== 'shielded' || mmkvSecure() !== null) return;
     let alive = true;
     unlockSecureStorage()
-      .then(() => { if (alive) setShieldedTick(t => t + 1); })
-      .catch(() => { /* leave empty; the user can retry or re-unlock */ });
+      .then(() => { if (alive) refreshA0(); })
+      .catch(() => { /* leave the state as it is; the user can retry or re-unlock */ });
     return () => { alive = false; };
-  }, [mode]);
+  }, [mode]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Shielded vault total in USD (sum across all pool rows).
-  const shieldedTotalUsd = useMemo(() => {
-    return shieldedRows.reduce((acc, row) => {
-      const uiAmount = Number(row.amount) / 10 ** row.decimals;
-      const price = prices[row.mint]?.usd ?? 0;
-      return acc + uiAmount * price;
-    }, 0);
-  }, [shieldedRows, prices]);
-
-  // ── Anonymity set ───────────────────────────────────────────────────────────
+  // ── Anonymity set: the A0 pool's note count (a number, spec I4) ────────────
   const [anon, setAnon] = useState<number | null>(null);
   useFocusEffect(useCallback(() => {
     let alive = true;
-    const m = SHIELDED_POOL_MINTS[0];
-    if (m) {
-      fetchAnonymitySet(m).then(v => { if (alive) setAnon(v); });
+    if (isShieldedEnabled()) {
+      readA0PoolNoteCount(getConnection())
+        .then(r => { if (alive) setAnon(r.status === 'ok' ? r.count : null); })
+        .catch(() => {});
     }
     return () => { alive = false; };
   }, []));
 
-  // While the user views the shielded vault, warm two things in the background so
-  // a subsequent unshield is fast on the critical path: (1) the Merkle-sync cache
-  // (incremental instead of a full pool re-scan); (2) the hosted withdraw_change
-  // prover (avoids a cold-start zkey load on the first prove). Both fire-and-forget.
-  useEffect(() => {
-    if (mode !== 'shielded') return;
-    const m = SHIELDED_POOL_MINTS[0];
-    if (m) void syncLeaves(m).catch(() => { /* best-effort warmup */ });
-    // Warm both provers the shielded vault can trigger: shield → deposit,
-    // unshield → withdraw_change. Cheap, idempotent, fire-and-forget.
-    void warmProver('deposit');
-    void warmProver('withdraw_change');
-    // Scan for incoming private notes (P2P transfers sent to this wallet).
-    // Fire-and-forget: if the view key store is locked, returns 0 harmlessly.
-    // On discovery, bump shieldedTick so getShieldedBalances() re-reads.
-    if (m) {
-      void scanIncomingNotes(m)
-        .then(n => { if (n > 0) setShieldedTick(t => t + 1); })
-        .catch(() => {});
-    }
-  }, [mode]);
-
   const isShielded = mode === 'shielded';
-  const usd = formatUsd(isShielded ? shieldedTotalUsd : portfolio.totalUsd);
+  const usd = formatUsd(portfolio.totalUsd);
   const change24h = portfolio.change24hPct; // number | null (transparent only)
   const avatarInitial = getAddressInitial(publicKey);
 
@@ -379,6 +347,7 @@ export function DashboardScreen({
             change24hPct={change24h}
             havePrices={havePrices}
             anonymitySet={anon}
+            shieldedView={a0View}
           />
         }
         renderItem={({item: token}) => {
@@ -409,12 +378,7 @@ export function DashboardScreen({
         }}
         ListEmptyComponent={
           isShielded ? (
-            <ShieldedAssetsSection
-              rows={shieldedRows}
-              prices={prices}
-              hidden={hideBalances}
-              onTokenTap={onTokenTap}
-            />
+            <ShieldedAssetsSection view={a0View} hidden={hideBalances} checkAgain={a0CheckAgain} />
           ) : (
             <View className="px-5 py-8">
               <Text variant="body-sm" className="text-fg-tertiary text-center">
@@ -460,6 +424,8 @@ interface DashboardHeaderProps {
   havePrices: boolean;
   /** Live on-chain anonymity set leaf count; null while loading or on RPC error. */
   anonymitySet: number | null;
+  /** The A0 shielded balance view (shielded mode's hero). */
+  shieldedView: A0ShieldedView;
 }
 
 function DashboardHeader({
@@ -483,6 +449,7 @@ function DashboardHeader({
   change24hPct,
   havePrices,
   anonymitySet,
+  shieldedView,
 }: DashboardHeaderProps) {
   const isShielded = mode === 'shielded';
 
@@ -589,6 +556,14 @@ function DashboardHeader({
                 />
               ))}
             </View>
+          ) : isShielded ? (
+            // The shielded balance in the pool's token — the A0 view's own state, never a 0
+            // before the restore finished (no price exists for the devnet test token).
+            <View className="flex-row items-baseline mb-2" testID="dashboard-shielded-balance">
+              <Text variant={shieldedView.kind === 'ready' ? 'balance-xl' : 'body-lg'} numeral className="text-fg-primary">
+                {shieldedHeroText(shieldedView)}
+              </Text>
+            </View>
           ) : (
             <View className="flex-row items-baseline mb-2">
               {havePrices ? (
@@ -674,12 +649,15 @@ function DashboardHeader({
       {/* Quick actions */}
       <View className="px-5 mb-5">
         <View className="flex-row gap-3">
-          <QuickAction
-            Icon={Send}
-            label="Send"
-            onPress={() => onSend?.(isShielded)}
-            mode={mode}
-          />
+          {/* No Send in shielded mode: the shielded transfer is hidden until its plan lands (spec §12). */}
+          {isShielded ? null : (
+            <QuickAction
+              Icon={Send}
+              label="Send"
+              onPress={() => onSend?.(false)}
+              mode={mode}
+            />
+          )}
           <QuickAction
             Icon={ArrowDownToLine}
             label="Receive"
@@ -900,17 +878,46 @@ function TokenListRow({
 
 // ── Shielded assets section ────────────────────────────────────────────────
 
-interface ShieldedAssetsSectionProps {
-  rows: ShieldedBalanceRow[];
-  prices: Record<string, {usd: number; change24h: number | null}>;
-  hidden: boolean;
-  onTokenTap?: (mint: string) => void;
+function shieldedHeroText(view: A0ShieldedView): string {
+  switch (view.kind) {
+    case 'ready':
+      return `${displayAmount(view.unspent, A0_TOKEN.decimals)} ${A0_TOKEN.symbol}`;
+    case 'running':
+      return 'Restoring from the chain…';
+    case 'error':
+      return `Not restored · ${view.code ?? 'error'}`;
+    case 'idle':
+      return 'Not loaded yet';
+    case 'unsupported':
+      return 'Not available on this device';
+  }
 }
 
-function ShieldedAssetsSection({rows, prices, hidden, onTokenTap}: ShieldedAssetsSectionProps) {
-  const allEmpty = rows.every(r => r.amount === 0n);
+interface ShieldedAssetsSectionProps {
+  view: A0ShieldedView;
+  hidden: boolean;
+  checkAgain: A0CheckAgain;
+}
 
-  if (allEmpty) {
+function ShieldedAssetsSection({view, hidden, checkAgain}: ShieldedAssetsSectionProps) {
+  if (view.kind !== 'ready') {
+    const text =
+      view.kind === 'running'
+        ? 'Your shielded notes are being restored from the chain.'
+        : view.kind === 'error'
+          ? `Your shielded notes could not be restored (${view.code ?? 'error'}). Open Shield to retry.`
+          : view.kind === 'idle'
+            ? 'Your shielded notes are not loaded yet. Open Shield to load them.'
+            : 'Shielding needs the on-device prover, which this device does not have.';
+    return (
+      <View className="px-5 py-10 items-center" testID="shielded-assets-state">
+        <Text variant="body-sm" className="text-fg-tertiary text-center">
+          {text}
+        </Text>
+      </View>
+    );
+  }
+  if (view.unspent === 0n && view.pending === 0n) {
     return (
       <View className="px-5 py-10 items-center">
         <Text variant="body-lg" className="text-fg-secondary text-center">
@@ -922,49 +929,37 @@ function ShieldedAssetsSection({rows, prices, hidden, onTokenTap}: ShieldedAsset
       </View>
     );
   }
-
+  const amount = hidden
+    ? `•••••• ${A0_TOKEN.symbol}`
+    : `${displayAmount(view.unspent, A0_TOKEN.decimals)} · shielded`;
   return (
-    <View>
-      {rows.map(row => {
-        const uiAmount = Number(row.amount) / 10 ** row.decimals;
-        const priceUsd = prices[row.mint]?.usd ?? 0;
-        const usd = uiAmount * priceUsd;
-        const hasPrice = prices[row.mint] != null;
-        const formattedBalance = hidden
-          ? `•••••• ${row.symbol}`
-          : `${uiAmount.toFixed(row.decimals > 4 ? 4 : row.decimals)} · shielded`;
-        return (
-          <Pressable
-            key={row.mint}
-            onPress={onTokenTap ? () => onTokenTap(row.mint) : undefined}
-            disabled={!onTokenTap}
-            className="flex-row items-center px-5 py-3 active:bg-bg-surface-1">
-            <TokenLogo symbol={row.symbol} isNoc={row.symbol === 'NOC'} />
-            <View className="flex-1 ml-3">
-              <Text variant="body-lg" className="text-fg-primary">
-                {row.name}
+    <View className="flex-row items-center px-5 py-3" testID="shielded-assets-row">
+      <TokenLogo symbol={A0_TOKEN.symbol} isNoc={false} />
+      <View className="flex-1 ml-3">
+        <Text variant="body-lg" className="text-fg-primary">
+          {A0_TOKEN.name}
+        </Text>
+        <Text variant="body-sm" numeral={!hidden} className={hidden ? 'text-fg-tertiary' : 'text-accent-shielded'}>
+          {amount}
+        </Text>
+        {!hidden && view.pending > 0n ? (
+          <Text variant="caption" numeral className="text-warning">
+            {`${displayAmount(view.pending, A0_TOKEN.decimals)} pending · settled at the next start`}
+          </Text>
+        ) : null}
+        {view.pending > 0n ? (
+          <View className="flex-row items-center mt-1">
+            {checkAgain.note ? (
+              <Text variant="caption" className="text-fg-tertiary flex-1">
+                {checkAgain.note}
               </Text>
-              <Text
-                variant="body-sm"
-                numeral={!hidden}
-                className={hidden ? 'text-fg-tertiary' : 'text-accent-shielded'}>
-                {formattedBalance}
-              </Text>
-            </View>
-            {!hidden && hasPrice ? (
-              <View className="items-end mr-2">
-                <Text variant="body-lg" numeral className="text-fg-primary">
-                  {formatUsdString(usd)}
-                </Text>
-                <Text variant="body-sm" className="text-fg-tertiary">
-                  —
-                </Text>
-              </View>
-            ) : null}
-            <ChevronRight size={18} color="#6E727A" strokeWidth={1.75} />
-          </Pressable>
-        );
-      })}
+            ) : (
+              <View className="flex-1" />
+            )}
+            <CheckAgainLink checkAgain={checkAgain} testID="dashboard-check-again" />
+          </View>
+        ) : null}
+      </View>
     </View>
   );
 }
@@ -988,10 +983,10 @@ function DashboardFooter({mode, onPresale, onSeeAllTokens, presalePaused}: Dashb
           </View>
           <View className="flex-1">
             <Text variant="body-lg" className="text-fg-primary">
-              Privacy is on
+              Shielded vault
             </Text>
             <Text variant="body-sm" className="text-fg-secondary">
-              Sends from this view use ZK proofs
+              Shield moves tokens in with a proof made on this device. Deposits are public on chain.
             </Text>
           </View>
         </View>

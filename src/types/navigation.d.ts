@@ -1,4 +1,5 @@
 import type {TransferIntent} from './transfer';
+import type {ShieldIntent} from './shield';
 
 export type RootStackParamList = {
   Splash: undefined;
@@ -16,18 +17,14 @@ export type RootStackParamList = {
   ScanModal: undefined; // QR scanner (#14)
   NotificationsModal: undefined; // Notifications inbox (#29)
   AddressBookModal: undefined; // Saved contacts (#15)
-  ShieldUnshieldModal: {direction?: 'private' | 'public'}; // SOL ↔ vault (#16)
+  // #16 — the shield side only until M1c (spec §12 "Hidden until its plan lands"): no 'public'.
+  ShieldUnshieldModal: {direction?: 'private'} | undefined;
   TransactionHistory: undefined;
-  ShieldedBalance: undefined;
-  Deposit: {token?: string};
-  ShieldedTransfer: {recipient?: string};
   ShieldedExplainer: undefined;
-  ZkProofModal: {
-    direction: 'private' | 'public';
-    amount: string;
-    recipient?: string;
-    mint?: string;
-  };
+  ZkProofModal: {amount: string}; // #18 — the A0 deposit's proof; amount in base units
+  ShieldSimulate: {intent: ShieldIntent}; // #19 for the A0 deposit
+  ShieldConfirm: {intent: ShieldIntent}; // #20
+  ShieldStatus: {intent: ShieldIntent}; // #21
   AppUpdateModal: {storeUrl: string; message?: string};
   TokenDetailModal: {mint: string};
   SwapModal: {initialFromMint?: string} | undefined;

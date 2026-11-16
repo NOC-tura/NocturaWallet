@@ -9,7 +9,7 @@
  *      notes" from then on. A restore that fails writes nothing, so the next start restores again;
  *   2. the pending deposits are reconciled (`reconcileA0PendingDeposits`).
  *
- * THE SHIELDED BALANCE IS SHOWN ONLY AFTER THIS (Task 6): `a0StartupState().phase === 'ready'`.
+ * THE SHIELDED BALANCE IS SHOWN ONLY AFTER THIS (Task 5 (screens)): `a0StartupState().phase === 'ready'`.
  * Before it (`running`) the balance is unknown, and an `error` is shown as such — never as 0.
  *
  * ONE WALLET PER RUN (R1-C1, R2-N1). The state below is per process, and an in-app "Wipe wallet"
@@ -97,7 +97,7 @@ function setState(s: A0StartupState): void {
   }
 }
 
-/** The session's startup state (for the shielded balance, Task 6). */
+/** The session's startup state (for the shielded balance, Task 5 (screens)). */
 export function a0StartupState(): A0StartupState {
   return state;
 }

@@ -1,198 +1,133 @@
-import React, {useCallback, useMemo, useState} from 'react';
+import React, {useCallback, useEffect, useRef, useState} from 'react';
 import {View, Pressable, TextInput, ScrollView} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
-import {ArrowLeft, ShieldCheck, Eye, AlertTriangle, Shield} from 'lucide-react-native';
-import {useNavigation} from '@react-navigation/native';
-import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
+import {ArrowLeft, ShieldCheck, AlertTriangle, Shield, RefreshCw} from 'lucide-react-native';
 import {Text} from '../../components/ui';
 import {useWalletStore} from '../../store/zustand/walletStore';
 import {cn} from '../../utils/cn';
-import {parseTokenAmount, formatTokenAmount} from '../../utils/parseTokenAmount';
-import type {RootStackParamList} from '../../types/navigation';
-import {SHIELDED_POOL_MINTS, NOC_MINT} from '../../constants/programs';
-import {poolTokenMeta} from '../../modules/shielded/poolTokens';
-import {getBalance, getNotes} from '../../modules/shielded/noteStore';
-import {mmkvSecure} from '../../store/mmkv/instances';
-import {TokenSelector} from '../../components/TokenSelector';
+import {parseTokenAmount, formatTokenAmount, groupInteger} from '../../utils/parseTokenAmount';
+import {
+  A0_TOKEN,
+  A0_DEPOSIT_FEE_LAMPORTS,
+  A0_RHO_MARKER_RENT_LAMPORTS,
+  SOL_DECIMALS,
+  displayAmount,
+} from '../../modules/shielded/a0/screenSupport';
+import {readA0PoolNoteCount} from '../../modules/shielded/a0/poolSize';
+import {getConnection} from '../../modules/solana/connection';
+import {useA0Shielded, retryA0Startup} from '../../hooks/useA0Shielded';
+import type {A0CheckAgain, A0ShieldedView} from '../../hooks/useA0Shielded';
+import {CheckAgainLink} from '../../components/CheckAgainLink';
 
 /**
- * #16 Shield / Unshield — Phase B migration · mirror /home/user/Downloads/index.html §s16
+ * #16 Shield / Unshield — mirror /home/user/Downloads/index.html §s16 (+ screen.md #16), the
+ * SHIELD SIDE on the A0 pool (spec §5 step 1, §11).
  *
- * Unified screen for moving SOL between transparent address and shielded vault.
- * Direction tabs at top switch between:
- *   - "Make private"  · transparent → vault   (deposit / shield)
- *   - "Make public"   · vault → transparent   (withdraw / unshield)
+ * HIDDEN UNTIL M1c (spec §12 "Hidden until its plan lands"): the "Make public" tab and the whole
+ * unshield side. They are not rendered, the screen has no public mode, and the route takes no
+ * direction (Navigator) — a deep link or a stale `{direction: 'public'}` lands on this shield side.
  *
- * Per design baseline, direction tabs do NOT push a new route — they flip the
- * mode of the amount + fee sub-region within the same screen. The parent
- * container stays `mode="shielded"` (mint accent on tabs + ZK fee glyph + meter
- * + sticky CTA), while the "Make public" amount card visually nests back to
- * transparent so the user sees the funds leaving the vault.
+ * Built from the design's states 1 (idle), 3 (amount entered + fees) and 4 (insufficient), plus the
+ * states the A0 flow adds (undrawn, for the owner's visual pass): the shielded balance line and its
+ * startup states (restoring / error + Retry / unsupported device), the SOL-short warning, and the
+ * deposit-record rent row. The amount is BigInt end to end (cardinal rule 2).
  *
- * 5 states implemented:
- *   1. Make private · idle (fees pending until amount entered)
- *   2. Make public · idle (nested transparent + warning banner)
- *   3. Make private · amount entered · fees loaded · privacy meter populated
- *   4. Insufficient balance (red border on amount card + helper)
- *   5. Make public · amount entered · fees loaded · withdraw warning
+ * THE FEES ARE WHAT THE A0 DEPOSIT COSTS: the network fee (one signature, 0.000005 SOL), the ZK
+ * proof fee — none: the proof is made on this device — and the rent of the deposit's rho marker
+ * account. All three are SOL; the token amount is shielded exactly ("You'll shield" = the amount).
  *
- * Fees (mock values until ZK fee oracle lands):
- *   - Network fee:  ~0.00012 SOL
- *   - ZK proof fee: ~0.0021 SOL
- *
- * On Shield/Unshield CTA → navigation.navigate('ZkProofModal', {direction,
- * amount, recipient?}) — #16 → #18 directly. #17 (shielded-explainer) is
- * gated separately at the Dashboard's first Shielded toggle, NOT in this
- * CTA flow. #18 success destination is currently a placeholder Alert →
- * popToTop until #19 (tx-simulate) lands in a future PR.
- *
- * No FLAG_SECURE on this screen (no PIN entry); re-auth lifts at #20 → #10.
+ * Deviations from the design, said loudly (Task notes): no USD lines (the devnet test token has no
+ * price; the old figures were fixed mock values); the anonymity line is the pool's note count read
+ * from the chain, a number without the 5-bar meter (spec I4: a measure, not a yes/no); the
+ * token chip is the pool's single token, not a selector.
  */
 
 interface ShieldUnshieldScreenProps {
   onBack: () => void;
-  initialDirection?: Direction;
+  /** CTA → #18 with the amount in base units */
+  onShield: (amountBaseUnits: string) => void;
 }
 
-type Direction = 'private' | 'public';
+const SOL_NEEDED = A0_DEPOSIT_FEE_LAMPORTS + A0_RHO_MARKER_RENT_LAMPORTS;
 
-const NETWORK_FEE_SOL = '0.00012';
-const ZK_PROOF_FEE_SOL = '0.0021';
-const TOTAL_FEE_SOL = '0.00222'; // Network + ZK; used in summary line
-const MOCK_USD_PER_SOL = 238; // Placeholder until price oracle wired
-
-function formatNumber(n: number, decimals = 4): string {
-  if (!Number.isFinite(n)) return '0';
-  return n.toLocaleString('en-US', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: decimals,
-  });
+function safeBigInt(v: string | undefined): bigint {
+  try {
+    return v ? BigInt(v) : 0n;
+  } catch {
+    return 0n;
+  }
 }
 
-/**
- * Plain ungrouped string for TextInput state — `parseFloat` stops at the
- * thousands separator, so values like "1,234.5" parse as 1 instead of 1234.5,
- * silently breaking validation + netReceived math. Use `formatNumber()` only
- * for display labels (Available balance, fiat estimate, summary line).
- */
-function toInputString(n: number, decimals = 4): string {
-  if (!Number.isFinite(n) || n === 0) return '0';
-  // Trim trailing zeros for cleaner UX, but keep at least one decimal if rounding
-  return n.toFixed(decimals).replace(/\.?0+$/, '');
+type Parsed = {kind: 'empty'} | {kind: 'invalid'} | {kind: 'ok'; units: bigint};
+
+function parseAmount(text: string): Parsed {
+  if (text.trim() === '') return {kind: 'empty'};
+  try {
+    const units = parseTokenAmount(text, A0_TOKEN.decimals);
+    return units > 0n ? {kind: 'ok', units} : {kind: 'invalid'};
+  } catch {
+    return {kind: 'invalid'};
+  }
 }
 
-function parseAmount(s: string): number {
-  const n = parseFloat(s);
-  return Number.isFinite(n) ? n : 0;
-}
-
-export function ShieldUnshieldScreen({onBack, initialDirection}: ShieldUnshieldScreenProps) {
-  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const {tokenBalances, nocBalance} = useWalletStore();
-  const [direction, setDirection] = useState<Direction>(initialDirection ?? 'private');
+export function ShieldUnshieldScreen({onBack, onShield}: ShieldUnshieldScreenProps) {
+  const {tokenBalances, solBalance} = useWalletStore();
+  const {view, checkAgain} = useA0Shielded();
   const [amount, setAmount] = useState('');
-  const [selectedMint, setSelectedMint] = useState<string>(SHIELDED_POOL_MINTS[0] ?? '');
+  const [poolNotes, setPoolNotes] = useState<number | null>(null);
+  const [retrying, setRetrying] = useState(false);
+  const [retryError, setRetryError] = useState<string | null>(null);
+  const lastTapRef = useRef(0);
 
-  const tokenMeta = poolTokenMeta(selectedMint);
+  const available = safeBigInt(tokenBalances[A0_TOKEN.mint]);
+  const sol = safeBigInt(solBalance);
 
-  const transparentBalance = useMemo(() => {
-    const rawTransparent =
-      tokenBalances[selectedMint] ??
-      (selectedMint === NOC_MINT ? nocBalance : '0');
-    try {
-      return Number(BigInt(rawTransparent || '0')) / 10 ** tokenMeta.decimals;
-    } catch {
-      return 0;
-    }
-  }, [tokenBalances, selectedMint, nocBalance, tokenMeta.decimals]);
-
-  const vaultBalance = useMemo(() => {
-    try {
-      return mmkvSecure() ? Number(getBalance(selectedMint)) / 10 ** tokenMeta.decimals : 0;
-    } catch {
-      return 0;
-    }
-  }, [selectedMint, tokenMeta.decimals]);
-
-  // Largest unspent note for the selected mint. Unshield is WHOLE-NOTE (the
-  // circuit constrains withdrawAmount == note.amount, no change output), so
-  // MAX fills exactly this note's value — not the vault sum, and not minus a
-  // fee (the SOL relay fee is paid separately by the fee_payer).
-  const largestNoteRaw = useMemo<bigint | null>(() => {
-    if (direction !== 'public') return null;
-    try {
-      if (!mmkvSecure()) return null;
-      const notes = getNotes(selectedMint);
-      if (notes.length === 0) return null;
-      return notes.reduce((max, n) => (n.amount > max ? n.amount : max), 0n);
-    } catch {
-      return null;
-    }
-  }, [direction, selectedMint]);
-
-  const sourceBalance = direction === 'private' ? transparentBalance : vaultBalance;
-  const sourceLabel = direction === 'private' ? 'Available' : 'Vault balance';
-
-  // Max withdrawable in one unshield = the largest single note (1-input circuit).
-  // The private direction is unchanged: maxUnshield === sourceBalance there.
-  const maxUnshield = useMemo(() => {
-    if (direction !== 'public') return sourceBalance;
-    return largestNoteRaw === null ? 0 : Number(largestNoteRaw) / 10 ** tokenMeta.decimals;
-  }, [direction, largestNoteRaw, tokenMeta.decimals, sourceBalance]);
+  useEffect(() => {
+    let alive = true;
+    readA0PoolNoteCount(getConnection())
+      .then(r => {
+        if (alive && r.status === 'ok') setPoolNotes(r.count);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const parsed = parseAmount(amount);
-  const hasAmount = amount.trim().length > 0 && parsed > 0;
-  const insufficient = hasAmount && parsed > maxUnshield;
-  const fiatEstimate = hasAmount ? parsed * MOCK_USD_PER_SOL : 0;
-  const netReceived = hasAmount && !insufficient ? Math.max(0, parsed - parseFloat(TOTAL_FEE_SOL)) : 0;
+  const hasAmount = parsed.kind === 'ok';
+  const units = parsed.kind === 'ok' ? parsed.units : 0n;
+  const insufficient = hasAmount && units > available;
+  const solShort = sol < SOL_NEEDED;
+  const ready = view.kind === 'ready';
+  const canSubmit = ready && hasAmount && !insufficient && !solShort;
 
   const handleMax = useCallback(() => {
-    // Unshield (public): fill the largest note's EXACT value. formatTokenAmount
-    // is the exact bigint inverse of parseTokenAmount, so the amount round-trips
-    // to the note's raw value and the whole-note match in ZkProofScreen succeeds.
-    // No fee subtraction (the fee is SOL, paid by the fee_payer) and no 4-decimal
-    // rounding (which previously produced an amount matching no note).
-    if (direction === 'public') {
-      if (largestNoteRaw === null || largestNoteRaw <= 0n) return;
-      setAmount(formatTokenAmount(largestNoteRaw, tokenMeta.decimals));
-      return;
-    }
-    if (sourceBalance <= 0) return;
-    // Shield (private): use ungrouped numeric string — `formatNumber` adds
-    // thousands separators which parseFloat then stops at, breaking validation.
-    setAmount(toInputString(Math.max(0, sourceBalance - parseFloat(TOTAL_FEE_SOL)), 4));
-  }, [direction, largestNoteRaw, tokenMeta.decimals, sourceBalance]);
-
-  const handleSwitchDirection = useCallback((d: Direction) => {
-    if (d === direction) return;
-    setDirection(d);
-    setAmount('');
-  }, [direction]);
+    if (available <= 0n) return;
+    setAmount(formatTokenAmount(available, A0_TOKEN.decimals));
+  }, [available]);
 
   const handleSubmit = useCallback(() => {
-    if (insufficient || !hasAmount) return;
-    let rawAmount: string;
-    try {
-      rawAmount = parseTokenAmount(amount, tokenMeta.decimals).toString();
-    } catch {
-      // Malformed input that slipped past parseFloat-based validators
-      // (e.g. "1e3", "1abc"). Stay on the form; user will re-enter.
-      return;
-    }
-    navigation.navigate('ZkProofModal', {
-      direction,
-      amount: rawAmount,
-      recipient: undefined,
-      mint: selectedMint,
-    });
-  }, [insufficient, hasAmount, direction, amount, navigation, selectedMint, tokenMeta.decimals]);
+    const now = Date.now();
+    if (now - lastTapRef.current < 500) return; // cardinal rule 6
+    lastTapRef.current = now;
+    if (!canSubmit) return;
+    onShield(units.toString());
+  }, [canSubmit, onShield, units]);
 
-  const canSubmit = hasAmount && !insufficient;
+  const handleRetry = useCallback(async () => {
+    if (retrying) return;
+    setRetrying(true);
+    setRetryError(null);
+    const s = await retryA0Startup();
+    if (s.phase === 'error') setRetryError(s.code ? `${s.code}: ${s.message}` : s.message);
+    setRetrying(false);
+  }, [retrying]);
+
+  const sym = A0_TOKEN.symbol;
 
   return (
-    <SafeAreaView
-      edges={['top', 'left', 'right', 'bottom']}
-      className="flex-1 bg-bg-base">
+    <SafeAreaView edges={['top', 'left', 'right', 'bottom']} className="flex-1 bg-bg-base">
       {/* Top bar */}
       <View className="flex-row items-center px-4 py-3 min-h-touch-min">
         <Pressable
@@ -205,32 +140,23 @@ export function ShieldUnshieldScreen({onBack, initialDirection}: ShieldUnshieldS
         <Text variant="h2" className="ml-1 flex-1">
           Shield / Unshield
         </Text>
-        {/* Fixed-height wrapper prevents the horizontal ScrollView inside
-            TokenSelector from expanding the flex-row header container. */}
-        <View className="h-12 justify-center">
-          <TokenSelector
-            tokens={SHIELDED_POOL_MINTS.map(m => ({mint: m, symbol: poolTokenMeta(m).symbol}))}
-            selected={selectedMint}
-            onSelect={setSelectedMint}
-          />
-        </View>
+        <Text variant="caption" className="text-fg-tertiary">
+          {sym}
+        </Text>
       </View>
 
-      {/* Direction tabs */}
+      {/* Direction tabs — the shield side only until M1c (spec §12) */}
       <View className="px-5 mb-4">
         <View className="flex-row bg-bg-surface-2 rounded-pill p-1">
-          <DirTab
-            label="Make private"
-            Icon={ShieldCheck}
-            active={direction === 'private'}
-            onPress={() => handleSwitchDirection('private')}
-          />
-          <DirTab
-            label="Make public"
-            Icon={Eye}
-            active={direction === 'public'}
-            onPress={() => handleSwitchDirection('public')}
-          />
+          <View
+            accessibilityRole="tab"
+            accessibilityState={{selected: true}}
+            className="flex-1 flex-row items-center justify-center gap-2 py-2 rounded-pill bg-accent-shielded">
+            <ShieldCheck size={16} color="#0A0A0A" strokeWidth={1.75} />
+            <Text variant="body-sm" className="font-geist-semibold text-bg-base">
+              Make private
+            </Text>
+          </View>
         </View>
       </View>
 
@@ -239,6 +165,8 @@ export function ShieldUnshieldScreen({onBack, initialDirection}: ShieldUnshieldS
         contentContainerClassName="px-5 pb-6"
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}>
+        <ShieldedLine view={view} retrying={retrying} retryError={retryError} onRetry={handleRetry} checkAgain={checkAgain} />
+
         {/* Amount card */}
         <View
           className={cn(
@@ -247,10 +175,10 @@ export function ShieldUnshieldScreen({onBack, initialDirection}: ShieldUnshieldS
           )}>
           <View className="flex-row items-center justify-between mb-3">
             <Text variant="body-sm" className="text-fg-secondary">
-              {sourceLabel}
+              Available
             </Text>
             <Text variant="body-sm" numeral className="font-geist-semibold text-fg-primary">
-              {formatNumber(sourceBalance, 4)} {tokenMeta.symbol}
+              {`${displayAmount(available, A0_TOKEN.decimals)} ${sym}`}
             </Text>
           </View>
           <View className="flex-row items-baseline justify-center gap-2 mb-3">
@@ -268,10 +196,8 @@ export function ShieldUnshieldScreen({onBack, initialDirection}: ShieldUnshieldS
               )}
               style={{minWidth: 120}}
             />
-            <Text
-              variant="h2"
-              className={cn(insufficient ? 'text-danger' : 'text-fg-secondary')}>
-              {tokenMeta.symbol}
+            <Text variant="h2" className={cn(insufficient ? 'text-danger' : 'text-fg-secondary')}>
+              {sym}
             </Text>
           </View>
           <View className="items-center">
@@ -279,38 +205,26 @@ export function ShieldUnshieldScreen({onBack, initialDirection}: ShieldUnshieldS
               <View className="flex-row items-center gap-2">
                 <AlertTriangle size={12} color="#FF5C6A" strokeWidth={2} />
                 <Text variant="caption" className="text-danger">
-                  {direction === 'public'
-                    ? `Max per unshield: ${formatNumber(maxUnshield, 4)} ${tokenMeta.symbol} (your largest shielded note)`
-                    : `Insufficient balance · max ${formatNumber(sourceBalance, 4)} ${tokenMeta.symbol}`}
+                  {`Insufficient balance · max ${displayAmount(available, A0_TOKEN.decimals)} ${sym}`}
                 </Text>
               </View>
-            ) : hasAmount ? (
-              <Text variant="body-sm" numeral className="text-fg-tertiary">
-                ≈ ${formatNumber(fiatEstimate, 2)} USD
+            ) : parsed.kind === 'invalid' ? (
+              <Text variant="caption" className="text-danger">
+                {`Enter an amount of ${sym} (up to ${A0_TOKEN.decimals} decimals)`}
               </Text>
-            ) : (
+            ) : hasAmount ? null : (
               <Pressable
                 onPress={handleMax}
                 accessibilityRole="button"
                 accessibilityLabel="Max"
-                disabled={sourceBalance <= 0}
+                disabled={available <= 0n}
                 className={cn(
                   'px-3 py-1.5 rounded-pill',
-                  sourceBalance > 0
-                    ? direction === 'private'
-                      ? 'bg-[rgba(91,227,194,0.16)] active:opacity-80'
-                      : 'bg-accent-transparent-tint active:opacity-80'
-                    : 'bg-bg-surface-3',
+                  available > 0n ? 'bg-[rgba(91,227,194,0.16)] active:opacity-80' : 'bg-bg-surface-3',
                 )}>
                 <Text
                   variant="overline"
-                  className={cn(
-                    sourceBalance > 0
-                      ? direction === 'private'
-                        ? 'text-accent-shielded'
-                        : 'text-accent-transparent'
-                      : 'text-fg-disabled',
-                  )}>
+                  className={available > 0n ? 'text-accent-shielded' : 'text-fg-disabled'}>
                   MAX
                 </Text>
               </Pressable>
@@ -329,70 +243,50 @@ export function ShieldUnshieldScreen({onBack, initialDirection}: ShieldUnshieldS
           </Text>
           <FeeRow
             label="Network fee"
-            value={hasAmount ? `${NETWORK_FEE_SOL} ${tokenMeta.symbol}` : '—'}
-            fiat={hasAmount ? '$0.03' : '—'}
+            value={hasAmount ? `${formatTokenAmount(A0_DEPOSIT_FEE_LAMPORTS, SOL_DECIMALS)} SOL` : '—'}
           />
+          <FeeRow label="ZK proof fee" value={hasAmount ? 'None · made on this device' : '—'} zk />
           <FeeRow
-            label="ZK proof fee"
-            value={hasAmount ? `${ZK_PROOF_FEE_SOL} ${tokenMeta.symbol}` : '—'}
-            fiat={hasAmount ? '$0.50' : '—'}
-            zk
+            label="Deposit record rent"
+            value={hasAmount ? `≈ ${formatTokenAmount(A0_RHO_MARKER_RENT_LAMPORTS, SOL_DECIMALS)} SOL` : '—'}
           />
           <View className="h-px bg-bg-surface-3 my-3" />
           <View className="flex-row items-center justify-between">
             <Text variant="body-sm" className="text-fg-secondary">
-              {direction === 'private' ? "You'll shield" : "You'll receive"}
+              You'll shield
             </Text>
-            <Text variant="balance-md" numeral className="text-fg-primary">
-              {hasAmount && !insufficient ? formatNumber(netReceived, 5) : '—'} {tokenMeta.symbol}
+            <Text variant="balance-md" numeral className="text-fg-primary" testID="shield-net">
+              {`${hasAmount && !insufficient ? displayAmount(units, A0_TOKEN.decimals) : '—'} ${sym}`}
             </Text>
           </View>
         </View>
 
-        {/* Privacy meter (Make private + has amount) */}
-        {direction === 'private' && hasAmount && !insufficient ? (
-          <View className="rounded-lg bg-bg-surface-1 border border-bg-surface-3 p-4 mb-4">
-            <View className="flex-row items-center justify-between mb-2">
-              <Text variant="body-sm" className="text-fg-secondary">
-                Anonymity set after this deposit
-              </Text>
-              <Text variant="body-sm" numeral className="text-accent-shielded font-geist-semibold">
-                ~ 4,820
-              </Text>
-            </View>
-            <View className="flex-row gap-1">
-              {[0, 1, 2, 3, 4].map(i => (
-                <View
-                  key={i}
-                  className={cn(
-                    'flex-1 h-1.5 rounded-pill',
-                    i < 4 ? 'bg-accent-shielded' : 'bg-bg-surface-3',
-                  )}
-                />
-              ))}
-            </View>
-          </View>
-        ) : null}
-
-        {/* Privacy-decreases banner (Make public) */}
-        {direction === 'public' ? (
+        {solShort ? (
           <View className="rounded-md bg-bg-surface-2 border-l-2 border-l-warning p-4 mb-4 flex-row gap-3">
             <AlertTriangle size={16} color="#F2B53B" strokeWidth={1.75} />
-            <View className="flex-1">
-              <Text variant="body-sm" className="font-geist-semibold text-fg-primary mb-0.5">
-                Privacy decreases on public withdraw
+            <Text variant="caption" className="flex-1 text-fg-secondary">
+              {`Not enough SOL: this deposit needs about ${formatTokenAmount(SOL_NEEDED, SOL_DECIMALS)} SOL for the network fee and the deposit record.`}
+            </Text>
+          </View>
+        ) : null}
+
+        {/* The pool's size (Make private + amount) — a number, never a yes/no (spec I4) */}
+        {hasAmount && !insufficient && poolNotes !== null ? (
+          <View className="rounded-lg bg-bg-surface-1 border border-bg-surface-3 p-4 mb-4">
+            <View className="flex-row items-center justify-between">
+              <Text variant="body-sm" className="text-fg-secondary">
+                Notes in the pool after this deposit
               </Text>
-              <Text variant="caption" className="text-fg-secondary">
-                {tokenMeta.symbol} leaving the vault is associated with your transparent address from this point forward.
+              <Text variant="body-sm" numeral className="text-accent-shielded font-geist-semibold" testID="pool-notes">
+                {groupInteger(String(poolNotes + 1))}
               </Text>
             </View>
           </View>
         ) : null}
 
-        {/* Explanation copy (Make private idle) */}
-        {direction === 'private' && !hasAmount ? (
+        {!hasAmount ? (
           <Text variant="caption" className="text-fg-tertiary text-center px-2 mt-1">
-            Funds move into the shielded pool. This deposit is public on-chain, and a later withdrawal to this wallet can be linked to it.
+            Your main account signs this deposit. The amount, the time and your address are public on chain, and a later withdrawal to this wallet can be linked to it.
           </Text>
         ) : null}
       </ScrollView>
@@ -403,33 +297,23 @@ export function ShieldUnshieldScreen({onBack, initialDirection}: ShieldUnshieldS
           onPress={handleSubmit}
           disabled={!canSubmit}
           accessibilityRole="button"
+          accessibilityState={{disabled: !canSubmit}}
           testID="shield-cta"
-          accessibilityLabel={direction === 'private' ? `Shield ${tokenMeta.symbol}` : `Unshield ${tokenMeta.symbol}`}
+          accessibilityLabel={`Shield ${sym}`}
           className={cn(
             'min-h-touch-rec rounded-pill items-center justify-center flex-row gap-2',
             canSubmit ? 'bg-accent-shielded active:opacity-90' : 'bg-bg-surface-3',
           )}>
-          {direction === 'private' ? (
-            <Shield
-              size={18}
-              color={canSubmit ? '#0A0A0A' : '#6E727A'}
-              strokeWidth={2}
-              fill={canSubmit ? '#0A0A0A' : 'transparent'}
-            />
-          ) : null}
+          <Shield
+            size={18}
+            color={canSubmit ? '#0A0A0A' : '#6E727A'}
+            strokeWidth={2}
+            fill={canSubmit ? '#0A0A0A' : 'transparent'}
+          />
           <Text
             variant="body-lg"
-            className={cn(
-              'font-geist-semibold',
-              canSubmit ? 'text-bg-base' : 'text-fg-disabled',
-            )}>
-            {direction === 'private'
-              ? canSubmit
-                ? `Shield ${formatNumber(netReceived, 5)} ${tokenMeta.symbol}`
-                : `Shield ${tokenMeta.symbol}`
-              : canSubmit
-                ? `Unshield ${formatNumber(netReceived, 5)} ${tokenMeta.symbol}`
-                : `Unshield ${tokenMeta.symbol}`}
+            className={cn('font-geist-semibold', canSubmit ? 'text-bg-base' : 'text-fg-disabled')}>
+            {canSubmit ? `Shield ${displayAmount(units, A0_TOKEN.decimals)} ${sym}` : `Shield ${sym}`}
           </Text>
         </Pressable>
       </View>
@@ -437,52 +321,107 @@ export function ShieldUnshieldScreen({onBack, initialDirection}: ShieldUnshieldS
   );
 }
 
-// ── Direction tab ───────────────────────────────────────────────────────────
+// ── The shielded balance line (undrawn: the A0 startup states) ─────────────────
 
-interface DirTabProps {
-  label: string;
-  Icon: typeof ShieldCheck;
-  active: boolean;
-  onPress: () => void;
-}
-
-function DirTab({label, Icon, active, onPress}: DirTabProps) {
+function ShieldedLine({
+  view,
+  retrying,
+  retryError,
+  onRetry,
+  checkAgain,
+}: {
+  view: A0ShieldedView;
+  retrying: boolean;
+  retryError: string | null;
+  onRetry: () => void;
+  checkAgain: A0CheckAgain;
+}) {
+  const sym = A0_TOKEN.symbol;
+  if (view.kind === 'ready') {
+    return (
+      <View className="px-1 mb-3">
+        <View className="flex-row items-center justify-between" testID="shielded-line">
+          <Text variant="body-sm" className="text-fg-secondary">
+            Shielded balance
+          </Text>
+          <Text variant="body-sm" numeral className="text-accent-shielded font-geist-semibold">
+            {`${displayAmount(view.unspent, A0_TOKEN.decimals)} ${sym}`}
+            {view.pending > 0n ? ` · ${displayAmount(view.pending, A0_TOKEN.decimals)} ${sym} pending` : ''}
+          </Text>
+        </View>
+        {view.pending > 0n ? (
+          <View className="flex-row items-center justify-between mt-1">
+            <Text variant="caption" className="text-warning flex-1">
+              {checkAgain.note ?? 'Pending · not confirmed yet'}
+            </Text>
+            <CheckAgainLink checkAgain={checkAgain} testID="shielded-check-again" />
+          </View>
+        ) : null}
+      </View>
+    );
+  }
+  if (view.kind === 'running') {
+    return (
+      <Banner tone="info" testID="shielded-line">
+        Restoring your shielded notes from the chain. Shielding is available when it finishes.
+      </Banner>
+    );
+  }
+  if (view.kind === 'unsupported') {
+    return (
+      <Banner tone="warn" testID="shielded-line">
+        Shielding needs the on-device prover, which this device does not have (64-bit ARM phones only).
+      </Banner>
+    );
+  }
+  const head =
+    view.kind === 'error'
+      ? `Your shielded notes could not be restored · ${view.code ?? 'error'}`
+      : 'Your shielded notes are not loaded yet.';
   return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="tab"
-      accessibilityState={{selected: active}}
-      className={cn(
-        'flex-1 flex-row items-center justify-center gap-2 py-2 rounded-pill',
-        active && 'bg-accent-shielded',
-      )}>
-      <Icon
-        size={16}
-        color={active ? '#0A0A0A' : '#A8ACB5'}
-        strokeWidth={1.75}
-      />
+    <Banner tone={view.kind === 'error' ? 'danger' : 'warn'} testID="shielded-line">
+      {head}
+      {view.kind === 'error' ? `\n${view.message}` : ''}
+      {retryError ? `\n${retryError}` : ''}
+      {'\n'}
       <Text
         variant="body-sm"
-        className={cn(
-          'font-geist-semibold',
-          active ? 'text-bg-base' : 'text-fg-secondary',
-        )}>
-        {label}
+        className="text-accent-shielded font-geist-semibold"
+        onPress={onRetry}
+        accessibilityRole="button"
+        accessibilityLabel="Retry restoring shielded notes"
+        testID="shielded-retry">
+        {retrying ? 'Retrying…' : 'Retry'}
       </Text>
-    </Pressable>
+    </Banner>
   );
 }
 
-// ── Fee row ────────────────────────────────────────────────────────────────
-
-interface FeeRowProps {
-  label: string;
-  value: string;
-  fiat: string;
-  zk?: boolean;
+function Banner({
+  tone,
+  children,
+  testID,
+}: {
+  tone: 'info' | 'warn' | 'danger';
+  children: React.ReactNode;
+  testID?: string;
+}) {
+  const border = tone === 'danger' ? 'border-l-danger' : tone === 'warn' ? 'border-l-warning' : 'border-l-accent-shielded';
+  const Icon = tone === 'info' ? RefreshCw : AlertTriangle;
+  const color = tone === 'danger' ? '#FF5C6A' : tone === 'warn' ? '#F2B53B' : '#5BE3C2';
+  return (
+    <View className={cn('rounded-md bg-bg-surface-2 border-l-2 p-4 mb-4 flex-row gap-3', border)} testID={testID}>
+      <Icon size={16} color={color} strokeWidth={1.75} />
+      <Text variant="caption" className="flex-1 text-fg-secondary">
+        {children}
+      </Text>
+    </View>
+  );
 }
 
-function FeeRow({label, value, fiat, zk}: FeeRowProps) {
+// ── Fee row ─────────────────────────────────────────────────────────────────
+
+function FeeRow({label, value, zk}: {label: string; value: string; zk?: boolean}) {
   return (
     <View className="flex-row items-center justify-between mb-2">
       <View className="flex-row items-center gap-2 flex-1">
@@ -491,20 +430,13 @@ function FeeRow({label, value, fiat, zk}: FeeRowProps) {
             <Shield size={12} color="#5BE3C2" strokeWidth={2} />
           </View>
         ) : null}
-        <Text
-          variant="body-sm"
-          className={cn(zk ? 'text-accent-shielded' : 'text-fg-secondary')}>
+        <Text variant="body-sm" className={cn(zk ? 'text-accent-shielded' : 'text-fg-secondary')}>
           {label}
         </Text>
       </View>
-      <View className="items-end">
-        <Text variant="body-sm" numeral className="text-fg-primary">
-          {value}
-        </Text>
-        <Text variant="caption" numeral className="text-fg-tertiary">
-          {fiat}
-        </Text>
-      </View>
+      <Text variant="body-sm" numeral className="text-fg-primary">
+        {value}
+      </Text>
     </View>
   );
 }

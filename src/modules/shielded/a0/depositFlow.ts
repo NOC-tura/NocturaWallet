@@ -2,7 +2,7 @@
  * The A0 deposit (spec §5 steps 2–7): shield `amount` of the pool's mint from the main transparent
  * account into an own note, and reconcile a deposit the app did not see land.
  *
- * THE SHAPE FOLLOWS THE SCREENS (#16 → #18 → #19 → #20 → #21, wired in Task 6):
+ * THE SHAPE FOLLOWS THE SCREENS (#16 → #18 → #19 → #20 → #21, wired in Task 5 (screens)):
  *   - `prepareA0Deposit` (#18, its stages reported through `onStage`) — steps 2–4: the counter and
  *     the rho-PDA pre-check, Rust's commitment, the on-device proof and the public-input compare.
  *     It writes NOTHING to the store except what a pre-check hit imports (step 2), and nothing at
@@ -12,7 +12,14 @@
  *   - `submitA0Deposit` (#21, after #20's re-auth) — step 5 (the pending note + counter in ONE write,
  *     BEFORE the send), the send, the existing polling confirm (`pollConfirmation`), step 6 (the
  *     note becomes `unspent` at the leaf of its synced `LeafInserted`);
- *   - `reconcileA0PendingDeposits` (startup, `a0/startup.ts`) — step 7.
+ *   - `reconcileA0PendingDeposits` (startup, `a0/startup.ts`, and "Check again" on a pending
+ *     deposit, `useA0Shielded`) — step 7.
+ *
+ * TWO SETTLERS, ONE NOTE (the Task 5 ruling). "Check again" can run a reconcile while a submit's
+ * settle loop is still in flight for the same note. Each side re-reads the note (through its
+ * binding) after its awaits and before it writes: a submit finding its note already `unspent` with
+ * the same commitment at the same leaf returns that outcome; a reconcile skips a note that is no
+ * longer `pending`. Anything else (the note dropped, another leaf) still refuses in the store.
  *
  * WHAT THE RPC SEES (§2 "Who sees what"). A deposit is public by nature: its signer, amount and
  * rho are on chain once it lands. The requests this module makes beyond the sync everyone runs:
@@ -517,6 +524,11 @@ export async function submitA0Deposit(
       const {tree} = await syncA0Tree(connection, options.sync);
       const s = settle(tree, p);
       if (s.kind === 'ours') {
+        // a reconcile ("Check again") may have settled it meanwhile: the same leaf is this outcome
+        const now = noteNow(p.rho, bound);
+        if (now?.status === 'unspent' && now.commitment === p.commitment && now.leafIndex === s.leafIndex) {
+          return {status: 'unspent', signature, leafIndex: s.leafIndex, root: s.root};
+        }
         confirmA0Deposit(p.rho, {leafIndex: s.leafIndex, commitment: p.commitment}, bound);
         return {status: 'unspent', signature, leafIndex: s.leafIndex, root: s.root};
       }
@@ -534,6 +546,20 @@ export async function submitA0Deposit(
   return {status: 'pending', signature, reason: 'not-in-sync'};
 }
 
+/** The note with `rho` as the bound store holds it now, without the first-run write (no record → none). */
+function noteNow(rho: string, bound: A0StoreBinding): A0Note | undefined {
+  if (!hasA0NoteRecord(bound)) {
+    return undefined;
+  }
+  return loadA0NoteStore(bound).notes.find(n => n.rho === rho);
+}
+
+const stillPendingDeposit = (rho: string, bound: A0StoreBinding): boolean => {
+  const n = noteNow(rho, bound);
+  return n !== undefined && n.status === 'pending' && n.lastValidBlockHeight !== undefined;
+};
+
+/** A note settled by another flow while this run reached it (`skipped`) is in none of the lists. */
 export interface A0ReconcileReport {
   confirmed: {rho: string; leafIndex: number; signature: string}[];
   dropped: {rho: string; reason: 'expired' | 'foreign'}[];
@@ -549,7 +575,9 @@ export interface A0ReconcileReport {
  *     is still absent: a tx can only land in a block at or below its lastValidBlockHeight, and
  *     every block up to a finalized height is final, so the drop is exact; otherwise kept.
  * `nextDepositIndex` is never lowered (the store refuses it; a drop keeps the counter used).
- * No pending deposit → no request at all.
+ * No pending deposit → no request at all. A note that is no longer `pending` when its turn comes
+ * — or when its reads return (a submit's settle loop, another "Check again") — is skipped, never a
+ * rejection of the whole run (Task 5 ruling).
  */
 export async function reconcileA0PendingDeposits(
   connection: Connection,
@@ -561,9 +589,15 @@ export async function reconcileA0PendingDeposits(
   let tree: A0VerifiedTree | null = null;
   let finalizedHeight: number | null = null;
   for (const n of pending) {
+    if (!stillPendingDeposit(n.rho, bound)) {
+      continue; // settled elsewhere before its turn
+    }
     if (await rhoMarkerExists(connection, n.rho, 'confirmed')) {
       tree ??= (await syncA0Tree(connection, options.sync)).tree;
       const s = settle(tree, n);
+      if (!stillPendingDeposit(n.rho, bound)) {
+        continue; // settled elsewhere while this run read the chain
+      }
       if (s.kind === 'ours') {
         confirmA0Deposit(n.rho, {leafIndex: s.leafIndex, commitment: n.commitment}, bound);
         report.confirmed.push({rho: n.rho, leafIndex: s.leafIndex, signature: s.signature});
@@ -584,6 +618,9 @@ export async function reconcileA0PendingDeposits(
       // landed between the two reads: the next start finds it present
       report.stillPending.push({rho: n.rho, reason: 'not-in-sync'});
       continue;
+    }
+    if (!stillPendingDeposit(n.rho, bound)) {
+      continue; // settled elsewhere while this run read the chain
     }
     dropA0PendingDeposit(n.rho, bound);
     report.dropped.push({rho: n.rho, reason: 'expired'});

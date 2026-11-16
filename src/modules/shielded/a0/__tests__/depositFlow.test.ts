@@ -34,7 +34,14 @@ import {DEVNET_GENESIS, LIVE_BLOCKHASH, fundTokenAccount, liveDevnet} from '../_
 import type {LiveDevnet} from '../__testing__/liveDevnet';
 import {deriveTransparentKeypair} from '../../../keyDerivation/transparent';
 import type {AssetIO} from '../../../zkProver/provingAssets';
-import {addA0PendingDeposit, hasA0NoteRecord, loadA0NoteStore, setA0NextDepositIndex} from '../noteStore';
+import {
+  addA0PendingDeposit,
+  confirmA0Deposit,
+  dropA0PendingDeposit,
+  hasA0NoteRecord,
+  loadA0NoteStore,
+  setA0NextDepositIndex,
+} from '../noteStore';
 import {
   A0_MINT_HASH,
   A0DepositError,
@@ -745,5 +752,129 @@ describe('fix round 1: after a confirmed send, a failing settle sync leaves the 
     net.release();
     await expect(run).rejects.toMatchObject({code: 'E_A0_STORE_CHANGED'});
     expect(net.sent).toHaveLength(1);
+  });
+});
+
+describe('Task 5 controller ruling: "Check again" overlaps a submit\'s settle loop — each side re-reads and skips', () => {
+  /** A second view of the same devnet (its own gate): the chain, the accounts and the token accounts shared. */
+  const secondView = (): LiveDevnet => {
+    const n2 = liveDevnet(net.chain);
+    n2.accounts = net.accounts;
+    n2.tokenAccounts = net.tokenAccounts;
+    return n2;
+  };
+  const noteOf = (rho: string) => loadA0NoteStore().notes.filter(n => n.rho === rho);
+
+  it('(a) submit held at its settle sync while a reconcile confirms the note → submit returns unspent at the same leaf, no rejection', async () => {
+    const p = await prepare();
+    net.holdWhen = m => m === 'getSignaturesForAddress' && net.sent.length === 1; // the settle sync
+    const run = submit(p);
+    await until(() => net.held > 0, 'submit to reach its settle sync');
+    const report = await reconcileA0PendingDeposits(secondView().connection, {sync: {useCache: false}});
+    expect(report.confirmed).toEqual([{rho: p.rho, leafIndex: RECORDED_LEAVES, signature: net.sent[0]!.signature}]);
+    net.release();
+    await expect(run).resolves.toEqual({
+      status: 'unspent',
+      signature: net.sent[0]!.signature,
+      leafIndex: RECORDED_LEAVES,
+      root: expect.stringMatching(/^[0-9a-f]{64}$/),
+    });
+    expect(noteOf(p.rho)).toEqual([expect.objectContaining({status: 'unspent', leafIndex: RECORDED_LEAVES, commitment: p.commitment})]);
+    expect(net.sent).toHaveLength(1);
+  });
+
+  it('(a) control: the note DROPPED while submit is held → submit still rejects (E_A0_NOTE_UNKNOWN), nothing re-created', async () => {
+    const p = await prepare();
+    net.holdWhen = m => m === 'getSignaturesForAddress' && net.sent.length === 1;
+    const run = submit(p);
+    await until(() => net.held > 0, 'submit to reach its settle sync');
+    dropA0PendingDeposit(p.rho);
+    net.release();
+    await expect(run).rejects.toMatchObject({code: 'E_A0_NOTE_UNKNOWN'});
+    expect(noteOf(p.rho)).toEqual([]);
+  });
+
+  it('(a) control: the note confirmed at a DIFFERENT leaf while submit is held → submit still rejects (E_A0_NOTE_STATE), the store unchanged', async () => {
+    const p = await prepare();
+    net.holdWhen = m => m === 'getSignaturesForAddress' && net.sent.length === 1;
+    const run = submit(p);
+    await until(() => net.held > 0, 'submit to reach its settle sync');
+    confirmA0Deposit(p.rho, {leafIndex: 3, commitment: p.commitment});
+    const before = raw();
+    net.release();
+    await expect(run).rejects.toMatchObject({code: 'E_A0_NOTE_STATE'});
+    expect(raw()).toBe(before);
+  });
+
+  it('(b) a reconcile held at its sync while submit confirms the note → the note is skipped, the run resolves (no rejection)', async () => {
+    const p = await prepare();
+    const n2 = secondView();
+    n2.holdWhen = m => m === 'getSignaturesForAddress'; // submit (on the second view) held at its settle sync
+    const sending = submitA0Deposit(n2.connection, p, seedBytes(TEST_SEED), {sync: {useCache: false}, settleAttempts: 1});
+    await until(() => n2.held > 0, 'submit to reach its settle sync');
+    expect(noteOf(p.rho)).toEqual([expect.objectContaining({status: 'pending'})]);
+    net.holdWhen = m => m === 'getSignaturesForAddress'; // the reconcile held at its sync (it read the pending note)
+    const checking = reconcileA0PendingDeposits(net.connection, {sync: {useCache: false}});
+    await until(() => net.held > 0, 'the reconcile to reach its sync');
+    n2.release();
+    await expect(sending).resolves.toMatchObject({status: 'unspent', leafIndex: RECORDED_LEAVES});
+    const afterSubmit = raw();
+    net.release();
+    await expect(checking).resolves.toEqual({confirmed: [], dropped: [], stillPending: []});
+    expect(raw()).toBe(afterSubmit);
+    expect(noteOf(p.rho)).toEqual([expect.objectContaining({status: 'unspent', leafIndex: RECORDED_LEAVES})]);
+  });
+
+  it('(b) a reconcile held while the note is DROPPED elsewhere → skipped, not a rejection; the store unchanged', async () => {
+    const rho = own.rho(0n);
+    const commitment = own.commitment(AMOUNT, rho);
+    appendDeposit(net.chain, {amount: AMOUNT, rho, commitment});
+    net.accounts.set(rhoPda(rho), {owner: PROGRAM, finalized: true});
+    addA0PendingDeposit({commitment, amount: AMOUNT, rho, depositIndex: 0n, lastValidBlockHeight: 1});
+    net.holdWhen = m => m === 'getSignaturesForAddress';
+    const checking = reconcileA0PendingDeposits(net.connection, {sync: {useCache: false}});
+    await until(() => net.held > 0, 'the reconcile to reach its sync');
+    dropA0PendingDeposit(rho);
+    const before = raw();
+    net.release();
+    await expect(checking).resolves.toEqual({confirmed: [], dropped: [], stillPending: []});
+    expect(raw()).toBe(before);
+  });
+
+  it('(b) an EXPIRED pending deposit dropped elsewhere while the reconcile reads the heights → skipped, not a rejection', async () => {
+    const rho = own.rho(0n);
+    addA0PendingDeposit({commitment: own.commitment(AMOUNT, rho), amount: AMOUNT, rho, depositIndex: 0n, lastValidBlockHeight: 1});
+    net.holdWhen = m => m === 'getBlockHeight';
+    const checking = reconcileA0PendingDeposits(net.connection, {sync: {useCache: false}});
+    await until(() => net.held > 0, 'the reconcile to read the finalized height');
+    dropA0PendingDeposit(rho);
+    const before = raw();
+    net.release();
+    await expect(checking).resolves.toEqual({confirmed: [], dropped: [], stillPending: []});
+    expect(raw()).toBe(before);
+  });
+
+  it('(b) a note settled while an EARLIER note\'s reads ran is skipped at its turn: no request names its rho PDA; the earlier note is still confirmed', async () => {
+    const rhoA = own.rho(0n);
+    const rhoB = own.rho(1n);
+    for (const [i, rho] of [[0n, rhoA], [1n, rhoB]] as const) {
+      const commitment = own.commitment(AMOUNT, rho);
+      appendDeposit(net.chain, {amount: AMOUNT, rho, commitment});
+      net.accounts.set(rhoPda(rho), {owner: PROGRAM, finalized: true});
+      addA0PendingDeposit({commitment, amount: AMOUNT, rho, depositIndex: i, lastValidBlockHeight: 1});
+    }
+    net.holdWhen = m => m === 'getSignaturesForAddress'; // note A's sync
+    const checking = reconcileA0PendingDeposits(net.connection, {sync: {useCache: false}});
+    await until(() => net.held > 0, 'the reconcile to reach note A\'s sync');
+    confirmA0Deposit(rhoB, {leafIndex: RECORDED_LEAVES + 1, commitment: own.commitment(AMOUNT, rhoB)}); // settled elsewhere
+    net.release();
+    await expect(checking).resolves.toEqual({
+      confirmed: [{rho: rhoA, leafIndex: RECORDED_LEAVES, signature: expect.any(String)}],
+      dropped: [],
+      stillPending: [],
+    });
+    const asked = net.requests.filter(r => r.method === 'getAccountInfo').map(r => String(r.params[0]));
+    expect(asked).toContain(rhoPda(rhoA)); // positive control: A's marker was read
+    expect(asked).not.toContain(rhoPda(rhoB));
   });
 });
