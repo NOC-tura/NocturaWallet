@@ -126,14 +126,13 @@ function outerInstructions(tx: TxLike): OuterIx[] {
  * Decode `Program data:` blobs that were emitted by `programId`, at TOP LEVEL,
  * from an instruction that is OURS, in a succeeding invocation.
  *
- * `scope` says which instruction is ours:
- *   - a predicate `isOurs(ix)` — A0 (`a0/syncedTx.ts`, the one caller of this form) admits
- *     only an instruction whose accounts at the IDL positions are [pool, merkle_tree], the same
- *     predicate as its instruction decode (Fable review R1-I1). Listing the tree at any other
- *     position (e.g. [vault, pool, tree]) is something any caller can do, and a leaf admitted
- *     from such a frame would stop every wallet's sync (a pool-wide denial of service);
- *   - a tree address string — the v1 form (`ix.accounts.includes(merkleTree)`), kept for the v1
- *     modules that Task 5 deletes.
+ * `isOurs(ix)` says which instruction is ours. A0 (`a0/syncedTx.ts`, the one caller) admits
+ * only an instruction whose accounts at the IDL positions are [pool, merkle_tree], the same
+ * predicate as its instruction decode (Fable review R1-I1). Listing the tree at any other
+ * position (e.g. [vault, pool, tree]) is something any caller can do, and a leaf admitted from
+ * such a frame would stop every wallet's sync (a pool-wide denial of service). The v1 form — a
+ * tree address string read as `ix.accounts.includes(tree)` — is gone with the v1 modules (M1b
+ * Task 6); a non-function `isOurs` throws `E_POOL_SCOPE` rather than falling back to it.
  * The predicate is consulted only after the program checks (the invoke line and the
  * instruction's program id are both `programId`); it cannot widen them.
  *
@@ -142,17 +141,18 @@ function outerInstructions(tx: TxLike): OuterIx[] {
  * invoked directly. This is fail-closed — but note that dropping a REAL leaf is
  * as damaging as accepting a fake one (the tree is index-ordered, so one missing
  * early leaf shifts every later index and invalidates the root pool-wide). The
- * root-in-ring invariant in merkleSync is what catches a mistake in either
- * direction; do not treat this filter as the last line of defence.
+ * A0 tree sync's checks against the tree account (`a0/treeSync.ts`) catch a
+ * mistake in either direction; do not treat this filter as the last line of defence.
  */
 export function poolLeafBlobs(
   tx: TxLike | null | undefined,
   programId: string,
-  scope: string | ((ix: OuterIx) => boolean),
+  isOurs: (ix: OuterIx) => boolean,
 ): Uint8Array[] {
+  if (typeof isOurs !== 'function') {
+    throw new TypeError('E_POOL_SCOPE: poolLeafBlobs takes an isOurs(ix) predicate');
+  }
   if (!tx) return [];
-  const isOurs =
-    typeof scope === 'string' ? (ix: OuterIx) => ix.accounts.includes(scope) : scope;
   const logs = tx.meta?.logMessages ?? [];
   if (logs.length === 0) return [];
 

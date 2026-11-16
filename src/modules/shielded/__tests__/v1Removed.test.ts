@@ -75,7 +75,9 @@ const FORBIDDEN: Array<[string, RegExp]> = [
  * The files allowed to carry one named pattern, each with its reason. Nothing else is exempt.
  *  - noteEncryption is KEPT (spec §12 "Kept but unused in M1": M2 revalidates its v1 payload);
  *  - the A0 store's tests assert that no `noteSecret` field is stored and that a v1 record is cleared;
- *  - the route tests assert that the removed screens have no route.
+ *  - the route tests assert that the removed screens have no route;
+ *  - the §14 JS key-boundary test (`jsKeyBoundary.test.ts`, R1-I3) names the removed view-key
+ *    module and function in its positive controls' synthetic sources.
  */
 const ALLOWED: Record<string, string[]> = {
   'src/modules/shielded/noteEncryption.ts': ['the v1 spend secret'],
@@ -83,6 +85,15 @@ const ALLOWED: Record<string, string[]> = {
   'src/modules/shielded/__tests__/noteEncryption.golden.test.ts': ['the v1 spend secret'],
   'src/modules/shielded/a0/__tests__/noteStore.test.ts': ['the v1 spend secret'],
   'src/app/__tests__/presaleRoutes.test.tsx': ['a removed screen'],
+  'src/modules/shielded/__tests__/jsKeyBoundary.test.ts': ['the v1 view key'],
+};
+
+/**
+ * The files allowed to carry a removed module's import specifier, each with its reason (the
+ * synthetic sources of a guard's positive controls — string literals, never a real import).
+ */
+const IMPORTS_ALLOWED: Record<string, string[]> = {
+  'src/modules/shielded/__tests__/jsKeyBoundary.test.ts': ['src/modules/keyDerivation/shielded'],
 };
 
 const TREES = ['src', 'android', 'native/noctura-prover', 'scripts', '.github', '__mocks__', 'index.js', 'globalBuffer.js', 'package.json', 'jest.config.js'];
@@ -164,7 +175,10 @@ describe('the v1 shielded path (§12 M1b) is removed', () => {
   });
 
   it('no code file imports a removed module (resolved, so a0/noteStore is not v1 noteStore)', () => {
-    const hits = JS.map(f => ({f, m: removedImports(f, fs.readFileSync(path.join(ROOT, f), 'utf8'))})).filter(h => h.m.length > 0);
+    const hits = JS.map(f => {
+      const allowed = IMPORTS_ALLOWED[f] ?? [];
+      return {f, m: removedImports(f, fs.readFileSync(path.join(ROOT, f), 'utf8')).filter(m => !allowed.includes(m))};
+    }).filter(h => h.m.length > 0);
     expect(hits).toEqual([]);
   });
 
@@ -183,6 +197,12 @@ describe('the v1 shielded path (§12 M1b) is removed', () => {
       const found = findings(fs.readFileSync(path.join(ROOT, f), 'utf8'));
       for (const l of labels) {
         expect(`${f}: ${found.includes(l) ? l : 'unused'}`).toBe(`${f}: ${l}`);
+      }
+    }
+    for (const [f, mods] of Object.entries(IMPORTS_ALLOWED)) {
+      const found = removedImports(f, fs.readFileSync(path.join(ROOT, f), 'utf8'));
+      for (const m of mods) {
+        expect(`${f}: ${found.includes(m) ? m : 'unused'}`).toBe(`${f}: ${m}`);
       }
     }
   });

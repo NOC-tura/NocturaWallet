@@ -34,13 +34,16 @@ function tx(
   };
 }
 
+/** The old v1 rule, now spelled as a predicate (the tree-string overload is gone, M1b Task 6). */
+const touchesOurTree = (ix: {programId: string; accounts: string[]}) => ix.accounts.includes(OUR_TREE);
+
 describe('poolLeafBlobs — per-instruction merkle scoping', () => {
   it('accepts a leaf from a pool instruction that touches OUR tree', () => {
     const t = tx(
       [`Program ${POOL_PROG} invoke [1]`, LEAF, `Program ${POOL_PROG} success`],
       [{programId: POOL_PROG, accounts: [OUR_TREE]}],
     );
-    expect(poolLeafBlobs(t, POOL_PROG, OUR_TREE)).toHaveLength(1);
+    expect(poolLeafBlobs(t, POOL_PROG, touchesOurTree)).toHaveLength(1);
   });
 
   it('REJECTS a genuine leaf from ANOTHER POOL on the same program', () => {
@@ -51,7 +54,7 @@ describe('poolLeafBlobs — per-instruction merkle scoping', () => {
       [`Program ${POOL_PROG} invoke [1]`, LEAF, `Program ${POOL_PROG} success`],
       [{programId: POOL_PROG, accounts: [THEIR_TREE]}],
     );
-    expect(poolLeafBlobs(t, POOL_PROG, OUR_TREE)).toHaveLength(0);
+    expect(poolLeafBlobs(t, POOL_PROG, touchesOurTree)).toHaveLength(0);
   });
 
   it('REJECTS a foreign-pool leaf even when the tx also references OUR tree', () => {
@@ -68,7 +71,7 @@ describe('poolLeafBlobs — per-instruction merkle scoping', () => {
         {programId: EVIL_PROG, accounts: [OUR_TREE]},
       ],
     );
-    expect(poolLeafBlobs(t, POOL_PROG, OUR_TREE)).toHaveLength(0);
+    expect(poolLeafBlobs(t, POOL_PROG, touchesOurTree)).toHaveLength(0);
   });
 
   it('picks the right instruction when several run in one tx', () => {
@@ -80,7 +83,7 @@ describe('poolLeafBlobs — per-instruction merkle scoping', () => {
         {programId: POOL_PROG, accounts: [OUR_TREE]},   // ours — kept
       ],
     );
-    expect(poolLeafBlobs(t, POOL_PROG, OUR_TREE)).toHaveLength(1);
+    expect(poolLeafBlobs(t, POOL_PROG, touchesOurTree)).toHaveLength(1);
   });
 
   it('REJECTS a leaf emitted from a CPI (depth > 1)', () => {
@@ -92,7 +95,7 @@ describe('poolLeafBlobs — per-instruction merkle scoping', () => {
        `Program ${EVIL_PROG} success`],
       [{programId: EVIL_PROG, accounts: [OUR_TREE]}],
     );
-    expect(poolLeafBlobs(t, POOL_PROG, OUR_TREE)).toHaveLength(0);
+    expect(poolLeafBlobs(t, POOL_PROG, touchesOurTree)).toHaveLength(0);
   });
 
   it('resolves address-lookup-table accounts', () => {
@@ -108,12 +111,12 @@ describe('poolLeafBlobs — per-instruction merkle scoping', () => {
         },
       },
     };
-    expect(poolLeafBlobs(t, POOL_PROG, OUR_TREE)).toHaveLength(1);
+    expect(poolLeafBlobs(t, POOL_PROG, touchesOurTree)).toHaveLength(1);
   });
 
   it('returns nothing when the tx shape is missing or malformed', () => {
-    expect(poolLeafBlobs(null, POOL_PROG, OUR_TREE)).toHaveLength(0);
-    expect(poolLeafBlobs({meta: {logMessages: [LEAF]}}, POOL_PROG, OUR_TREE)).toHaveLength(0);
+    expect(poolLeafBlobs(null, POOL_PROG, touchesOurTree)).toHaveLength(0);
+    expect(poolLeafBlobs({meta: {logMessages: [LEAF]}}, POOL_PROG, touchesOurTree)).toHaveLength(0);
   });
 });
 
@@ -133,7 +136,16 @@ describe('poolLeafBlobs — an isOurs(ix) predicate (A0, R1-I1: the IDL position
   it('REJECTS a frame that lists our tree elsewhere ([x, pool, tree]) — `includes` would admit it', () => {
     const t = frame([THEIR_TREE, POOL, OUR_TREE]);
     expect(poolLeafBlobs(t, POOL_PROG, atIdlPositions)).toHaveLength(0);
-    expect(poolLeafBlobs(t, POOL_PROG, OUR_TREE)).toHaveLength(1); // the v1 string form: includes
+    expect(poolLeafBlobs(t, POOL_PROG, touchesOurTree)).toHaveLength(1); // control: `includes` admits it
+  });
+
+  it('predicate only (M1b Task 6): the v1 tree-string form is REFUSED, never read as `includes`', () => {
+    const t = frame([THEIR_TREE, POOL, OUR_TREE]);
+    // A caller outside the type system (plain JS, a cast) passing the old tree string must not
+    // get the v1 `includes` scoping back — the call throws before reading a log line.
+    const legacy = OUR_TREE as unknown as (ix: {programId: string; accounts: string[]}) => boolean;
+    expect(() => poolLeafBlobs(t, POOL_PROG, legacy)).toThrow(/E_POOL_SCOPE/);
+    expect(() => poolLeafBlobs(null, POOL_PROG, legacy)).toThrow(/E_POOL_SCOPE/);
   });
 
   it('the predicate never overrides the program checks: a foreign program\'s frame is not admitted', () => {

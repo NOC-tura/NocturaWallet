@@ -7,7 +7,7 @@
  *
  * Exact size and the IDL's account discriminator, not `length >= needed`: a longer or reordered
  * account would return plausible values from the wrong place (the lesson of the v1
- * merkleTreeAccount guard, kept here without importing the v1 module Task 5 deletes).
+ * merkleTreeAccount guard, kept here; the v1 module itself is deleted in M1b Task 6).
  */
 import {A0_MERKLE_TREE} from './constants';
 import {A0SyncError} from './syncErrors';
