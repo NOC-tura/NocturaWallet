@@ -4,6 +4,7 @@ import {usePresaleStore} from '../../store/zustand/presaleStore';
 import {useWalletStore} from '../../store/zustand/walletStore';
 import {FeeDisplayInfo, FEE_DISTRIBUTION, FeeType} from './types';
 import {effectiveFee} from '../../../core/fees/transferMarkup';
+import {isPricingEnabled} from '../../constants/chain';
 
 // NOC has 9 decimals; 1 NOC = 1_000_000_000 lamports
 const NOC_DECIMALS = 9;
@@ -20,8 +21,12 @@ let _cachedPriceAt: number = 0;
 /**
  * Fetch NOC/USD price from Jupiter Price API. Cached for 60 seconds.
  * Returns 0 on failure (never throws — fee display degrades gracefully).
+ * On a build without pricing (devnet) it returns 0 (no price) without any request.
  */
 export async function getNocUsdPrice(): Promise<number> {
+  if (!isPricingEnabled()) {
+    return 0;
+  }
   const now = Date.now();
   if (_cachedPrice > 0 && now - _cachedPriceAt < PRICE_CACHE_TTL_MS) {
     return _cachedPrice;

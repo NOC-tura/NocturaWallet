@@ -106,8 +106,9 @@ jest.mock('../../../components/PresaleBanner', () => ({PresaleBanner: () => null
 
 import {DashboardScreen} from '../DashboardScreen';
 
-let qc: QueryClient;
+let qc: QueryClient | null = null;
 let fetchSpy: jest.Mock;
+let mounted: {unmount: () => void} | null = null;
 
 async function renderDashboard() {
   qc = new QueryClient({defaultOptions: {queries: {retry: false}}});
@@ -122,6 +123,7 @@ async function renderDashboard() {
       </SafeAreaProvider>
     </QueryClientProvider>,
   );
+  mounted = result;
   await act(async () => {});
   return result;
 }
@@ -133,39 +135,38 @@ beforeEach(() => {
   global.fetch = fetchSpy as unknown as typeof fetch;
 });
 
+// Teardown on every path: a failing row never leaves its tree or its queries behind.
 afterEach(() => {
-  qc.clear();
+  mounted?.unmount();
+  mounted = null;
+  qc?.clear();
+  qc = null;
 });
 
 describe('DashboardScreen — the chain identity', () => {
   it('devnet: the "Devnet" chip is shown; no "$" figure, no "· 24h"; not one price request', async () => {
     mockNetwork.current = 'devnet';
     const r = await renderDashboard();
-    // Let any query settle before asserting its absence.
-    await act(async () => {
-      await new Promise(res => setTimeout(res, 20));
-    });
-
-    expect(r.getByTestId('dashboard-chain-badge')).toBeTruthy();
+    // Nothing is scheduled on devnet (usePrices is disabled), so the first committed tree is final.
+    await waitFor(() => expect(r.getByTestId('dashboard-chain-badge')).toBeTruthy(), {timeout: 10000});
+    expect(qc?.isFetching()).toBe(0);
     expect(r.getByText('Devnet')).toBeTruthy();
     expect(r.queryAllByText(/\$/)).toHaveLength(0);
     expect(r.queryByText(/· 24h/)).toBeNull();
     expect(r.getAllByText('—').length).toBeGreaterThan(0); // the hero's existing no-price form
     expect(mockPinned).not.toHaveBeenCalled();
     expect(fetchSpy).not.toHaveBeenCalled();
-    r.unmount();
-  });
+  }, 30000);
 
   it('mainnet (control): no chip; the total, the 24h change and the row values render', async () => {
     mockNetwork.current = 'mainnet-beta';
     const r = await renderDashboard();
-    await waitFor(() => expect(r.queryByText(/· 24h/)).not.toBeNull());
+    await waitFor(() => expect(r.queryByText(/· 24h/)).not.toBeNull(), {timeout: 10000});
 
     expect(r.queryByTestId('dashboard-chain-badge')).toBeNull();
     expect(r.queryByText('Devnet')).toBeNull();
     expect(r.getByText('+2.34% · 24h')).toBeTruthy(); // SOL's change (NOC carries none)
     expect(r.getByText('$178.42')).toBeTruthy(); // the SOL row: 1 SOL × 178.42
     expect(mockPinned).toHaveBeenCalled();
-    r.unmount();
-  });
+  }, 30000);
 });

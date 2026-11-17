@@ -24,8 +24,15 @@ jest.mock('../../../store/zustand/walletStore', () => ({
   },
 }));
 
+// The build's chain, switchable per test (mainnet by default).
+const mockNetwork = {current: 'mainnet-beta' as 'devnet' | 'mainnet-beta'};
+jest.mock('../../../constants/chain', () => {
+  const actual = jest.requireActual('../../../constants/chain');
+  return {...actual, isPricingEnabled: () => actual.isPricingEnabled(mockNetwork.current)};
+});
+
 import {usePresaleStore} from '../../../store/zustand/presaleStore';
-import {FeeEngineManager, FEE_DISTRIBUTION} from '../feeEngine';
+import {FeeEngineManager, FEE_DISTRIBUTION, getNocUsdPrice, _resetPriceCache} from '../feeEngine';
 import {SHIELDED_FEES} from '../../../constants/programs';
 import {PublicKey} from '@solana/web3.js';
 
@@ -185,5 +192,30 @@ describe('FeeEngineManager', () => {
     mockStore({tgeStatus: 'pre_tge'});
     const info = engine.getFeeDisplayInfo('privateTransfer', 0);
     expect(info.usdLabel).toBeNull();
+  });
+});
+
+describe('getNocUsdPrice on a build without pricing (devnet)', () => {
+  const realFetch = global.fetch;
+  afterEach(() => {
+    mockNetwork.current = 'mainnet-beta';
+    global.fetch = realFetch;
+    _resetPriceCache();
+  });
+
+  it('devnet: resolves 0 (no price) without any request', async () => {
+    mockNetwork.current = 'devnet';
+    const fetchSpy = jest.fn(async () => ({ok: true, json: async () => ({})}));
+    global.fetch = fetchSpy as unknown as typeof fetch;
+    await expect(getNocUsdPrice()).resolves.toBe(0);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('mainnet (control): asks the price API and returns its price', async () => {
+    const {NOC_MINT} = jest.requireActual('../../../constants/programs');
+    const fetchSpy = jest.fn(async () => ({ok: true, json: async () => ({data: {[NOC_MINT]: {price: 0.5}}})}));
+    global.fetch = fetchSpy as unknown as typeof fetch;
+    await expect(getNocUsdPrice()).resolves.toBe(0.5);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 });
