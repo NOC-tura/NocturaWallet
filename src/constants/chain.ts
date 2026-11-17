@@ -38,6 +38,15 @@ export function isPresaleEnabled(network: KnownNetwork = NETWORK): boolean {
   return network === 'mainnet-beta';
 }
 
+/**
+ * USD prices (and price history) exist for mainnet assets only. Devnet SOL is worthless, so the
+ * devnet build fetches no price at all: a mainnet price beside a devnet balance would show a value
+ * the user does not have. Every price surface then shows its no-price form.
+ */
+export function isPricingEnabled(network: KnownNetwork = NETWORK): boolean {
+  return network === 'mainnet-beta';
+}
+
 export type Explorer = 'solscan' | 'solanaexplorer' | 'solanafm';
 
 const TX_BASE: Record<Explorer, string> = {

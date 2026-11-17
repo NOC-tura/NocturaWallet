@@ -1,6 +1,7 @@
 import {USDC_MINT, USDT_MINT} from '../tokens/coreTokens';
 import {API_BASE, COINGECKO_API_KEY} from '../../constants/programs';
 import {pinnedFetch, rethrowIfSSLPinningError} from '../sslPinning/pinnedFetch';
+import {isPricingEnabled} from '../../constants/chain';
 
 export interface TokenPrice {
   usd: number;
@@ -73,8 +74,14 @@ export async function fetchPricesDirect(): Promise<Record<string, TokenPrice>> {
  * backend failure, falls back to direct CoinGecko. Keyed by mint ('native' for
  * SOL). NOC is NOT included (presale-only; the consumer injects it). Throws only
  * when both paths fail; the hook then keeps its last cache.
+ *
+ * On a build without pricing (devnet: its SOL has no market) it resolves to no
+ * prices without making any request.
  */
 export async function fetchPrices(): Promise<Record<string, TokenPrice>> {
+  if (!isPricingEnabled()) {
+    return {};
+  }
   try {
     return await fetchPricesFromBackend();
   } catch (err) {

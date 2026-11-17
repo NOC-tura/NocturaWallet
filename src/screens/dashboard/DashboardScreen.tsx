@@ -37,6 +37,7 @@ import {forceSync} from '../../modules/backgroundSync/backgroundSyncModule';
 import {TokenManager} from '../../modules/tokens/tokenModule';
 import {NOC_MINT} from '../../constants/programs';
 import {isShieldedEnabled} from '../../constants/features';
+import {CHAIN} from '../../constants/chain';
 import {formatBalanceForDisplay} from '../../utils/parseTokenAmount';
 import {mmkvPublic} from '../../store/mmkv/instances';
 import {MMKV_KEYS} from '../../constants/mmkvKeys';
@@ -471,6 +472,18 @@ function DashboardHeader({
             {avatarInitial}
           </Text>
         </Pressable>
+        {/* The test build's chain marker (not in the design): a devnet build never passes for the
+           mainnet wallet. Never rendered on mainnet. */}
+        {CHAIN.network === 'devnet' ? (
+          <View
+            testID="dashboard-chain-badge"
+            accessibilityLabel={CHAIN.label}
+            className="px-2 py-0.5 rounded-pill bg-[rgba(242,181,59,0.16)]">
+            <Text variant="overline" className="text-warning">
+              Devnet
+            </Text>
+          </View>
+        ) : null}
         <View className="flex-row items-center gap-2">
           <Pressable
             onPress={onNotifications}
