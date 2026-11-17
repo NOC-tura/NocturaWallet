@@ -2,6 +2,7 @@ import {USDC_MINT, USDT_MINT} from '../tokens/coreTokens';
 import {NOC_MINT, API_BASE} from '../../constants/programs';
 import {coingeckoHeaders} from './priceModule';
 import {pinnedFetch, rethrowIfSSLPinningError} from '../sslPinning/pinnedFetch';
+import {isPricingEnabled} from '../../constants/chain';
 
 export type Timeframe = '24H' | '7D' | '30D' | '1Y';
 
@@ -73,8 +74,13 @@ export async function fetchPriceHistoryDirect(coingeckoId: string, tf: Timeframe
 /**
  * USD price series for a coin over a timeframe. Backend-first (privacy); on any
  * backend failure, falls back to direct CoinGecko. Throws only when both fail.
+ * On a build without pricing (devnet) it resolves to an empty series without
+ * making any request.
  */
 export async function fetchPriceHistory(coingeckoId: string, tf: Timeframe): Promise<PriceHistory> {
+  if (!isPricingEnabled()) {
+    return {prices: []};
+  }
   try {
     return await fetchPriceHistoryFromBackend(coingeckoId, tf);
   } catch (err) {

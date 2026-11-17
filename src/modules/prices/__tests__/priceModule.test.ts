@@ -5,6 +5,13 @@ import {pinnedFetch} from '../../sslPinning/pinnedFetch';
 jest.mock('../../sslPinning/pinnedFetch');
 const mockPinned = pinnedFetch as jest.Mock;
 
+// The build's chain, switchable per test: mainnet (the default) keeps every existing row as it was.
+const mockNetwork = {current: 'mainnet-beta' as 'devnet' | 'mainnet-beta'};
+jest.mock('../../../constants/chain', () => {
+  const actual = jest.requireActual('../../../constants/chain');
+  return {...actual, isPricingEnabled: () => actual.isPricingEnabled(mockNetwork.current)};
+});
+
 const backendBody = {
   success: true,
   data: {
@@ -20,6 +27,7 @@ const cgBody = {
 };
 
 afterEach(() => {
+  mockNetwork.current = 'mainnet-beta';
   mockPinned.mockReset();
   (global.fetch as jest.Mock | undefined)?.mockReset?.();
 });
@@ -53,5 +61,17 @@ describe('fetchPrices', () => {
     mockPinned.mockRejectedValue(new Error('pin fail'));
     global.fetch = jest.fn(async () => ({ok: false, status: 503, json: async () => ({})})) as unknown as typeof fetch;
     await expect(fetchPrices()).rejects.toThrow();
+  });
+});
+
+describe('devnet: no prices at all', () => {
+  it('makes no request (neither the backend nor CoinGecko) and returns no data', async () => {
+    mockNetwork.current = 'devnet';
+    mockPinned.mockResolvedValue({status: 200, json: async () => ({})});
+    global.fetch = jest.fn() as unknown as typeof fetch;
+
+    await expect(fetchPrices()).resolves.toEqual({});
+    expect(mockPinned).not.toHaveBeenCalled();
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 });

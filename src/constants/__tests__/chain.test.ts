@@ -3,7 +3,7 @@
  * with ?cluster=devnet; presale exists on mainnet only; the identity comes from NETWORK alone,
  * whose unknown / missing value refuses to load (never mainnet).
  */
-import {chainIdentity, explorerTxUrl, isPresaleEnabled, CHAIN} from '../chain';
+import {chainIdentity, explorerTxUrl, isPresaleEnabled, isPricingEnabled, CHAIN} from '../chain';
 
 const SIG = '3DR6F7oWyKJmV2b1S5ERa2q8N9u5vR1c7Ff6y3Hj3rZ8cVgUoPqXk2Lw1Yt4Mn6Bs9Df7Gh2Jk5Lz8Xc4Vb1Nm3Q';
 
@@ -35,6 +35,13 @@ describe('isPresaleEnabled', () => {
   it('mainnet only', () => {
     expect(isPresaleEnabled('mainnet-beta')).toBe(true);
     expect(isPresaleEnabled('devnet')).toBe(false);
+  });
+});
+
+describe('isPricingEnabled', () => {
+  it('mainnet only: devnet SOL has no market, so the devnet build prices nothing', () => {
+    expect(isPricingEnabled('mainnet-beta')).toBe(true);
+    expect(isPricingEnabled('devnet')).toBe(false);
   });
 });
 

@@ -5,12 +5,29 @@ import {TokenDetailScreen} from '../TokenDetailScreen';
 
 // ── Module mocks (jest.mock is hoisted above all imports) ─────────────────────
 
+// The build's chain, switchable per test (mainnet by default: every pre-existing row unchanged).
+const mockNetwork = {current: 'mainnet-beta' as 'devnet' | 'mainnet-beta'};
+jest.mock('../../../constants/chain', () => {
+  const actual = jest.requireActual('../../../constants/chain');
+  return {...actual, isPricingEnabled: () => actual.isPricingEnabled(mockNetwork.current)};
+});
+
+// As the real hook resolves: no price at all on a build without pricing (devnet).
 jest.mock('../../../hooks/useResolvedPrices', () => ({
-  useResolvedPrices: () => ({prices: {native: {usd: 150, change24h: 2}}, havePrices: true}),
+  useResolvedPrices: () =>
+    mockNetwork.current === 'devnet'
+      ? {prices: {}, havePrices: false}
+      : {prices: {native: {usd: 150, change24h: 2}}, havePrices: true},
 }));
 
+// As the real (react-query) hook: with no id the query is disabled and holds no data.
+const mockPriceHistory = jest.fn((id: string | null, _tf: string) => ({
+  data: id == null ? undefined : {prices: [100, 120, 150]},
+  isLoading: false,
+  isError: false,
+}));
 jest.mock('../../../hooks/usePriceHistory', () => ({
-  usePriceHistory: () => ({data: {prices: [100, 120, 150]}, isLoading: false, isError: false}),
+  usePriceHistory: (id: string | null, tf: string) => mockPriceHistory(id, tf),
 }));
 
 jest.mock('../../../store/zustand/walletStore', () => ({
@@ -181,4 +198,52 @@ it('renders NOC variant with pre-TGE ticker and no chart', () => {
   expect(getByText('Pre-TGE · no market chart yet')).toBeTruthy();
   // Timeframe chips should not render for NOC
   expect(queryByText('24H')).toBeNull();
+});
+
+describe('the chart on a build without pricing (devnet)', () => {
+  beforeEach(() => mockPriceHistory.mockClear());
+  afterEach(() => {
+    mockNetwork.current = 'mainnet-beta';
+    mockPriceHistory.mockClear();
+  });
+
+  function renderSol() {
+    return render(
+      withSafeArea(
+        <TokenDetailScreen
+          mint="native"
+          onBack={() => {}}
+          onSend={jest.fn()}
+          onReceive={() => {}}
+          onSwap={jest.fn()}
+        />,
+      ),
+    );
+  }
+
+  it('devnet: "Chart unavailable", no timeframe chips, price "—", no history query', () => {
+    mockNetwork.current = 'devnet';
+    const {getByText, queryByText, queryAllByText} = renderSol();
+    expect(getByText('Chart unavailable')).toBeTruthy();
+    for (const tf of ['24H', '7D', '30D', '1Y']) {
+      expect(queryByText(tf)).toBeNull();
+    }
+    expect(queryAllByText(/\$/)).toHaveLength(0);
+    expect(queryAllByText('—').length).toBeGreaterThan(0);
+    // The history hook is handed no id, so it schedules no query.
+    expect(mockPriceHistory).toHaveBeenCalled();
+    for (const call of mockPriceHistory.mock.calls) {
+      expect(call[0]).toBeNull();
+    }
+  });
+
+  it('mainnet (control): the chart, the four chips and the price; history asked for solana', () => {
+    const {getByText, queryByText} = renderSol();
+    expect(queryByText('Chart unavailable')).toBeNull();
+    for (const tf of ['24H', '7D', '30D', '1Y']) {
+      expect(getByText(tf)).toBeTruthy();
+    }
+    expect(getByText('$150.00')).toBeTruthy();
+    expect(mockPriceHistory).toHaveBeenCalledWith('solana', expect.any(String));
+  });
 });

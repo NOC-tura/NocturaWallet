@@ -24,6 +24,7 @@ import {
 } from '../../modules/prices/priceHistory';
 import {CORE_TOKENS} from '../../modules/tokens/coreTokens';
 import {NOC_MINT} from '../../constants/programs';
+import {isPricingEnabled} from '../../constants/chain';
 import {isSwappable} from '../../modules/swap/swapTokens';
 import {MMKV_KEYS} from '../../constants/mmkvKeys';
 import {mmkvPublic} from '../../store/mmkv/instances';
@@ -91,10 +92,14 @@ export function TokenDetailScreen({mint, onBack, onSend, onReceive, onSwap}: Pro
 
   const logoUri = tokens.find(t => t.mint === mint)?.logoUri;
 
+  // No market chart for NOC (pre-TGE), nor on a build without pricing (devnet: its SOL has no
+  // market) — there the history query is never scheduled.
+  const pricing = isPricingEnabled();
+  const noMarket = isNoc || !pricing;
   const cgId = coingeckoIdForMint(mint);
-  const history = usePriceHistory(cgId, tf);
+  const history = usePriceHistory(pricing ? cgId : null, tf);
   const series = history.data?.prices ?? [];
-  const change = isNoc ? null : changeOverSeries(series);
+  const change = noMarket ? null : changeOverSeries(series);
 
   // ── Derived display values ─────────────────────────────────────────────────
 
@@ -168,21 +173,21 @@ export function TokenDetailScreen({mint, onBack, onSend, onReceive, onSwap}: Pro
                 Pre-TGE · no market chart yet
               </Text>
             </View>
-          ) : history.isLoading ? (
-            <SparkChartSkeleton height={120} />
-          ) : history.isError ? (
+          ) : !pricing || history.isError ? (
             <View className="items-center" style={{height: 120, justifyContent: 'center'}}>
               <Text variant="body-sm" className="text-fg-tertiary">
                 Chart unavailable
               </Text>
             </View>
+          ) : history.isLoading ? (
+            <SparkChartSkeleton height={120} />
           ) : (
             <SparkChart prices={series} up={isUp} height={120} />
           )}
         </View>
 
-        {/* Timeframe chips — non-NOC only */}
-        {!isNoc ? (
+        {/* Timeframe chips — only where a market chart exists */}
+        {!noMarket ? (
           <View className="flex-row items-center justify-between px-5 mt-3 mb-6">
             {TIMEFRAMES.map(t => {
               const active = tf === t;

@@ -6,7 +6,15 @@ import {pinnedFetch} from '../../sslPinning/pinnedFetch';
 jest.mock('../../sslPinning/pinnedFetch');
 const mockPinned = pinnedFetch as jest.Mock;
 
+// The build's chain, switchable per test: mainnet (the default) keeps every existing row as it was.
+const mockNetwork = {current: 'mainnet-beta' as 'devnet' | 'mainnet-beta'};
+jest.mock('../../../constants/chain', () => {
+  const actual = jest.requireActual('../../../constants/chain');
+  return {...actual, isPricingEnabled: () => actual.isPricingEnabled(mockNetwork.current)};
+});
+
 afterEach(() => {
+  mockNetwork.current = 'mainnet-beta';
   mockPinned.mockReset();
   (global.fetch as jest.Mock | undefined)?.mockReset?.();
 });
@@ -69,5 +77,17 @@ describe('TIMEFRAME_DAYS', () => {
     expect(TIMEFRAME_DAYS['24H']).toBe(1);
     expect(TIMEFRAME_DAYS['1Y']).toBe(365);
     expect(Math.max(...Object.values(TIMEFRAME_DAYS))).toBe(365);
+  });
+});
+
+describe('devnet: no prices at all', () => {
+  it('makes no request (neither the backend nor CoinGecko) and returns no data', async () => {
+    mockNetwork.current = 'devnet';
+    mockPinned.mockResolvedValue({status: 200, json: async () => ({})});
+    global.fetch = jest.fn() as unknown as typeof fetch;
+
+    await expect(fetchPriceHistory('solana', '7D')).resolves.toEqual({prices: []});
+    expect(mockPinned).not.toHaveBeenCalled();
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 });
