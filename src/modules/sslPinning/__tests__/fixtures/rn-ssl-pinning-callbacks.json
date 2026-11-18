@@ -1,0 +1,81 @@
+{
+  "schema": "noctura.rn-ssl-pinning-callbacks/1",
+  "library": "react-native-ssl-pinning",
+  "version": "1.6.0",
+  "sources": {
+    "android/src/main/java/com/toyberman/RNSslPinningModule.java": "f91ab0e6fd5659135cee16d333c2a62d6321ec35d7cd556f359204126d164e22",
+    "index.js": "26d114e731b36d22bc0fa4df3bcb0cc7d065752e57da507c70ca8d699a7049a9"
+  },
+  "lines": {
+    "putStatus": 218,
+    "putBody": 233,
+    "putHeaders": 236,
+    "isSuccessful": 238,
+    "success": 239,
+    "nonSuccess": 241,
+    "failure": 206,
+    "jsStringReject": 19,
+    "jsReject": 44,
+    "jsResolve": 46
+  },
+  "note": "Each entry is the argument list RNSslPinningModule.fetch passes to its JS callback; a WritableMap arrives in JS as a plain object with its keys in put order. The 400 body is the coordinator's (relayerA0.js invalid(), their f3f8eff), transcribed.",
+  "callbacks": {
+    "nonSuccess400": {
+      "at": "RNSslPinningModule.java:241",
+      "args": [
+        {
+          "status": 400,
+          "bodyString": "{\"success\":false,\"outcome\":\"invalid_request\",\"error\":\"kind must be \\\"transfer\\\" or \\\"withdraw_change\\\"\"}",
+          "headers": {
+            "Content-Type": "application/json; charset=utf-8"
+          }
+        },
+        null
+      ]
+    },
+    "nonSuccess429Text": {
+      "at": "RNSslPinningModule.java:241",
+      "args": [
+        {
+          "status": 429,
+          "bodyString": "Too many requests, please try again later.",
+          "headers": {
+            "Content-Type": "text/html; charset=utf-8"
+          }
+        },
+        null
+      ]
+    },
+    "success200": {
+      "at": "RNSslPinningModule.java:239",
+      "args": [
+        null,
+        {
+          "status": 200,
+          "bodyString": "{\"programId\":\"FeGSSsJtmA7GnMgnpj33JsiceSk1NyFopff2FtQFsMuH\",\"pool\":\"8VMe4iZWiq3xQySywih9cciAmzTxMtkawMRYK6JuDdoT\",\"mint\":\"ERkpCFGaoWmeZPhKTUHumrqHTP1QmyHVhMJUnxbRPKCs\",\"feePayer\":\"3jvhiz9qcJAe2zGHvRAiRYXiaFCdjEQrB9KuE5NuFaGe\",\"maxFee\":\"100000\",\"minFee\":{\"transfer\":\"10000\",\"withdraw_change\":\"10000\"},\"gasGrantLamports\":\"3000000\",\"validForSeconds\":60}",
+          "headers": {
+            "Content-Type": "application/json; charset=utf-8"
+          }
+        }
+      ]
+    },
+    "pinFailure": {
+      "at": "RNSslPinningModule.java:206",
+      "args": [
+        "Certificate pinning failure!\n  Peer certificate chain:\n    sha256/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=: CN=api.noc-tura.io"
+      ]
+    },
+    "transportFailure": {
+      "at": "RNSslPinningModule.java:206",
+      "args": [
+        "timeout"
+      ]
+    },
+    "failureNullMessage": {
+      "at": "RNSslPinningModule.java:206",
+      "args": [
+        null
+      ]
+    }
+  }
+}

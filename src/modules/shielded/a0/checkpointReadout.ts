@@ -1,7 +1,8 @@
 /**
  * The M1b checkpoint readout (spec §16 "Checkpoints · M1b"): what the desk script reads off the
  * phone over adb — one logcat line (or a few chunks of one) after a deposit is submitted, after its
- * outcome, and after each startup step (restore + reconciliation). DEVNET BUILD ONLY.
+ * outcome, and after each startup step (restore + reconciliation); since M1c also one line per probe
+ * of the `pinnedFetch` on-device control (`pinnedControl.ts`, spec §6.0). DEVNET BUILD ONLY.
  *
  * WHY A LOG LINE. The values the checkpoint judges live in the ENCRYPTED MMKV (the note store,
  * R13's counters in `v1_a0_last_restore`) of a release app, which adb cannot read (no `run-as` on a
@@ -224,6 +225,70 @@ export function readA0Startup(state: A0StartupState, notes: () => readonly A0Not
         skipped: reconcile.skipped,
       },
       ...notesFields(notes),
+    },
+    o,
+  );
+}
+
+/** The probe of the M1c `pinnedFetch` on-device control as `pinnedControl.ts` returns it. */
+export interface A0ReadoutPinnedProbe {
+  probe: 'submit' | 'quote' | 'submit-prefix';
+  /** the request's URL (the public API base + a bare path); '' when the base was refused */
+  url: string;
+  /** the HTTP status the probe got back, or null when it threw */
+  status: number | null;
+  /** the body's `outcome` if it is one of the contract's twelve; `unrecognised` for another string; else null */
+  outcome: string | null;
+  threw: boolean;
+  /** threw with exactly the pre-fix message "[object Object]" (a rejected response, its status lost) */
+  lostStatus: boolean;
+  /** threw an SSLPinningError (E004): the pins did not match the host's chain */
+  pinFailure: boolean;
+  /** probe `quote` only, when the body has the quote's shape; `gasGrantLamports` null = absent */
+  quote: {
+    programId: string;
+    pool: string;
+    mint: string;
+    feePayer: string;
+    maxFee: string;
+    minFeeTransfer: string;
+    minFeeWithdrawChange: string;
+    gasGrantLamports: string | null;
+    validForSeconds: number;
+  } | null;
+}
+
+/**
+ * One line per probe of the M1c `pinnedFetch` control (spec §6.0; `pinnedControl.ts`), `run` = the
+ * control's run number in this process. Field by field: the quote's fields arrive already checked
+ * against their shape (base58 keys, u64 decimal strings), so no server text reaches the log.
+ */
+export function readA0PinnedControl(run: number, p: A0ReadoutPinnedProbe, o: A0ReadoutOptions = {}): void {
+  const q = p.quote;
+  emit(
+    'pinned-control',
+    {
+      run,
+      probe: p.probe,
+      url: p.url,
+      status: p.status,
+      outcome: p.outcome,
+      threw: p.threw,
+      lostStatus: p.lostStatus,
+      pinFailure: p.pinFailure,
+      quote: q
+        ? {
+            programId: q.programId,
+            pool: q.pool,
+            mint: q.mint,
+            feePayer: q.feePayer,
+            maxFee: q.maxFee,
+            minFeeTransfer: q.minFeeTransfer,
+            minFeeWithdrawChange: q.minFeeWithdrawChange,
+            gasGrantLamports: q.gasGrantLamports,
+            validForSeconds: q.validForSeconds,
+          }
+        : null,
     },
     o,
   );

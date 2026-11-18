@@ -64,7 +64,7 @@ export const SSL_PINS: string[] = [
   'sha256/aAsfaKi1QNcO7yRHo8bUJ9ABhJIcSnHZZm766XwBmHM=',
 ];
 
-interface PinnedFetchOptions {
+export interface PinnedFetchOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
   headers?: Record<string, string>;
   body?: string;
@@ -77,7 +77,7 @@ interface PinnedFetchOptions {
   timeoutMs?: number;
 }
 
-interface PinnedFetchResponse {
+export interface PinnedFetchResponse {
   status: number;
   headers: Record<string, string>;
   json: () => Promise<unknown>;
@@ -175,9 +175,37 @@ function assertPinningCanApply(url: string): void {
   }
 }
 
+/** How a rejection of the pinning library is turned into a response (or not: `null`). */
+type RejectionMapping = (error: unknown) => PinnedFetchResponse | null;
+
 export async function pinnedFetch(
   url: string,
   options: PinnedFetchOptions = {},
+): Promise<PinnedFetchResponse> {
+  return pinnedFetchMapped(url, options, toRejectedResponse);
+}
+
+/**
+ * DEVNET CONTROL ONLY — the NEGATIVE control of the M1c on-device check (spec 2026-11-08
+ * shielded A0 M1 §6.0, `src/modules/shielded/a0/pinnedControl.ts`). The same request as
+ * `pinnedFetch`, with the rejection mapped the PRE-FIX way: nothing is recognised as a response,
+ * so a non-2xx surfaces as `new Error(String(rejection))` = "[object Object]", the status lost —
+ * exactly what every caller saw before `toRejectedResponse`. On the phone it must THROW for the
+ * malformed submit that `pinnedFetch` resolves as HTTP 400; if it does not, the positive line
+ * proves nothing (the library would not be rejecting at all). A source guard
+ * (`pinnedControl.test.ts`) allows no other caller.
+ */
+export async function pinnedFetchPreFixForDevnetControl(
+  url: string,
+  options: PinnedFetchOptions = {},
+): Promise<PinnedFetchResponse> {
+  return pinnedFetchMapped(url, options, () => null);
+}
+
+async function pinnedFetchMapped(
+  url: string,
+  options: PinnedFetchOptions,
+  mapRejection: RejectionMapping,
 ): Promise<PinnedFetchResponse> {
   assertPinningCanApply(url);
 
@@ -211,7 +239,7 @@ export async function pinnedFetch(
     // invokes the callback with the response as the ERROR argument whenever
     // `!okHttpResponse.isSuccessful()` (RNSslPinningModule.java:238-241), and
     // the JS wrapper then does `deferred.reject(data)` with a plain object
-    // (index.js:43). Converting that to `new Error(String(error))` stringified
+    // (index.js:44). Converting that to `new Error(String(error))` stringified
     // it to "[object Object]" and DESTROYED the status code — which made
     // relayerSubmit's entire 409/429/502/503 machine unreachable on device,
     // including the "already landed vs input-spent-elsewhere" disambiguation.
@@ -220,7 +248,7 @@ export async function pinnedFetch(
     //
     // A rejected RESPONSE is not an error condition for this wrapper — hand it
     // back like any other response and let the caller branch on the status.
-    const asResponse = toRejectedResponse(error);
+    const asResponse = mapRejection(error);
     if (asResponse) return asResponse;
 
     const cause = error instanceof Error ? error : new Error(String(error));

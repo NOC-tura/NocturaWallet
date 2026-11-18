@@ -17,13 +17,14 @@ name: Native prover
 # (src/modules/shielded/a0/keyAssets.ts — the v1 pin file is gone since M1b), the NDK version (android/build.gradle) and the M1a
 # checkpoint's desk scripts and their tests (scripts/m1a-checkpoint/**), and the M1b checkpoint's
 # (scripts/m1b-checkpoint/**: they import M1a's install.mjs and read the recorded devnet tree under
-# src/modules/shielded/a0/__tests__/fixtures/, both already in this list).
+# src/modules/shielded/a0/__tests__/fixtures/, both already in this list), and the M1c checkpoint's
+# (scripts/m1c-checkpoint/**: they import M1a's install.mjs and M1b's parser and fixtures).
 on:
   push:
     branches: [main]
-    paths: ['native/**', '.github/workflows/native-prover.yml', 'android/build.gradle', 'src/modules/shielded/a0/**', 'scripts/a0-vectors/**', 'scripts/m1a-checkpoint/**', 'scripts/m1b-checkpoint/**', 'package-lock.json']
+    paths: ['native/**', '.github/workflows/native-prover.yml', 'android/build.gradle', 'src/modules/shielded/a0/**', 'scripts/a0-vectors/**', 'scripts/m1a-checkpoint/**', 'scripts/m1b-checkpoint/**', 'scripts/m1c-checkpoint/**', 'package-lock.json']
   pull_request:
-    paths: ['native/**', '.github/workflows/native-prover.yml', 'android/build.gradle', 'src/modules/shielded/a0/**', 'scripts/a0-vectors/**', 'scripts/m1a-checkpoint/**', 'scripts/m1b-checkpoint/**', 'package-lock.json']
+    paths: ['native/**', '.github/workflows/native-prover.yml', 'android/build.gradle', 'src/modules/shielded/a0/**', 'scripts/a0-vectors/**', 'scripts/m1a-checkpoint/**', 'scripts/m1b-checkpoint/**', 'scripts/m1c-checkpoint/**', 'package-lock.json']
   workflow_dispatch:
 
 permissions:
@@ -152,6 +153,17 @@ jobs:
         run: |
           files=(scripts/m1b-checkpoint/*.test.mjs)
           [ "${#files[@]}" -ge 2 ] && [ -f "${files[0]}" ] || { echo "::error::no M1b desk test files matched: ${files[*]}"; exit 1; }
+          node --no-warnings --test "${files[@]}"
+
+      # THE M1c CHECKPOINT'S DESK TESTS (Task 1: the pinnedFetch gate): the pinned-control readouts
+      # parsed from the hand-written sample (the app's Jest suite holds its lines to the same file), the
+      # §6.0 judge with a FAIL row per field it decides and the negative control's own line, the API
+      # base read off the recorded dexdump, and the trigger over a mocked adb. No network, no device.
+      - name: The M1c checkpoint desk tests (node --test scripts/m1c-checkpoint/*.test.mjs)
+        working-directory: .
+        run: |
+          files=(scripts/m1c-checkpoint/*.test.mjs)
+          [ "${#files[@]}" -ge 2 ] && [ -f "${files[0]}" ] || { echo "::error::no M1c desk test files matched: ${files[*]}"; exit 1; }
           node --no-warnings --test "${files[@]}"
 
       - uses: dtolnay/rust-toolchain@stable
