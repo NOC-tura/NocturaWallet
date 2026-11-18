@@ -2,25 +2,27 @@
  * The `pinnedFetch` on-device positive control (spec 2026-11-08 shielded A0 M1 §6.0, I5; M1c's
  * first task — no outcome logic is written before its phone line passes). DEVNET BUILD ONLY.
  *
- * WHY ON THE PHONE. `pinnedFetch`'s non-2xx handling (`toRejectedResponse`) was fixed in JS
- * against the library's source, and Jest can only replay that source: whether the NATIVE module of
- * the installed `react-native-ssl-pinning` really hands a 400 back as a rejected object with its
- * `status` — and whether our pins match the live relayer host — only the phone shows. The relayer
- * client (Task 3) reads its twelve outcomes from exactly that object.
+ * WHY ON THE PHONE. The fixed non-2xx handling (`pinnedFetch.ts`'s `toRejectedResponse`) was fixed
+ * in JS against the library's source, and Jest can only replay that source: whether the NATIVE
+ * module of the installed `react-native-ssl-pinning` really hands a 400 back as a rejected object
+ * with its `status` — and whether our pins match the live relayer host — only the phone shows. The
+ * relayer client (Task 3) reads its twelve outcomes from exactly that object.
  *
  * WHAT IT DOES. On a desk-triggered action (the deep link `noctura://a0-pinned-control`, sent by
  * `scripts/m1c-checkpoint/m1c-checkpoint.mjs pinned-control`; see `useA0PinnedControlLink`), three
  * requests go out through the relayer transport, in this order, and each emits ONE readout line
  * (`checkpointReadout.ts` `readA0PinnedControl`):
  *   1. `submit`        — a deliberately malformed `POST ${API_BASE}/relayer/submit` (a JSON object
- *                        with an unknown `kind`) through `pinnedFetch`. PASS on the desk: it
+ *                        with an unknown `kind`) through `pinnedFetchDirect` (review I1: the native
+ *                        module called directly, not the npm wrapper). PASS on the desk: it
  *                        RESOLVED (`threw: false`) with HTTP 400 and body `outcome: invalid_request`.
- *   2. `quote`         — `GET ${API_BASE}/relayer/quote` through `pinnedFetch`. PASS: 200 and a quote
- *                        whose shape parses (the desk judges its values against the pinned A0 facts).
+ *   2. `quote`         — `GET ${API_BASE}/relayer/quote` through `pinnedFetchDirect`. PASS: 200 and
+ *                        a quote whose shape parses (the desk judges its values against the pinned
+ *                        A0 facts).
  *   3. `submit-prefix` — the NEGATIVE control: request 1 again through the variant that maps the
- *                        rejection the PRE-FIX way (`pinnedFetchPreFixForDevnetControl`). It must
- *                        THROW with the status lost (`threw: true, lostStatus: true`); if it does
- *                        not, line 1 proves nothing.
+ *                        rejection the PRE-FIX way AND stays on the npm wrapper on purpose
+ *                        (`pinnedFetchPreFixForDevnetControl`). It must THROW with the status lost
+ *                        (`threw: true, lostStatus: true`); if it does not, line 1 proves nothing.
  *
  * WHAT IT COSTS THE RELAYER. Nothing: the coordinator (their `relayerA0.js` `validatePayload`, at
  * their f3f8eff) refuses an unknown `kind` before it reads its key, Redis or the chain; the two
@@ -35,7 +37,7 @@
  * thrown message was exactly the pre-fix "[object Object]", whether it was a pin failure, and the
  * quote's public fields when each has its shape. Never a body text, an error message or a header.
  */
-import {SSLPinningError, pinnedFetch, pinnedFetchPreFixForDevnetControl} from '../../sslPinning/pinnedFetch';
+import {SSLPinningError, pinnedFetchDirect, pinnedFetchPreFixForDevnetControl} from '../../sslPinning/pinnedFetch';
 import {a0ReadoutEnabled, readA0PinnedControl} from './checkpointReadout';
 import type {A0ReadoutOptions, A0ReadoutPinnedProbe} from './checkpointReadout';
 import {relayerGetQuote, relayerPostSubmit, relayerUrl} from './relayerTransport';
@@ -158,7 +160,7 @@ async function probe(
 export interface A0PinnedControlDeps {
   /** default a0ReadoutEnabled() */
   enabled?: boolean;
-  /** default pinnedFetch */
+  /** default pinnedFetchDirect (review I1: not the npm-wrapped pinnedFetch) */
   fetchFixed?: RelayerFetch;
   /** default pinnedFetchPreFixForDevnetControl */
   fetchPreFix?: RelayerFetch;
@@ -188,7 +190,7 @@ export async function runA0PinnedControl(deps: A0PinnedControlDeps = {}): Promis
   inFlight = true;
   runs += 1;
   const run = runs;
-  const fixed = deps.fetchFixed ?? pinnedFetch;
+  const fixed = deps.fetchFixed ?? pinnedFetchDirect;
   const preFix = deps.fetchPreFix ?? pinnedFetchPreFixForDevnetControl;
   const readout = {enabled: true, ...deps.readout};
   try {

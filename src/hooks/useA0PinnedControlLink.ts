@@ -14,6 +14,12 @@ import {A0_PINNED_CONTROL_LINK, runA0PinnedControl} from '../modules/shielded/a0
  * value, only the fixed malformed submit and a quote request.
  *
  * A plain Linking effect at the app root, like `useReferralDeepLink` (kept out of deepLinkConfig).
+ *
+ * ONE GATE, NOT TWO (review minor a). `runA0PinnedControl()` is called with no overrides, so it
+ * applies its OWN default gate (`a0ReadoutEnabled()`) rather than being forced open with
+ * `{enabled: true}`. Forcing it open here would leave production (or any build with the hook's own
+ * `enabled` wrongly true) depending on this file alone to keep the control closed, instead of on
+ * the same `a0ReadoutEnabled()` check both this hook's default and the control itself use.
  */
 export function useA0PinnedControlLink(enabled: boolean = a0ReadoutEnabled()): void {
   useEffect(() => {
@@ -24,7 +30,7 @@ export function useA0PinnedControlLink(enabled: boolean = a0ReadoutEnabled()): v
       if (url !== A0_PINNED_CONTROL_LINK) {
         return;
       }
-      runA0PinnedControl({enabled: true}).catch(() => {
+      runA0PinnedControl().catch(() => {
         // the control reads out every failure itself; nothing escapes to the UI
       });
     };

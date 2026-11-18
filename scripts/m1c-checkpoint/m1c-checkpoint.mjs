@@ -18,7 +18,10 @@
  *                                          sends `noctura://a0-pinned-control` to the DEVNET app, waits for
  *                                          its three readout lines, judges §6.0 (M1c.P0–P3) against the API
  *                                          base of DIR/CONFIG.json → OUT/pinned-control.json; exit 0 only
- *                                          if every line passed. --judge-only judges what is recorded.
+ *                                          if every line passed. Judges ONLY the run this invocation
+ *                                          triggered (review C1): a run that never appears judges NOTHING,
+ *                                          never a stale earlier run already on record. --judge-only is the
+ *                                          one path that re-judges the whole record, without sending anything.
  *   common: [--out DIR] (default build/m1c-checkpoint) [--serial S]
  *
  * Never uninstalls, never clears data (every adb call goes through M1a's guard); never contacts
@@ -207,14 +210,32 @@ function pinnedControl() {
       console.log(`the devnet app did not start on the link: ${trigger.startOutput.trim()}`);
     }
     if (!trigger.run) {
-      console.log('no new complete pinned-control run appeared (is the installed devnet app this commit\'s? is the phone unlocked?)');
+      console.log(
+        'no new complete pinned-control run appeared (is the installed devnet app this commit\'s? is the phone ' +
+          'unlocked? it may also have crashed partway — check `adb logcat -d -b crash`)',
+      );
     }
   }
-  const lines = L.judgePinnedControl({ readouts: recorded().map(x => x.readout), apiBase });
+  // review C1: a run on record from an earlier invocation (or an older APK) is NEVER judged here —
+  // only --judge-only re-judges the record; a triggered run with `trigger.run === null` judges
+  // NOTHING, so a stale PASS can never stand in for the run this invocation actually produced.
+  const readouts = L.judgedReadouts({ judgeOnly: flag('judge-only'), trigger, recorded: recorded().map(x => x.readout) });
+  const lines = L.judgePinnedControl({
+    readouts,
+    apiBase,
+    ...(trigger && !trigger.run ? { noRunDetail: 'no NEW complete run after the trigger (a stale earlier run is never judged)' } : {}),
+  });
   for (const l of lines) {
     console.log(`${l.pass ? 'PASS' : 'FAIL'}  ${l.id}  ${l.text}\n        ${l.detail}`);
   }
-  json('pinned-control.json', { at: new Date().toISOString(), apiBase, triggered: trigger ? { started: trigger.started, run: trigger.run?.key ?? null, polls: trigger.polls } : null, lines });
+  const judgedRun = L.pinnedRuns(readouts).filter(r => r.complete).pop()?.key ?? null;
+  json('pinned-control.json', {
+    at: new Date().toISOString(),
+    apiBase,
+    triggered: trigger ? { started: trigger.started, run: trigger.run?.key ?? null, polls: trigger.polls } : null,
+    judgedRun,
+    lines,
+  });
   const pass = lines.every(l => l.pass);
   console.log(pass ? 'GATE PASSED: outcome logic may be written (§6.0).' : 'GATE NOT PASSED: no outcome logic is written before this line passes (§6.0) — report the FAIL lines.');
   process.exit(pass ? 0 : 1);

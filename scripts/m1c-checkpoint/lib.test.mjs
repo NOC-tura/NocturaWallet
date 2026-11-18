@@ -96,6 +96,34 @@ test('no run, or only an incomplete one, fails every line', () => {
   assert.equal(L.pinnedRuns(twice)[0].complete, false);
 });
 
+test('judgedReadouts: --judge-only judges everything recorded; otherwise only the triggered run', () => {
+  const readouts = sample();
+  const run = L.pinnedRuns(readouts)[0];
+  assert.deepEqual(L.judgedReadouts({ judgeOnly: true, trigger: null, recorded: readouts }), readouts);
+  assert.deepEqual(L.judgedReadouts({ judgeOnly: false, trigger: { run }, recorded: readouts }), Object.values(run.probes));
+  // a null run (the devnet app never answered with a NEW complete run) judges NOTHING
+  assert.deepEqual(L.judgedReadouts({ judgeOnly: false, trigger: { run: null }, recorded: readouts }), []);
+  assert.deepEqual(L.judgedReadouts({ judgeOnly: false, trigger: null, recorded: readouts }), []);
+});
+
+test('review C1, reproduced and closed: a stale recorded PASS is never judged as the triggered run\'s own answer', () => {
+  // the bug the reviewer probed with a fake adb: a complete, PASSING run already on record from an
+  // earlier invocation (or an older APK) — judging the record directly, as the code did before the
+  // fix, would PASS every line even though THIS invocation's trigger found nothing new.
+  const stale = sample();
+  assert.deepEqual(Object.values(verdict(stale)), [true, true, true, true]);
+  // the fix: judgedReadouts, fed the same stale record but a trigger that found no new run, yields
+  // an EMPTY list, and judging that FAILS every line with the "no NEW complete run" detail — never
+  // the stale record's PASS.
+  const judged = L.judgedReadouts({ judgeOnly: false, trigger: { run: null }, recorded: stale });
+  assert.deepEqual(judged, []);
+  const lines = L.judgePinnedControl({ readouts: judged, apiBase: API_BASE, noRunDetail: 'no NEW complete run after the trigger' });
+  assert.deepEqual(lines.map(l => l.pass), [false, false, false, false]);
+  assert.ok(lines.every(l => l.detail === 'no NEW complete run after the trigger'), JSON.stringify(lines));
+  // --judge-only is unaffected: it is meant to re-judge exactly the stale record
+  assert.deepEqual(Object.values(verdict(L.judgedReadouts({ judgeOnly: true, trigger: { run: null }, recorded: stale }))), [true, true, true, true]);
+});
+
 test('the LAST complete run is judged (a later failing run is not hidden by an earlier pass, and vice versa)', () => {
   const later = (rs, patch = {}) => rs.map(r => ({ ...r, run: 2, seq: r.seq + 3, at: '2026-11-17T12:05:00.000Z', ...(r.probe === 'submit' ? patch : {}) }));
   assert.equal(verdict([...sample(), ...later(sample(), { threw: true, status: null })])['M1c.P1'], false);

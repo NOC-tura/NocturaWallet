@@ -113,6 +113,22 @@ export function pinnedRuns(readouts) {
 }
 
 /**
+ * Which readouts `pinned-control` judges (review C1, 2026-11-18: the gate must follow the run it
+ * just triggered, never a stale earlier one on record). `--judge-only` judges everything recorded
+ * — the whole point of that flag is to re-judge without sending anything. Otherwise ONLY the
+ * triggered run's own three probes are judged: a null `trigger.run` (the devnet app never answered
+ * with a NEW complete run — it may not have started, or it may have crashed partway) judges an
+ * EMPTY list, so every M1c.P* line FAILS instead of silently passing on whatever was already on
+ * record from an earlier invocation or an older APK.
+ */
+export function judgedReadouts({ judgeOnly, trigger, recorded }) {
+  if (judgeOnly) {
+    return recorded;
+  }
+  return trigger && trigger.run ? Object.values(trigger.run.probes) : [];
+}
+
+/**
  * §6.0's phone line, judged on the LAST complete run of the recorded readouts. `apiBase` is the
  * devnet APK's API_BASE (BuildConfig, `check-apks`). One PASS / FAIL per line:
  *   M1c.P0  the URLs are the API base + bare paths (the base ends in exactly one /v1)
@@ -121,7 +137,7 @@ export function pinnedRuns(readouts) {
  *           minFee.withdraw_change ≤ maxFee
  *   M1c.P3  NEGATIVE CONTROL: the same submit through the pre-fix mapping THREW with its status lost
  */
-export function judgePinnedControl({ readouts, apiBase }) {
+export function judgePinnedControl({ readouts, apiBase, noRunDetail = 'no complete pinned-control run recorded (run `pinned-control`)' }) {
   const lines = [];
   const add = (id, text, pass, detail) => lines.push({ id, text, pass, detail });
   const T = {
@@ -134,7 +150,7 @@ export function judgePinnedControl({ readouts, apiBase }) {
   const last = complete[complete.length - 1];
   if (!last) {
     for (const k of ['P0', 'P1', 'P2', 'P3']) {
-      add(`M1c.${k}`, T[k], false, 'no complete pinned-control run recorded (run `pinned-control`)');
+      add(`M1c.${k}`, T[k], false, noRunDetail);
     }
     return lines;
   }

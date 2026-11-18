@@ -41,12 +41,15 @@ it('the link is noctura://a0-pinned-control and React Navigation resolves it to 
   expect(getStateFromPath('pay', deepLinkConfig.config)).toBeDefined();
 });
 
-it('gate open: the link as the launching URL runs the control once', async () => {
+it('gate open: the link as the launching URL runs the control once, WITHOUT overriding the control\'s own gate', async () => {
   jest.spyOn(Linking, 'getInitialURL').mockResolvedValue(A0_PINNED_CONTROL_LINK);
   renderHook(() => useA0PinnedControlLink(true));
   await tick();
   expect(run).toHaveBeenCalledTimes(1);
-  expect(run).toHaveBeenCalledWith({enabled: true});
+  // review minor (a): passing {enabled: true} here would give production two independent gates
+  // (the hook's AND the control's own a0ReadoutEnabled()) instead of one — the hook's own `enabled`
+  // check above is the only gate it is allowed to apply.
+  expect(run).toHaveBeenCalledWith();
 });
 
 it('gate open: the link arriving while running runs it; any other URL does not', async () => {

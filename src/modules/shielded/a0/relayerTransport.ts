@@ -1,6 +1,6 @@
 /**
  * The A0 relayer's transport (spec 2026-11-08 shielded A0 M1 §6.0, §1 "Relayer"): the two
- * endpoints of the frozen contract (`relayer-a0-contract.md`), reached through `pinnedFetch`
+ * endpoints of the frozen contract (`relayer-a0-contract.md`), reached through `pinnedFetchDirect`
  * and handed back as `{status, body}` FOR EVERY STATUS — the contract puts the outcome in the
  * body as well as the HTTP status, so a 400 / 409 / 429 / 502 / 503 / 500 is an answer to read,
  * never an exception. Only what is not an HTTP answer throws: a pin failure (`SSLPinningError`,
@@ -19,9 +19,18 @@
  * PROVEN ON THE PHONE before any outcome logic is written: `pinnedControl.ts` (devnet build only)
  * sends a deliberately malformed submit and a quote through exactly this code and reads the
  * answers out for the M1c checkpoint (`scripts/m1c-checkpoint/`).
+ *
+ * THE DEFAULT FETCH (M1c Task 1 review I1). The default `fetchImpl` is `pinnedFetchDirect`, not
+ * `pinnedFetch`: it calls the native SSL-pinning module directly instead of going through the npm
+ * package's `index.js`, because that wrapper throws a TypeError INSIDE a native→JS callback when
+ * an `IOException` has no message — on a bridgeless RN 0.84 release build that is most likely a
+ * process death, which no JS deadline (below) can catch; a deadline only covers a hang, not a
+ * crash. Because any native crash remains possible regardless, Task 3/7's pending unshield record
+ * MUST be persisted BEFORE the submit request leaves, not after it returns — the only way an
+ * in-flight submit's outcome can be recovered if the process does not survive to read the answer.
  */
 import {API_BASE} from '../../../constants/programs';
-import {pinnedFetch} from '../../sslPinning/pinnedFetch';
+import {pinnedFetchDirect} from '../../sslPinning/pinnedFetch';
 import type {PinnedFetchOptions, PinnedFetchResponse} from '../../sslPinning/pinnedFetch';
 
 export type RelayerPath = 'quote' | 'submit';
@@ -32,16 +41,17 @@ export interface RelayerHttpResult {
   body: unknown;
 }
 
-/** The request function under the transport (default `pinnedFetch`; the devnet control swaps it). */
+/** The request function under the transport (default `pinnedFetchDirect`; the devnet control swaps it). */
 export type RelayerFetch = (url: string, options?: PinnedFetchOptions) => Promise<PinnedFetchResponse>;
 
-/** `GET /relayer/quote` answers at once; the default 10 s of `pinnedFetch`. */
+/** `GET /relayer/quote` answers at once; the default 10 s of `pinnedFetchDirect`. */
 export const RELAYER_QUOTE_TIMEOUT_MS = 10_000;
 /**
  * `POST /relayer/submit` answers after the relayer's `confirmTransaction` (contract §1: `confirmed`
  * means landed), which waits up to the blockhash's expiry (~60–90 s on devnet). 120 s keeps a
  * forwarded tx's answer from being cut off; a timeout here is NOT a "not forwarded" (Task 3/7
- * treat it as `unconfirmed` without a signature and reconcile through the sync).
+ * treat it as `unknown` without a signature and reconcile through the sync — Global Constraints,
+ * R1-C1).
  */
 export const RELAYER_SUBMIT_TIMEOUT_MS = 120_000;
 
@@ -71,12 +81,14 @@ export function relayerUrl(path: RelayerPath, base: string = API_BASE): string {
 }
 
 /**
- * A JS-side deadline over the whole request, beyond the native per-phase timeouts. Measured in the
- * library's source (`react-native-ssl-pinning` 1.6.0): a transport failure is passed to JS as
- * `callback.invoke(e.getMessage())`, and an `IOException` without a message makes that `null` —
- * `index.js` then throws a TypeError inside the native callback and its promise NEVER settles
- * (`rnSslPinningLibrary.test.ts` replays it). OkHttp's connect / read / write timeouts do not bound
- * a slow trickle either. So every relayer request races this deadline: the native timeout + 15 s.
+ * A JS-side deadline over the whole request, beyond the native per-phase timeouts. Kept even though
+ * the default fetch (`pinnedFetchDirect`, review I1) no longer hangs on a message-less `IOException`
+ * — it settles that case at once as a transport error. The deadline still covers everything else a
+ * timeout doesn't: OkHttp's connect / read / write timeouts do not bound a slow trickle, and a
+ * caller may still pass the OLD npm-wrapper `pinnedFetch` as `fetchImpl` (the devnet control's
+ * pre-fix variant does), which DOES still hang on that case (`rnSslPinningLibrary.test.ts` replays
+ * it from the library's source, `react-native-ssl-pinning` 1.6.0). So every relayer request races
+ * this deadline regardless: the native timeout + 15 s.
  */
 export const RELAYER_DEADLINE_MARGIN_MS = 15_000;
 
@@ -98,7 +110,7 @@ function withDeadline<T>(work: Promise<T>, ms: number): Promise<T> {
 
 /** Per call: the request function, the API base, the deadline (all defaulted for the app). */
 export interface RelayerRequestOptions {
-  /** default `pinnedFetch` (the devnet control passes the pre-fix variant) */
+  /** default `pinnedFetchDirect` (the devnet control's negative control passes the pre-fix variant) */
   fetchImpl?: RelayerFetch;
   /** default `API_BASE` */
   base?: string;
@@ -124,7 +136,7 @@ async function request(
   o: RelayerRequestOptions,
 ): Promise<RelayerHttpResult> {
   const url = relayerUrl(path, o.base ?? API_BASE);
-  const fetchImpl = o.fetchImpl ?? pinnedFetch;
+  const fetchImpl = o.fetchImpl ?? pinnedFetchDirect;
   const deadlineMs = o.deadlineMs ?? init.timeoutMs + RELAYER_DEADLINE_MARGIN_MS;
   return withDeadline(
     (async () => {

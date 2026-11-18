@@ -1,21 +1,18 @@
 /**
  * The A0 relayer transport (relayerTransport.ts; spec §6.0, §1 "Relayer"): the URL rule
  * (`${API_BASE}/relayer/{quote,submit}`, API_BASE already ends in /v1) and `{status, body}` for
- * every status — over the REAL `react-native-ssl-pinning` wrapper whose native callbacks are
- * replayed from the library's own source (`sslPinning/__testing__/realSslPinning.ts`).
+ * every status — over the default fetch, `pinnedFetchDirect`, which calls the native SSL-pinning
+ * module directly (M1c Task 1 review I1: never through the npm package's `index.js`). The fake
+ * native module is driven by the SAME recorded argument lists `rnSslPinningLibrary.test.ts` and
+ * `pinnedControl.test.ts`'s negative control replay through the real library wrapper
+ * (`sslPinning/__testing__/fakeRNSslPinningNative.ts` / `realSslPinning.ts`).
  */
 import {readFileSync} from 'fs';
 import {join} from 'path';
 
-jest.mock('react-native-ssl-pinning', () =>
-  jest
-    .requireActual<typeof import('../../../sslPinning/__testing__/realSslPinning')>('../../../sslPinning/__testing__/realSslPinning')
-    .loadRealSslPinning(),
-);
-
 import {API_BASE} from '../../../../constants/programs';
-import {SSLPinningError} from '../../../sslPinning/pinnedFetch';
-import {nativeCalls, resetNative, setNativeCallback} from '../../../sslPinning/__testing__/realSslPinning';
+import {__setRNSslPinningNativeForTests, SSLPinningError} from '../../../sslPinning/pinnedFetch';
+import {fakeNativeCalls, fakeRNSslPinningNative, resetFakeNative, setFakeNativeCallback} from '../../../sslPinning/__testing__/fakeRNSslPinningNative';
 import {
   A0RelayerDeadlineError,
   RELAYER_DEADLINE_MARGIN_MS,
@@ -39,7 +36,13 @@ const reply = (status: number, body: unknown) =>
     ? [null, {status, bodyString: JSON.stringify(body), headers: {}}]
     : [{status, bodyString: JSON.stringify(body), headers: {}}, null];
 
-beforeEach(() => resetNative());
+beforeEach(() => {
+  resetFakeNative();
+  __setRNSslPinningNativeForTests(fakeRNSslPinningNative);
+});
+afterEach(() => {
+  __setRNSslPinningNativeForTests(undefined);
+});
 
 describe('the URL: bare paths appended to API_BASE, which already ends in /v1', () => {
   it('Jest\'s config base: …/v1/relayer/quote and …/v1/relayer/submit', () => {
@@ -75,27 +78,27 @@ describe('the URL: bare paths appended to API_BASE, which already ends in /v1', 
   ])('refuses a base with %s (E_A0_RELAYER_URL), before anything is sent', async (_why, base) => {
     expect(() => relayerUrl('quote', base)).toThrow(expect.objectContaining({code: 'E_A0_RELAYER_URL'}));
     await expect(relayerGetQuote({base})).rejects.toMatchObject({code: 'E_A0_RELAYER_URL'});
-    expect(nativeCalls()).toHaveLength(0);
+    expect(fakeNativeCalls()).toHaveLength(0);
   });
   it('refuses an unknown path', () => {
     expect(() => relayerUrl('withdraw' as 'quote')).toThrow(expect.objectContaining({code: 'E_A0_RELAYER_URL'}));
   });
 });
 
-describe('the requests through pinnedFetch (the native module sees them)', () => {
+describe('the requests through pinnedFetchDirect (the native module sees them)', () => {
   it('quote: GET …/relayer/quote, pinned, 10 s', async () => {
-    setNativeCallback(cb('success200'));
+    setFakeNativeCallback(cb('success200'));
     const r = await relayerGetQuote();
-    const [call] = nativeCalls();
+    const [call] = fakeNativeCalls();
     expect(call!.url).toBe(`${API_BASE}/relayer/quote`);
     expect(call!.options).toMatchObject({method: 'GET', pkPinning: true, timeoutInterval: RELAYER_QUOTE_TIMEOUT_MS});
     expect(r.status).toBe(200);
     expect(r.body).toMatchObject({programId: 'FeGSSsJtmA7GnMgnpj33JsiceSk1NyFopff2FtQFsMuH', validForSeconds: 60});
   });
   it('submit: POST …/relayer/submit with the JSON text as given, pinned, 120 s', async () => {
-    setNativeCallback(cb('nonSuccess400'));
+    setFakeNativeCallback(cb('nonSuccess400'));
     const r = await relayerPostSubmit('{"kind":"k"}');
-    const [call] = nativeCalls();
+    const [call] = fakeNativeCalls();
     expect(call!.url).toBe(`${API_BASE}/relayer/submit`);
     expect(call!.options).toMatchObject({method: 'POST', body: '{"kind":"k"}', pkPinning: true, timeoutInterval: RELAYER_SUBMIT_TIMEOUT_MS});
     expect((call!.options.headers as Record<string, string>)['content-type']).toBe('application/json');
@@ -123,35 +126,48 @@ describe('{status, body} for every status the contract uses (never a throw)', ()
     ['misconfigured', 500],
   ];
   it.each(TABLE)('%s / HTTP %i resolves with that status and body', async (outcome, status) => {
-    setNativeCallback(reply(status, {success: status === 200, outcome}));
+    setFakeNativeCallback(reply(status, {success: status === 200, outcome}));
     await expect(relayerPostSubmit('{}')).resolves.toEqual({status, body: {success: status === 200, outcome}});
   });
   it('a body that is not JSON (the rate limiter\'s text 429) is body: null, the status kept', async () => {
-    setNativeCallback(cb('nonSuccess429Text'));
+    setFakeNativeCallback(cb('nonSuccess429Text'));
     await expect(relayerPostSubmit('{}')).resolves.toEqual({status: 429, body: null});
   });
   it('an empty body is body: null', async () => {
-    setNativeCallback([{status: 502, bodyString: '', headers: {}}, null]);
+    setFakeNativeCallback([{status: 502, bodyString: '', headers: {}}, null]);
     await expect(relayerGetQuote()).resolves.toEqual({status: 502, body: null});
   });
 });
 
 describe('what is not an HTTP answer throws', () => {
   it('a pin failure: SSLPinningError (E004)', async () => {
-    setNativeCallback(cb('pinFailure'));
+    setFakeNativeCallback(cb('pinFailure'));
     await expect(relayerGetQuote()).rejects.toBeInstanceOf(SSLPinningError);
   });
   it('a transport failure: the plain error', async () => {
-    setNativeCallback(cb('transportFailure'));
+    setFakeNativeCallback(cb('transportFailure'));
     await expect(relayerPostSubmit('{}')).rejects.toThrow(/^timeout$/);
   });
-  it('a request that never settles (the library\'s null-message failure) hits the deadline: E_A0_RELAYER_DEADLINE', async () => {
-    setNativeCallback(cb('failureNullMessage'));
-    const err = await relayerGetQuote({deadlineMs: 100}).then(() => null, (e: unknown) => e);
-    expect(err).toBeInstanceOf(A0RelayerDeadlineError);
-    expect((err as A0RelayerDeadlineError).code).toBe('E_A0_RELAYER_DEADLINE');
-  });
-  it('the default deadline is the native timeout + 15 s (quote 25 s, submit 135 s)', async () => {
+  it(
+    'review I1, FIXED: a message-less failure (the npm wrapper\'s "never settles" case) now settles AT ONCE ' +
+      'as a plain transport error — never a throw inside the native callback, never the deadline',
+    async () => {
+      setFakeNativeCallback(cb('failureNullMessage'));
+      const settled = await Promise.race([
+        relayerGetQuote({deadlineMs: 5_000}).then(
+          () => ({kind: 'resolved'}),
+          (e: unknown) => ({kind: 'rejected', error: e}),
+        ),
+        new Promise(r => setTimeout(() => r({kind: 'pending'}), 300)),
+      ]);
+      expect(settled).toMatchObject({kind: 'rejected'});
+      const error = (settled as {error: unknown}).error;
+      expect(error).not.toBeInstanceOf(A0RelayerDeadlineError);
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toMatch(/no message/);
+    },
+  );
+  it('the default deadline is the native timeout + 15 s (quote 25 s, submit 135 s) — still races an actually hanging fetchImpl', async () => {
     jest.useFakeTimers();
     try {
       const never: RelayerFetch = () => new Promise(() => undefined);

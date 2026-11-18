@@ -60,6 +60,8 @@ node scripts/m1c-checkpoint/m1c-checkpoint.mjs install --apks build/m1c-checkpoi
 node scripts/m1c-checkpoint/m1c-checkpoint.mjs pinned-control --apks build/m1c-checkpoint/apks
 #    exit 0 + "GATE PASSED" → Tasks 3 onward may write the outcome logic.
 #    The record: build/m1c-checkpoint/{readouts.jsonl,pinned-control.json}
+#    pinned-control.json's "judgedRun" is the run key that was ACTUALLY judged (review C1: never a
+#    stale earlier run on record) — null means every line FAILED because no new run appeared.
 ```
 
 Run `pinned-control` **at most twice a minute**. Each run sends two submits, and the relayer allows 5 submits per
@@ -78,7 +80,8 @@ recorded lines again without sending anything: `… pinned-control --apks … --
 | P2 | another `feePayer` / `programId` / `pool` / `mint` | the relayer serves another key or pool than the pinned one. **Stop.** Report it. |
 | P3 | `threw false … status 400` | the installed library RESOLVED the error answer, so P1 proves nothing. **Stop.** Report it. The transport's assumptions are wrong. |
 | P0 | another URL | the devnet APK's `API_BASE` is not what `check-apks` read, or the app doubled `/v1`. Rebuild from a clean commit. |
-| all | "no complete pinned-control run recorded" | the app did not start on the link (check `adb devices`, phone unlocked), or the installed devnet app is older than this commit (install again). |
+| all | "no NEW complete run after the trigger" | `pinned-control` judges ONLY the run it just triggered, never a stale earlier run already on record (review C1). This means the app did not start on the link (check `adb devices`, the phone unlocked), the installed devnet app is older than this commit (install again) — **or it crashed partway through the three requests**, which looks identical from the log alone. Check the crash buffer: `adb logcat -d -b crash` (and `-b all` if that is empty). Re-run `pinned-control` once the phone is confirmed up; it sends a fresh link either way. |
+| all | "no complete pinned-control run recorded" | only from `--judge-only`: nothing judgeable is on record yet. Run `pinned-control` (without `--judge-only`) first. |
 
 ## What is not proven here
 

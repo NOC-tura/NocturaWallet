@@ -1,7 +1,13 @@
 /**
  * The `pinnedFetch` on-device control (pinnedControl.ts; spec §6.0, M1c Task 1) — on the desk, with
- * the network mocked: the REAL `react-native-ssl-pinning` wrapper over the native callbacks recorded
- * from the library's source (`sslPinning/__testing__/realSslPinning.ts`).
+ * the network mocked. Two of the three probes (submit, quote) now go through `pinnedFetchDirect`
+ * (review I1), which calls the native module directly: a fake `NativeModules.RNSslPinning`
+ * (`sslPinning/__testing__/fakeRNSslPinningNative.ts`), wired in with `pinnedFetch.ts`'s
+ * `__setRNSslPinningNativeForTests`. The third (the pre-fix NEGATIVE control, `submit-prefix`)
+ * stays on the REAL `react-native-ssl-pinning` wrapper on purpose — the npm package mocked to the
+ * library's own callbacks (`sslPinning/__testing__/realSslPinning.ts`). Both fakes are driven by
+ * the SAME recorded native argument lists (`rn-ssl-pinning-callbacks.json`), so one `RELAYER`
+ * responder answers every probe identically regardless of which path it took.
  *
  * THE CONTRACT WITH THE DESK. `scripts/m1c-checkpoint/fixtures/pinned-control-sample.txt` was
  * written by hand (the documented field order, the builds' API base). The app's lines for the
@@ -21,7 +27,9 @@ jest.mock('react-native-ssl-pinning', () =>
     .loadRealSslPinning(),
 );
 
+import {__setRNSslPinningNativeForTests} from '../../../sslPinning/pinnedFetch';
 import {nativeCalls, resetNative, setNativeResponder} from '../../../sslPinning/__testing__/realSslPinning';
+import {fakeNativeCalls, fakeRNSslPinningNative, resetFakeNative, setFakeNativeResponder} from '../../../sslPinning/__testing__/fakeRNSslPinningNative';
 import {
   A0_PINNED_CONTROL_SUBMIT_BODY,
   quoteFieldsOf,
@@ -33,6 +41,7 @@ import {resetA0ReadoutForTests} from '../checkpointReadout';
 
 type Realssl = typeof import('../../../sslPinning/__testing__/realSslPinning');
 type Control = typeof import('../pinnedControl');
+type Responder = (url: string, options?: Record<string, unknown>) => unknown[];
 
 const ROOT = join(__dirname, '../../../../..');
 const REC = JSON.parse(
@@ -52,33 +61,46 @@ const DEVNET_APK_CONFIG = {
 };
 
 /** The relayer as the recording says it answers: submit → 400 invalid_request, quote → 200. */
-const RELAYER = (url: string) => (url.endsWith('/relayer/quote') ? cb('success200') : cb('nonSuccess400'));
+const RELAYER: Responder = url => (url.endsWith('/relayer/quote') ? cb('success200') : cb('nonSuccess400'));
+
+/** Both the direct-native fake (submit, quote) AND the npm-wrapper fake (submit-prefix) answer the same way. */
+function setBothResponders(fn: Responder): void {
+  setNativeResponder(fn);
+  setFakeNativeResponder(fn);
+}
 
 beforeEach(() => {
   resetNative();
+  resetFakeNative();
+  __setRNSslPinningNativeForTests(fakeRNSslPinningNative);
   resetA0PinnedControlForTests();
   resetA0ReadoutForTests();
+});
+afterEach(() => {
+  __setRNSslPinningNativeForTests(undefined);
 });
 
 /** Runs the control in a fresh module registry under the devnet APK's config. */
 async function underDevnetConfig(
-  respond: (url: string) => unknown[],
+  respond: Responder,
   deps: Parameters<Control['runA0PinnedControl']>[0] = {},
 ): Promise<{results: A0PinnedProbeResult[] | null; lines: string[]; calls: ReturnType<Realssl['nativeCalls']>}> {
   const lines: string[] = [];
   let run: Promise<A0PinnedProbeResult[] | null> = Promise.resolve(null);
   let lib: Realssl | undefined;
+  setFakeNativeResponder(respond); // the direct path (submit, quote) — globalThis-backed, survives isolateModules
   jest.isolateModules(() => {
     jest.doMock('react-native-config', () => ({__esModule: true, default: DEVNET_APK_CONFIG}));
     lib = require('../../../sslPinning/__testing__/realSslPinning') as Realssl;
     lib.resetNative();
-    lib.setNativeResponder(respond);
+    lib.setNativeResponder(respond); // the pre-fix path (submit-prefix) — the npm wrapper
     const m = require('../pinnedControl') as Control;
     run = m.runA0PinnedControl({readout: {sink: l => lines.push(l), now: () => AT, session: SESSION}, ...deps});
   });
   jest.dontMock('react-native-config');
   const results = await run;
-  return {results, lines, calls: lib!.nativeCalls()};
+  // chronological: the steps run submit, quote (direct path) THEN submit-prefix (the wrapper), in order
+  return {results, lines, calls: [...fakeNativeCalls(), ...lib!.nativeCalls()]};
 }
 
 describe('the contract with the desk (the hand-written sample)', () => {
@@ -122,13 +144,14 @@ describe('the three probes (submit, quote, the pre-fix negative control)', () =>
     });
   });
   it('THE LINE CAN FAIL: a library that resolved non-2xx would leave the pre-fix variant NOT throwing (the desk fails that)', async () => {
-    // a native module that reported the 400 through the SUCCESS callback
+    // this is specifically about the NPM WRAPPER's mapping (the pre-fix variant, submit-prefix,
+    // stays on it on purpose) — only setNativeResponder matters here, not the direct-path fake
     setNativeResponder(url => (url.endsWith('/quote') ? cb('success200') : [null, (cb('nonSuccess400')[0] as object)]));
     const results = await runA0PinnedControl({enabled: true, readout: {sink: () => undefined}});
     expect(results![2]).toMatchObject({probe: 'submit-prefix', status: 400, threw: false, lostStatus: false});
   });
   it('a pin failure on every request: each probe threw with pinFailure, never lostStatus', async () => {
-    setNativeResponder(() => cb('pinFailure'));
+    setBothResponders(() => cb('pinFailure'));
     const results = await runA0PinnedControl({enabled: true, readout: {sink: () => undefined}});
     expect(results!.map(r => [r.threw, r.pinFailure, r.lostStatus, r.status])).toEqual([
       [true, true, false, null],
@@ -137,31 +160,34 @@ describe('the three probes (submit, quote, the pre-fix negative control)', () =>
     ]);
   });
   it('a transport failure: threw, neither pinFailure nor lostStatus', async () => {
-    setNativeResponder(() => cb('transportFailure'));
+    setBothResponders(() => cb('transportFailure'));
     const results = await runA0PinnedControl({enabled: true, readout: {sink: () => undefined}});
     expect(results![0]).toMatchObject({threw: true, pinFailure: false, lostStatus: false});
   });
   it('one run at a time: a second call while the first is in flight sends nothing and returns null', async () => {
-    setNativeResponder(RELAYER);
+    setBothResponders(RELAYER);
     const a = runA0PinnedControl({enabled: true, readout: {sink: () => undefined}});
     const b = await runA0PinnedControl({enabled: true, readout: {sink: () => undefined}});
     expect(b).toBeNull();
     expect((await a)!).toHaveLength(3);
-    expect(nativeCalls()).toHaveLength(3);
+    // submit + quote via pinnedFetchDirect (the new fake), submit-prefix via the npm wrapper
+    expect(fakeNativeCalls()).toHaveLength(2);
+    expect(nativeCalls()).toHaveLength(1);
   });
 });
 
 function withRelayer(): Record<string, never> {
-  setNativeResponder(RELAYER);
+  setBothResponders(RELAYER);
   return {};
 }
 
 describe('the gate: nothing is sent outside a shielded devnet build', () => {
   it('under the PRODUCTION config (Jest\'s default) the default gate is closed: null, no request, no line', async () => {
-    setNativeResponder(RELAYER);
+    setBothResponders(RELAYER);
     const info = jest.spyOn(console, 'info').mockImplementation(() => undefined);
     try {
       await expect(runA0PinnedControl()).resolves.toBeNull();
+      expect(fakeNativeCalls()).toHaveLength(0);
       expect(nativeCalls()).toHaveLength(0);
       expect(info).not.toHaveBeenCalled();
     } finally {
@@ -178,7 +204,7 @@ describe('the gate: nothing is sent outside a shielded devnet build', () => {
 describe('only public values reach a line', () => {
   it('no body text, error message, header or unknown field — and an unknown outcome is "unrecognised"', async () => {
     const SENTINEL = 'sentinel-server-text-' + 'ab'.repeat(16);
-    setNativeResponder(url =>
+    setBothResponders(url =>
       url.endsWith('/quote')
         ? [null, {status: 200, bodyString: JSON.stringify({...JSON.parse((cb('success200')[1] as {bodyString: string}).bodyString), extra: SENTINEL}), headers: {'X-Leak': SENTINEL}}]
         : [{status: 400, bodyString: JSON.stringify({outcome: `x-${SENTINEL}`, error: SENTINEL}), headers: {'X-Leak': SENTINEL}}, null],
