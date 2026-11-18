@@ -44,6 +44,8 @@ export const MMKV_KEYS = {
   A0_NOTES: 'v1_a0_notes',
   /** The last A0 restore's R13 counters (tree tx count, duration), ENCRYPTED instance only. */
   A0_LAST_RESTORE: 'v1_a0_last_restore',
+  /** The account registry (spec §10): own accounts' schemes, roles and addresses, ENCRYPTED instance only. */
+  ACCOUNTS_REGISTRY: 'v1_accounts',
 
   // ─── Address Book [S] ───────────────────────────────────────────────
   ADDRESS_BOOK_PREFIX: 'v1_contacts_',
