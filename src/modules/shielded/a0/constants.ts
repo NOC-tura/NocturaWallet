@@ -1,8 +1,9 @@
 /**
  * The deployed A0 shielded pool on DEVNET — facts from the program side (spec 2026-11-08
- * shielded A0 M1 §1; their docs/zk-contract/devnet-a0-deployed-contract.json, the IDL
- * target/idl/shielded_pool.json sha256 cfd37078…, and programs/shielded-pool/src/lib.rs
- * `DepositCtx` at their HEAD).
+ * shielded A0 M1 §1; their docs/zk-contract/devnet-a0-deployed-contract.json, the IDL of the
+ * deployed binary docs/zk-contract/shielded-pool-a0-idl.json sha256 3ac8fda7… (f3f8eff; until the
+ * 2026-11-17 upgrade target/idl/shielded_pool.json cfd37078…, which differs only by the two
+ * appended errors 6011 / 6012), and programs/shielded-pool/src/lib.rs `DepositCtx` at their HEAD).
  *
  * THE BOUNDARY (§1: "the facts are theirs, the values are ours"). The names, ids, layouts and
  * discriminators below are facts. The four addresses that are VALUES of a derivation — the pool
@@ -139,4 +140,37 @@ export const A0_MERKLE_TREE = {
     rootHistory: 1296,
     rootHistoryHead: 3344,
   },
+} as const;
+
+/** The global nullifier-record PDA seed: ["nullifier", n] (n = 32 bytes, canonical BE). */
+export const A0_NULLIFIER_SEED = 'nullifier';
+/** The withdraw_change verifying-key PDA seed: ["wchange_vk", pool]. */
+export const A0_WCHANGE_VK_SEED = 'wchange_vk';
+
+/**
+ * The A0 relayer (spec §1 "Relayer", §6.4; the program side's relayer-a0-contract.md, frozen
+ * 2026-11-08 and amended for P1/P2; live on devnet since their coordinator 37ad673).
+ *
+ * `feePayer` is PINNED (controller ruling 9, M1c): a quote naming any other fee payer is refused,
+ * so a swapped relayer key costs a release, never a silent change of who signs our exits. The
+ * other three addresses are VALUES of a derivation, written as literals like the pool's above and
+ * derived with the real web3.js in `__tests__/relayerClient.golden.test.ts`:
+ *   feeDestination = ATA(feePayer, mint) (the program checks it on chain, AccountMismatch otherwise);
+ *   wchangeVk      = PDA(["wchange_vk", pool]).
+ * No grant bound is pinned (controller ruling 2): the floor is read from the chain at quote time
+ * (`getMinimumBalanceForRentExemption(0)` + one signature fee); only the contract's ceiling and
+ * the signature fee are constants.
+ */
+export const A0_RELAYER = {
+  feePayer: '3jvhiz9qcJAe2zGHvRAiRYXiaFCdjEQrB9KuE5NuFaGe',
+  /** ATA(feePayer, mint) — value. */
+  feeDestination: '9643JXJm5ZZwv8yaTozQ2qMeVw6xHQWhquGsD87knME9',
+  /** PDA(["wchange_vk", pool], programId) — value. */
+  wchangeVk: '9FMFVzo1ZKnrGc36te21evEwgSB5nv2FooY77RVJP7H',
+  /** the contract's sanity ceiling on `gasGrantLamports` (0.05 SOL, spec §6.4 m-1) */
+  maxGasGrantLamports: 50_000_000n,
+  /** one signature's fee: the grant must let the fresh account exist AND sign once (§6.4) */
+  signatureFeeLamports: 5_000n,
+  /** the contract's `validForSeconds` (§1): a quote valid longer than this is refused */
+  maxValidForSeconds: 60,
 } as const;

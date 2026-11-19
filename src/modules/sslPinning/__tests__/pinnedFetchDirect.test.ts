@@ -16,7 +16,7 @@
  */
 import {readFileSync} from 'fs';
 import {join} from 'path';
-import {__setRNSslPinningNativeForTests, pinnedFetchDirect, SSLPinningError} from '../pinnedFetch';
+import {__setRNSslPinningNativeForTests, pinnedFetchDirect, SSL_PINS, SSLPinningError} from '../pinnedFetch';
 import {fakeNativeCalls, fakeRNSslPinningNative, resetFakeNative, setFakeNativeCallback} from '../__testing__/fakeRNSslPinningNative';
 
 interface Recorded {
@@ -89,7 +89,7 @@ it('sends the same pins, method, headers (lower-cased) and timeout the native mo
   const [call] = fakeNativeCalls();
   expect(call!.url).toBe(URL);
   expect(call!.options).toMatchObject({method: 'POST', body: '{}', pkPinning: true, timeoutInterval: 42_000});
-  expect((call!.options.sslPinning as {certs: string[]}).certs).toHaveLength(3);
+  expect(call!.options.sslPinning).toEqual({certs: SSL_PINS});
   expect(call!.options.headers).toEqual({'content-type': 'application/json'});
 });
 

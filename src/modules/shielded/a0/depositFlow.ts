@@ -61,6 +61,7 @@ import {mmkvSecure} from '../../../store/mmkv/instances';
 import {A0, A0_CU} from './constants';
 import {a0RhoMarkerPda, buildA0DepositIx} from './depositIx';
 import {FIELD_MODULUS, toBe32Hex} from './fieldEquations';
+import {a0ProgramErrorOf, a0ProgramErrorText} from './programErrors';
 import {ensureA0KeyFiles, A0_NPUBLIC} from './keyAssets';
 import {
   A0NoteStoreError,
@@ -430,6 +431,9 @@ export interface A0SubmitOptions {
   bound?: A0StoreBinding;
 }
 
+/** The deposit's index in `[setComputeUnitLimit, deposit]` (`buildA0DepositTransaction`). */
+const A0_DEPOSIT_IX_INDEX = 1;
+
 /** The settle loop's pending pauses (R1-m7: a test's teardown clears them; RN's setTimeout
  *  returns a number, so there is no `unref`). */
 const settleTimers = new Set<ReturnType<typeof setTimeout>>();
@@ -525,7 +529,11 @@ async function submitOnce(
     // (its fee would be paid on chain even when it fails).
     await connection.sendRawTransaction(tx.serialize(), {skipPreflight: false, preflightCommitment: 'confirmed'});
   } catch (e) {
-    return {status: 'pending', signature, reason: 'send-failed', detail: e instanceof Error ? e.message : String(e)};
+    // A refusal by FeGSS… itself (the deposit is instruction 1, after the CU limit) is shown in
+    // the wallet's words (programErrors.ts — incl. 6011 / 6012 of the 2026-11-17 upgrade).
+    const program = a0ProgramErrorOf(e, A0_DEPOSIT_IX_INDEX);
+    const detail = program ? a0ProgramErrorText(program) : e instanceof Error ? e.message : String(e);
+    return {status: 'pending', signature, reason: 'send-failed', detail};
   }
   options.onStage?.('submitted', signature);
 

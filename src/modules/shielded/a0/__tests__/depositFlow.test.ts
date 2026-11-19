@@ -465,6 +465,22 @@ describe('submit refusals and outcomes that leave the note pending', () => {
     expect(loadA0NoteStore()).toEqual({nextDepositIndex: 1n, notes: []});
   });
 
+  it('a preflight refusal by FeGSS… itself (6011, the 2026-11-17 upgrade) → send-failed, its detail in the wallet’s words', async () => {
+    const p = await prepare();
+    // the runtime's text for the deposit (instruction 1, after the CU limit) raising 0x177b
+    net.sendError = 'Transaction simulation failed: Error processing Instruction 1: custom program error: 0x177b';
+    const out = await submit(p);
+    expect(out).toMatchObject({status: 'pending', reason: 'send-failed'});
+    expect((out as {detail?: string}).detail).toMatch(/^6011 CpiNotAllowed: The pool accepts this instruction only at the top level/);
+  });
+
+  it('a refusal at another instruction index is not attributed to the pool (the raw text stays)', async () => {
+    const p = await prepare();
+    net.sendError = 'Transaction simulation failed: Error processing Instruction 0: custom program error: 0x177b';
+    const out = await submit(p);
+    expect((out as {detail?: string}).detail).toMatch(/Instruction 0: custom program error: 0x177b/);
+  });
+
   it('a foreign deposit lands our rho between prepare and submit: our tx fails at init → pending; reconciled as foreign, dropped', async () => {
     const p = await prepare();
     net.landForeign({amount: 9n, rho: p.rho, commitment: other.commitment(9n, p.rho)});

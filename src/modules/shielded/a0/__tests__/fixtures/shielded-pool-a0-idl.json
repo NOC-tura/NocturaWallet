@@ -1015,6 +1015,16 @@
       "code": 6010,
       "name": "VkIncomplete",
       "msg": "Verifying key is only partially written — refusing to verify against it"
+    },
+    {
+      "code": 6011,
+      "name": "CpiNotAllowed",
+      "msg": "This instruction must be top level, not called by another program"
+    },
+    {
+      "code": 6012,
+      "name": "UnexpectedAccounts",
+      "msg": "Unexpected account beyond the instruction's account list"
     }
   ],
   "types": [
