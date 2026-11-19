@@ -145,7 +145,7 @@ describe('#18 for the unshield — the real stages, measured times, never a perc
     for (const s of ['sync', 'quote', 'approval', 'proof'] as const) {
       await step(ctl, s, 10);
       expect(r.getByTestId('unshield-hero-ring')).toBeTruthy();
-      expect(r.getByTestId('unshield-hero-ring-cpu')).toBeTruthy();
+      expect(r.getByTestId('unshield-hero-ring-cpu').children).toHaveLength(1); // the CPU glyph itself
     }
     await step(ctl, 'submit', 10);
     expect(r.queryByTestId('unshield-hero-ring')).toBeNull();

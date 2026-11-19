@@ -33,6 +33,7 @@ export function ProofHeroRing({tone, testID}: {tone: 'busy' | 'ready' | 'failed'
       ) : tone === 'ready' ? (
         <Check size={34} color={ACCENT} strokeWidth={2} />
       ) : (
+        // the glyph's wrapper carries the testID (an svg drops it in the test renderer)
         <View testID={testID ? `${testID}-cpu` : undefined}>
           <Cpu size={34} color={ACCENT} strokeWidth={1.75} />
         </View>
@@ -78,7 +79,9 @@ export function StageRow({
       <View
         className={cn('w-7 h-7 rounded-full items-center justify-center', isDone || isActive ? 'bg-accent-shielded-tint' : 'bg-bg-surface-2')}>
         {isDone ? (
-          <Check size={14} color={ACCENT} strokeWidth={2} />
+          <View testID={`${testID}-check`}>
+            <Check size={14} color={ACCENT} strokeWidth={2} />
+          </View>
         ) : isErrored ? (
           <AlertTriangle size={14} color={DANGER} strokeWidth={2} />
         ) : (
