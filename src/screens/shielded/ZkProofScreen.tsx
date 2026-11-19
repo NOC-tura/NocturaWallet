@@ -1,7 +1,7 @@
 import React, {useCallback, useEffect, useRef, useState} from 'react';
 import {View, Pressable, ScrollView, Alert, BackHandler} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
-import {ArrowLeft, ShieldCheck, Cpu, AlertTriangle, Check, X, RefreshCw} from 'lucide-react-native';
+import {ArrowLeft, ShieldCheck, RefreshCw} from 'lucide-react-native';
 import {Text} from '../../components/ui';
 import {ScreenSecurityManager} from '../../modules/screenSecurity/screenSecurityModule';
 import {prepareA0Deposit} from '../../modules/shielded/a0/depositFlow';
@@ -11,6 +11,8 @@ import {keychainManager} from '../../modules/keychain/keychainModule';
 import {mnemonicToSeed} from '../../modules/keyDerivation/mnemonicUtils';
 import {getConnection} from '../../modules/solana/connection';
 import type {ShieldIntent} from '../../types/shield';
+import {ProofHeroRing, StageRow} from './shieldedParts';
+import type {StageRowStatus} from './shieldedParts';
 
 /**
  * #18 zk-proof — mirror /home/user/Downloads/index.html §s18 (+ screen.md #18), for the A0 deposit
@@ -38,7 +40,6 @@ import type {ShieldIntent} from '../../types/shield';
  */
 
 const ACCENT = '#5BE3C2';
-const DANGER = '#FF5C6A';
 const securityManager = new ScreenSecurityManager();
 
 interface ZkProofScreenProps {
@@ -220,19 +221,7 @@ export function ZkProofScreen({amount, onReady, onCancel}: ZkProofScreenProps) {
           className={`items-center mt-4 p-5 rounded-lg border ${
             phase.kind === 'failed' ? 'border-[rgba(255,92,106,0.32)]' : 'border-[rgba(91,227,194,0.32)]'
           }`}>
-          <View
-            className={`rounded-full items-center justify-center border ${
-              phase.kind === 'failed' ? 'border-danger' : 'border-accent-shielded'
-            }`}
-            style={{width: 72, height: 72}}>
-            {phase.kind === 'failed' ? (
-              <X size={34} color={DANGER} strokeWidth={2} />
-            ) : phase.kind === 'ready' ? (
-              <Check size={34} color={ACCENT} strokeWidth={2} />
-            ) : (
-              <Cpu size={34} color={ACCENT} strokeWidth={1.75} />
-            )}
-          </View>
+          <ProofHeroRing tone={phase.kind === 'failed' ? 'failed' : phase.kind === 'ready' ? 'ready' : 'busy'} />
           <Text
             variant="h2"
             testID="zk-hero"
@@ -251,7 +240,7 @@ export function ZkProofScreen({amount, onReady, onCancel}: ZkProofScreenProps) {
 
         <View className="mt-6 gap-3">
           {rows.map(r => (
-            <StageRow key={r.num} {...r} />
+            <StageRow key={r.num} testID={`zk-stage-${r.num}`} {...r} />
           ))}
         </View>
       </ScrollView>
@@ -310,7 +299,7 @@ function heroOf(phase: Phase): {label: string; sub: string} {
 interface RowView {
   num: Row;
   title: string;
-  status: 'pending' | 'active' | 'done' | 'errored' | 'skipped';
+  status: StageRowStatus;
   meta: string;
   mark: string;
 }
@@ -344,45 +333,4 @@ function rowOf(
     return {num, title, status: 'active', meta: 'waiting for you to unlock', mark: '…'};
   }
   return {num, title, status: 'pending', meta: '— · pending', mark: '·'};
-}
-
-function StageRow({num, title, status, meta, mark}: RowView) {
-  const isActive = status === 'active';
-  const isDone = status === 'done';
-  const isErrored = status === 'errored';
-  const containerCls = isActive
-    ? 'bg-[rgba(91,227,194,0.08)] border border-[rgba(91,227,194,0.32)]'
-    : isErrored
-      ? 'bg-[rgba(255,92,106,0.08)] border border-[rgba(255,92,106,0.32)]'
-      : 'bg-bg-surface-1';
-  const discCls = isDone || isActive ? 'bg-accent-shielded-tint' : 'bg-bg-surface-2';
-  return (
-    <View
-      testID={`zk-stage-${num}`}
-      accessibilityLabel={`${title}: ${status}`}
-      className={`flex-row items-center gap-3 p-3 rounded-md ${containerCls} ${status === 'skipped' ? 'opacity-50' : ''}`}>
-      <View className={`w-7 h-7 rounded-full items-center justify-center ${discCls}`}>
-        {isDone ? (
-          <Check size={14} color={ACCENT} strokeWidth={2} />
-        ) : isErrored ? (
-          <AlertTriangle size={14} color={DANGER} strokeWidth={2} />
-        ) : (
-          <Text variant="body-sm" mono numeral className={isActive ? 'text-accent-shielded' : 'text-fg-tertiary'}>
-            {num}
-          </Text>
-        )}
-      </View>
-      <View className="flex-1">
-        <Text variant="body-sm" className="text-fg-primary">
-          {title}
-        </Text>
-        <Text variant="caption" className="text-fg-tertiary" testID={`zk-stage-${num}-meta`}>
-          {meta}
-        </Text>
-      </View>
-      <Text variant="body-sm" mono numeral className={isErrored ? 'text-danger' : 'text-fg-tertiary'}>
-        {mark}
-      </Text>
-    </View>
-  );
 }

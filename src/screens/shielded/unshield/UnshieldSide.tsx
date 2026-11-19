@@ -1,4 +1,4 @@
-import React, {useCallback, useEffect, useRef, useState} from 'react';
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {View, Pressable, TextInput, ScrollView} from 'react-native';
 import {PublicKey} from '@solana/web3.js';
 import {AlertTriangle, Check, RefreshCw, Shield, UserPlus, Wallet, Send} from 'lucide-react-native';
@@ -154,16 +154,21 @@ export function UnshieldSide({view, shieldedLine, onUnshield, focusKey = 0}: Uns
   }, [offer]);
 
   const ready = view.kind === 'ready';
-  let source: A0UnshieldSource | null = null;
-  let notesError: string | null = null;
-  if (ready && q) {
+  // M-9: the note store is read when the startup view, the quote or the focus changes — never on a
+  // keystroke (the view object is replaced on every startup / Check-again refresh)
+  const {source, notesError} = useMemo((): {source: A0UnshieldSource | null; notesError: string | null} => {
+    if (!(ready && q)) {
+      return {source: null, notesError: null};
+    }
     try {
-      source = a0UnshieldSource(loadA0NoteStore().notes, q.fee);
+      return {source: a0UnshieldSource(loadA0NoteStore().notes, q.fee), notesError: null};
     } catch (e) {
       const t = a0ErrorText(e);
-      notesError = t.code ? `${t.code} · ${t.message}` : t.message;
+      return {source: null, notesError: t.code ? `${t.code} · ${t.message}` : t.message};
     }
-  }
+    // `view` stands for a refreshed store (a new object per refresh); focusKey for a return to #16
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, q, focusKey]);
   const vault = view.kind === 'ready' ? view.unspent : null;
   const max = source?.maxAmount ?? 0n;
 
@@ -261,10 +266,9 @@ export function UnshieldSide({view, shieldedLine, onUnshield, focusKey = 0}: Uns
               accessibilityLabel="Amount"
               testID="unshield-amount-input"
               className={cn(
-                'font-geist text-balance-xl text-center min-w-[80px]',
+                'font-geist text-balance-xl text-center min-w-[120px]',
                 overMax ? 'text-danger' : 'text-fg-primary',
               )}
-              style={{minWidth: 120}}
             />
             <Text variant="h2" className={cn(overMax ? 'text-danger' : 'text-fg-secondary')}>
               {sym}

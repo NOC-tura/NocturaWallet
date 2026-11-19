@@ -349,15 +349,18 @@ function NotificationsScreenNav() {
   return <NotificationsScreen onBack={() => navigation.goBack()} />;
 }
 
-// #16 — both sides (M1c Task 8). `direction: 'public'` opens the unshield side; it comes only
-// from inside the app (the deep link `deposit` carries no direction). Each focus bumps
-// `focusKey`: the unshield CTA, disabled on tap, is enabled again when the user comes back.
+// #16 — both sides (M1c Task 8). `direction: 'public'` opens the unshield side ONLY on a route
+// that in-app navigation created: React Navigation copies a deep link's query into the params and
+// marks such a route with the `path` it came from, so a linked route always opens "Make private"
+// (fix round 1, I-1; deepLinkConfig also pins the param). Each focus bumps `focusKey`: the unshield
+// CTA, disabled on tap, is enabled again when the user comes back.
 function ShieldUnshieldScreenNav({navigation, route}: NativeStackScreenProps<RootStackParamList, 'ShieldUnshieldModal'>) {
   const [focusKey, setFocusKey] = React.useState(0);
   React.useEffect(() => navigation.addListener('focus', () => setFocusKey(k => k + 1)), [navigation]);
+  const fromInsideTheApp = route.path === undefined;
   return (
     <ShieldUnshieldScreen
-      initialDirection={route.params?.direction === 'public' ? 'public' : 'private'}
+      initialDirection={fromInsideTheApp && route.params?.direction === 'public' ? 'public' : 'private'}
       focusKey={focusKey}
       onBack={() => navigation.goBack()}
       onShield={amount => navigation.navigate('ZkProofModal', {amount})}

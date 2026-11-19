@@ -1,8 +1,8 @@
 import React, {useCallback, useEffect, useRef, useState} from 'react';
-import {View, Pressable, ScrollView, ActivityIndicator, Alert, BackHandler, Linking} from 'react-native';
+import {View, Pressable, ScrollView, Alert, BackHandler, Linking} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import Clipboard from '@react-native-clipboard/clipboard';
-import {AlertTriangle, Check, Clock, Copy, FileText, ShieldCheck, X, ArrowLeft} from 'lucide-react-native';
+import {AlertTriangle, Check, FileText, ShieldCheck, ArrowLeft} from 'lucide-react-native';
 import {Text} from '../../../components/ui';
 import {cn} from '../../../utils/cn';
 import {formatTokenAmount} from '../../../utils/parseTokenAmount';
@@ -22,6 +22,8 @@ import {explorerTxUrl} from '../../../constants/chain';
 import {useA0Shielded} from '../../../hooks/useA0Shielded';
 import {CheckAgainLink} from '../../../components/CheckAgainLink';
 import {A0_VERIFY_REFUSAL_COPY} from './unshieldCopy';
+import {MetaRow, ProofHeroRing, StageRow, StatusRing, shortSignature} from '../shieldedParts';
+import type {StageRowStatus, StatusTone} from '../shieldedParts';
 
 /**
  * The A0 unshield run: #18 zk-proof and #21 tx-status for the unshield (spec §6 steps 3–8, §11;
@@ -125,10 +127,6 @@ function capitalised(text: string): string {
   return text.length > 0 ? `${text[0]!.toUpperCase()}${text.slice(1)}` : text;
 }
 
-function shortSignature(sig: string): string {
-  return sig.length > 16 ? `${sig.slice(0, 6)}…${sig.slice(-4)}` : sig;
-}
-
 export function UnshieldRunScreen({request, onDone, onBack}: UnshieldRunScreenProps) {
   const [phase, setPhase] = useState<Phase>({kind: 'auth'});
   const [now, setNow] = useState(() => Date.now());
@@ -170,6 +168,10 @@ export function UnshieldRunScreen({request, onDone, onBack}: UnshieldRunScreenPr
       at.stage = stage;
       // carry 9: from the submit on, the pending unshield may stand. Only a NEW approval proves the
       // flow reverted it (R3-N4's re-sync comes BEFORE its revert, so `sync` proves nothing)
+      // Known over-statement, kept (review M-1, the safe direction): a throw AFTER the flow already
+      // reverted — E_A0_RELAYER_URL at the submit, E_A0_UNSHIELD_NOTE_LEAF from the new path, or
+      // E_A0_UNSHIELD_ROUNDS at the loop top after a proven-dead round — still reads "kept pending";
+      // "Check again" then finds nothing pending. Never the other way round.
       if (stage === 'submit') recorded = true;
       if (stage === 'approval') recorded = false;
       if (stage === 'approval') {
@@ -220,9 +222,9 @@ export function UnshieldRunScreen({request, onDone, onBack}: UnshieldRunScreenPr
   // #18's privacy posture (screenshots blocked) while the proof part shows; #21 is not FLAG_SECURE
   useEffect(() => {
     if (!proofLayout) return;
-    void securityManager.enableSecureScreen();
+    securityManager.enableSecureScreen().catch(() => undefined);
     return () => {
-      void securityManager.disableSecureScreen();
+      securityManager.disableSecureScreen().catch(() => undefined);
     };
   }, [proofLayout]);
 
@@ -270,9 +272,10 @@ export function UnshieldRunScreen({request, onDone, onBack}: UnshieldRunScreenPr
             ZK
           </Text>
         </View>
-        <ScrollView style={{flex: 1}} contentContainerStyle={{paddingHorizontal: 20, paddingBottom: 24}}>
+        <ScrollView className="flex-1" contentContainerClassName="px-5 pb-6">
           <View className="items-center mt-4 p-5 rounded-lg border border-[rgba(91,227,194,0.32)]">
-            <Text variant="h2" testID="unshield-hero" className="text-center text-fg-primary">
+            <ProofHeroRing tone="busy" testID="unshield-hero-ring" />
+            <Text variant="h2" testID="unshield-hero" className="mt-4 text-center text-fg-primary">
               {hero.label}
             </Text>
             <Text variant="body-sm" testID="unshield-hero-sub" className="mt-2 text-center max-w-xs text-fg-secondary">
@@ -284,7 +287,13 @@ export function UnshieldRunScreen({request, onDone, onBack}: UnshieldRunScreenPr
           </View>
           <View className="mt-6 gap-3">
             {PROOF_ROWS.map((s, i) => (
-              <StageRow key={s} num={i + 1} stage={s} {...rowOf(s, phase, start.current, done.current, now)} />
+              <StageRow
+                key={s}
+                testID={`unshield-stage-${s}`}
+                num={i + 1}
+                title={ROW_TITLE[s]}
+                {...rowOf(s, phase, start.current, done.current, now)}
+              />
             ))}
           </View>
         </ScrollView>
@@ -303,7 +312,7 @@ export function UnshieldRunScreen({request, onDone, onBack}: UnshieldRunScreenPr
     phase.kind === 'done' && 'signature' in phase.outcome && phase.outcome.signature ? phase.outcome.signature : null;
   const pending =
     (phase.kind === 'done' && (phase.outcome.status === 'pending' || (phase.outcome.status === 'landed-unverified' && phase.outcome.note === 'pending'))) ||
-    (phase.kind === 'refused' && phase.recorded);
+    (phase.kind === 'refused' && phase.recorded && phase.code !== 'E_A0_STORE_CHANGED'); // M-5: not this wallet's to check
   const nothingSent =
     (phase.kind === 'done' && phase.outcome.status === 'not-sent') || (phase.kind === 'refused' && !phase.recorded);
 
@@ -339,7 +348,7 @@ export function UnshieldRunScreen({request, onDone, onBack}: UnshieldRunScreenPr
 
       <ScrollView contentContainerClassName="flex-grow items-center px-5 pb-8">
         <View className="items-center justify-center py-8 gap-5 w-full">
-          <Ring tone={view.tone} />
+          <StatusRing tone={view.tone} okIcon="check" />
           <Text
             variant="h1"
             testID="unshield-status-title"
@@ -355,7 +364,7 @@ export function UnshieldRunScreen({request, onDone, onBack}: UnshieldRunScreenPr
             )}>
             {view.title}
           </Text>
-          <Text variant="body-sm" className="text-center text-fg-secondary" style={{maxWidth: 320}} testID="unshield-status-sub">
+          <Text variant="body-sm" className="text-center text-fg-secondary max-w-[320px]" testID="unshield-status-sub">
             {view.sub}
           </Text>
         </View>
@@ -481,8 +490,9 @@ function proofHero(stage: A0UnshieldStage | null, round: number): {label: string
 }
 
 interface RowView {
-  status: 'pending' | 'active' | 'done';
+  status: StageRowStatus;
   meta: string;
+  mark: string;
 }
 
 function rowOf(
@@ -495,59 +505,20 @@ function rowOf(
   const a = start[s];
   const d = done[s];
   if (a !== undefined && d !== undefined) {
-    return {status: 'done', meta: `done · ${seconds(d - a)}`};
+    return {status: 'done', meta: `done · ${seconds(d - a)}`, mark: '✓'};
   }
   if (phase.kind === 'running' && phase.stage === s && a !== undefined) {
-    return {status: 'active', meta: `${ROW_ACTIVE[s]} · ${seconds(now - a)}`};
+    return {status: 'active', meta: `${ROW_ACTIVE[s]} · ${seconds(now - a)}`, mark: '…'};
   }
   if (phase.kind === 'auth' && s === 'sync') {
-    return {status: 'active', meta: 'waiting for you to unlock'};
+    return {status: 'active', meta: 'waiting for you to unlock', mark: '…'};
   }
-  return {status: 'pending', meta: '— · pending'};
-}
-
-function StageRow({num, stage, status, meta}: RowView & {num: number; stage: A0UnshieldStage}) {
-  const isActive = status === 'active';
-  const isDone = status === 'done';
-  return (
-    <View
-      testID={`unshield-stage-${stage}`}
-      accessibilityLabel={`${ROW_TITLE[stage]}: ${status}`}
-      className={cn(
-        'flex-row items-center gap-3 p-3 rounded-md',
-        isActive ? 'bg-[rgba(91,227,194,0.08)] border border-[rgba(91,227,194,0.32)]' : 'bg-bg-surface-1',
-      )}>
-      <View
-        className={cn(
-          'w-7 h-7 rounded-full items-center justify-center',
-          isDone || isActive ? 'bg-accent-shielded-tint' : 'bg-bg-surface-2',
-        )}>
-        {isDone ? (
-          <Check size={14} color={ACCENT} strokeWidth={2} />
-        ) : (
-          <Text variant="body-sm" mono numeral className={isActive ? 'text-accent-shielded' : 'text-fg-tertiary'}>
-            {num}
-          </Text>
-        )}
-      </View>
-      <View className="flex-1">
-        <Text variant="body-sm" className="text-fg-primary">
-          {ROW_TITLE[stage]}
-        </Text>
-        <Text variant="caption" className="text-fg-tertiary" testID={`unshield-stage-${stage}-meta`}>
-          {meta}
-        </Text>
-      </View>
-      <Text variant="body-sm" mono numeral className="text-fg-tertiary">
-        {isDone ? '✓' : isActive ? '…' : '·'}
-      </Text>
-    </View>
-  );
+  return {status: 'pending', meta: '— · pending', mark: '·'};
 }
 
 // ── #21: the status part ─────────────────────────────────────────────────────
 
-type Tone = 'busy' | 'ok' | 'warn' | 'bad';
+type Tone = StatusTone;
 
 interface StatusView {
   title: string;
@@ -558,6 +529,9 @@ interface StatusView {
   loud: string | null;
   lines: {id: string; text: string; warn?: boolean}[];
 }
+
+/** The start of `unshieldFlow`'s own-account refusals (`ownAccountRefusal`: "your main account", "an account of this wallet"). */
+const OWN_ACCOUNT_REFUSAL = 'that address is ';
 
 const KEPT =
   'Your note is kept pending on this device and is decided from the chain: the next time the wallet starts, or when you tap Check again. Nothing is sent twice.';
@@ -619,9 +593,10 @@ function statusView(
           tone: 'bad',
         };
       }
-      if (phase.code === 'E_A0_UNSHIELD_DESTINATION') {
-        // carry 3: the flow's own refusal (it names the account's role), said as it is
-        return {...base, title: 'Not sent', sub: `${capitalised(phase.message)}. Nothing was sent.`, tone: 'bad'};
+      if (phase.code === 'E_A0_UNSHIELD_DESTINATION' && phase.message.startsWith(OWN_ACCOUNT_REFUSAL)) {
+        // carry 3: the flow's own-account refusal (it names the account's role), said as it is, the
+        // code kept (M-7); any other destination refusal takes the generic form below
+        return {...base, title: 'Not sent', sub: `${head}${capitalised(phase.message)}. Nothing was sent.`, tone: 'bad'};
       }
       return {...base, title: 'Not sent', sub: `${head}${phase.message}. Nothing was sent.`, tone: 'bad'};
     }
@@ -701,56 +676,4 @@ function statusView(
       }
     }
   }
-}
-
-function Ring({tone}: {tone: Tone}) {
-  if (tone === 'ok') {
-    return (
-      <View className="w-32 h-32 rounded-full items-center justify-center border-2 border-accent-shielded bg-[rgba(91,227,194,0.10)]">
-        <Check size={56} color={ACCENT} strokeWidth={2} />
-      </View>
-    );
-  }
-  if (tone === 'bad') {
-    return (
-      <View className="w-32 h-32 rounded-full items-center justify-center border-2 border-danger bg-[rgba(248,113,113,0.10)]">
-        <X size={56} color="#F87171" strokeWidth={2} />
-      </View>
-    );
-  }
-  if (tone === 'warn') {
-    return (
-      <View
-        className="w-32 h-32 rounded-full items-center justify-center bg-[rgba(242,181,59,0.08)]"
-        style={{borderWidth: 1.5, borderColor: '#F2B53B', borderStyle: 'dashed'}}>
-        <Clock size={52} color="#F2B53B" strokeWidth={1.75} />
-      </View>
-    );
-  }
-  return (
-    <View className="w-32 h-32 rounded-full items-center justify-center border border-[rgba(91,227,194,0.35)]">
-      <ActivityIndicator size="large" color={ACCENT} />
-    </View>
-  );
-}
-
-function MetaRow({label, value, onCopy}: {label: string; value: string; onCopy?: () => void}) {
-  return (
-    <View className="flex-row items-center gap-3 py-3 border-t border-bg-surface-3">
-      <Text variant="overline" className="text-fg-tertiary w-[76px]">
-        {label}
-      </Text>
-      <Text variant="body-sm" className="flex-1 font-geist-mono text-fg-secondary" numberOfLines={2}>
-        {value}
-      </Text>
-      {onCopy ? (
-        <Pressable
-          onPress={onCopy}
-          className="w-8 h-8 rounded-sm items-center justify-center bg-bg-surface-2"
-          accessibilityLabel={`Copy ${label}`}>
-          <Copy size={14} color="#A8ACB5" strokeWidth={1.75} />
-        </Pressable>
-      ) : null}
-    </View>
-  );
 }

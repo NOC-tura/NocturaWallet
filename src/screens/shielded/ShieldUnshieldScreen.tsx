@@ -28,8 +28,9 @@ import type {A0UnshieldDestination} from '../../modules/shielded/a0/unshieldFlow
  * THE UNSHIELD SIDE (M1c Task 8; spec §12's "hidden until its plan lands" ends for it): the "Make
  * public" tab and `./unshield/UnshieldSide.tsx` (the destination choice, the warnings, the relayer
  * quote). The route exists only in the shielded (devnet) build and no deep link opens this side:
- * `noctura://deposit` opens "Make private"; `{direction: 'public'}` comes only from inside the
- * app. The direction tabs flip the sub-region and push no route (the design).
+ * `noctura://deposit` opens "Make private" whatever its query says (`deepLinkConfig` pins
+ * `direction`; the Navigator honours `initialDirection: 'public'` only on a route in-app navigation
+ * created — fix round 1, I-1). The direction tabs flip the sub-region and push no route (the design).
  *
  * Built from the design's states 1 (idle), 3 (amount entered + fees) and 4 (insufficient), plus the
  * states the A0 flow adds (undrawn, for the owner's visual pass): the shielded balance line and its

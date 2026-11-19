@@ -12,10 +12,15 @@ import {isPresaleEnabled} from '../constants/chain';
 // noctura://deposit would open a shielded screen directly, bypassing the
 // FEATURES.shielded flag (NavigationContainer linking resolves these paths
 // regardless of in-app UI guards). In the devnet build `deposit` opens #16's
-// shield side; there is NO `withdraw` or `transfer` link: the unshield side and
-// the shielded transfer are hidden until their plans land (spec §12), and a
-// path with no config entry never reaches a shielded screen.
-const shieldedDeepLinks = isShieldedEnabled() ? {ShieldUnshieldModal: 'deposit' as const} : {};
+// shield side and ONLY that side: React Navigation copies a link's query into the
+// route's params, so `direction` is pinned to 'private' here whatever the link
+// carries (M1c Task 8 fix round 1, I-1: `deposit?direction=public` must not open
+// the unshield side, which asks the relayer for a quote). Only in-app navigation
+// sets `direction: 'public'`. There is NO `withdraw`, `unshield` or `transfer`
+// link, and a path with no config entry never reaches a shielded screen.
+const shieldedDeepLinks = isShieldedEnabled()
+  ? {ShieldUnshieldModal: {path: 'deposit', parse: {direction: (): 'private' => 'private'}}}
+  : {};
 
 // The Phase 1 program's links (presale, staking, the presale referral) exist only where presale
 // does — mainnet (S13); in the devnet build their routes are not registered either.

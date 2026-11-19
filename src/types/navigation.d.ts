@@ -18,7 +18,9 @@ export type RootStackParamList = {
   ScanModal: undefined; // QR scanner (#14)
   NotificationsModal: undefined; // Notifications inbox (#29)
   AddressBookModal: undefined; // Saved contacts (#15)
-  // #16 — both sides (M1c Task 8); no deep link opens 'public' (deepLinkConfig maps only 'deposit')
+  // #16 — both sides (M1c Task 8). 'public' is honoured only on a route in-app navigation created:
+  // a deep link's query lands here too, so deepLinkConfig pins `direction` to 'private' and the
+  // Navigator ignores it on any route that carries a link `path` (fix round 1, I-1)
   ShieldUnshieldModal: {direction?: 'private' | 'public'} | undefined;
   TransactionHistory: undefined;
   ShieldedExplainer: undefined;

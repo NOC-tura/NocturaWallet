@@ -1,8 +1,8 @@
 import React, {useEffect, useRef, useState} from 'react';
-import {View, Pressable, ActivityIndicator, Linking, ScrollView, BackHandler, Alert} from 'react-native';
+import {View, Pressable, Linking, ScrollView, BackHandler, Alert} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import Clipboard from '@react-native-clipboard/clipboard';
-import {Check, X, Clock, Copy, ShieldCheck, Lock, FileText} from 'lucide-react-native';
+import {Check, ShieldCheck, FileText} from 'lucide-react-native';
 import {Text, Button} from '../../components/ui';
 import {cn} from '../../utils/cn';
 import {formatTokenAmount} from '../../utils/parseTokenAmount';
@@ -23,6 +23,7 @@ import {getConnection} from '../../modules/solana/connection';
 import type {ShieldIntent} from '../../types/shield';
 import {A0} from '../../modules/shielded/a0/constants';
 import {explorerTxUrl} from '../../constants/chain';
+import {MetaRow, StatusRing, shortSignature} from './shieldedParts';
 
 /**
  * #21 tx-status for the A0 deposit — mirror /home/user/Downloads/index.html §s21: the loading state
@@ -170,7 +171,7 @@ export function ShieldStatusScreen({intent, onDone}: ShieldStatusScreenProps) {
 
       <ScrollView contentContainerClassName="flex-grow items-center px-5 pb-8">
         <View className="items-center justify-center py-8 gap-5 w-full">
-          <Ring tone={view.tone} />
+          <StatusRing tone={view.tone} okIcon="lock" />
           <Text
             variant="h1"
             testID="shield-status-title"
@@ -331,60 +332,4 @@ function viewOf(phase: Phase): {title: string; sub: string; tone: Tone; badge: s
       };
     }
   }
-}
-
-function shortSignature(sig: string): string {
-  return sig.length > 16 ? `${sig.slice(0, 6)}…${sig.slice(-4)}` : sig;
-}
-
-function Ring({tone}: {tone: Tone}) {
-  if (tone === 'ok') {
-    return (
-      <View className="w-32 h-32 rounded-full items-center justify-center border-2 border-accent-shielded bg-[rgba(91,227,194,0.10)]">
-        <Lock size={52} color="#5BE3C2" strokeWidth={1.75} />
-      </View>
-    );
-  }
-  if (tone === 'bad') {
-    return (
-      <View className="w-32 h-32 rounded-full items-center justify-center border-2 border-danger bg-[rgba(248,113,113,0.10)]">
-        <X size={56} color="#F87171" strokeWidth={2} />
-      </View>
-    );
-  }
-  if (tone === 'warn') {
-    return (
-      <View
-        className="w-32 h-32 rounded-full items-center justify-center bg-[rgba(242,181,59,0.08)]"
-        style={{borderWidth: 1.5, borderColor: '#F2B53B', borderStyle: 'dashed'}}>
-        <Clock size={52} color="#F2B53B" strokeWidth={1.75} />
-      </View>
-    );
-  }
-  return (
-    <View className="w-32 h-32 rounded-full items-center justify-center border border-[rgba(91,227,194,0.35)]">
-      <ActivityIndicator size="large" color="#5BE3C2" />
-    </View>
-  );
-}
-
-function MetaRow({label, value, onCopy}: {label: string; value: string; onCopy?: () => void}) {
-  return (
-    <View className="flex-row items-center gap-3 py-3 border-t border-bg-surface-3">
-      <Text variant="overline" className="text-fg-tertiary w-[76px]">
-        {label}
-      </Text>
-      <Text variant="body-sm" className="flex-1 font-geist-mono text-fg-secondary" numberOfLines={2}>
-        {value}
-      </Text>
-      {onCopy ? (
-        <Pressable
-          onPress={onCopy}
-          className="w-8 h-8 rounded-sm items-center justify-center bg-bg-surface-2"
-          accessibilityLabel={`Copy ${label}`}>
-          <Copy size={14} color="#A8ACB5" strokeWidth={1.75} />
-        </Pressable>
-      ) : null}
-    </View>
-  );
 }

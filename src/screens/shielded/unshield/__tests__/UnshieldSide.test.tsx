@@ -50,9 +50,13 @@ jest.mock('../../../../modules/shielded/a0/relayerClient', () => ({
   fetchA0RelayerQuote: (...a: unknown[]) => mockQuote(...a),
 }));
 let mockNotes: A0Note[] = [];
+const mockNoteReads = {n: 0};
 jest.mock('../../../../modules/shielded/a0/noteStore', () => ({
   ...jest.requireActual('../../../../modules/shielded/a0/noteStore'),
-  loadA0NoteStore: () => ({nextDepositIndex: 2n, notes: mockNotes}),
+  loadA0NoteStore: () => {
+    mockNoteReads.n += 1;
+    return {nextDepositIndex: 2n, notes: mockNotes};
+  },
 }));
 let mockScheme: TransparentScheme = {kind: 'slip10', account: 0};
 jest.mock('../../../../modules/keyDerivation/derivationScheme', () => ({
@@ -363,5 +367,21 @@ describe('#16 unshield — the CTA (cardinal rule 6; Task 7: the startup state)'
     clock += 1;
     fireEvent.press(r.getByTestId('unshield-cta'));
     expect(onUnshield).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('#16 unshield — the note read (fix round 1, M-9)', () => {
+  it('typing an amount does not re-read the note store; a new quote or a refocus does', async () => {
+    const r = await screen();
+    const before = mockNoteReads.n;
+    expect(before).toBeGreaterThan(0); // non-vacuous: the source was read
+    for (const t of ['1', '1.', '1.2', '1.25']) {
+      fireEvent.changeText(r.getByTestId('unshield-amount-input'), t);
+    }
+    expect(mockNoteReads.n).toBe(before);
+    r.rerender(
+      <ShieldUnshieldScreen onBack={jest.fn()} onShield={jest.fn()} onUnshield={onUnshield} initialDirection="public" focusKey={1} />,
+    );
+    expect(mockNoteReads.n).toBeGreaterThan(before);
   });
 });

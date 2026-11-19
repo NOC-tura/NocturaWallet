@@ -139,6 +139,18 @@ describe('#18 for the unshield — the real stages, measured times, never a perc
     expect(r.queryByText(/%/)).toBeNull();
   });
 
+  it('fix round 1 I-2: #18 draws the design\'s hero ring (the CPU glyph) while unlocking and in every stage before the submit; #21 does not', async () => {
+    const {r, ctl} = await run();
+    expect(r.getByTestId('unshield-hero-ring')).toBeTruthy(); // the keychain prompt (auth)
+    for (const s of ['sync', 'quote', 'approval', 'proof'] as const) {
+      await step(ctl, s, 10);
+      expect(r.getByTestId('unshield-hero-ring')).toBeTruthy();
+      expect(r.getByTestId('unshield-hero-ring-cpu')).toBeTruthy();
+    }
+    await step(ctl, 'submit', 10);
+    expect(r.queryByTestId('unshield-hero-ring')).toBeNull();
+  });
+
   it('submit → #21 layout ("Submitting…"), confirm → "Confirming…"; FLAG_SECURE is released for #21', async () => {
     const {r, ctl} = await run();
     await step(ctl, 'sync');
@@ -362,11 +374,13 @@ describe('#21 for the unshield — every outcome said as what it is', () => {
     expect(r.getByTestId('unshield-check-again')).toBeTruthy();
   });
 
-  it('E_A0_STORE_CHANGED after the submit → "Not in this wallet"', async () => {
+  it('E_A0_STORE_CHANGED after the submit → "Not in this wallet", and no "Check again" (it would reconcile the replacing wallet; M-5)', async () => {
     const {r, ctl} = await run();
     await step(ctl, 'submit');
     await act(async () => ctl.reject(Object.assign(new Error('E_A0_STORE_CHANGED: replaced'), {code: 'E_A0_STORE_CHANGED'})));
     expect(title(r)).toBe('Not in this wallet');
+    expect(r.queryByTestId('unshield-check-again')).toBeNull();
+    expect(r.queryByText(/Not sent|Nothing was sent/)).toBeNull();
   });
 
   it('carry 9: a throw in the re-sync that follows a submit (the revert not yet proven) → "Not confirmed yet", never "Not sent"', async () => {
@@ -448,7 +462,7 @@ describe('#21 for the unshield — every outcome said as what it is', () => {
     );
     expect(title(r)).toBe('Not sent');
     expect(sub(r)).toBe(
-      'That address is an account of this wallet not offered as a destination (slip10:3, fresh-exit). Nothing was sent.',
+      'E_A0_UNSHIELD_DESTINATION · That address is an account of this wallet not offered as a destination (slip10:3, fresh-exit). Nothing was sent.',
     );
     expect(r.getByTestId('unshield-status-back')).toBeTruthy();
   });
@@ -462,7 +476,19 @@ describe('#21 for the unshield — every outcome said as what it is', () => {
         }),
       ),
     );
-    expect(sub(r)).toBe('That address is your main account (slip10:0): choose "My main account". Nothing was sent.');
+    expect(sub(r)).toBe('E_A0_UNSHIELD_DESTINATION · That address is your main account (slip10:0): choose "My main account". Nothing was sent.');
+  });
+
+  it.each([
+    'the destination is not a public key',
+    'no fresh account: no-grant',
+  ])('M-7: E_A0_UNSHIELD_DESTINATION that is NOT the own-account refusal ("%s") keeps the generic code · message form', async message => {
+    const {r, ctl} = await run();
+    await act(async () =>
+      ctl.reject(Object.assign(new Error(`E_A0_UNSHIELD_DESTINATION: ${message}`), {code: 'E_A0_UNSHIELD_DESTINATION'})),
+    );
+    expect(title(r)).toBe('Not sent');
+    expect(sub(r)).toBe(`E_A0_UNSHIELD_DESTINATION · ${message}. Nothing was sent.`);
   });
 
   it('a malformed amount param → "Not sent" E_A0_UNSHIELD_AMOUNT, no keychain read, no call', async () => {
