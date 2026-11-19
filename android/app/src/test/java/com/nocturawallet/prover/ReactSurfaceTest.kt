@@ -13,7 +13,8 @@ import org.junit.Test
  * The boundary between JS and native, read off the compiled classes (spec §3 "JNI surface",
  * §14 "the React Native module exposes all of them except parseUnshield and authorizeUnshield"):
  * React Native reaches a legacy module only through its @ReactMethod methods, so that set IS
- * what JS can call. The natives must be exactly native/noctura-prover/jni-exports.txt, which
+ * what JS can call — since M1c Task 6 it includes `confirmUnshield` (the native confirmation, §4),
+ * which reaches `parseUnshield` / `authorizeUnshield` only through Kotlin. The natives must be exactly native/noctura-prover/jni-exports.txt, which
  * check-jni-exports.sh holds to the built library's symbols.
  */
 class ReactSurfaceTest {
@@ -28,6 +29,7 @@ class ReactSurfaceTest {
         "matchSpent",
         "commitment",
         "prove",
+        "confirmUnshield",
     )
 
     @Test
@@ -44,6 +46,17 @@ class ReactSurfaceTest {
             assertTrue("$name is not bound in Kotlin", ms.isNotEmpty())
             for (m in ms) assertFalse("$name is a React method", m.isAnnotationPresent(ReactMethod::class.java))
         }
+    }
+
+    @Test
+    fun confirmUnshieldTakesOnlyTheRequestAndAPromise() {
+        // §4: JS passes the handle, the owner, the amount and the fee — never an authorization it could forge
+        val m = NocturaProverModule::class.java.declaredMethods.single { it.name == "confirmUnshield" }
+        assertEquals(
+            listOf(String::class.java, String::class.java, String::class.java, String::class.java, com.facebook.react.bridge.Promise::class.java),
+            m.parameterTypes.toList(),
+        )
+        assertEquals(Void.TYPE, m.returnType)
     }
 
     /** A class that annotated parseUnshield: the same reading sees it (the check can fail). */

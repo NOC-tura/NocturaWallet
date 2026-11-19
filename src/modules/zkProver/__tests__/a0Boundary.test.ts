@@ -24,6 +24,13 @@ jest.mock('react-native', () => {
         if (prop === 'keysOpen' && !Array.isArray(args[0])) {
           throw new Error('keysOpen got a non-array seed');
         }
+        if (prop === 'confirmUnshield') {
+          return Promise.resolve({
+            authId: '0'.repeat(32),
+            owner: 'GoBAmZzHvD6F4KHLNmBFh2wZAGE1dwwufeTbifSHEYfd',
+            ata: '9hZSf8jMxBdqcvnYzj6EkQ2gPoZCoX2GcF8f1dgkyLsn',
+          });
+        }
         return prop === 'isSupported' ? true : Promise.resolve(prop === 'matchSpent' ? [] : '1');
       };
     },
@@ -37,7 +44,9 @@ const ROOT = path.resolve(__dirname, '../../../..');
 const read = (p: string): string => fs.readFileSync(path.join(ROOT, p), 'utf8');
 
 const EXPECTED_EXPORTS = [
+  'A0ConfirmResultError',
   'a0Commitment',
+  'a0ConfirmUnshield',
   'a0DepositRho',
   'a0KeysClose',
   'a0KeysOpen',
@@ -47,6 +56,7 @@ const EXPECTED_EXPORTS = [
 ];
 const EXPECTED_REACT_METHODS = [
   'commitment',
+  'confirmUnshield',
   'depositRho',
   'isSupported',
   'keysClose',
@@ -116,13 +126,15 @@ describe('2. calling every export touches exactly the React methods JS may use',
     await bridge.a0MatchSpent(h, [], []);
     await bridge.a0Commitment(h, 1n, '00'.repeat(32));
     await bridge.a0Prove(h, 'deposit', '{}', null, '/z', '/w');
+    await bridge.a0ConfirmUnshield(h, 'GoBAmZzHvD6F4KHLNmBFh2wZAGE1dwwufeTbifSHEYfd', 1n, 0n);
     expect([...mockTouched].sort()).toEqual(EXPECTED_REACT_METHODS);
     for (const k of KOTLIN_ONLY) {
       expect(mockTouched.has(k)).toBe(false);
     }
   });
   it('covers every export (a new export must be added to the call list above)', () => {
-    expect(exportsOf(bridge).length).toBe(7);
+    // 8 functions (one call each above) + the A0ConfirmResultError class
+    expect(exportsOf(bridge).filter(n => n !== 'A0ConfirmResultError').length).toBe(8);
   });
 });
 

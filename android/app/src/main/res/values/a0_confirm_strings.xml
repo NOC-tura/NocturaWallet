@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The native unshield confirmation (spec 2026-11-08 shielded A0 M1 §4 step 3, I7). Read by the
+  privacy-claims guard (src/screens/shielded/__tests__/privacyClaims.test.ts): no string here may
+  claim a privacy property the scheme does not deliver. The values the dialog shows (owner, token
+  account, amounts, pool) are Rust's; these are only the labels and the two sentence frames.
+  %1$s / %2$s are filled by A0ConfirmText.render (Locale.ROOT).
+-->
+<resources>
+    <string name="a0_confirm_title">Confirm unshield</string>
+    <string name="a0_confirm_destination_label">Destination (wallet address)</string>
+    <string name="a0_confirm_token_account_label">Token account</string>
+    <string name="a0_confirm_amount_line">Destination receives exactly %1$s NOC (%2$s base units)</string>
+    <string name="a0_confirm_fee_line">Relayer fee %1$s NOC, taken from your shielded balance</string>
+    <string name="a0_confirm_pool_label">Pool</string>
+    <string name="a0_confirm_approve">Approve</string>
+    <string name="a0_confirm_cancel">Cancel</string>
+    <string name="a0_prompt_title">Approve this unshield</string>
+    <string name="a0_prompt_subtitle">Confirm it is you to authorize this one unshield</string>
+</resources>

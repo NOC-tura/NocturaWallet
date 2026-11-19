@@ -244,6 +244,11 @@ dependencies {
         implementation jscFlavor
     }
 
+    // The native unshield confirmation's BiometricPrompt (spec shielded A0 M1 §4 step 4). 1.1.0 is the
+    // latest stable release and the version react-native-keychain already packages (as a bare @aar);
+    // the authenticator matrix in A0Confirm.kt was measured on this exact AAR (Task 6 Notes).
+    implementation("androidx.biometric:biometric:1.1.0")
+
     // JVM unit tests of the prover module (src/test/): the A0 boundary, the seed zero-fill and
     // the JNI over the host library. org.json: android.jar's copy is a stub off the device.
     testImplementation("junit:junit:4.13.2")

@@ -152,9 +152,18 @@ internal object A0Prover {
 
 /** Settles a JS promise from a native call: resolve the `ok` value, or reject with the stable code. */
 internal object A0Promise {
-    fun settle(promise: Promise, call: () -> String?) {
+    /**
+     * [onOk] runs only when Rust answered `ok` (M1c Task 6, ruling m-7): a refused call changed no
+     * session, so it must not fail a waiting confirmation. [ensureLoaded] is a seam for the JVM tests.
+     */
+    fun settle(
+        promise: Promise,
+        onOk: () -> Unit = {},
+        ensureLoaded: () -> Unit = { NocturaNativeLib.ensureLoaded() },
+        call: () -> String?,
+    ) {
         val result = try {
-            NocturaNativeLib.ensureLoaded()
+            ensureLoaded()
             A0Result.parse(call())
         } catch (e: A0ArgException) {
             A0Result.Err(A0Result.ARG, e.message ?: "argument is malformed")
@@ -165,7 +174,10 @@ internal object A0Promise {
             A0Result.Err(A0Result.INTERNAL, "internal error")
         }
         when (result) {
-            is A0Result.Ok -> promise.resolve(toReact(result.value))
+            is A0Result.Ok -> {
+                onOk()
+                promise.resolve(toReact(result.value))
+            }
             is A0Result.Err -> promise.reject(result.code, result.message)
         }
     }

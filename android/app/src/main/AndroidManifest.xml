@@ -2,6 +2,9 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- The native unshield confirmation (spec shielded A0 M1 §4, I10): on API 31+ its dialog hides
+         non-system overlay windows (Window.setHideOverlayWindows needs this normal permission). -->
+    <uses-permission android:name="android.permission.HIDE_OVERLAY_WINDOWS" />
 
     <application
       android:name=".MainApplication"

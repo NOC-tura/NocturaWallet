@@ -93,4 +93,51 @@ class A0ResultTest {
             prover.toDouble() * prover > one.toDouble() * eight,
         )
     }
+
+    // ---- M1c Task 6, ruling m-7: sessionChanged() fires only after Rust answered ok
+
+    private fun fakePromise(log: MutableList<String>): com.facebook.react.bridge.Promise =
+        java.lang.reflect.Proxy.newProxyInstance(
+            com.facebook.react.bridge.Promise::class.java.classLoader,
+            arrayOf(com.facebook.react.bridge.Promise::class.java),
+        ) { _, method, args ->
+            log += if (method.name == "reject") "reject:${args?.get(0)}" else method.name
+            null
+        } as com.facebook.react.bridge.Promise
+
+    @Test
+    fun onOkRunsAfterAnOkAnswerAndBeforeTheResolve() {
+        val log = mutableListOf<String>()
+        A0Promise.settle(fakePromise(log), onOk = { log += "onOk" }, ensureLoaded = {}) { """{"ok":"h1"}""" }
+        assertEquals(listOf("onOk", "resolve"), log)
+    }
+
+    @Test
+    fun onOkNeverRunsWhenRustRefusedOrTheCallFailed() {
+        val answers = listOf<() -> String?>(
+            { """{"error":"E_A0_ARG","message":"seed"}""" },
+            { null },
+            { "not json" },
+            { throw A0ArgException("seed") },
+            { throw IllegalStateException("boom") },
+        )
+        for (answer in answers) {
+            val log = mutableListOf<String>()
+            A0Promise.settle(fakePromise(log), onOk = { log += "onOk" }, ensureLoaded = {}) { answer() }
+            assertEquals(1, log.size)
+            assertTrue(log.toString(), log[0].startsWith("reject:"))
+        }
+        // the library failing to load is a refusal too
+        val log = mutableListOf<String>()
+        A0Promise.settle(fakePromise(log), onOk = { log += "onOk" }, ensureLoaded = { throw UnsatisfiedLinkError() }) { """{"ok":"x"}""" }
+        assertEquals(listOf("reject:${A0Result.UNAVAILABLE}"), log)
+    }
+
+    @Test
+    fun theModuleHandsTheSessionChangeToSettleAsOnOkNotAsAPrecall() {
+        val src = java.io.File("src/main/java/com/nocturawallet/prover/NocturaProverModule.kt").readText()
+        val calls = Regex("""A0Confirmations\.controller\.sessionChanged\(\)""").findAll(src).toList()
+        assertEquals(2, calls.size)
+        for (c in calls) assertTrue(src.substring(maxOf(0, c.range.first - 40), c.range.first).contains("onOk = {"))
+    }
 }

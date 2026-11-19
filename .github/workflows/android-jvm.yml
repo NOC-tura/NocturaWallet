@@ -1,0 +1,80 @@
+name: Android JVM tests
+
+# The Kotlin JVM unit tests of the prover module (android/app/src/test/). Until M1c no workflow ran
+# them (M1a's stated "known gap"); M1c Task 6 puts the native unshield confirmation's security
+# logic in Kotlin (A0ConfirmMachine: the obscured touch, the null activity, the one request in
+# flight, the recreation, the 60 s timeout, keysClose / keysOpen), so controller ruling 10 reverses
+# the gap on purpose: this job runs them on every change to their inputs.
+#
+# Kept cheap: `testDebugUnitTest` (the release unit-test task also runs Metro), the pure classes
+# only (`--tests`), 2 workers, the Kotlin compiler in-process, no NDK, no Rust. NOT run here, stated:
+# A0JniTest and M1aCheckpointHostTest — they load the HOST build of libnoctura_prover.so and the
+# pinned key files (they refuse to skip under CI), which is the native-prover workflow's domain;
+# they stay a desk run (`NOCTURA_A0_HOST_LIB_DIR=… ./gradlew :app:testDebugUnitTest`).
+#
+# Gradle's exit status does not say which tests ran, so check-reports.mjs reads the JUnit XML and
+# requires every named class to have run ≥ 1 test with 0 failures / errors / SKIPPED, and no other
+# class; its own node tests (positive and negative controls) run first.
+on:
+  push:
+    branches: [main]
+    paths: ['android/**', 'native/noctura-prover/jni-exports.txt', 'native/noctura-prover/tests/fixtures/a0-ata-vectors.json', 'scripts/android-jvm/**', '.github/workflows/android-jvm.yml', 'package-lock.json']
+  pull_request:
+    paths: ['android/**', 'native/noctura-prover/jni-exports.txt', 'native/noctura-prover/tests/fixtures/a0-ata-vectors.json', 'scripts/android-jvm/**', '.github/workflows/android-jvm.yml', 'package-lock.json']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  kotlin-jvm-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+      CLASSES: >-
+        com.nocturawallet.prover.A0ConfirmMachineTest
+        com.nocturawallet.prover.A0AuthenticatorsTest
+        com.nocturawallet.prover.A0ConfirmTextTest
+        com.nocturawallet.prover.ReactSurfaceTest
+        com.nocturawallet.prover.A0AbiTest
+        com.nocturawallet.prover.A0ResultTest
+        com.nocturawallet.prover.A0SeedTest
+        com.nocturawallet.prover.M1aCheckpointDeviceFailuresTest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: The report checker's own tests (positive and negative controls)
+        run: node --no-warnings --test scripts/android-jvm/check-reports.test.mjs
+
+      # The React Native Gradle plugin, autolinking and every native module's Android project come
+      # from node_modules. npm pinned as in the other workflows (the lockfile writer).
+      - run: npm install -g npm@11.6.2
+      - run: npm ci
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Run the pure Kotlin JVM tests
+        working-directory: android
+        run: |
+          set -o pipefail
+          args=()
+          for c in $CLASSES; do args+=(--tests "$c"); done
+          ./gradlew :app:testDebugUnitTest "${args[@]}" --console=plain --max-workers=2 \
+            -Pkotlin.compiler.execution.strategy=in-process -PreactNativeArchitectures=arm64-v8a
+
+      - name: Assert every named class ran, none skipped, nothing else ran
+        run: node scripts/android-jvm/check-reports.mjs android/app/build/test-results/testDebugUnitTest $CLASSES
