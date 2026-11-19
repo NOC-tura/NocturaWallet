@@ -199,7 +199,9 @@ made before this execution and is recorded, not made, here.
   hides no later refusal). The one exception to "every named signature is judged": a `pending` outcome's signature
   that never landed is listed, not judged — only on positive evidence (its tx FAILED on chain, or the fee payer's
   listing was read and lacks it). A null `getTransaction` is "not read", never evidence: a named or listed signature
-  whose read is null FAILS ("run verify again").
+  whose read is null FAILS ("run verify again"). The app's settled[] verdict is consulted before any "never landed"
+  classification; "failed on chain" needs an `err` that was read (a missing `meta` is "not read"); and the listing
+  is evidence of absence only when it is complete — it holds every named signature this run read as landed.
 - **§16 M1c "no signer is a key of this seed":** the signers are exactly `[3jvhiz…FaGe]`, no signer is in the seed set
   the devnet readout reports, and the only seed key in the tx is the destination owner (ruling 5). **The seed set
   (R2-N3):** read out ONCE per app start on `startup-accounts` (`seedKeys` = registry ∪ `cli` ∪ `slip10:0`, derived by

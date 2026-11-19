@@ -204,8 +204,19 @@ export function decodeRelayedTx(result) {
   }
   const raw = base64.decode(result.transaction[0]);
   const w = decodeWire(raw);
+  // re-review R-2: the status is READ only with a meta object carrying an `err` key. `ok` = read and
+  // err null; `failed` = read and err not null; neither (meta null, the RPC's "status not available")
+  // is "not read" — never evidence that the tx failed.
   const meta = result.meta ?? {};
-  const base = { slot: result.slot, blockTime: result.blockTime, ok: meta.err === null, err: meta.err ?? null, signature: w.signatures[0] };
+  const statusRead = result.meta !== null && typeof result.meta === 'object' && 'err' in result.meta;
+  const base = {
+    slot: result.slot,
+    blockTime: result.blockTime,
+    ok: statusRead && result.meta.err === null,
+    failed: statusRead && result.meta.err !== null,
+    err: statusRead ? result.meta.err : null,
+    signature: w.signatures[0],
+  };
   if (w.versioned) {
     return { ...base, versioned: true };
   }
@@ -324,7 +335,7 @@ export function judgeRelayedUnshield({ tx, sub, out }) {
   const checks = [];
   const add = (name, pass, detail) => checks.push({ name, pass: Boolean(pass), detail });
   if (!tx) {
-    add('landed', false, 'not found on devnet (getTransaction answered null)');
+    add('landed', false, 'not found on devnet (getTransaction answered null) — run `verify` again');
     return { checks, grant: null, ownerPreLamports: null, ataPreTokens: null, ataPostTokens: null };
   }
   add('landed', tx.ok && !tx.versioned, `slot ${tx.slot}, err ${JSON.stringify(tx.err)}${tx.versioned ? ', a versioned message (not the relayed shape)' : ''}`);

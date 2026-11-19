@@ -658,6 +658,117 @@ test('I-2: "never landed" is positive evidence only — the listing was read and
   assert.equal(lineOf(r3, 'M1c.V').pass, false);
 });
 
+// ------------------------------------------------ fix round 2 (re-review R-1 / R-2 / R-3)
+
+const failedCopy = t => {
+  const f = structuredClone(t);
+  f.meta.err = { InstructionError: [3, { Custom: 6001 }] };
+  return f;
+};
+
+test('R-1 (probe E): pending WITH its signature, the chain says FAILED, the app later settled it → V FAILS', () => {
+  const r = run();
+  freshPendingWithSig(r);
+  settledByCheckAgain(r);
+  r.chain.txs[SIG_FRESH] = failedCopy(r.chain.txs[SIG_FRESH]);
+  delete r.chain.feePayerTxs[SIG_FRESH];
+  const v = lineOf(r, 'M1c.V');
+  assert.equal(v.pass, false);
+  assert.ok(v.detail.includes(`${SIG_FRESH.slice(0, 10)}… the app settled it, but the chain says its tx FAILED`), v.detail);
+});
+
+test('R-1 (probe E2): the same with the app\'s settled verdict verified:false → V FAILS and the banner names it', () => {
+  const r = run();
+  freshPendingWithSig(r);
+  settledByCheckAgain(r);
+  Object.assign(rowOf(r, x => x.event === 'unshield-reconcile' && x.reverted === 1).settled[0], { verified: false, code: 'E_A0_VERIFY_GRANT' });
+  r.chain.txs[SIG_FRESH] = failedCopy(r.chain.txs[SIG_FRESH]);
+  delete r.chain.feePayerTxs[SIG_FRESH];
+  const j = L.judgeM1c(r);
+  assert.equal(j.lines.find(l => l.id === 'M1c.V').pass, false);
+  assert.match(j.info.join('\n'), new RegExp(`VERIFIER REFUSED 1 landed unshield\\(s\\): ${SIG_FRESH} E_A0_VERIFY_GRANT`));
+});
+
+test('R-2 (probe F): a read with meta null is "not read", never "failed on chain" — with the listing holding it → V FAILS', () => {
+  const r = run();
+  freshPendingWithSig(r);
+  r.chain.txs[SIG_FRESH] = { ...r.chain.txs[SIG_FRESH], meta: null };
+  const v = lineOf(r, 'M1c.V');
+  assert.equal(v.pass, false);
+  assert.ok(v.detail.includes(`${SIG_FRESH.slice(0, 10)}… its status was not read (no meta)`), v.detail);
+  // and without the listing holding it: still not evidence of anything → FAIL
+  delete r.chain.feePayerTxs[SIG_FRESH];
+  assert.equal(lineOf(r, 'M1c.V').pass, false);
+  // the decoder: meta null is neither ok nor failed
+  const d = C.decodeAnyTx({ ...recordedTx('5F8Ks5qa'), meta: null });
+  assert.deepEqual([d.ok, d.failed], [false, false]);
+  assert.deepEqual([C.decodeAnyTx(recordedTx('5F8Ks5qa')).ok, C.decodeAnyTx(failedCopy(recordedTx('5F8Ks5qa'))).failed], [true, true]); // controls
+});
+
+test('R-2 (probe F2): a FAILED read whose signature the fee payer listing holds (the listing has only err-free entries) → contradiction, V FAILS', () => {
+  const r = run();
+  freshPendingWithSig(r);
+  r.chain.txs[SIG_FRESH] = failedCopy(r.chain.txs[SIG_FRESH]);
+  const v = lineOf(r, 'M1c.V');
+  assert.equal(v.pass, false);
+  assert.ok(v.detail.includes(`${SIG_FRESH.slice(0, 10)}… the chain says its tx FAILED, but the relayer fee payer listed it as landed`), v.detail);
+});
+
+test('R-3 (probes G, K): an empty or array listing is no evidence of absence — a listing missing a landing judged in the same run is incomplete → V FAILS', () => {
+  for (const listing of [{}, []]) {
+    const r = run();
+    freshPendingWithSig(r);
+    r.chain.txs[SIG_FRESH] = null;
+    r.chain.feePayerTxs = listing;
+    const v = lineOf(r, 'M1c.V');
+    assert.equal(v.pass, false, JSON.stringify(listing));
+    // the pending signature itself is never "never landed" on such a listing
+    const why = Array.isArray(listing)
+      ? 'named by an unshield-outcome (pending), its read is null and the fee payer listing was not read'
+      : 'named by an unshield-outcome (pending), its read is null, and the fee payer listing is incomplete';
+    assert.ok(v.detail.includes(`${SIG_FRESH.slice(0, 10)}… ${why}`), v.detail);
+    assert.doesNotMatch(v.detail, /named, not on devnet/);
+  }
+  // the completeness control on its own: a full run whose listing lacks one judged landing
+  const r = run();
+  delete r.chain.feePayerTxs[SIG_EXT];
+  const v = lineOf(r, 'M1c.V');
+  assert.equal(v.pass, false);
+  assert.match(v.detail, new RegExp(`the relayer fee payer listing is INCOMPLETE: it lacks ${SIG_EXT.slice(0, 10)}…`));
+  // an array listing is refused as unread
+  const r2 = run();
+  r2.chain.feePayerTxs = Object.values(r2.chain.feePayerTxs);
+  assert.match(lineOf(r2, 'M1c.V').detail, /the relayer fee payer's signatures were not read/);
+});
+
+test('R-2: a LISTED fee payer signature whose read has meta null is not read → V FAILS (never skipped as failed)', () => {
+  const r = run();
+  r.chain.feePayerTxs['8'.repeat(88)] = { ...r.chain.txs[SIG_FRESH], meta: null };
+  const v = lineOf(r, 'M1c.V');
+  assert.equal(v.pass, false);
+  assert.match(v.detail, /NOT READ 8888888888…/);
+});
+
+test('a read that does not decode is "read, not decodable" → V FAILS (minor H)', () => {
+  const r = run();
+  freshPendingWithSig(r);
+  const t = structuredClone(r.chain.txs[SIG_FRESH]);
+  t.transaction[0] = t.transaction[0].slice(0, 40);
+  r.chain.txs[SIG_FRESH] = t;
+  delete r.chain.feePayerTxs[SIG_FRESH];
+  const v = lineOf(r, 'M1c.V');
+  assert.equal(v.pass, false);
+  assert.ok(v.detail.includes(`${SIG_FRESH.slice(0, 10)}… read, but not decodable`), v.detail);
+});
+
+test('no false FAIL on the scripted run: the held/killed CP2 unshield (no outcome) and an R3-N4 sig-less pending stay out of the rule', () => {
+  const r = run(); // the run already carries the held, killed unshield with no outcome line
+  freshPendingWithoutSig(r);
+  settledByCheckAgain(r);
+  assert.equal(lineOf(r, 'M1c.V').pass, true, lineOf(r, 'M1c.V').detail);
+  assert.equal(lineOf(run(), 'M1c.V').pass, true);
+});
+
 test('a fee payer tx with an unknown blockTime counts as inside the window (minor)', () => {
   const r = run();
   freshPendingWithoutSig(r);

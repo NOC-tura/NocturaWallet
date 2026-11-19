@@ -658,7 +658,12 @@ async function readFeePayerWindow(url, start, known) {
     const [page] = await devnetBatch(url, [
       { method: 'getSignaturesForAddress', params: [L.RELAYER_FEE_PAYER, { limit: 1000, commitment: 'confirmed', ...(before ? { before } : {}) }] },
     ]);
-    const list = page ?? [];
+    // re-review R-3: an empty answer from a failed / lagging call is not a listing — the judge uses the
+    // listing as evidence of absence, so only a real array answer counts
+    if (!Array.isArray(page)) {
+      die(`getSignaturesForAddress(${L.RELAYER_FEE_PAYER}) answered ${JSON.stringify(page)}, not a list — run \`verify\` again`);
+    }
+    const list = page;
     for (const e of list) {
       if (e.blockTime === null || e.blockTime === undefined || e.blockTime >= start) {
         if (e.err === null) {
