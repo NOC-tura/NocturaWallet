@@ -419,6 +419,11 @@ function ShieldedLine({
             </Text>
             <CheckAgainLink checkAgain={checkAgain} testID="shielded-check-again" />
           </View>
+        ) : checkAgain.note ? (
+          // re-review N-2: the last pending item was decided — the check's caption stays, without the link
+          <Text variant="caption" className="text-fg-tertiary mt-1" testID="shielded-check-caption">
+            {checkAgain.note}
+          </Text>
         ) : null}
       </View>
     );

@@ -1101,6 +1101,26 @@ describe('m-1 / R2-N2: a held submit re-reads the chain clock after the hold and
   });
 });
 
+describe('re-review N-1: the flow names its pending note (rho) to the screen at the pending write', () => {
+  it('onPending is called once with the note\'s rho, before the submit stage; never before the pending write', async () => {
+    w.relayer.script.push({answer: 'unconfirmed', lands: false});
+    const events: string[] = [];
+    await run(fresh(400_000n), {
+      onPending: rho => events.push(`pending ${rho} ${noteOf(rho).status}`),
+      onStage: s => events.push(s),
+    });
+    expect(events.filter(e => e.startsWith('pending'))).toEqual([`pending ${w.notes[0]!.rho} pending`]);
+    expect(events.indexOf(`pending ${w.notes[0]!.rho} pending`)).toBe(events.indexOf('submit') - 1);
+  });
+
+  it('a refusal before the pending write never calls it (control)', async () => {
+    const calls: string[] = [];
+    w.net.clock.blockTime = null;
+    await run(fresh(400_000n), {onPending: rho => calls.push(rho)}).catch(() => undefined);
+    expect(calls).toEqual([]);
+  });
+});
+
 describe('final review I-2: a submit that ended by the deadline or a transport error RE-ANCHORS pendingSince (the native request may still be in flight)', () => {
   const T0 = 1_794_200_000;
   /** the submit, as the transport ends it after `chainSecondsLater` of chain time */

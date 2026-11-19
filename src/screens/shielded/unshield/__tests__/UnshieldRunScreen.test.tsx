@@ -11,7 +11,12 @@ import {UnshieldRunScreen} from '../UnshieldRunScreen';
 import type {UnshieldRunRequest} from '../UnshieldRunScreen';
 import type {A0UnshieldOutcome, A0UnshieldStage, A0UnshieldRequest} from '../../../../modules/shielded/a0/unshieldFlow';
 
-type Unshield = (c: unknown, seed: Uint8Array, r: A0UnshieldRequest, o: {onStage: (s: A0UnshieldStage) => void}) => Promise<A0UnshieldOutcome>;
+type Unshield = (
+  c: unknown,
+  seed: Uint8Array,
+  r: A0UnshieldRequest,
+  o: {onStage: (s: A0UnshieldStage) => void; onPending?: (rho: string) => void},
+) => Promise<A0UnshieldOutcome>;
 const mockUnshield = jest.fn<ReturnType<Unshield>, Parameters<Unshield>>();
 jest.mock('../../../../modules/shielded/a0/unshieldFlow', () => ({
   ...jest.requireActual('../../../../modules/shielded/a0/unshieldFlow'),
@@ -39,7 +44,7 @@ jest.mock('../../../../modules/screenSecurity/screenSecurityModule', () => ({
     }
   },
 }));
-const mockCheck = {disabled: false, checking: false, note: null as string | null, unshield: null as unknown, run: jest.fn()};
+const mockCheck = {disabled: false, checking: false, note: null as string | null, unshield: null as unknown, report: null as unknown, run: jest.fn()};
 jest.mock('../../../../hooks/useA0Shielded', () => ({
   useA0Shielded: () => ({view: {kind: 'ready', unspent: 0n, pending: 0n, notes: 0}, refresh: jest.fn(), checkAgain: mockCheck}),
 }));
@@ -51,13 +56,20 @@ const REQUEST: UnshieldRunRequest = {destination: {kind: 'fresh'}, amount: '1250
 let clock = 1_000_000;
 
 function controlled() {
-  const ctl: {stage: (s: A0UnshieldStage) => void; resolve: (o: A0UnshieldOutcome) => void; reject: (e: unknown) => void} = {
+  const ctl: {
+    stage: (s: A0UnshieldStage) => void;
+    pending: (rho: string) => void;
+    resolve: (o: A0UnshieldOutcome) => void;
+    reject: (e: unknown) => void;
+  } = {
     stage: () => {},
+    pending: () => {},
     resolve: () => {},
     reject: () => {},
   };
   mockUnshield.mockImplementation((_c, _s, _r, o) => {
     ctl.stage = o.onStage;
+    ctl.pending = rho => o.onPending?.(rho);
     return new Promise((res, rej) => {
       ctl.resolve = res;
       ctl.reject = rej;
@@ -70,7 +82,7 @@ beforeEach(() => {
   mockUnshield.mockReset();
   mockRetrieve.mockReset().mockResolvedValue('words');
   mockCheck.run.mockReset();
-  Object.assign(mockCheck, {disabled: false, checking: false, note: null, unshield: null});
+  Object.assign(mockCheck, {disabled: false, checking: false, note: null, unshield: null, report: null});
   mockSecure.on = 0;
   mockSecure.off = 0;
   clock += 100_000;
@@ -529,63 +541,125 @@ describe('#21 for the unshield — every outcome said as what it is', () => {
   });
 });
 
-describe('final review I-1: what "Check again" decided replaces "Not confirmed yet" on #21', () => {
+describe('final review I-1 + re-review N-1 / N-2 / N-3 / N-4: what "Check again" decided about THIS run\'s note replaces "Not confirmed yet" on #21', () => {
+  const MINE = 'rho-of-this-run';
+  const OLDER = 'rho-of-another-note';
+  const rep = (over: Record<string, unknown>) => ({settled: [], reverted: [], stillPending: [], skipped: 0, released: [], promoted: [], ...over});
+  const settledOf = (rho: string, verified = true, code: string | null = null) => ({rho, signature: SIG, verified, code, changeRecorded: true});
   const pendingRun = async () => {
     const out = await run();
+    await step(out.ctl, 'submit');
+    await act(async () => out.ctl.pending(MINE));
     await act(async () => out.ctl.resolve({status: 'pending', signature: SIG, reason: 'unconfirmed'}));
     expect(title(out.r)).toBe('Not confirmed yet');
     return out;
   };
-  const decide = (r: R, unshield: unknown) => {
-    Object.assign(mockCheck, {unshield});
+  /** a "Check again" result as the hook hands it: the aggregate (for the other screens) + the report */
+  const check = (r: R, report: ReturnType<typeof rep>, unshield: unknown, note: string) => {
+    Object.assign(mockCheck, {report, unshield, note});
     r.rerender(<UnshieldRunScreen request={REQUEST} onDone={jest.fn()} onBack={jest.fn()} />);
   };
+  const caption = (r: R) => r.getByTestId('unshield-check-caption').props.children;
 
-  it('settled (verified) → "Unshielded", CONFIRMED; no PENDING, no "Check again"', async () => {
+  it('this note settled (verified) → "Unshielded", CONFIRMED; no PENDING, no "Check again"; the caption stays, without the link', async () => {
     const {r} = await pendingRun();
-    decide(r, {kind: 'settled'});
+    check(r, rep({settled: [settledOf(MINE)]}), {kind: 'settled', verified: true}, 'Confirmed · unshielded.');
     expect(title(r)).toBe('Unshielded');
     expect(sub(r)).toBe('Checked again: it landed on Solana devnet and was verified · the destination received 1.25 TEST.');
     expect(r.getByText('CONFIRMED')).toBeTruthy();
     expect(r.queryByText('PENDING')).toBeNull();
     expect(r.queryByTestId('unshield-check-again')).toBeNull();
-    expect(r.queryByText(/Not confirmed yet/)).toBeNull();
+    expect(caption(r)).toBe('Confirmed · unshielded.');
   });
 
-  it('reverted → "Not sent" with the note back; no PENDING, no "Check again"', async () => {
+  it('this note reverted → "Not sent" with the note back; no PENDING, no "Check again"', async () => {
     const {r} = await pendingRun();
-    decide(r, {kind: 'reverted'});
+    check(r, rep({reverted: [{rho: MINE}]}), {kind: 'reverted'}, 'Not sent · your note is back in your shielded balance.');
     expect(title(r)).toBe('Not sent');
     expect(sub(r)).toBe('Checked again: it did not land in time, so it can no longer land. Your note is back in your shielded balance.');
     expect(r.queryByText('PENDING')).toBeNull();
     expect(r.queryByTestId('unshield-check-again')).toBeNull();
+    expect(caption(r)).toBe('Not sent · your note is back in your shielded balance.');
   });
 
-  it('a verifier refusal → LOUD "Landed, but failed verification" from the CODE, UNVERIFIED; no PENDING', async () => {
+  it('a verifier refusal of this note → LOUD from the CODE, UNVERIFIED; no PENDING', async () => {
     const {r} = await pendingRun();
-    decide(r, {kind: 'unverified', code: 'E_A0_VERIFY_SEED_SIGNER'});
+    check(r, rep({settled: [settledOf(MINE, false, 'E_A0_VERIFY_SEED_SIGNER')]}), {kind: 'unverified', code: 'E_A0_VERIFY_SEED_SIGNER'}, 'x');
     expect(title(r)).toBe('Landed, but failed verification');
-    expect(r.getByTestId('unshield-status-loud')).toBeTruthy();
     expect(r.getByText('Landed, but failed verification: E_A0_VERIFY_SEED_SIGNER · a key of this wallet signed it')).toBeTruthy();
     expect(r.getByText('UNVERIFIED')).toBeTruthy();
-    expect(r.queryByText('PENDING')).toBeNull();
     expect(r.queryByTestId('unshield-check-again')).toBeNull();
+  });
+
+  it('N-1 (a), CP2\'s shape: tap 1 settles THIS note (the older still pending), tap 2 reverts the older → this #21 stays "Unshielded", never "Not sent"', async () => {
+    const {r} = await pendingRun();
+    check(r, rep({settled: [settledOf(MINE)], stillPending: [{rho: OLDER, reason: 'in-window'}]}), {kind: 'pending'}, 'Still not confirmed · checked just now.');
+    expect(title(r)).toBe('Unshielded');
+    check(r, rep({reverted: [{rho: OLDER}]}), {kind: 'reverted'}, 'Not sent · your note is back in your shielded balance.');
+    expect(title(r)).toBe('Unshielded');
+    expect(r.queryByText(/Not sent/)).toBeNull();
+    expect(caption(r)).toBe('Confirmed · unshielded.');
+  });
+
+  it('N-1 (b), the mirror: the OLDER settles while this one reverts → this #21 says "Not sent", never "Unshielded"', async () => {
+    const {r} = await pendingRun();
+    check(r, rep({settled: [settledOf(OLDER)], reverted: [{rho: MINE}]}), {kind: 'settled', verified: true}, 'Confirmed · unshielded.');
+    expect(title(r)).toBe('Not sent');
+    expect(r.queryByText(/Unshielded|CONFIRMED/)).toBeNull();
+    expect(caption(r)).toBe('Not sent · your note is back in your shielded balance.');
+  });
+
+  it('N-1 (c): a decision about an unrelated note (settled, reverted or refused) leaves this #21 pending, "Check again" kept', async () => {
+    const {r} = await pendingRun();
+    for (const [report, agg] of [
+      [rep({settled: [settledOf(OLDER)]}), {kind: 'settled', verified: true}],
+      [rep({reverted: [{rho: OLDER}]}), {kind: 'reverted'}],
+      [rep({settled: [settledOf(OLDER, false, 'E_A0_VERIFY_FEE')]}), {kind: 'unverified', code: 'E_A0_VERIFY_FEE'}],
+    ] as const) {
+      check(r, report, agg, 'Confirmed · unshielded.');
+      expect(title(r)).toBe('Not confirmed yet');
+      expect(r.getByText('PENDING')).toBeTruthy();
+      expect(r.getByTestId('unshield-check-again')).toBeTruthy();
+      expect(caption(r)).toBe('Still not confirmed · checked just now.');
+    }
   });
 
   it('still pending → unchanged: "Not confirmed yet", PENDING, "Check again" (control)', async () => {
     const {r} = await pendingRun();
-    decide(r, {kind: 'pending'});
+    check(r, rep({stillPending: [{rho: MINE, reason: 'in-window'}]}), {kind: 'pending'}, 'Still not confirmed · checked just now.');
     expect(title(r)).toBe('Not confirmed yet');
     expect(r.getByText('PENDING')).toBeTruthy();
     expect(r.getByTestId('unshield-check-again')).toBeTruthy();
   });
 
-  it('a recorded throw (after the submit) is decided the same way', async () => {
+  it('a recorded throw (after the pending write) is decided the same way, by its rho', async () => {
     const {r, ctl} = await run();
     await step(ctl, 'submit');
+    await act(async () => ctl.pending(MINE));
     await act(async () => ctl.reject(Object.assign(new Error('E_A0_STORE_LOCKED: not open'), {code: 'E_A0_STORE_LOCKED'})));
-    decide(r, {kind: 'settled'});
+    check(r, rep({settled: [settledOf(MINE)]}), {kind: 'settled', verified: true}, 'Confirmed · unshielded.');
     expect(title(r)).toBe('Unshielded');
+  });
+
+  it('N-3: a landed-unverified (note pending) first outcome keeps its loud line after this note is settled', async () => {
+    const {r, ctl} = await run();
+    await step(ctl, 'submit');
+    await act(async () => ctl.pending(MINE));
+    await act(async () =>
+      ctl.resolve({status: 'landed-unverified', signature: SIG, code: 'E_A0_VERIFY_NULLIFIER', note: 'pending', changeRecorded: false, linked: false}),
+    );
+    check(r, rep({settled: [settledOf(MINE)]}), {kind: 'settled', verified: true}, 'Confirmed · unshielded.');
+    expect(title(r)).toBe('Unshielded');
+    expect(r.getByText(/Landed, but failed verification: E_A0_VERIFY_NULLIFIER · its spend is not this note's/)).toBeTruthy();
+  });
+
+  it('N-4: this note settled by recovery\'s rules (no approved terms stored) never says "verified"', async () => {
+    const {r} = await pendingRun();
+    check(r, rep({settled: [settledOf(MINE, false, null)]}), {kind: 'settled', verified: false}, 'Settled from the chain · unshielded.');
+    expect(title(r)).toBe('Unshielded');
+    expect(sub(r)).not.toMatch(/verified/);
+    expect(sub(r)).toBe('Checked again: it landed on Solana devnet · settled from the chain\'s record; this device held no approved terms to check it against.');
+    expect(r.queryByText('CONFIRMED')).toBeNull();
   });
 
   it('control: an outcome that was already decided (spent) is not changed by a later check', async () => {
@@ -593,7 +667,7 @@ describe('final review I-1: what "Check again" decided replaces "Not confirmed y
     await act(async () =>
       ctl.resolve({status: 'spent', signature: SIG, changeLeafIndex: 21, changeAmount: 5n, grantLamports: null, destinationWithoutSol: false}),
     );
-    decide(r, {kind: 'reverted'});
+    check(r, rep({reverted: [{rho: MINE}]}), {kind: 'reverted'}, 'x');
     expect(title(r)).toBe('Unshielded');
     expect(r.getByText('CONFIRMED')).toBeTruthy();
   });

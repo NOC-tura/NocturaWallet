@@ -14,6 +14,12 @@ import type {A0ReconcileReport} from '../modules/shielded/a0/depositFlow';
 import {a0HasPendingUnshields, reconcileA0PendingUnshields} from '../modules/shielded/a0/unshieldFlow';
 import type {A0UnshieldReconcileReport} from '../modules/shielded/a0/unshieldFlow';
 import type {A0VerifyRefusal} from '../modules/shielded/a0/landedVerifier';
+import {a0CheckCaption, a0UnshieldCheckOf} from '../modules/shielded/a0/unshieldCheck';
+import type {A0UnshieldCheck} from '../modules/shielded/a0/unshieldCheck';
+
+// the pure readings live in unshieldCheck.ts (no React, no native): re-exported for the screens
+export {a0CheckCaption, a0UnshieldCheckOf, a0UnshieldDecisionFor} from '../modules/shielded/a0/unshieldCheck';
+export type {A0UnshieldCheck} from '../modules/shielded/a0/unshieldCheck';
 
 /**
  * The shielded balance as the screens may state it (spec §11; Task 4's rule: the balance is the
@@ -82,35 +88,6 @@ export type A0CheckAgainResult =
 let checking: Promise<A0CheckAgainResult> | null = null;
 
 /**
- * What a reconciliation decided about the pending unshields (M1c final review I-1), from its report
- * alone, in this order: a verifier refusal (LOUD), something still pending, a settle, a revert.
- * A settle by recovery's rules (no intent: `verified` false with NO code) is a settle, not a
- * refusal. Null when it decided nothing about an unshield.
- */
-export type A0UnshieldCheck =
-  | {kind: 'unverified'; code: A0VerifyRefusal}
-  | {kind: 'pending'}
-  | {kind: 'settled'}
-  | {kind: 'reverted'};
-
-export function a0UnshieldCheckOf(r: A0UnshieldReconcileReport): A0UnshieldCheck | null {
-  const refused = r.settled.find(x => !x.verified && x.code !== null);
-  if (refused) {
-    return {kind: 'unverified', code: refused.code!};
-  }
-  if (r.stillPending.length > 0) {
-    return {kind: 'pending'};
-  }
-  if (r.settled.length > 0) {
-    return {kind: 'settled'};
-  }
-  if (r.reverted.length > 0) {
-    return {kind: 'reverted'};
-  }
-  return null;
-}
-
-/**
  * The verifier refusal a "Check again" found, for the rest of the session of THIS wallet (bound to
  * the encrypted instance open at the tap): the screen that tapped may be gone before the user looks.
  * The code only — the verifier's detail names keys of this seed and never leaves the flow.
@@ -131,12 +108,6 @@ function checkErrorNote(code: string | null, message: string): string {
   return code ? `${code} · The check could not finish. Check again in a moment.` : message;
 }
 
-const UNSHIELD_CHECK_NOTE: Record<A0UnshieldCheck['kind'], string> = {
-  unverified: 'Checked just now · it landed, but failed verification.',
-  pending: 'Still not confirmed · checked just now.',
-  settled: 'Confirmed · unshielded.',
-  reverted: 'Not sent · your note is back in your shielded balance.',
-};
 
 /**
  * "Check again" on a pending deposit or unshield (R1-m9, R2-N2, R3-N5): the startup
@@ -187,8 +158,10 @@ export interface A0CheckAgain {
   checking: boolean;
   /** what the last check found (an error, still pending, settled, reverted, a refusal) — fixed text, never a raw message with a code */
   note: string | null;
-  /** what the last check decided about the pending unshields (I-1): #21 says it instead of "Not confirmed yet" */
+  /** what the last check decided about the pending unshields, all of them (I-1) — for #16 and the dashboard */
   unshield: A0UnshieldCheck | null;
+  /** the last check's unshield report (null before one / on an error): #21 reads its own note in it (N-1) */
+  report: A0UnshieldReconcileReport | null;
   run: () => void;
 }
 
@@ -204,6 +177,7 @@ export function useA0Shielded(): {view: A0ShieldedView; refresh: () => void; che
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [unshield, setUnshield] = useState<A0UnshieldCheck | null>(null);
+  const [report, setReport] = useState<A0UnshieldReconcileReport | null>(null);
   const alive = useRef(true);
   useEffect(() => {
     alive.current = true;
@@ -223,6 +197,7 @@ export function useA0Shielded(): {view: A0ShieldedView; refresh: () => void; che
     setBusy(true);
     setNote(null);
     setUnshield(null);
+    setReport(null);
     checkA0PendingAgain().then(r => {
       if (!alive.current) {
         return;
@@ -235,10 +210,11 @@ export function useA0Shielded(): {view: A0ShieldedView; refresh: () => void; che
       } else {
         const found = a0UnshieldCheckOf(r.unshields);
         setUnshield(found);
+        setReport(r.unshields);
         if (found !== null) {
-          setNote(UNSHIELD_CHECK_NOTE[found.kind]);
+          setNote(a0CheckCaption(found));
         } else if (r.report.stillPending.length > 0) {
-          setNote(UNSHIELD_CHECK_NOTE.pending);
+          setNote(a0CheckCaption({kind: 'pending'}));
         }
       }
       refresh(); // the store changed under the view (useA0StartupState only moves on a state change)
@@ -246,7 +222,7 @@ export function useA0Shielded(): {view: A0ShieldedView; refresh: () => void; che
   }, [disabled, refresh]);
   const fromCheck = checkRefusal !== null && checkRefusal.bound === mmkvSecure() ? checkRefusal.code : null;
   const refusal = fromCheck ?? startupRefusal(state);
-  return {view, refresh, checkAgain: {disabled, checking: busy, note, unshield, run}, refusal};
+  return {view, refresh, checkAgain: {disabled, checking: busy, note, unshield, report, run}, refusal};
 }
 
 /**

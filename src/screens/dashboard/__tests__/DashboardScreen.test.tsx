@@ -213,6 +213,22 @@ describe('final review I-1: a verifier refusal is LOUD on the shielded assets (u
   });
 });
 
+describe('re-review N-2: the decided caption outlives the last pending item (no "Check again")', () => {
+  beforeEach(() => {
+    mockMode.current = 'shielded';
+  });
+  it.each<[string, A0ShieldedView]>([
+    ['nothing shielded any more', {kind: 'ready', unspent: 0n, pending: 0n, notes: 0}],
+    ['a balance', {kind: 'ready', unspent: 200_000_000n, pending: 0n, notes: 1}],
+  ])('%s: the caption shown, the link absent', async (_l, view) => {
+    mockView.current = view;
+    Object.assign(mockCheck, {note: 'Not sent · your note is back in your shielded balance.'});
+    const r = await renderDashboard();
+    expect(r.getByTestId('dashboard-check-caption').props.children).toBe('Not sent · your note is back in your shielded balance.');
+    expect(r.queryByTestId('dashboard-check-again')).toBeNull();
+  });
+});
+
 describe('DashboardScreen — shielded mode, with balance (the A0 store, ready)', () => {
   beforeEach(() => {
     mockMode.current = 'shielded';

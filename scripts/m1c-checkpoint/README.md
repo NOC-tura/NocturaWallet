@@ -167,9 +167,11 @@ the proof the app writes its pending unshield and **holds the submit for 30 s**;
 - [ ] **Wait at least 5 minutes after the kill** (the chain's clock must pass the submit + 300 s), then tap
       **"Check again"** (dashboard or #16). The pending unshield is put back: the balance includes its note again,
       `readout … unshield-reconcile` with `reverted 1, released 1`. If it says still pending, wait a minute, tap again.
-      The line beside "Check again" now says **"Not sent · your note is back in your shielded balance."** (on #21:
-      title "Not sent", no PENDING badge) — **if it still says "Not confirmed yet" after a revert, that is a FAIL to
-      report** (final review I-1).
+      The pending line goes (nothing is pending any more) and in its place, without the "Check again" link, the
+      caption **"Not sent · your note is back in your shielded balance."** (final review I-1, re-review N-2). If the
+      second unshield's #21 is still open and said "Not confirmed yet", it changes only for ITS OWN note: "Unshielded"
+      once a check settled it — **it must never turn into "Not sent" because the held one was reverted; if it does,
+      that is a FAIL to report** (re-review N-1).
 
 If `verify`'s M1c.F2 says the held unshield read out an outcome before the kill, or the second did not see the first
 reserved (you were slower than 5 minutes), repeat this step — a hold costs nothing. **The arm lapses after 10
@@ -361,13 +363,19 @@ BiometricPrompt follows it (two prompts per unshield, above).
 12. the caption **"Unshield <amount> TEST"** under #18's hero sub on the unshield run (the design has no caption there).
 
 **Added in the final review's fix wave (undrawn — look at these too):**
-13. #21 after **"Check again" decided** a "Not confirmed yet" unshield (I-1): "Unshielded" (CONFIRMED, "Checked again:
-    it landed on Solana devnet and was verified · the destination received <amount>"), "Not sent" ("Checked again: it
-    did not land in time, so it can no longer land. Your note is back in your shielded balance.") or "Landed, but
-    failed verification" (UNVERIFIED, the loud box with the code); the PENDING badge and "Check again" go;
-14. the **"Check again" captions** on #16 / #21 / the dashboard: "Confirmed · unshielded.", "Not sent · your note is
-    back in your shielded balance.", "Checked just now · it landed, but failed verification.", and a failed check
-    "<code> · The check could not finish. Check again in a moment." (I-1, M-4);
+13. #21 after **"Check again" decided THIS run's note** (I-1, re-review N-1: a decision about another pending note
+    changes nothing here): "Unshielded" (CONFIRMED, "Checked again: it landed on Solana devnet and was verified · the
+    destination received <amount>"; without CONFIRMED and with "settled from the chain's record; this device held no
+    approved terms to check it against" for a settle without stored terms, N-4), "Not sent" ("Checked again: it did
+    not land in time, so it can no longer land. Your note is back in your shielded balance.") or "Landed, but failed
+    verification" (UNVERIFIED, the loud box with the code); the PENDING badge and "Check again" go; a first
+    "Landed, but failed verification" keeps its loud box (N-3);
+14. the **"Check again" captions** on #16 / #21 / the dashboard: "Confirmed · unshielded.", "Settled from the chain ·
+    unshielded." (a settle without stored terms), "Not sent · your note is back in your shielded balance.", "Checked
+    just now · it landed, but failed verification.", "Still not confirmed · checked just now.", and a failed check
+    "<code> · The check could not finish. Check again in a moment." (I-1, M-4). Once the last pending item is
+    decided the caption stays where the pending line was, in tertiary grey, WITHOUT the "Check again" link (re-review
+    N-2); on #21 it is the caption of that run's OWN note only (N-1) and stays under a decided #21 the same way;
 15. a **loud refusal line** on #16's shielded-balance line (a danger banner) and on the dashboard's shielded assets (a
     danger box): "Landed, but failed verification: <code> · <what it means>", shown for the rest of the session once
     the startup step or a "Check again" found a verifier refusal of a landed unshield (I-1; the design has no place

@@ -382,6 +382,12 @@ export interface A0UnshieldOptions {
    * clock is re-read and a later value becomes `pendingSince` (R2-N2).
    */
   holdMs?: () => number;
+  /**
+   * Re-review N-1: called once per pending write with the note's rho, right after it (before the
+   * `submit` stage) — the run screen binds a later "Check again" result to its own note. Never read
+   * out, never shown.
+   */
+  onPending?: (rho: string) => void;
 }
 
 // ------------------------------------------------------------------ shared state
@@ -915,6 +921,7 @@ export async function unshieldA0(
       const pub = {owner: approval.owner, ata: approval.ata, amount, fee: quote.fee, destination: kind};
       markA0PendingUnshield(note.rho, pendingSince, intent, bound);
       pendingWritten = true;
+      options.onPending?.(note.rho);
       // M1c Task 9 / Task 8 review M-2: the `submit` stage starts AT the pending write — from here on
       // the unshield may stand, so a throw inside a hold (or anywhere before the request) is never
       // read as "nothing was sent" by the run screen, whose `recorded` flag is set on `submit`

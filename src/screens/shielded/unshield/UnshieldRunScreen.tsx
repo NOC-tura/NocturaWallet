@@ -22,7 +22,8 @@ import {mnemonicToSeed} from '../../../modules/keyDerivation/mnemonicUtils';
 import {getConnection} from '../../../modules/solana/connection';
 import {explorerTxUrl} from '../../../constants/chain';
 import {useA0Shielded} from '../../../hooks/useA0Shielded';
-import type {A0UnshieldCheck} from '../../../hooks/useA0Shielded';
+import {a0CheckCaption, a0UnshieldDecisionFor} from '../../../modules/shielded/a0/unshieldCheck';
+import type {A0UnshieldCheck} from '../../../modules/shielded/a0/unshieldCheck';
 import {CheckAgainLink} from '../../../components/CheckAgainLink';
 import {A0_OWN_ACCOUNT_REFUSAL_COPY, a0RefusalLoudText, a0UnshieldRefusalSentence} from './unshieldCopy';
 import {MetaRow, ProofHeroRing, StageRow, StatusRing, shortSignature} from '../shieldedParts';
@@ -141,6 +142,17 @@ export function UnshieldRunScreen({request, onDone, onBack}: UnshieldRunScreenPr
   const done = useRef<Partial<Record<A0UnshieldStage, number>>>({});
   const started = useRef(false);
   const {checkAgain} = useA0Shielded();
+  // re-review N-1: this run's note (named by the flow at its pending write) and the first decision
+  // a "Check again" made about THAT note — latched: a later check that no longer lists it (it is
+  // settled) or decides another pending note never changes what this #21 says
+  const [ownRho, setOwnRho] = useState<string | null>(null);
+  const [ownDecision, setOwnDecision] = useState<A0UnshieldCheck | null>(null);
+  const checkReport = checkAgain.report;
+  useEffect(() => {
+    if (ownRho === null || !checkReport) return;
+    const d = a0UnshieldDecisionFor(checkReport, ownRho);
+    if (d !== null && d.kind !== 'pending') setOwnDecision(prev => prev ?? d);
+  }, [checkReport, ownRho]);
 
   let amount: bigint | null = null;
   try {
@@ -207,7 +219,7 @@ export function UnshieldRunScreen({request, onDone, onBack}: UnshieldRunScreenPr
           getConnection(),
           seed,
           {destination: request.destination, amount},
-          {onStage, holdMs: () => takeA0SubmitHold()},
+          {onStage, holdMs: () => takeA0SubmitHold(), onPending: setOwnRho},
         );
         const t = Date.now();
         const current = at.stage;
@@ -327,11 +339,20 @@ export function UnshieldRunScreen({request, onDone, onBack}: UnshieldRunScreenPr
   const undecided =
     (phase.kind === 'done' && (phase.outcome.status === 'pending' || (phase.outcome.status === 'landed-unverified' && phase.outcome.note === 'pending'))) ||
     (phase.kind === 'refused' && phase.recorded && phase.code !== 'E_A0_STORE_CHANGED'); // M-5: not this wallet's to check
-  // final review I-1: what "Check again" decided replaces "Not confirmed yet" (a still-pending answer
-  // keeps it). One unshield runs at a time, so a decision while this run's is undecided is its own.
-  const decided = undecided && checkAgain.unshield && checkAgain.unshield.kind !== 'pending' ? checkAgain.unshield : null;
-  const view = decided ? decidedView(decided, amountText) : statusView(phase, amountText, start.current, now);
+  // final review I-1 + re-review N-1: what "Check again" decided about THIS run's note (by its rho —
+  // another pending unshield's result is not this one's) replaces "Not confirmed yet"
+  const decided = undecided && ownDecision !== null && ownDecision.kind !== 'pending' ? ownDecision : null;
+  // N-3: a landed-unverified first outcome keeps its loud line after the decision
+  const firstLoud = phase.kind === 'done' && phase.outcome.status === 'landed-unverified' ? a0RefusalLoudText(phase.outcome.code) : null;
+  const view = decided ? decidedView(decided, amountText, firstLoud) : statusView(phase, amountText, start.current, now);
   const pending = undecided && decided === null;
+  // the caption: this note's decision; while it is undecided, a done check says "still not confirmed"
+  // whatever it decided about other notes; an error / busy check says its own text
+  const caption = decided
+    ? a0CheckCaption(decided)
+    : checkReport
+      ? a0CheckCaption({kind: 'pending'})
+      : (checkAgain.note ?? 'Pending · decided from the chain');
   const nothingSent =
     (phase.kind === 'done' && phase.outcome.status === 'not-sent') || (phase.kind === 'refused' && !phase.recorded);
 
@@ -422,12 +443,12 @@ export function UnshieldRunScreen({request, onDone, onBack}: UnshieldRunScreenPr
           </View>
         ) : null}
 
-        {pending ? (
+        {pending || decided ? (
           <View className="w-full flex-row items-center justify-between mt-4 px-1">
-            <Text variant="caption" className="text-warning flex-1">
-              {checkAgain.note ?? 'Pending · decided from the chain'}
+            <Text variant="caption" className={cn('flex-1', pending ? 'text-warning' : 'text-fg-tertiary')} testID="unshield-check-caption">
+              {caption}
             </Text>
-            <CheckAgainLink checkAgain={checkAgain} testID="unshield-check-again" />
+            {pending ? <CheckAgainLink checkAgain={checkAgain} testID="unshield-check-again" /> : null}
           </View>
         ) : null}
       </ScrollView>
@@ -699,18 +720,29 @@ function statusView(
   }
 }
 
-/** #21 once "Check again" decided an undecided outcome (final review I-1). */
-function decidedView(decided: Exclude<A0UnshieldCheck, {kind: 'pending'}>, amountText: string): StatusView {
-  const base = {badge: null, loud: null, lines: []};
+/**
+ * #21 once "Check again" decided this run's undecided outcome (final review I-1, re-review N-1).
+ * `firstLoud` (N-3): the loud line of a landed-unverified first outcome, kept.
+ */
+function decidedView(decided: Exclude<A0UnshieldCheck, {kind: 'pending'}>, amountText: string, firstLoud: string | null): StatusView {
+  const base = {badge: null, loud: firstLoud, lines: []};
   switch (decided.kind) {
     case 'settled':
-      return {
-        ...base,
-        title: 'Unshielded',
-        sub: `Checked again: it landed on Solana devnet and was verified · the destination received ${amountText}.`,
-        tone: 'ok',
-        badge: 'CONFIRMED',
-      };
+      // N-4: a settle by recovery's rules (no approved terms stored) is not "verified"
+      return decided.verified
+        ? {
+            ...base,
+            title: 'Unshielded',
+            sub: `Checked again: it landed on Solana devnet and was verified · the destination received ${amountText}.`,
+            tone: 'ok',
+            badge: 'CONFIRMED',
+          }
+        : {
+            ...base,
+            title: 'Unshielded',
+            sub: "Checked again: it landed on Solana devnet · settled from the chain's record; this device held no approved terms to check it against.",
+            tone: 'ok',
+          };
     case 'reverted':
       return {
         ...base,
@@ -725,7 +757,7 @@ function decidedView(decided: Exclude<A0UnshieldCheck, {kind: 'pending'}>, amoun
         sub: 'Checked again: the relayer landed a transaction for this unshield that does not match what you approved. It is not retried.',
         tone: 'bad',
         badge: 'UNVERIFIED',
-        loud: a0RefusalLoudText(decided.code),
+        loud: [firstLoud, a0RefusalLoudText(decided.code)].filter((x): x is string => x !== null).join('\n'),
       };
   }
 }

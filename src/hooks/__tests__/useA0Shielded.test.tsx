@@ -5,7 +5,7 @@
 import React from 'react';
 import {Text} from 'react-native';
 import {render, act, fireEvent} from '@testing-library/react-native';
-import {a0ShieldedView, a0UnshieldCheckOf, checkA0PendingAgain, retryA0Startup, useA0Shielded} from '../useA0Shielded';
+import {a0ShieldedView, a0UnshieldCheckOf, a0UnshieldDecisionFor, checkA0PendingAgain, retryA0Startup, useA0Shielded} from '../useA0Shielded';
 import type {A0UnshieldReconcileReport} from '../../modules/shielded/a0/unshieldFlow';
 import type {A0StartupState} from '../../modules/shielded/a0/startup';
 import type {A0Note} from '../../modules/shielded/a0/noteStore';
@@ -286,11 +286,39 @@ describe('final review I-1: a reconciliation\'s result reaches the screens', () 
       code: 'E_A0_VERIFY_SEED_SIGNER',
     });
     expect(a0UnshieldCheckOf(report({settled: [ok], stillPending: [{rho: 'y', reason: 'in-window'}]}))).toEqual({kind: 'pending'});
-    expect(a0UnshieldCheckOf(report({settled: [ok], reverted: [{rho: 'x'}]}))).toEqual({kind: 'settled'});
+    expect(a0UnshieldCheckOf(report({settled: [ok], reverted: [{rho: 'x'}]}))).toEqual({kind: 'settled', verified: true});
     expect(a0UnshieldCheckOf(report({reverted: [{rho: 'x'}]}))).toEqual({kind: 'reverted'});
     expect(a0UnshieldCheckOf(report({}))).toBeNull();
     // an intent-less settle (recovery's rules: verified false with NO code) is settled, not a refusal
-    expect(a0UnshieldCheckOf(report({settled: [{...ok, verified: false}]}))).toEqual({kind: 'settled'});
+    expect(a0UnshieldCheckOf(report({settled: [{...ok, verified: false}]}))).toEqual({kind: 'settled', verified: false});
+  });
+
+  it('re-review N-1: a0UnshieldDecisionFor reads ONE note by its rho — another note\'s settle / revert / refusal is null for it', () => {
+    const r = report({settled: [ok, refused], reverted: [{rho: 'x'}], stillPending: [{rho: 'y', reason: 'in-window'}]});
+    expect(a0UnshieldDecisionFor(r, 'r')).toEqual({kind: 'settled', verified: true});
+    expect(a0UnshieldDecisionFor(r, 'r2')).toEqual({kind: 'unverified', code: 'E_A0_VERIFY_SEED_SIGNER'});
+    expect(a0UnshieldDecisionFor(r, 'x')).toEqual({kind: 'reverted'});
+    expect(a0UnshieldDecisionFor(r, 'y')).toEqual({kind: 'pending'});
+    expect(a0UnshieldDecisionFor(r, 'z')).toBeNull();
+    expect(a0UnshieldDecisionFor(report({settled: [{...ok, verified: false}]}), 'r')).toEqual({kind: 'settled', verified: false});
+  });
+
+  it('N-4: a settle by recovery\'s rules (no intent) is captioned as what it is, not "verified"', async () => {
+    mockState = READY;
+    mockReconcileUnshields.mockResolvedValue(report({settled: [{...ok, verified: false}]}));
+    const r = render(<Probe />);
+    await tap(r);
+    expect(r.getByTestId('note').props.children).toBe('Settled from the chain · unshielded.');
+  });
+
+  it('N-1: the last check\'s unshield report is exposed for a per-note reading (null before any check)', async () => {
+    mockState = READY;
+    const rep = report({settled: [ok]});
+    mockReconcileUnshields.mockResolvedValue(rep);
+    const r = render(<Probe />);
+    expect(r.getByTestId('report').props.children).toBe('null');
+    await tap(r);
+    expect(r.getByTestId('report').props.children).toBe('settled r');
   });
 
   const Probe = () => {
@@ -300,6 +328,7 @@ describe('final review I-1: a reconciliation\'s result reaches the screens', () 
         <Text testID="note">{checkAgain.note ?? ''}</Text>
         <Text testID="unshield">{JSON.stringify(checkAgain.unshield)}</Text>
         <Text testID="refusal">{refusal ?? ''}</Text>
+        <Text testID="report">{checkAgain.report ? `settled ${checkAgain.report.settled.map(x => x.rho).join(',')}` : 'null'}</Text>
         <Text testID="run" onPress={checkAgain.run}>
           run
         </Text>
@@ -312,7 +341,7 @@ describe('final review I-1: a reconciliation\'s result reaches the screens', () 
     });
 
   it.each<[string, Partial<A0UnshieldReconcileReport>, string, string]>([
-    ['settled + verified', {settled: [ok]}, 'Confirmed · unshielded.', '{"kind":"settled"}'],
+    ['settled + verified', {settled: [ok]}, 'Confirmed · unshielded.', '{"kind":"settled","verified":true}'],
     ['reverted', {reverted: [{rho: 'r'}], released: ['slip10:1']}, 'Not sent · your note is back in your shielded balance.', '{"kind":"reverted"}'],
     ['still pending', {stillPending: [{rho: 'r', reason: 'in-window'}]}, 'Still not confirmed · checked just now.', '{"kind":"pending"}'],
     ['a verifier refusal', {settled: [refused]}, 'Checked just now · it landed, but failed verification.', '{"kind":"unverified","code":"E_A0_VERIFY_SEED_SIGNER"}'],

@@ -934,6 +934,12 @@ function ShieldedAssetsSection({view, hidden, checkAgain, refusal}: ShieldedAsse
     <>
       {loud}
       <ShieldedAssetsBody view={view} hidden={hidden} checkAgain={checkAgain} />
+      {view.pending === 0n && checkAgain.note ? (
+        // re-review N-2: the last pending item was decided — the check's caption stays, without the link
+        <Text variant="caption" className="text-fg-tertiary px-5 pb-3" testID="dashboard-check-caption">
+          {checkAgain.note}
+        </Text>
+      ) : null}
     </>
   ) : (
     <ShieldedAssetsBody view={view} hidden={hidden} checkAgain={checkAgain} />

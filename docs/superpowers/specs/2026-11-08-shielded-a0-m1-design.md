@@ -253,6 +253,10 @@ made before this execution and is recorded, not made, here.
   "Not sent" or "Landed, but failed verification" once settled, reverted or refused. A verifier refusal found by the
   startup step or a "Check again" is shown LOUD on #16's shielded-balance line and on the dashboard's shielded assets
   for the rest of that wallet's session — by its code and a fixed sentence only. (Undrawn; README's visual pass.)
+  *Re-review N-1 / N-2:* #21 reads the decision about ITS OWN note only (the flow names the note's rho to the run
+  screen at the pending write, `onPending`; the first decision is kept); another pending unshield's result never
+  changes it. A decided caption stays (without "Check again") after the last pending item is decided. A settle by
+  recovery's rules (no stored terms) is never called "verified".
 - **§6 step 8 / carry 4 (M-3):** the returned outcome no longer carries the verifier's `detail` — the type holds "shown
   nowhere"; the code and a fixed sentence are what #21 says.
 - **§11 error copy (M-4, the secure default):** where an error has a code, #16 and #21 show the code and a fixed sentence,

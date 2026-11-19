@@ -221,6 +221,17 @@ describe('#16 — gated on the A0 startup step', () => {
     expect(screen().getByText(/Network request failed/)).toBeTruthy();
   });
 
+  it('re-review N-2: the last pending item decided → the caption stays (without "Check again"); none without a note', () => {
+    mockView = {kind: 'ready', unspent: 500_000_000n, pending: 0n, notes: 1};
+    Object.assign(mockCheck, {note: 'Not sent · your note is back in your shielded balance.'});
+    const r = screen();
+    expect(r.getByTestId('shielded-check-caption').props.children).toBe('Not sent · your note is back in your shielded balance.');
+    expect(r.queryByTestId('shielded-check-again')).toBeNull();
+    r.unmount();
+    Object.assign(mockCheck, {note: null});
+    expect(screen().queryByTestId('shielded-check-caption')).toBeNull();
+  });
+
   it('final review I-1: a verifier refusal the startup step or "Check again" found is LOUD here, by its code (undrawn)', () => {
     mockView = {kind: 'ready', unspent: 0n, pending: 0n, notes: 0};
     mockRefusal = 'E_A0_VERIFY_SEED_SIGNER';
