@@ -50,9 +50,11 @@ class NocturaProverModule(reactContext: ReactApplicationContext) :
      */
     @ReactMethod
     fun keysOpen(seed: ReadableArray, promise: Promise) {
-        // §4: a second keysOpen invalidates a live authId — and fails a confirmation still in flight,
-        // but only once Rust answered ok (m-7): a refused keysOpen replaced nothing.
-        A0Promise.settle(promise, onOk = { A0Confirmations.controller.sessionChanged() }) {
+        // §4: a second keysOpen invalidates a live authId — and fails a confirmation still in flight.
+        // Rust's keys_open ends the live session BEFORE it can refuse the seed (state.rs), so the
+        // confirmation fails whenever Rust was reached, ok or refused; not when the call never got
+        // there (argument / library failure).
+        A0Promise.settle(promise, onReached = { A0Confirmations.controller.sessionChanged() }) {
             A0Seed.use(seed) { NocturaA0Native.keysOpen(it) }
         }
     }

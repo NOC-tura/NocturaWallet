@@ -94,7 +94,7 @@ class A0ResultTest {
         )
     }
 
-    // ---- M1c Task 6, ruling m-7: sessionChanged() fires only after Rust answered ok
+    // ---- M1c Task 6, ruling m-7: sessionChanged(): keysOpen fires whenever Rust was reached, keysClose only on ok
 
     private fun fakePromise(log: MutableList<String>): com.facebook.react.bridge.Promise =
         java.lang.reflect.Proxy.newProxyInstance(
@@ -134,10 +134,60 @@ class A0ResultTest {
     }
 
     @Test
-    fun theModuleHandsTheSessionChangeToSettleAsOnOkNotAsAPrecall() {
+    fun keysOpenFiresWheneverRustWasReachedOkOrRefusedAndBeforeTheSettle() {
+        val answers = listOf<() -> String?>(
+            { """{"ok":"h1"}""" },
+            { """{"error":"E_A0_SEED","message":"seed"}""" }, // refused AFTER end_session() in Rust
+            { null },
+            { "not json" },
+            { throw IllegalStateException("boom") },
+        )
+        for (answer in answers) {
+            val log = mutableListOf<String>()
+            A0Promise.settle(fakePromise(log), onReached = { log += "reached" }, ensureLoaded = {}) { answer() }
+            assertEquals(log.toString(), 2, log.size)
+            assertEquals("reached", log[0])
+        }
+    }
+
+    @Test
+    fun keysOpenDoesNotFireWhenRustWasNotReached() {
+        val log = mutableListOf<String>()
+        A0Promise.settle(fakePromise(log), onReached = { log += "reached" }, ensureLoaded = {}) { throw A0ArgException("seed") }
+        assertEquals(listOf("reject:${A0Result.ARG}"), log)
+        val log2 = mutableListOf<String>()
+        A0Promise.settle(fakePromise(log2), onReached = { log2 += "reached" }, ensureLoaded = { throw UnsatisfiedLinkError() }) { """{"ok":"x"}""" }
+        assertEquals(listOf("reject:${A0Result.UNAVAILABLE}"), log2)
+    }
+
+    @Test
+    fun keysCloseFiresOnlyOnOkAndBeforeTheResolve() {
+        val log = mutableListOf<String>()
+        A0Promise.settle(fakePromise(log), onOk = { log += "onOk" }, ensureLoaded = {}) { """{"ok":null}""" }
+        assertEquals(listOf("onOk", "resolve"), log)
+        val log2 = mutableListOf<String>()
+        A0Promise.settle(fakePromise(log2), onOk = { log2 += "onOk" }, ensureLoaded = {}) { """{"error":"E_A0_UNKNOWN_HANDLE","message":"x"}""" }
+        assertEquals(listOf("reject:E_A0_UNKNOWN_HANDLE"), log2)
+    }
+
+    @Test
+    fun aCallbackThatThrowsNeverStopsThePromiseSettling() {
+        val log = mutableListOf<String>()
+        A0Promise.settle(fakePromise(log), onReached = { throw IllegalStateException("x") }, onOk = { throw IllegalStateException("y") }, ensureLoaded = {}) { """{"ok":"h"}""" }
+        assertEquals(listOf("resolve"), log)
+        val log2 = mutableListOf<String>()
+        A0Promise.settle(fakePromise(log2), onReached = { throw IllegalStateException("x") }, ensureLoaded = {}) { """{"error":"E_A0_SEED","message":"m"}""" }
+        assertEquals(listOf("reject:E_A0_SEED"), log2)
+    }
+
+    @Test
+    fun theModuleWiresKeysOpenToOnReachedAndKeysCloseToOnOk() {
         val src = java.io.File("src/main/java/com/nocturawallet/prover/NocturaProverModule.kt").readText()
-        val calls = Regex("""A0Confirmations\.controller\.sessionChanged\(\)""").findAll(src).toList()
-        assertEquals(2, calls.size)
-        for (c in calls) assertTrue(src.substring(maxOf(0, c.range.first - 40), c.range.first).contains("onOk = {"))
+        val calls = Regex("""(onReached|onOk) = \{ A0Confirmations\.controller\.sessionChanged\(\) \}""").findAll(src).map { it.groupValues[1] }.toList()
+        assertEquals(listOf("onReached", "onOk"), calls) // keysOpen first, keysClose second
+        assertEquals(2, Regex("""A0Confirmations\.controller\.sessionChanged\(\)""").findAll(src).count()) // never a pre-call
+        val open = src.indexOf("fun keysOpen"); val close = src.indexOf("fun keysClose")
+        assertTrue(src.indexOf("onReached =") in open until close)
+        assertTrue(src.indexOf("onOk =") > close)
     }
 }
