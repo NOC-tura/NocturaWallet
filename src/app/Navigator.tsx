@@ -30,6 +30,7 @@ import {ZkProofScreen} from '../screens/shielded/ZkProofScreen';
 import {ShieldSimulateScreen} from '../screens/shielded/ShieldSimulateScreen';
 import {ShieldConfirmScreen} from '../screens/shielded/ShieldConfirmScreen';
 import {ShieldStatusScreen} from '../screens/shielded/ShieldStatusScreen';
+import {UnshieldRunScreen} from '../screens/shielded/unshield/UnshieldRunScreen';
 import {formatTokenAmount} from '../utils/parseTokenAmount';
 import {A0_DEPOSIT_FEE_LAMPORTS, A0_RHO_MARKER_RENT_LAMPORTS} from '../modules/shielded/a0/screenSupport';
 import type {ShieldIntent} from '../types/shield';
@@ -348,14 +349,19 @@ function NotificationsScreenNav() {
   return <NotificationsScreen onBack={() => navigation.goBack()} />;
 }
 
-// #16 — the shield side only (spec §12 "Hidden until its plan lands"): any `direction` param, e.g.
-// a stale or deep-linked 'public', is ignored; the screen has no unshield side to open.
-function ShieldUnshieldScreenNav() {
-  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+// #16 — both sides (M1c Task 8). `direction: 'public'` opens the unshield side; it comes only
+// from inside the app (the deep link `deposit` carries no direction). Each focus bumps
+// `focusKey`: the unshield CTA, disabled on tap, is enabled again when the user comes back.
+function ShieldUnshieldScreenNav({navigation, route}: NativeStackScreenProps<RootStackParamList, 'ShieldUnshieldModal'>) {
+  const [focusKey, setFocusKey] = React.useState(0);
+  React.useEffect(() => navigation.addListener('focus', () => setFocusKey(k => k + 1)), [navigation]);
   return (
     <ShieldUnshieldScreen
+      initialDirection={route.params?.direction === 'public' ? 'public' : 'private'}
+      focusKey={focusKey}
       onBack={() => navigation.goBack()}
       onShield={amount => navigation.navigate('ZkProofModal', {amount})}
+      onUnshield={r => navigation.navigate('UnshieldRun', r)}
     />
   );
 }
@@ -516,6 +522,17 @@ function ShieldStatusScreenNav({navigation, route}: NativeStackScreenProps<RootS
     <ShieldStatusScreen
       intent={route.params.intent}
       onDone={() => navigation.navigate('MainTabs', {screen: 'HomeTab'} as never)}
+    />
+  );
+}
+
+// #18 → #21 for the A0 unshield: one screen owns the one unshieldA0 call (M1c Task 8).
+function UnshieldRunScreenNav({navigation, route}: NativeStackScreenProps<RootStackParamList, 'UnshieldRun'>) {
+  return (
+    <UnshieldRunScreen
+      request={route.params}
+      onDone={() => navigation.navigate('MainTabs', {screen: 'HomeTab'} as never)}
+      onBack={() => navigation.goBack()}
     />
   );
 }
@@ -826,10 +843,10 @@ export function RootNavigator() {
       <RootNav.Screen name="NotificationsModal" component={NotificationsScreenNav} options={modalScreenOptions} />
       <RootNav.Screen name="AddressBookModal" component={AddressBookScreenNav} options={modalScreenOptions} />
       <RootNav.Screen name="TransactionHistory" component={TransactionHistoryScreenNav} options={modalScreenOptions} />
-      {/* Shielded (the devnet build only): #17, #16's shield side, and #18 → #21 for the A0 deposit.
-          The ROUTES are gated, not only their entry points: a route that is not registered cannot be
-          reached by name or by deep link. Hidden until M1c (spec §12): #16's unshield side (the
-          screen has none) and the shielded transfer — no route; the v1 ShieldedTransfer,
+      {/* Shielded (the devnet build only): #17, #16 (both sides), #18 → #21 for the A0 deposit, and
+          the unshield run (#18 → #21 for the A0 unshield, M1c). The ROUTES are gated, not only their
+          entry points: a route that is not registered cannot be reached by name or by deep link.
+          Still hidden (spec §12): the shielded transfer — no route; the v1 ShieldedTransfer,
           ShieldedBalance and Deposit screens are gone. */}
       {isShieldedEnabled() ? (
         <>
@@ -845,6 +862,11 @@ export function RootNavigator() {
           <RootNav.Screen
             name="ShieldStatus"
             component={ShieldStatusScreenNav}
+            options={{...modalScreenOptions, gestureEnabled: false}}
+          />
+          <RootNav.Screen
+            name="UnshieldRun"
+            component={UnshieldRunScreenNav}
             options={{...modalScreenOptions, gestureEnabled: false}}
           />
         </>

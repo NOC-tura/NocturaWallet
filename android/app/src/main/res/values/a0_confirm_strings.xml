@@ -4,14 +4,16 @@
   privacy-claims guard (src/screens/shielded/__tests__/privacyClaims.test.ts): no string here may
   claim a privacy property the scheme does not deliver. The values the dialog shows (owner, token
   account, amounts, pool) are Rust's; these are only the labels and the two sentence frames.
-  %1$s / %2$s are filled by A0ConfirmText.render (Locale.ROOT).
+  %1$s / %2$s / %3$s are filled by A0ConfirmText.render (Locale.ROOT). The token's symbol (the
+  amount line's %3$s, the fee line's %2$s) is Kotlin's own, chosen from BuildConfig.A0_NETWORK
+  (devnet → TEST, otherwise NOC; M1c Task 8) — never a value from JS.
 -->
 <resources>
     <string name="a0_confirm_title">Confirm unshield</string>
     <string name="a0_confirm_destination_label">Destination (wallet address)</string>
     <string name="a0_confirm_token_account_label">Token account</string>
-    <string name="a0_confirm_amount_line">Destination receives exactly %1$s NOC (%2$s base units)</string>
-    <string name="a0_confirm_fee_line">Relayer fee %1$s NOC, taken from your shielded balance</string>
+    <string name="a0_confirm_amount_line">Destination receives exactly %1$s %3$s (%2$s base units)</string>
+    <string name="a0_confirm_fee_line">Relayer fee %1$s %2$s, taken from your shielded balance</string>
     <string name="a0_confirm_pool_label">Pool</string>
     <string name="a0_confirm_approve">Approve</string>
     <string name="a0_confirm_cancel">Cancel</string>

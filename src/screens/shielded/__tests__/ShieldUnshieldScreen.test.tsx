@@ -2,7 +2,8 @@
  * #16 shield side on the A0 pool: the amount (BigInt, from the main account's balance of the pool's
  * mint), the fee rows the design shows (with the ZK proof row) as what an A0 deposit costs, the
  * gating on the A0 startup step (the CTA only when the restore finished; every other state is a
- * state with a way out — Retry — never a spinner forever), and the hidden unshield side.
+ * state with a way out — Retry — never a spinner forever), and the direction tabs (M1c: the
+ * unshield side is a tab; its own rows are in unshield/__tests__/UnshieldSide.test.tsx).
  */
 import React from 'react';
 import {render, fireEvent, act, waitFor} from '@testing-library/react-native';
@@ -56,7 +57,7 @@ const screen = () => render(<ShieldUnshieldScreen onBack={onBack} onShield={onSh
 const ctaDisabled = (r: ReturnType<typeof screen>) => r.getByTestId('shield-cta').props.accessibilityState?.disabled;
 
 describe('#16 shield side — the design', () => {
-  it('idle: title, the one "Make private" tab, Available from the pool mint, MAX, the fee rows with the ZK proof row, the disabled CTA', async () => {
+  it('idle: title, the "Make private" tab, Available from the pool mint, MAX, the fee rows with the ZK proof row, the disabled CTA', async () => {
     const r = screen();
     await waitFor(() => expect(mockPoolCount).toHaveBeenCalled());
     expect(r.getByText('Shield / Unshield')).toBeTruthy();
@@ -217,19 +218,19 @@ describe('#16 — gated on the A0 startup step', () => {
   });
 });
 
-describe('#16 — the unshield side is hidden until M1c', () => {
-  it('no "Make public" tab, no vault-balance side, no Unshield CTA', () => {
+describe('#16 — M1c: the unshield side is a tab (its rows: unshield/__tests__/UnshieldSide.test.tsx)', () => {
+  it('opens on the shield side by default; the "Make public" tab exists and is not selected', () => {
     const r = screen();
-    expect(r.queryByText('Make public')).toBeNull();
-    expect(r.queryByText('Vault balance')).toBeNull();
-    expect(r.queryByText(/^Unshield/)).toBeNull(); // the title "Shield / Unshield" is the design's
-    expect(r.queryByText(/Privacy decreases on public withdraw/)).toBeNull();
+    expect(r.getByLabelText('Make private').props.accessibilityState?.selected).toBe(true);
+    expect(r.getByLabelText('Make public').props.accessibilityState?.selected).toBe(false);
+    expect(r.getByTestId('shield-cta')).toBeTruthy();
+    expect(r.queryByTestId('unshield-cta')).toBeNull();
   });
 
-  it('a stale {direction: "public"} prop has no effect (the screen has no public mode)', () => {
-    const props = {onBack, onShield, initialDirection: 'public'} as unknown as React.ComponentProps<typeof ShieldUnshieldScreen>;
+  it('an unknown initialDirection opens the shield side (only "public" opens the unshield side)', () => {
+    const props = {onBack, onShield, initialDirection: 'withdraw'} as unknown as React.ComponentProps<typeof ShieldUnshieldScreen>;
     const r = render(<ShieldUnshieldScreen {...props} />);
-    expect(r.queryByText('Make public')).toBeNull();
-    expect(r.getByText('Make private')).toBeTruthy();
+    expect(r.getByLabelText('Make private').props.accessibilityState?.selected).toBe(true);
+    expect(r.queryByTestId('unshield-cta')).toBeNull();
   });
 });

@@ -1,5 +1,6 @@
 import type {TransferIntent} from './transfer';
 import type {ShieldIntent} from './shield';
+import type {A0UnshieldDestination} from '../modules/shielded/a0/unshieldFlow';
 
 export type RootStackParamList = {
   Splash: undefined;
@@ -17,14 +18,16 @@ export type RootStackParamList = {
   ScanModal: undefined; // QR scanner (#14)
   NotificationsModal: undefined; // Notifications inbox (#29)
   AddressBookModal: undefined; // Saved contacts (#15)
-  // #16 — the shield side only until M1c (spec §12 "Hidden until its plan lands"): no 'public'.
-  ShieldUnshieldModal: {direction?: 'private'} | undefined;
+  // #16 — both sides (M1c Task 8); no deep link opens 'public' (deepLinkConfig maps only 'deposit')
+  ShieldUnshieldModal: {direction?: 'private' | 'public'} | undefined;
   TransactionHistory: undefined;
   ShieldedExplainer: undefined;
   ZkProofModal: {amount: string}; // #18 — the A0 deposit's proof; amount in base units
   ShieldSimulate: {intent: ShieldIntent}; // #19 for the A0 deposit
   ShieldConfirm: {intent: ShieldIntent}; // #20
   ShieldStatus: {intent: ShieldIntent}; // #21
+  // #18 → #21 for the A0 unshield (M1c Task 8): one unshieldA0 call per mount; no deep link
+  UnshieldRun: {destination: A0UnshieldDestination; amount: string};
   AppUpdateModal: {storeUrl: string; message?: string};
   TokenDetailModal: {mint: string};
   SwapModal: {initialFromMint?: string} | undefined;

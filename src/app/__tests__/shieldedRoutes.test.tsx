@@ -1,8 +1,9 @@
 /**
  * Route-level gating of the shielded screens (spec §12 "Hidden until its plan lands"; M1b screens
- * task). Between M1b and M1c, #16's unshield side and the shielded transfer are HIDDEN — not a
- * hidden button: no route is registered for them, so neither `navigate(name)` nor a deep link can
- * reach them. This suite renders the REAL RootNavigator (only the splash is stubbed) and reads the
+ * task). The shielded transfer is HIDDEN — not a hidden button: no route is registered for it, so
+ * neither `navigate(name)` nor a deep link can reach it. M1c Task 8 adds the unshield run
+ * (`UnshieldRun`), registered in the shielded build only and reachable by NO deep link. This
+ * suite renders the REAL RootNavigator (only the splash is stubbed) and reads the
  * registered route names, and resolves the real deep-link config with React Navigation's own
  * `getStateFromPath`.
  */
@@ -29,9 +30,17 @@ jest.mock('../../screens/transparent/ReceiveScreen', () => ({
   },
 }));
 
-/** The shield flow M1b registers in the devnet build. */
-const SHIELD_FLOW = ['ShieldedExplainer', 'ShieldUnshieldModal', 'ZkProofModal', 'ShieldSimulate', 'ShieldConfirm', 'ShieldStatus'];
-/** Hidden until M1c (and the v1 screens they replaced). */
+/** The shield flow M1b registers in the devnet build, and M1c's unshield run (Task 8). */
+const SHIELD_FLOW = [
+  'ShieldedExplainer',
+  'ShieldUnshieldModal',
+  'ZkProofModal',
+  'ShieldSimulate',
+  'ShieldConfirm',
+  'ShieldStatus',
+  'UnshieldRun',
+];
+/** Still hidden: the shielded transfer (M1c does not land it) and the v1 screens they replaced. */
 const HIDDEN = ['ShieldedTransfer', 'ShieldedBalance', 'Deposit', 'Withdraw'];
 
 /** The deep-link config is built at import: load it under `f` in a fresh registry. */
@@ -45,19 +54,23 @@ function loadLinks(f: Flags): typeof import('../deepLinkConfig') {
 }
 
 /** RootNavigator reads the flags while rendering: render it under `f`. */
-function routeNames(f: Flags): {names: string[]; ref: ReturnType<typeof createNavigationContainerRef>} {
+function routeNames(f: Flags): {
+  names: string[];
+  ref: ReturnType<typeof createNavigationContainerRef>;
+  r: ReturnType<typeof render>;
+} {
   mockFlags = f;
   const ref = createNavigationContainerRef();
-  render(
+  const r = render(
     <NavigationContainer ref={ref}>
       <RootNavigator />
     </NavigationContainer>,
   );
-  return {names: (ref.getRootState()?.routeNames ?? []) as string[], ref};
+  return {names: (ref.getRootState()?.routeNames ?? []) as string[], ref, r};
 }
 
 describe('shielded routes (route-level gating)', () => {
-  it('devnet build (shielded on): the shield flow is registered; the unshield side and the transfer are not', () => {
+  it('devnet build (shielded on): the shield flow and the unshield run are registered; the transfer is not', () => {
     const {names} = routeNames({shielded: true});
     expect(names).toEqual(expect.arrayContaining(SHIELD_FLOW));
     for (const h of HIDDEN) {
@@ -90,6 +103,25 @@ describe('shielded routes (route-level gating)', () => {
   });
 });
 
+describe('#16 both sides (M1c Task 8)', () => {
+  it('{direction: "public"} opens the unshield side; {direction: "private"} (and none) the shield side', async () => {
+    const {ref, r} = routeNames({shielded: true});
+    await act(async () => {
+      (ref.navigate as (n: string, p?: object) => void)('ShieldUnshieldModal', {direction: 'public'});
+    });
+    expect(r.queryByTestId('unshield-cta')).not.toBeNull();
+    expect(r.queryByTestId('shield-cta')).toBeNull();
+    await act(async () => {
+      ref.goBack();
+    });
+    await act(async () => {
+      (ref.navigate as (n: string, p?: object) => void)('ShieldUnshieldModal', {direction: 'private'});
+    });
+    expect(r.queryByTestId('shield-cta')).not.toBeNull();
+    expect(r.queryByTestId('unshield-cta')).toBeNull();
+  });
+});
+
 describe('shielded deep links', () => {
   const resolve = (f: Flags, path: string): string[] => {
     const links = loadLinks(f);
@@ -106,7 +138,7 @@ describe('shielded deep links', () => {
 
   it('devnet: noctura://deposit opens #16 (the shield side); withdraw / transfer reach no shielded screen', () => {
     expect(resolve({shielded: true}, 'deposit')).toEqual(['ShieldUnshieldModal']);
-    for (const p of ['withdraw', 'transfer', 'unshield']) {
+    for (const p of ['withdraw', 'transfer', 'unshield', 'UnshieldRun', 'unshield-run']) {
       const names = resolve({shielded: true}, p);
       for (const r of [...SHIELD_FLOW, ...HIDDEN]) {
         expect(names).not.toContain(r);

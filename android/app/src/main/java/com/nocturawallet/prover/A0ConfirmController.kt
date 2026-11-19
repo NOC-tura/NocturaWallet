@@ -19,6 +19,7 @@ import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import com.nocturawallet.BuildConfig
 import com.nocturawallet.R
 
 /** How a confirmation ends: Rust's answer to `authorizeUnshield`, or a refusal. */
@@ -58,6 +59,8 @@ internal class A0ConfirmDialog private constructor(val dialog: AlertDialog, val 
                 amountFormat = res.getString(R.string.a0_confirm_amount_line),
                 feeFormat = res.getString(R.string.a0_confirm_fee_line),
                 poolLabel = res.getString(R.string.a0_confirm_pool_label),
+                // Kotlin's own: this build's network from BuildConfig, never a value from JS
+                symbol = A0ConfirmText.tokenSymbol(BuildConfig.A0_NETWORK),
             )
             val dp = { v: Int -> TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v.toFloat(), res.displayMetrics).toInt() }
             val column = LinearLayout(activity).apply {

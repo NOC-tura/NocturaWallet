@@ -414,7 +414,19 @@ function settle(tree: A0VerifiedTree, note: Pick<A0Note, 'rho' | 'commitment' | 
 export type A0DepositOutcome =
   | {status: 'unspent'; signature: string; leafIndex: number; root: string}
   /** the note stays `pending`; the startup reconciliation decides it (§5 step 7) */
-  | {status: 'pending'; signature: string; reason: 'send-failed' | 'not-confirmed' | 'not-in-sync'; detail?: string}
+  | {
+      status: 'pending';
+      signature: string;
+      reason: 'send-failed' | 'not-confirmed' | 'not-in-sync';
+      detail?: string;
+      /**
+       * M1c Task 8 (the M1b final review's parked #21 copy): set only on `not-in-sync` when the
+       * settle sync shows ANOTHER deposit at our rho after our confirmed send (I-2) — #21 says that
+       * case as what it is instead of "the history does not list it yet". Not read out (the
+       * readout picks its fields; its schema is unchanged).
+       */
+      foreignSignature?: string;
+    }
   /**
    * our tx did not land: a foreign deposit holds our rho; the pending note was dropped (counter
    * kept). Since the final review's I-2 `submitA0Deposit` itself never returns it (a foreign hit
@@ -581,6 +593,7 @@ async function submitOnce(
           signature,
           reason: 'not-in-sync',
           detail: `the synced history shows another deposit (${s.signature}) at this rho after our confirmed send`,
+          foreignSignature: s.signature,
         };
       }
     }

@@ -16,6 +16,8 @@ import org.w3c.dom.Element
  * account labelled as such, "Destination receives exactly …" with the base units, the relayer fee
  * "taken from your shielded balance" (I7), the pool. Addresses and amounts come from the offline
  * ATA vectors (scripts/a0-vectors/gen-ata-vectors.mjs, web3.js) — never from the code under test.
+ * The token's symbol (M1c Task 8): Kotlin's own from BuildConfig.A0_NETWORK, TEST on devnet, NOC
+ * otherwise — one row per network, and a source row that the controller takes it from nowhere else.
  */
 class A0ConfirmTextTest {
     private val strings: Map<String, String> = run {
@@ -40,13 +42,14 @@ class A0ConfirmTextTest {
         .put("humanFee", humanFee)
         .put("pool", pool)
 
-    private fun render(p: A0ParsedUnshield) = A0ConfirmText.render(
+    private fun render(p: A0ParsedUnshield, network: String = "mainnet-beta") = A0ConfirmText.render(
         p,
         destinationLabel = strings.getValue("a0_confirm_destination_label"),
         tokenAccountLabel = strings.getValue("a0_confirm_token_account_label"),
         amountFormat = strings.getValue("a0_confirm_amount_line"),
         feeFormat = strings.getValue("a0_confirm_fee_line"),
         poolLabel = strings.getValue("a0_confirm_pool_label"),
+        symbol = A0ConfirmText.tokenSymbol(network),
     )
 
     @Test
@@ -69,6 +72,52 @@ class A0ConfirmTextTest {
         assertEquals("Relayer fee 0.00001 NOC, taken from your shielded balance", t.feeLine)
         assertEquals(pool, t.pool)
         assertEquals("Pool", t.poolLabel)
+    }
+
+    @Test
+    fun theDevnetBuildNamesTheTokenTestAsTheScreensDo() {
+        // M1c Task 8 (controller ruling): the same symbol as #16 / #21 — TEST on the devnet build
+        val f = vectors.getJSONArray("amounts").getJSONObject(3) // 10000 → 0.00001
+        val p = A0ParsedUnshield.from(rust("1250000000", "1.25", f.getString("units"), f.getString("human")))!!
+        val t = render(p, network = "devnet")
+        assertEquals("Destination receives exactly 1.25 TEST (1250000000 base units)", t.amountLine)
+        assertEquals("Relayer fee 0.00001 TEST, taken from your shielded balance", t.feeLine)
+    }
+
+    @Test
+    fun theMainnetBuildNamesTheTokenNoc() {
+        val f = vectors.getJSONArray("amounts").getJSONObject(3)
+        val p = A0ParsedUnshield.from(rust("1250000000", "1.25", f.getString("units"), f.getString("human")))!!
+        val t = render(p, network = "mainnet-beta") // .env.production's NETWORK
+        assertEquals("Destination receives exactly 1.25 NOC (1250000000 base units)", t.amountLine)
+        assertEquals("Relayer fee 0.00001 NOC, taken from your shielded balance", t.feeLine)
+    }
+
+    @Test
+    fun theSymbolIsTestOnlyForExactlyDevnet() {
+        assertEquals("TEST", A0ConfirmText.tokenSymbol("devnet"))
+        // controls: every other value — mainnet, none (an env file without NETWORK), a near miss — is NOC
+        for (n in listOf("mainnet-beta", "mainnet", "", "Devnet", " devnet", "devnet ", "testnet")) {
+            assertEquals("network '$n'", "NOC", A0ConfirmText.tokenSymbol(n))
+        }
+    }
+
+    @Test
+    fun theSymbolComesFromBuildConfigNeverFromJs() {
+        // the controller passes Kotlin's own choice from this build's BuildConfig …
+        val controller = File("src/main/java/com/nocturawallet/prover/A0ConfirmController.kt").readText()
+        assertTrue(controller.contains("symbol = A0ConfirmText.tokenSymbol(BuildConfig.A0_NETWORK)"))
+        assertTrue(controller.contains("import com.nocturawallet.BuildConfig"))
+        // … and names no symbol itself (a literal there would bypass the network)
+        assertTrue(!Regex("\"(NOC|TEST)\"").containsMatchIn(controller))
+        // the field is the build's NETWORK, defined in every build (empty when the env has none)
+        val gradle = File("build.gradle").readText()
+        val field = gradle.lines().map { it.trim() }.single { it.startsWith("buildConfigField \"String\", \"A0_NETWORK\"") }
+        assertTrue(field, field.contains("project.env.get(\"NETWORK\") ?: \"\""))
+        // the resource carries no symbol of its own: both lines take it as an argument
+        assertTrue(strings.getValue("a0_confirm_amount_line").contains("%3\$s"))
+        assertTrue(strings.getValue("a0_confirm_fee_line").contains("%2\$s"))
+        for (v in strings.values) assertTrue("a literal symbol in '$v'", !Regex("\\b(NOC|TEST)\\b").containsMatchIn(v))
     }
 
     @Test

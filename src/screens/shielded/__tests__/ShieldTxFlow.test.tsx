@@ -265,6 +265,23 @@ describe('#21 ShieldStatus', () => {
     expect(r.queryByText(/fail/i)).toBeNull();
   });
 
+  it('M1b I-2 (the parked #21 copy): pending not-in-sync WITH a foreign signature → says another deposit holds the number, still pending, never "failed" or "Not shielded"', async () => {
+    const id = holdPreparedA0Deposit(PREPARED);
+    const ctl = controlledSubmit();
+    const r = render(<ShieldStatusScreen intent={intentFor(id)} onDone={jest.fn()} />);
+    await waitFor(() => expect(mockSubmit).toHaveBeenCalled());
+    const foreign = 'F'.repeat(60) + 'abcd';
+    await act(async () =>
+      ctl.resolve({status: 'pending', signature: SIG, reason: 'not-in-sync', detail: `another deposit (${foreign})`, foreignSignature: foreign}),
+    );
+    expect(title(r)).toBe('Not confirmed yet');
+    expect(sub(r)).toBe(
+      "Solana devnet reported this deposit confirmed, but the pool's history shows another deposit (FFFFFF…abcd) at this note's number. Nothing is decided from that: your deposit stays pending on this device and is settled from the chain the next time the wallet starts, or when you tap Check again.",
+    );
+    expect(r.getByText('PENDING')).toBeTruthy();
+    expect(r.queryByText(/fail|Not shielded/i)).toBeNull();
+  });
+
   it('dropped (a foreign deposit holds our rho) → "Not shielded", no tokens moved', async () => {
     const id = holdPreparedA0Deposit(PREPARED);
     const ctl = controlledSubmit();

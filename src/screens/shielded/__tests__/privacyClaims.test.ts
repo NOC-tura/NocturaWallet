@@ -5,7 +5,8 @@ import * as path from 'path';
  * The shielded screens must not claim a privacy property the scheme does not deliver today: with one
  * transparent key and a self-relayed exit, a deposit and its withdrawal can be linked by reading two
  * transactions (memory: shielded privacy guarantee). The questionnaire answer of 2026-11-05 lists the
- * claims that were removed; this test keeps them out.
+ * claims that were removed; this test keeps them out. Its regexes are never relaxed (spec §11);
+ * M1c widens only its scope.
  */
 const UNSUPPORTED = [
   /won't be linked/i,
@@ -18,12 +19,45 @@ const UNSUPPORTED = [
 ];
 
 const SCREENS = path.resolve(__dirname, '..');
+const ROOT = path.resolve(__dirname, '../../../..');
+
+/**
+ * M1c Task 8 (spec §11 "The guard … its scope grows to every file carrying M1 copy"): every
+ * `.ts` / `.tsx` under `src/screens/shielded/` at ANY depth (the new `unshield/` directory: #16's
+ * unshield side, the destination choice and its warnings, the unshield run #18 → #21, the copy
+ * module), outside `__tests__`; plus the M1 copy that lives outside it (the "Check again" link).
+ */
+function walk(dir: string): string[] {
+  return fs.readdirSync(dir, {withFileTypes: true}).flatMap(e => {
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) return e.name === '__tests__' ? [] : walk(p);
+    return /\.tsx?$/.test(e.name) ? [p] : [];
+  });
+}
+
+const EXTRA_COPY = [path.join(ROOT, 'src/components/CheckAgainLink.tsx')];
 
 function screenSources(): Array<{file: string; text: string}> {
+  return [...walk(SCREENS), ...EXTRA_COPY].map(p => ({
+    file: path.relative(ROOT, p),
+    text: fs.readFileSync(p, 'utf8'),
+  }));
+}
+
+/** Every Android string resource of the app (`res/values*\/*.xml` with a <string>): the Kotlin side. */
+const RES = path.join(ROOT, 'android/app/src/main/res');
+function androidStringResources(): Array<{file: string; text: string}> {
   return fs
-    .readdirSync(SCREENS)
-    .filter(f => f.endsWith('.tsx'))
-    .map(f => ({file: f, text: fs.readFileSync(path.join(SCREENS, f), 'utf8')}));
+    .readdirSync(RES, {withFileTypes: true})
+    .filter(d => d.isDirectory() && d.name.startsWith('values'))
+    .flatMap(d =>
+      fs
+        .readdirSync(path.join(RES, d.name))
+        .filter(f => f.endsWith('.xml'))
+        .map(f => path.join(RES, d.name, f)),
+    )
+    .map(p => ({file: path.relative(ROOT, p), text: fs.readFileSync(p, 'utf8')}))
+    .filter(r => r.text.includes('<string '));
 }
 
 /**
@@ -40,6 +74,47 @@ export function unsupportedClaims(text: string): string[] {
 describe('shielded screens make no unsupported privacy claim', () => {
   it('reads every shielded screen (positive control: the scan is not empty)', () => {
     expect(screenSources().length).toBeGreaterThanOrEqual(5);
+  });
+
+  it('M1c: the scope reaches the new unshield directory and the M1 copy outside it (positive control)', () => {
+    const files = screenSources().map(s => s.file);
+    expect(files).toEqual(
+      expect.arrayContaining([
+        'src/screens/shielded/ShieldUnshieldScreen.tsx',
+        'src/screens/shielded/unshield/UnshieldSide.tsx',
+        'src/screens/shielded/unshield/UnshieldRunScreen.tsx',
+        'src/screens/shielded/unshield/unshieldCopy.ts',
+        'src/components/CheckAgainLink.tsx',
+      ]),
+    );
+    expect(files.some(f => f.includes('__tests__'))).toBe(false);
+    // the copy module is read as text: §11's relayed-unshield sentence is in what the guard sees
+    const copy = screenSources().find(s => s.file.endsWith('unshield/unshieldCopy.ts'))!;
+    expect(copy.text).toContain('so no key of yours signs it. Amounts and timing are public.');
+  });
+
+  it('M1c: the scope reaches every Android string resource (the Kotlin strings.xml and the dialog resource)', () => {
+    const files = androidStringResources().map(r => r.file);
+    expect(files).toEqual(
+      expect.arrayContaining([
+        'android/app/src/main/res/values/strings.xml',
+        'android/app/src/main/res/values/a0_confirm_strings.xml',
+      ]),
+    );
+    // styles.xml holds no <string>: it is not a copy file (negative control on the filter)
+    expect(files).not.toContain('android/app/src/main/res/values/styles.xml');
+  });
+
+  it.each(androidStringResources().map(r => [r.file, r.text] as const))('%s carries none of them', (_file, text) => {
+    expect(unsupportedClaims(text)).toEqual([]);
+  });
+
+  it('positive control: a planted "unlinkable" in strings.xml is flagged', () => {
+    const xml = androidStringResources().find(r => r.file.endsWith('values/strings.xml'))!.text;
+    const planted = xml.replace('<string name="app_name">', '<string name="a0_planted">Your exit is unlinkable</string>\n    <string name="app_name">');
+    expect(planted).not.toBe(xml);
+    expect(unsupportedClaims(xml)).toEqual([]);
+    expect(unsupportedClaims(planted)).toEqual(['unlinkable']);
   });
 
   it('flags each unsupported phrase (negative control)', () => {

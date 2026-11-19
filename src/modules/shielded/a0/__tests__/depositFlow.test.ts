@@ -500,19 +500,23 @@ describe('submit refusals and outcomes that leave the note pending', () => {
     const p = await prepare();
     // the RPC accepts our tx and reports it confirmed without an error, while the history it then
     // serves shows somebody else's deposit at our rho — a contradiction (the marker is `init`)
+    let foreignSig = '';
     net.onSend = () => 'drop';
     const out = await submitA0Deposit(net.connection, p, seedBytes(TEST_SEED), {
       sync: {useCache: false},
       settleAttempts: 1,
       onStage: s => {
         if (s === 'submitted') {
-          net.landForeign({amount: 9n, rho: p.rho, commitment: other.commitment(9n, p.rho)});
+          foreignSig = net.landForeign({amount: 9n, rho: p.rho, commitment: other.commitment(9n, p.rho)});
           net.statuses.set(net.sent[0]!.signature, {err: null, confirmationStatus: 'confirmed'});
         }
       },
     });
     expect(out).toMatchObject({status: 'pending', reason: 'not-in-sync', signature: net.sent[0]!.signature});
     expect(out.status === 'pending' && out.detail).toMatch(/another deposit \(\w+\) at this rho after our confirmed send/);
+    // M1c Task 8: the foreign signature is carried structurally, for #21's parked copy
+    expect(out.status === 'pending' && out.foreignSignature).toBe(foreignSig);
+    expect(foreignSig).not.toBe(net.sent[0]!.signature);
     expect(loadA0NoteStore()).toEqual({
       nextDepositIndex: 1n,
       notes: [expect.objectContaining({rho: p.rho, commitment: p.commitment, status: 'pending'})],
@@ -557,6 +561,8 @@ describe('submit refusals and outcomes that leave the note pending', () => {
       },
     });
     expect(out).toMatchObject({status: 'pending', reason: 'not-in-sync'});
+    // control for Task 8's marker: a plain lag carries no foreign signature
+    expect(out.status === 'pending' && 'foreignSignature' in out).toBe(false);
     expect(loadA0NoteStore().notes[0]!.status).toBe('pending');
   });
 });

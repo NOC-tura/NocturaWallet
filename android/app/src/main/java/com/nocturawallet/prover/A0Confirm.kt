@@ -277,6 +277,11 @@ internal data class A0ParsedUnshield(
  * The dialog's text (§4 step 3), from the format strings of `res/values/a0_confirm_strings.xml`
  * (passed in, so the JVM test renders the real resource). The owner and the token account are
  * whole — never truncated, never ellipsized (substitution attacks live in matching prefixes).
+ *
+ * The token's symbol is Kotlin's own (M1c Task 8, controller ruling): [tokenSymbol] of this
+ * build's network, read from BuildConfig by the controller — never a value from JS (the dialog is
+ * the trust boundary; S7). It names the mint Rust already pins (`A0.mint`): the devnet pool's test
+ * mint is shown as "TEST", as #16 and #21 show it; any other network shows "NOC".
  */
 internal data class A0ConfirmText(
     val destinationLabel: String,
@@ -289,6 +294,9 @@ internal data class A0ConfirmText(
     val pool: String,
 ) {
     companion object {
+        /** The symbol the dialog names the pool's token by: "TEST" on devnet (exactly), else "NOC". */
+        fun tokenSymbol(network: String): String = if (network == "devnet") "TEST" else "NOC"
+
         fun render(
             p: A0ParsedUnshield,
             destinationLabel: String,
@@ -296,13 +304,14 @@ internal data class A0ConfirmText(
             amountFormat: String,
             feeFormat: String,
             poolLabel: String,
+            symbol: String,
         ): A0ConfirmText = A0ConfirmText(
             destinationLabel = destinationLabel,
             owner = p.owner,
             tokenAccountLabel = tokenAccountLabel,
             ata = p.ata,
-            amountLine = String.format(java.util.Locale.ROOT, amountFormat, p.humanAmount, p.amount),
-            feeLine = String.format(java.util.Locale.ROOT, feeFormat, p.humanFee),
+            amountLine = String.format(java.util.Locale.ROOT, amountFormat, p.humanAmount, p.amount, symbol),
+            feeLine = String.format(java.util.Locale.ROOT, feeFormat, p.humanFee, symbol),
             poolLabel = poolLabel,
             pool = p.pool,
         )

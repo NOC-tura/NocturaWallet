@@ -37,6 +37,9 @@ import {explorerTxUrl} from '../../constants/chain';
  *   - unspent  → "Shielded", the note's position (leaf index) in the pool, the new shielded balance;
  *   - pending  → "Not confirmed yet": the note is kept and settled at the next start — NEVER
  *                "failed" (Task 4: the startup reconciliation is the authority on a pending note);
+ *                a pending outcome with `foreignSignature` (M1b final review I-2: another deposit
+ *                at our rho after OUR confirmed send) says so, with the other deposit's signature
+ *                (M1c Task 8, the copy M1b parked);
  *   - dropped  → "Not shielded": another deposit holds this note's number; no tokens moved;
  *   - a refusal before the send (keychain cancelled, signer mismatch, store refusal) → "Not sent",
  *     its code; nothing was broadcast;
@@ -136,7 +139,7 @@ export function ShieldStatusScreen({intent, onDone}: ShieldStatusScreenProps) {
 
   const amount = `${displayAmount(BigInt(intent.amount), intent.decimals)} ${intent.tokenSymbol}`;
   const view = viewOf(phase);
-  const shortSig = signature && signature.length > 16 ? `${signature.slice(0, 6)}…${signature.slice(-4)}` : signature;
+  const shortSig = signature ? shortSignature(signature) : signature;
 
   const copySig = () => {
     if (!signature) return;
@@ -303,6 +306,17 @@ function viewOf(phase: Phase): {title: string; sub: string; tone: Tone; badge: s
           badge: null,
         };
       }
+      if (o.foreignSignature) {
+        // M1b final review I-2, its #21 copy parked for M1c: our send was reported confirmed, yet the
+        // pool's history shows ANOTHER deposit at this note's number — a contradiction (the number's
+        // marker can be created once), so nothing is decided here: the note stays pending.
+        return {
+          title: 'Not confirmed yet',
+          sub: `Solana devnet reported this deposit confirmed, but the pool's history shows another deposit (${shortSignature(o.foreignSignature)}) at this note's number. Nothing is decided from that: your deposit stays pending on this device and is settled from the chain the next time the wallet starts, or when you tap Check again.`,
+          tone: 'warn',
+          badge: 'PENDING',
+        };
+      }
       const why =
         o.reason === 'send-failed'
           ? 'The network did not accept the transaction.'
@@ -317,6 +331,10 @@ function viewOf(phase: Phase): {title: string; sub: string; tone: Tone; badge: s
       };
     }
   }
+}
+
+function shortSignature(sig: string): string {
+  return sig.length > 16 ? `${sig.slice(0, 6)}…${sig.slice(-4)}` : sig;
 }
 
 function Ring({tone}: {tone: Tone}) {
