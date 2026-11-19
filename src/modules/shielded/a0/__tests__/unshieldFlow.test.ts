@@ -39,11 +39,15 @@ import {loadA0NoteStore} from '../noteStore';
 import type {A0Note} from '../noteStore';
 import {loadA0AccountRegistry, resetA0ReservationsForTests} from '../accountRegistry';
 import {resetA0ReadoutForTests, setA0ReadoutDefaultsForTests} from '../checkpointReadout';
+import * as relayerClient from '../relayerClient';
 import {interpretA0SubmitAnswer} from '../relayerClient';
+import {A0RelayerUrlError} from '../relayerTransport';
+import type {A0VerifiedTree} from '../treeSync';
 import {
   A0UnshieldError,
   a0ChainTime,
   a0IsGenericRelayFailed,
+  a0RelayFailedNeverLands,
   a0UnshieldDestinationOffer,
   a0UnshieldSource,
   reconcileA0PendingUnshields,
@@ -1036,6 +1040,40 @@ describe('the carry\'s rulings on Tasks 2, 4 and 6', () => {
     expect(out.status === 'landed-unverified' && out.detail.includes(MAIN.address)).toBe(true); // non-vacuous
     expect(lines.filter(l => l.includes(MAIN.address))).toEqual([]);
     expect(readouts('unshield-outcome')[0]).not.toHaveProperty('detail');
+  });
+});
+
+describe('fix round 1', () => {
+  it('M-1: a throw from the submit that is NOT the URL refusal leaves the note pending and the reservation kept (the request may have left)', async () => {
+    const spy = jest.spyOn(relayerClient, 'submitA0WithdrawChange').mockRejectedValueOnce(new Error('E_SOMETHING: after the request left'));
+    try {
+      expect(await codeOf(run(fresh(400_000n)))).toContain('E_SOMETHING');
+    } finally {
+      spy.mockRestore();
+    }
+    expect(noteOf(w.notes[0]!.rho)).toMatchObject({status: 'pending', unshield: {scheme: 'slip10:1'}});
+    expect(registry()).toContainEqual({scheme: 'slip10:1', role: 'fresh-pending'});
+  });
+
+  it('M-1 (control): the URL refusal (nothing was sent) reverts the note and releases the reservation', async () => {
+    const spy = jest.spyOn(relayerClient, 'submitA0WithdrawChange').mockRejectedValueOnce(new A0RelayerUrlError('refused base'));
+    try {
+      await run(fresh(400_000n)).catch(() => undefined);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(noteOf(w.notes[0]!.rho)).toMatchObject({status: 'unspent'});
+    expect(registry()).toEqual([{scheme: 'slip10:0', role: 'main'}]);
+  });
+
+  it('M-3: a0RelayFailedNeverLands — true only when complete AND the proof root is gone AND no nullifier was seen', () => {
+    const tree = (root: string, history: string[], head: number) =>
+      ({root, account: {rootHistory: history, rootHistoryHead: head}}) as unknown as A0VerifiedTree;
+    const [A, B, P] = [strangerField(1), strangerField(2), strangerField(3)];
+    expect(a0RelayFailedNeverLands(tree(B, [A, B], 1), P, false)).toBe(true);
+    expect(a0RelayFailedNeverLands(tree(A, [A, B], 1), P, false)).toBe(false); // (a) not complete
+    expect(a0RelayFailedNeverLands(tree(B, [P, B], 1), P, false)).toBe(false); // (b) root still in the ring
+    expect(a0RelayFailedNeverLands(tree(B, [A, B], 1), P, true)).toBe(false); // (c) the nullifier is on chain
   });
 });
 

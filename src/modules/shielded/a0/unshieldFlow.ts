@@ -120,6 +120,12 @@
  *   - (R3-N4, the UX cost) an honest generic failure that cannot be proven dead shows "Not
  *     confirmed yet"; the note and its `fresh-pending` reservation are held up to 300 s of chain
  *     time, until the next start or "Check again".
+ *   - (fix round 1, M-8) A pending unshield that a deposit pre-check or a restore settles FIRST
+ *     (Task 5: the chain's spend wins in the merge) is never run through the verifier: a refusal
+ *     such as a seed-key signer is not reported and `linked` is not set for it. Carried to the
+ *     final review.
+ *   - (fix round 1, M-4, deferred) when R3-N4's re-sync already shows the note's nullifier, the
+ *     flow still answers `pending`; the reconciliation ("Check again", the next start) settles it.
  *   - The verifier's `detail` names keys of this seed beside the signature: it reaches the
  *     returned outcome (the screen) only, never a readout line (R2-N3) — the readout carries the code.
  */
@@ -168,7 +174,7 @@ import {
   submitA0WithdrawChange,
 } from './relayerClient';
 import type {A0RelayerQuote, A0SubmitResult, A0WithdrawChangePayload} from './relayerClient';
-import {relayerUrl} from './relayerTransport';
+import {A0RelayerUrlError, relayerUrl} from './relayerTransport';
 import type {RelayerRequestOptions} from './relayerTransport';
 import {a0MerklePath, syncA0Tree} from './treeSync';
 import type {A0MerklePath, A0SyncOptions, A0VerifiedTree} from './treeSync';
@@ -662,6 +668,19 @@ async function settleLanded(tx: A0SyncedTx, ctx: SettleContext): Promise<Settled
   return {kind: 'unverified', signature: tx.signature, code: verdict.code, detail: verdict.detail, changeRecorded: change !== null, linked};
 }
 
+/** The `pending` reason for a `reconcile` disposition, held by the compiler (no cast); anything else is `unknown`. */
+function pendingReasonOf(r: A0SubmitResult): 'unconfirmed' | 'already_spent' | 'relay_failed' | 'unknown' {
+  switch (r.outcome) {
+    case 'unconfirmed':
+    case 'already_spent':
+    case 'relay_failed':
+    case 'unknown':
+      return r.outcome;
+    default:
+      return 'unknown';
+  }
+}
+
 function outcomeOf(s: Settled): A0UnshieldOutcome {
   switch (s.kind) {
     case 'verified':
@@ -871,9 +890,12 @@ export async function unshieldA0(
       try {
         result = await submitA0WithdrawChange(flight.payload, options.transport);
       } catch (e) {
-        // only E_A0_RELAYER_URL throws: nothing was sent
-        revertA0PendingUnshield(note.rho, bound);
-        pendingWritten = false;
+        // only the URL refusal proves nothing was sent; any other throw may follow a request that
+        // left — the note STAYS pending and the reservation kept (unknown is never "not sent")
+        if (e instanceof A0RelayerUrlError) {
+          revertA0PendingUnshield(note.rho, bound);
+          pendingWritten = false;
+        }
         throw e;
       } finally {
         flight.payload = null; // the in-flight nullifier's last reference (R12)
@@ -886,6 +908,7 @@ export async function unshieldA0(
         pendingWritten = false;
         if (reserved !== null) {
           releaseA0FreshAccount(reserved, {bound});
+          liveSchemes.delete(reserved); // the finally no longer sees it (fix round 1, M-2)
           reserved = null;
         }
         const out: A0UnshieldOutcome = {status: 'not-sent', outcome: result.outcome};
@@ -920,7 +943,7 @@ export async function unshieldA0(
         const out: A0UnshieldOutcome = {
           status: 'pending',
           signature: result.txSignature,
-          reason: result.outcome as 'unconfirmed' | 'already_spent' | 'relay_failed' | 'unknown',
+          reason: pendingReasonOf(result),
         };
         readA0UnshieldOutcome(pub, out);
         return out;
@@ -980,7 +1003,12 @@ export async function unshieldA0(
 
 /** Whether the bound store holds a pending unshield (no first-run write; no record → false). */
 export function a0HasPendingUnshields(bound?: A0StoreBinding): boolean {
-  return hasA0NoteRecord(bound) && loadA0NoteStore(bound).notes.some(n => n.status === 'pending' && n.pendingSince !== undefined);
+  // a note a flow in this process holds is the flow's to settle: the reconciliation skips it, so it
+  // needs no keychain read (fix round 1, M-6)
+  return (
+    hasA0NoteRecord(bound) &&
+    loadA0NoteStore(bound).notes.some(n => n.status === 'pending' && n.pendingSince !== undefined && !liveRhos.has(n.rho))
+  );
 }
 
 export interface A0UnshieldReconcileReport {
@@ -1016,11 +1044,20 @@ export async function reconcileA0PendingUnshields(
     const all = loadA0NoteStore(bound).notes.filter(n => n.status === 'pending' && n.pendingSince !== undefined);
     const pending = all.filter(n => !liveRhos.has(n.rho));
     report.skipped += all.length - pending.length;
-    const named = new Set(all.map(n => n.unshield?.scheme).filter((s): s is string => s !== undefined));
-    const orphansOf = (): A0AccountEntry[] =>
-      hasA0AccountRegistry({bound})
-        ? (loadA0AccountRegistry({bound}) ?? []).filter(e => e.role === 'fresh-pending' && !liveSchemes.has(e.scheme) && !named.has(e.scheme))
-        : [];
+    // fix round 1 (I-1): the store is read AGAIN each time — a flow that writes its pending unshield
+    // while this run awaits the chain names its reservation, and it must not be swept
+    const orphansOf = (): A0AccountEntry[] => {
+      if (!hasA0AccountRegistry({bound})) {
+        return [];
+      }
+      const named = new Set(
+        loadA0NoteStore(bound)
+          .notes.filter(n => n.status === 'pending' && n.pendingSince !== undefined)
+          .map(n => n.unshield?.scheme)
+          .filter((s): s is string => s !== undefined),
+      );
+      return (loadA0AccountRegistry({bound}) ?? []).filter(e => e.role === 'fresh-pending' && !liveSchemes.has(e.scheme) && !named.has(e.scheme));
+    };
     if (pending.length === 0 && orphansOf().length === 0) {
       return report; // nothing to decide: no request at all
     }

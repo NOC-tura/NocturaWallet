@@ -38,7 +38,7 @@ import type {A0Note} from '../noteStore';
 import {loadA0AccountRegistry, releaseA0FreshAccount, reserveA0FreshAccount, resetA0ReservationsForTests} from '../accountRegistry';
 import {resetA0ReadoutForTests, setA0ReadoutDefaultsForTests} from '../checkpointReadout';
 import {resetA0StartupForTests, runA0Startup} from '../startup';
-import {reconcileA0PendingUnshields, resetA0UnshieldForTests, unshieldA0} from '../unshieldFlow';
+import {a0HasPendingUnshields, reconcileA0PendingUnshields, resetA0UnshieldForTests, unshieldA0} from '../unshieldFlow';
 import type {A0UnshieldOptions, A0UnshieldOutcome} from '../unshieldFlow';
 
 const fake = NativeModules.NocturaProver as unknown as FakeProverNative;
@@ -319,6 +319,51 @@ describe('when there is nothing to decide, nothing is asked; and the guards', ()
     await expect(reconcile(w.net, null)).rejects.toMatchObject({code: 'E_A0_UNSHIELD_NEEDS_SEED'});
     expect(w.net.requests.length).toBe(from);
     expect(mmkvSecure()!.getString('v1_a0_notes')).toBe(before);
+  });
+
+  it('fix round 1 / I-1: a flow that writes its pending unshield WHILE a reconciliation reads the chain keeps its reservation (the sweep reads the store again)', async () => {
+    // an orphan, so the reconciliation has work to do at entry and reaches its sync
+    await reserveA0FreshAccount(w.net.connection, seedBytes(TEST_SEED));
+    // the reconciliation on its own connection (same chain), held in its tree walk
+    const other = liveDevnet(w.net.chain);
+    other.clock = w.net.clock;
+    other.holdWhen = m => m === 'getSignaturesForAddress';
+    const rec = reconcile(other, null);
+    while (other.held === 0) {
+      await new Promise(r => setTimeout(r, 5));
+    }
+    // meanwhile a flow reserves slip10:2, writes its pending unshield, gets an unknown answer and returns
+    w.relayer.script.push({answer: 'transport'});
+    expect(await unshieldFresh()).toMatchObject({status: 'pending', reason: 'unknown'});
+    expect(registry()).toContainEqual({scheme: 'slip10:2', role: 'fresh-pending'});
+    other.release();
+    expect(await rec).toMatchObject({released: ['slip10:1'], promoted: []});
+    // R1-C1: an unknown outcome never releases its reservation
+    expect(registry()).toContainEqual({scheme: 'slip10:2', role: 'fresh-pending'});
+    expect(noteOf(w.notes[0]!.rho)).toMatchObject({status: 'pending', unshield: {scheme: 'slip10:2'}});
+  });
+
+  it('fix round 1 / M-2: a not-sent unshield leaves no live mark on its released scheme — a later orphan of that index is still swept', async () => {
+    w.relayer.script.push({answer: 'raw', status: 400, body: {outcome: 'invalid_request'}});
+    expect(await unshieldFresh()).toEqual({status: 'not-sent', outcome: 'invalid_request'});
+    await reserveA0FreshAccount(w.net.connection, seedBytes(TEST_SEED)); // slip10:1 again, no pending write
+    expect(await reconcile(w.net, null)).toMatchObject({released: ['slip10:1']});
+    expect(registry()).toEqual([{scheme: 'slip10:0', role: 'main'}]);
+  });
+
+  it('fix round 1 / M-6: a0HasPendingUnshields does not count a note a flow in this process holds ("Check again" reads no keychain for it)', async () => {
+    w.relayer.script.push({answer: 'hang'});
+    let submitted = () => undefined as void;
+    const sent = new Promise<void>(r => {
+      submitted = r;
+    });
+    const flow = unshieldFresh(400_000n, {onStage: s => (s === 'submit' ? submitted() : undefined), transport: {...w.relayer.transport, deadlineMs: 60_000}});
+    await sent;
+    expect(noteOf(w.notes[0]!.rho).status).toBe('pending');
+    expect(a0HasPendingUnshields()).toBe(false);
+    w.relayer.abandon();
+    expect(await flow).toMatchObject({status: 'pending', reason: 'unknown'});
+    expect(a0HasPendingUnshields()).toBe(true);
   });
 
   it('a note a flow in this process still holds is skipped (the flow settles it), and its reservation is not an orphan', async () => {
