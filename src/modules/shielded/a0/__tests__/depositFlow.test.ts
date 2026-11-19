@@ -27,7 +27,7 @@ import {PublicKey} from '@solana/web3.js';
 import {clearAllStores, initSecureMmkv, mmkvSecure} from '../../../../store/mmkv/instances';
 import {KEY_VECTORS, OTHER_SEED, TEST_SEED, offlineDepositProver, offlineKeys, seedBytes} from '../__testing__/offlineA0';
 import type {FakeProverNative} from '../__testing__/offlineA0';
-import {appendDeposit, rhoPda} from '../__testing__/ownHistory';
+import {appendDeposit, appendWithdraw, rhoPda} from '../__testing__/ownHistory';
 import {chainFrom} from '../__testing__/recordedRpc';
 import type {RecordedFixture} from '../__testing__/recordedRpc';
 import {DEVNET_GENESIS, LIVE_BLOCKHASH, fundTokenAccount, liveDevnet} from '../__testing__/liveDevnet';
@@ -594,6 +594,23 @@ describe('R1-I2: the pre-check\'s GAP and LIMIT refusals', () => {
     ownDeposit(21n, 800n);
     setA0NextDepositIndex(21n);
     await expect(prepare()).resolves.toMatchObject({depositIndex: 22n, importedNotes: 2});
+  });
+
+  it('(c) a store behind the chain: the pre-check imports what a restore would — the spent deposit WITH its spentTx and its change note', async () => {
+    ownDeposit(0n, 2_000_000n);
+    const rho0 = own.rho(0n);
+    const nullifier = own.nullifier(rho0);
+    const changeRho = own.rhoChange(nullifier);
+    const fee = 10_000n;
+    const sent = 400_000n;
+    const changeAmount = 2_000_000n - sent - fee;
+    const w = appendWithdraw(net.chain, {nullifier, changeCommitment: own.commitment(changeAmount, changeRho), amount: sent, fee});
+    setA0NextDepositIndex(0n);
+    await expect(prepare()).resolves.toMatchObject({depositIndex: 1n, importedNotes: 2});
+    const notes = loadA0NoteStore().notes;
+    expect(notes).toHaveLength(2);
+    expect(notes[0]).toMatchObject({depositIndex: 0n, amount: 2_000_000n, status: 'spent', spentTx: w.signature});
+    expect(notes[1]).toMatchObject({rho: changeRho, amount: changeAmount, status: 'unspent', leafIndex: w.leafIndex});
   });
 
   /** `n` consecutive pool-owned PDAs from counter 0 whose deposits appear one per check (another

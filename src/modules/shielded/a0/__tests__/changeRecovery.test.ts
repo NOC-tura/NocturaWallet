@@ -387,6 +387,36 @@ describe('the restore into an existing store (chain truth wins for note state)',
   });
 });
 
+const SIG_X = '5'.repeat(88);
+const SIG_Y = '6'.repeat(88);
+describe('the merge of a recovered spend (spentTx: fill, keep, correct)', () => {
+  const spentNote = (d: {rho: string; commitment: string}, spentTx?: string) => ({
+    commitment: d.commitment,
+    amount: 1_000_000n,
+    rho: d.rho,
+    depositIndex: 0n,
+    leafIndex: 17,
+    status: 'spent' as const,
+    ...(spentTx === undefined ? {} : {spentTx}),
+  });
+
+  it('(a) a stored spent note WITH spentTx merged with a recovered spent note WITHOUT it (the pre-check import) keeps the stored spentTx', () => {
+    const chain = fresh();
+    const d0 = ownDeposit(chain, 0n, 1_000_000n);
+    mergeA0RecoveredNotes([spentNote(d0, SIG_X)], 1n);
+    mergeA0RecoveredNotes([spentNote(d0)], 1n);
+    expect(loadA0NoteStore().notes).toEqual([spentNote(d0, SIG_X)]);
+  });
+
+  it('(b) a stored spentTx X merged with a recovered spent note naming Y becomes Y (chain truth corrects)', () => {
+    const chain = fresh();
+    const d0 = ownDeposit(chain, 0n, 1_000_000n);
+    mergeA0RecoveredNotes([spentNote(d0, SIG_X)], 1n);
+    mergeA0RecoveredNotes([spentNote(d0, SIG_Y)], 1n);
+    expect(loadA0NoteStore().notes).toEqual([spentNote(d0, SIG_Y)]);
+  });
+});
+
 describe('exit accounts (§7 "Accounts", I6, S9)', () => {
   const registry = () => loadA0AccountRegistry()!.map(e => [e.scheme, e.role, e.address]);
 

@@ -73,7 +73,7 @@ import {
   mergeA0RecoveredNotes,
 } from './noteStore';
 import type {A0Note, A0StoreBinding} from './noteStore';
-import {recoverA0Deposits} from './recovery';
+import {recoverA0ChangeNotes, recoverA0Deposits} from './recovery';
 import {syncA0Tree} from './treeSync';
 import type {A0SyncOptions, A0VerifiedTree} from './treeSync';
 import {
@@ -238,9 +238,12 @@ async function precheck(
         `counter ${depositIndex} is past recovery's gap limit (recovered next = ${rec.nextDepositIndex})`,
       );
     }
+    // the same state a restore would produce: spent deposits name their spending tx and the change
+    // notes come back (local matching on the synced tree: no request beyond the sync's)
+    const change = await recoverA0ChangeNotes(handle, tree, rec.notes);
     const before = new Set(loadA0NoteStore(bound).notes.map(n => n.rho));
-    mergeA0RecoveredNotes(rec.notes, rec.nextDepositIndex, bound);
-    importedNotes += rec.notes.filter(n => !before.has(n.rho)).length;
+    mergeA0RecoveredNotes(change.notes, rec.nextDepositIndex, bound);
+    importedNotes += change.notes.filter(n => !before.has(n.rho)).length;
     foreignRhoHits = rec.foreignRhoHits;
   }
 }
