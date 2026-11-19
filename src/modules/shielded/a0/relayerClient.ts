@@ -31,7 +31,7 @@
  * from the body AND the status, and a disagreement is not believed. `txSignature` present ⟺
  * forwarded. An answer that cannot be read and carries a `txSignature` claims a forward: `unknown`,
  * reconciled through the sync, never released at once. An unreadable answer without one is, by
- * STATUS (R1-C1): a 4xx → `relay_failed`, not forwarded (refused before forwarding; a 429's
+ * STATUS (R1-C1): a 4xx other than 409 → `relay_failed`, not forwarded (refused before forwarding; a 429's
  * plain text is a 4xx); ANY other status (a 200 with a body that is not JSON, a gateway's
  * 500 / 502 / 503 / 504 page after nginx's 60 s proxy timeout) → `unknown`, because the relayer may
  * already have forwarded. A readable generic `relay_failed` WITHOUT a signature is `forwarded:
@@ -123,6 +123,9 @@ export type A0RelayerOutcome = keyof typeof A0_RELAYER_OUTCOME_TABLE;
 /** The eight outcomes that never carry a signature: nothing was forwarded. */
 export type A0RelayerRefusal = Exclude<A0RelayerOutcome, 'confirmed' | 'already_spent' | 'unconfirmed' | 'relay_failed'>;
 
+/** The outcomes the contract lets follow a forward (signature `always` or `optional`). */
+const FORWARD_CAPABLE_OUTCOMES: readonly string[] = ['confirmed', 'unconfirmed', 'relay_failed', 'already_spent'];
+
 /** What the submit's answer says, typed. `forwarded` is the load-bearing bit (§6.8). */
 export type A0SubmitResult =
   | {outcome: 'confirmed'; status: 200; forwarded: true; txSignature: string}
@@ -130,6 +133,7 @@ export type A0SubmitResult =
   | {
       outcome: 'already_spent';
       status: 409;
+      /** NOT the authority: a signature-less `already_spent` is `false` yet disposes to `reconcile` */
       forwarded: boolean;
       txSignature: string | null;
       /** the contract's `alreadySpentIndexes` when known; null = undetermined, never "none" */
@@ -142,6 +146,8 @@ export type A0SubmitResult =
        * `false` ONLY for an unreadable 4xx (refused before forwarding); `true` with a signature;
        * `'unknown'` for the readable generic signature-less `relay_failed` (R2-N1: the relayer
        * answers it for a preflight refusal AND for a transport failure after the node took the tx).
+       * `a0SubmitDisposition` is the authority on what to do, NOT this field: a signature-less
+       * `already_spent` has `forwarded: false` yet disposes to `reconcile`.
        */
       forwarded: boolean | 'unknown';
       txSignature: string | null;
@@ -154,7 +160,10 @@ export type A0SubmitResult =
       status: number | null;
       forwarded: 'unknown';
       txSignature: string | null;
-      /** deadline / transport: the request may have been forwarded; unreadable: the answer claims a forward */
+      /**
+       * deadline / transport: the request may have been forwarded; unreadable: the answer claims a
+       * forward, OR could not be read at a status that may follow one (a 200, a 409, a 5xx)
+       */
       cause: 'deadline' | 'transport' | 'unreadable';
     };
 
@@ -215,14 +224,17 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
  *   - a readable answer: an object whose `outcome` is one of the twelve, whose status is that
  *     outcome's, and whose `txSignature` is present exactly as the table allows (and well formed);
  *   - anything else is unreadable: `unknown` (reconcile) when it carries a `txSignature` key — it
- *     claims a forward — else by status (R1-C1): a 4xx is `relay_failed`, not forwarded,
- *     `recognised: false`; ANY other status (200, 5xx) is `unknown`, cause `unreadable`;
+ *     claims a forward — else by status (R1-C1, amended): a 4xx other than 409 is `relay_failed`, not
+ *     forwarded, `recognised: false`; ANY other status (200, 409, 5xx), and a body naming a
+ *     forward-capable outcome at a status that is not its own, is `unknown`, cause `unreadable`;
  *   - a readable generic `relay_failed` with no signature is `forwarded: 'unknown'` (R2-N1).
  * Other body keys (`success`, `error`, `alreadySpent`) are not read: the outcome and the status
  * decide.
  */
 export function interpretA0SubmitAnswer(http: RelayerHttpResult): A0SubmitResult {
   const body = http.body;
+  const namesForwardCapable =
+    isPlainObject(body) && typeof body.outcome === 'string' && FORWARD_CAPABLE_OUTCOMES.includes(body.outcome);
   const unreadable = (): A0SubmitResult =>
     isPlainObject(body) && body.txSignature !== undefined
       ? {
@@ -232,10 +244,12 @@ export function interpretA0SubmitAnswer(http: RelayerHttpResult): A0SubmitResult
           txSignature: isA0TxSignature(body.txSignature) ? body.txSignature : null,
           cause: 'unreadable',
         }
-      : http.status >= 400 && http.status < 500
-        ? // a 4xx: the request was refused before anything was forwarded (a 429's plain text, a 400)
+      : http.status >= 400 && http.status < 500 && http.status !== 409 && !namesForwardCapable
+        ? // a 4xx other than 409: refused before anything was forwarded (a 429's plain text, a 400)
           {outcome: 'relay_failed', status: http.status, forwarded: false, txSignature: null, recognised: false}
-        : // R1-C1: ANY other status (a 200, a gateway's 5xx after its proxy timeout) may follow a forward
+        : // R1-C1 (amended): ANY other status — a 200, a gateway's 5xx after its proxy timeout, a 409 (the
+          // contract lets `already_spent` follow a forward) — and any body naming a forward-capable
+          // outcome at a status that is not its own, may follow a forward
           {outcome: 'unknown', status: http.status, forwarded: 'unknown', txSignature: null, cause: 'unreadable'};
 
   if (!isPlainObject(body) || typeof body.outcome !== 'string' || !Object.prototype.hasOwnProperty.call(A0_RELAYER_OUTCOME_TABLE, body.outcome)) {

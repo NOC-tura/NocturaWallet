@@ -258,13 +258,16 @@ const CONTRACT: Array<[string, number, 'always' | 'optional' | 'never']> = [
   ['misconfigured', 500, 'never'],
 ];
 const STATUSES = [200, 400, 409, 429, 500, 502, 503];
+/** The outcomes that can follow a forward (contract §1: signature always / optional). */
+const FORWARD_CAPABLE = ['confirmed', 'unconfirmed', 'relay_failed', 'already_spent'];
 /**
- * R1-C1: what an answer that cannot be read (and claims no forward) is. Only a 4xx — the request was
- * refused before anything was forwarded — is "not forwarded"; ANY other status (a 200, a 5xx, a
- * gateway's 504) may come after the relayer forwarded the tx, so it is `unknown`, reconciled.
+ * R1-C1 (amended): what an answer that cannot be read (and claims no forward) is. Only a 4xx other
+ * than 409 — refused before anything was forwarded — is "not forwarded"; a 409 (`already_spent` is
+ * the one 4xx the contract lets follow a forward), a 200 and every 5xx are `unknown`. A parseable
+ * body that names a forward-capable outcome is `unknown` at any status that does not match it.
  */
-const UNREADABLE = (status: number) =>
-  status >= 400 && status < 500
+const UNREADABLE = (status: number, named?: string) =>
+  status >= 400 && status < 500 && status !== 409 && !(named !== undefined && FORWARD_CAPABLE.includes(named))
     ? {outcome: 'relay_failed', status, forwarded: false, txSignature: null, recognised: false}
     : {outcome: 'unknown', status, forwarded: 'unknown', txSignature: null, cause: 'unreadable'};
 
@@ -293,14 +296,14 @@ describe('the twelve outcomes (contract §1)', () => {
         if (withSig) {
           expect(r).toEqual({outcome: 'unknown', status: other, forwarded: 'unknown', txSignature: SIG, cause: 'unreadable'});
         } else {
-          expect(r).toEqual(UNREADABLE(other));
+          expect(r).toEqual(UNREADABLE(other, outcome));
         }
       }
     });
 
     if (signature === 'always') {
       it('without its txSignature it is not believed → unreadable at its status (R1-C1: a non-4xx is unknown)', () => {
-        expect(interpretA0SubmitAnswer({status, body: body(false)})).toEqual(UNREADABLE(status));
+        expect(interpretA0SubmitAnswer({status, body: body(false)})).toEqual(UNREADABLE(status, outcome));
       });
     }
     if (signature === 'never') {
@@ -312,7 +315,7 @@ describe('the twelve outcomes (contract §1)', () => {
     }
   });
 
-  it('dispositions (§6.8): confirmed → verify; unconfirmed / already_spent / a forwarded relay_failed → reconcile; the rest → not-forwarded', () => {
+  it('dispositions (§6.8): confirmed → verify; unconfirmed / already_spent / any relay_failed (with or without a signature, R2-N1) → reconcile; the eight refusals → not-forwarded', () => {
     const d = (status: number, b: Record<string, unknown>) => a0SubmitDisposition(interpretA0SubmitAnswer({status, body: b}));
     expect(d(200, {outcome: 'confirmed', txSignature: SIG})).toBe('verify');
     expect(d(502, {outcome: 'unconfirmed', txSignature: SIG})).toBe('reconcile');
@@ -365,10 +368,30 @@ describe('the twelve outcomes (contract §1)', () => {
       expect(r).toEqual({outcome: 'unknown', status, forwarded: 'unknown', txSignature: null, cause: 'unreadable'});
       expect(a0SubmitDisposition(r)).toBe('reconcile');
     });
-    it.each([400, 404, 409, 413, 429])('a %i with an unreadable (plain text) body → relay_failed, not forwarded', status => {
+    it.each([400, 404, 413, 429])('a %i with an unreadable (plain text) body → relay_failed, not forwarded', status => {
       const r = interpretA0SubmitAnswer({status, body: null});
       expect(r).toEqual({outcome: 'relay_failed', status, forwarded: false, txSignature: null, recognised: false});
       expect(a0SubmitDisposition(r)).toBe('not-forwarded');
+    });
+    it('a 409 with an unreadable body → unknown, reconcile (already_spent is the one 4xx that can follow a forward)', () => {
+      const r = interpretA0SubmitAnswer({status: 409, body: null});
+      expect(r).toEqual({outcome: 'unknown', status: 409, forwarded: 'unknown', txSignature: null, cause: 'unreadable'});
+      expect(a0SubmitDisposition(r)).toBe('reconcile');
+    });
+    it.each(FORWARD_CAPABLE)('a parseable `%s` without a signature at a mismatched 4xx → unknown, never not-forwarded', named => {
+      for (const status of [400, 404, 429]) {
+        const own = CONTRACT.find(c => c[0] === named)![1];
+        if (status === own) {
+          continue;
+        }
+        const r = interpretA0SubmitAnswer({status, body: {success: false, outcome: named}});
+        expect(r).toEqual({outcome: 'unknown', status, forwarded: 'unknown', txSignature: null, cause: 'unreadable'});
+        expect(a0SubmitDisposition(r)).toBe('reconcile');
+      }
+    });
+    it('a parseable never-signature refusal at a mismatched 4xx stays not forwarded (it cannot follow a forward)', () => {
+      const r = interpretA0SubmitAnswer({status: 429, body: {success: false, outcome: 'invalid_request'}});
+      expect(r).toEqual({outcome: 'relay_failed', status: 429, forwarded: false, txSignature: null, recognised: false});
     });
     it('a readable generic relay_failed without a signature: unknown to the wallet (forwarded "unknown", recognised), reconcile', () => {
       const r = interpretA0SubmitAnswer({status: 502, body: {success: false, outcome: 'relay_failed'}});
