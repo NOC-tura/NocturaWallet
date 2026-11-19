@@ -286,8 +286,8 @@ describe('accepted variants (§6 step 8)', () => {
       ownerPre(tx, FRESH).lamports = 0n;
       const v = verifyLandedUnshield(tx, expectation(c, {destinationKind: 'fresh-pending'}));
       expect(v).toMatchObject({ok: true, grantLamports: null, ownerPreLamports: 0n, destinationWithoutSol: true});
-      // the same tx to an external address is not reported
-      expect(verifyLandedUnshield(tx, expectation(c))).toMatchObject({ok: true, destinationWithoutSol: false});
+      // the same tx under another registry role is not reported (an external kind would be refused: the owner is ours)
+      expect(verifyLandedUnshield(tx, expectation(c, {destinationKind: 'main'}))).toMatchObject({ok: true, destinationWithoutSol: false});
     }
   });
   it('a 0-lamport OFF-CURVE owner without a grant: accepted (the relayer never grants one)', () => {
@@ -458,6 +458,66 @@ describe('any signer that is a key of this seed refuses (I13) — every key of t
   });
 });
 
+describe('the seed-key rule where the OWNER is itself a seed key (Task 4 fix round 1, Important 1)', () => {
+  const CLI = () => vec('cli');
+  const withListed = (c0: ReturnType<typeof caseOf>, owner: string, listed: string) => {
+    const {tx, c} = withOwner(c0, owner);
+    tx.preBalances.push({address: listed, lamports: 0n});
+    return {tx, c};
+  };
+  const kindOf = (owner: string) => (owner === MAIN ? 'main' : 'fresh-pending') as 'main' | 'fresh-pending';
+  const OWNERS: [string, () => string, () => string[]][] = [
+    ['FRESH', () => FRESH, () => [MAIN, CLI()]],
+    ['MAIN', () => MAIN, () => [FRESH, CLI()]],
+  ];
+  it.each(OWNERS)('owner = %s: the positive passes alone (non-vacuity), and refuses with another seed key listed', (_n, own, others) => {
+    for (const c0 of CASES) {
+      const {tx: alone, c: ca} = withOwner(c0, own());
+      if (c0.grant === null && own() === FRESH) {
+        ownerPre(alone, FRESH).lamports = 0n;
+      }
+      if (c0.grant !== null && own() === MAIN) {
+        continue; // a grant goes to an empty owner; MAIN exits are the no-grant shape
+      }
+      expect(refusal(alone, expectation(ca, {destinationKind: kindOf(own())}))).toBe('ok');
+      for (const other of others()) {
+        const {tx, c} = withListed(c0, own(), other);
+        expect(refusal(tx, expectation(c, {destinationKind: kindOf(own())}))).toBe('E_A0_VERIFY_SEED_KEY');
+      }
+    }
+  });
+});
+
+describe('the wallet\'s own seed inputs (Task 4 fix round 1, Minors 1 and 2)', () => {
+  it('an empty seed set is refused: both seed rules would be vacuous', () => {
+    for (const c of CASES) {
+      expect(refusal(synced[c.prefix]!, expectation(c, {seedPublicKeys: []}))).toBe('E_A0_VERIFY_ARGS');
+    }
+  });
+  it('a registry-role destination whose owner is not in the seed set is refused', () => {
+    for (const c of CASES) {
+      for (const kind of ['main', 'fresh-pending', 'fresh-exit'] as const) {
+        expect(refusal(synced[c.prefix]!, expectation(c, {destinationKind: kind}))).toBe('E_A0_VERIFY_ARGS');
+      }
+    }
+  });
+  it('an external destination whose owner IS in the seed set is refused', () => {
+    for (const c0 of CASES) {
+      for (const own of [MAIN, FRESH, vec('cli')]) {
+        const {tx, c} = withOwner(c0, own);
+        expect(refusal(tx, expectation(c, {destinationKind: 'external'}))).toBe('E_A0_VERIFY_ARGS');
+      }
+    }
+  });
+  it('the four landed positives pass with their correct kind (external), and a kind that agrees with the set passes', () => {
+    for (const c of CASES) {
+      expect(refusal(synced[c.prefix]!, expectation(c, {destinationKind: 'external'}))).toBe('ok');
+    }
+    const {tx, c} = withOwner(caseOf('3oHktG2X'), MAIN);
+    expect(refusal(tx, expectation(c, {destinationKind: 'main'}))).toBe('ok');
+  });
+});
+
 describe('a grant to an off-curve owner refuses', () => {
   it.each(GRANTED.map(c => [c.name, c] as const))('%s with its owner replaced by an off-curve key', (_n, c0) => {
     const {tx, c} = withOwner(c0, OFF_CURVE);
@@ -574,12 +634,12 @@ describe('the M1b ledger carry: an appended (ownHistory) tx carries its OWN toke
       txSignature: t.signature,
       quote: {feePayer: RELAYER, gasGrantLamports: GRANT},
       authorization: {owner: P0.owner, ata: P0.ata, amount: 123456n, fee: 7000n},
-      destinationKind: 'fresh-pending',
+      destinationKind: 'external',
       seedPublicKeys: SEED_KEYS,
       changeCommitment: CHANGE,
       noteMatch: {chainNullifiers: [NULL], answer: [0]},
     });
-    expect(v).toMatchObject({ok: true, grantLamports: null, ownerPreLamports: 0n, destinationWithoutSol: true});
+    expect(v).toMatchObject({ok: true, grantLamports: null, ownerPreLamports: 0n, destinationWithoutSol: false});
     // negative control: the template's amount is not what this tx moved
     expect(
       refusal(t, {

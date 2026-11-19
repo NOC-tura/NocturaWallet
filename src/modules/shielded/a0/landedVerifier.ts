@@ -155,6 +155,12 @@ export function verifyLandedUnshield(
   if (auth.amount <= 0n || auth.fee < 0n) {
     return refuse('E_A0_VERIFY_ARGS', 'amount must be positive and fee not negative');
   }
+  if (expect.seedPublicKeys.length === 0) {
+    return refuse('E_A0_VERIFY_ARGS', 'the seed key set is empty: the seed rules would be vacuous');
+  }
+  if ((expect.destinationKind === 'external') === expect.seedPublicKeys.includes(auth.owner)) {
+    return refuse('E_A0_VERIFY_ARGS', `destinationKind ${expect.destinationKind} disagrees with the owner's membership of the seed set`);
+  }
   if (expect.txSignature !== null && tx.signature !== expect.txSignature) {
     return refuse('E_A0_VERIFY_SIGNATURE', `${tx.signature} is not the relayed ${expect.txSignature}`);
   }
