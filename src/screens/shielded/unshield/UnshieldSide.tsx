@@ -164,7 +164,8 @@ export function UnshieldSide({view, shieldedLine, onUnshield, focusKey = 0}: Uns
       return {source: a0UnshieldSource(loadA0NoteStore().notes, q.fee), notesError: null};
     } catch (e) {
       const t = a0ErrorText(e);
-      return {source: null, notesError: t.code ? `${t.code} · ${t.message}` : t.message};
+      // final review M-4: the code alone where there is one; the raw message only without a code
+      return {source: null, notesError: t.code ?? t.message};
     }
     // `view` stands for a refreshed store (a new object per refresh); focusKey for a return to #16
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -222,7 +223,7 @@ export function UnshieldSide({view, shieldedLine, onUnshield, focusKey = 0}: Uns
           </Note>
         ) : quote.kind === 'error' ? (
           <Note tone="danger" testID="unshield-quote">
-            {`The relayer's quote was refused · ${quote.code ?? 'error'}\n${quote.message}\n`}
+            {`The relayer's quote was refused · ${quote.code ?? 'error'}\n${quote.code ? 'Ask the relayer again in a moment.' : quote.message}\n`}
             <Text
               variant="body-sm"
               className="text-accent-shielded font-geist-semibold"

@@ -739,11 +739,14 @@ function merged(stored: A0Note, chain: A0Note): A0Note {
   if (stored.status === 'spent' && (chain.status !== 'spent' || chain.spentTx === undefined)) {
     return stored; // spent is final: a note never becomes spendable again
   }
+  if (stored.status === 'pending' && stored.pendingSince !== undefined) {
+    // an unshield in flight: M1c's reconciliation decides, not a restore or a deposit pre-check —
+    // spent on chain or not (M1c final review I-3): it settles it THROUGH the verifier, and
+    // `settleA0Unshield` accepts the change note this merge may store now (`changeStored`)
+    return stored;
+  }
   if (chain.status === 'spent') {
     return chain; // the chain's spend, with its spending tx when the restore attributed it (M1c)
-  }
-  if (stored.status === 'pending' && stored.pendingSince !== undefined) {
-    return stored; // an unshield in flight: M1c's reconciliation decides, not a restore
   }
   return chain; // a pending deposit the chain has confirmed, or an unspent note re-read
 }
@@ -752,7 +755,9 @@ function merged(stored: A0Note, chain: A0Note): A0Note {
  * Write a recovery's result (§7: the store is a cache of the chain). Each recovered note is added,
  * or merged with the stored note of the same rho: spent stays spent; the chain's `spent` wins over
  * anything else (and, when it names its spending tx, over a stored `spent` too — M1c's
- * attribution fills or corrects `spentTx`: chain truth wins); a pending unshield (`pendingSince`) is left for M1c; otherwise the chain's note
+ * attribution fills or corrects `spentTx`: chain truth wins) EXCEPT a pending unshield
+ * (`pendingSince`), which is left for M1c's reconciliation even when the chain shows it spent
+ * (I-3: the reconciliation runs the verifier on that tx); otherwise the chain's note
  * (`unspent`, with its leaf) replaces the stored one — that confirms a pending deposit that
  * landed. Stored notes the chain does not show are kept (a pending deposit is reconciled by §5
  * step 7, not here). `nextDepositIndex` becomes the higher of the two. A CORRUPT record is

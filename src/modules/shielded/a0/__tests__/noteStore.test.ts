@@ -239,8 +239,20 @@ describe('merging a recovery (§7: the store is a cache of the chain)', () => {
     mergeA0RecoveredNotes([inFlight], 3n);
     mergeA0RecoveredNotes([unspent(N2, 2n, 19)], 3n);
     expect(loadA0NoteStore().notes).toEqual([inFlight]);
+    // M1c final review I-3 (rewritten: the chain's `spent` used to win here): a stored pending
+    // unshield is the reconciliation's to decide, spent or not — it settles it THROUGH the verifier
     mergeA0RecoveredNotes([{...unspent(N2, 2n, 19), status: 'spent', spentTx: SIG}], 3n);
-    expect(loadA0NoteStore().notes).toEqual([{...unspent(N2, 2n, 19), status: 'spent', spentTx: SIG}]);
+    expect(loadA0NoteStore().notes).toEqual([inFlight]);
+  });
+
+  it('I-3 (control): the chain\'s spend still wins over a stored UNSPENT note and a pending DEPOSIT (no pendingSince)', () => {
+    addA0PendingDeposit(pending(N0, 0n));
+    mergeA0RecoveredNotes([unspent(N1, 1n, 18)], 2n);
+    mergeA0RecoveredNotes([{...unspent(N0, 0n, 17), status: 'spent', spentTx: SIG}, {...unspent(N1, 1n, 18), status: 'spent', spentTx: SIG}], 2n);
+    expect(loadA0NoteStore().notes.map(n => [n.status, n.spentTx])).toEqual([
+      ['spent', SIG],
+      ['spent', SIG],
+    ]);
   });
 
   it('a corrupt record is replaced by the recovery (the chain is the source), and says so', () => {

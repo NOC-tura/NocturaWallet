@@ -234,6 +234,35 @@ made before this execution and is recorded, not made, here.
 - **§16 M1b (as built, M1c fix):** a still-undecided killed deposit's line says "wait ~4 min (the blockhash expiry +
   the 300-block margin)".
 
+*The final review's fix wave (M1c final review, the controller's rulings):*
+
+- **§6 steps 7–8 — the window's transport bound (I-2):** the 300 s window holds because the request body reaches the
+  relayer before the JS deadline (135 s) whenever the submit is answered, and the relayer's blockhash is fetched once
+  it holds the body. The JS deadline does not cancel the native request (OkHttp's connect and write timeouts are 120 s
+  each), so **a submit that ends `unknown` by the deadline or a transport error re-anchors `pendingSince` to the chain
+  time read after it** (a later value only; a null or failing re-read keeps the anchor, as after a hold). An `unknown`
+  is still never "not sent".
+- **§7 merge / §5 step 2 (I-3):** a stored pending unshield (`pendingSince`) is kept by a restore's or a deposit
+  pre-check's merge **even when the chain shows its spend**; the reconciliation settles it through the post-landing
+  verifier, accepting a change note the merge stored. Until then the note reads as pending and its change as unspent.
+- **§6 step 8 refused (M-6):** a landed tx of the note whose change does not match the stored intent's amounts (an
+  earlier attempt of the same note) records its change by recovery's rule — the tx's own withdrawal, Rust's
+  commitment, exactly one leaf.
+- **§11 #21 / #16 / #11 (I-1):** a reconciliation's result reaches the screens. "Check again" says what it decided
+  (settled, reverted, still pending, or a refusal); #21 replaces "Not confirmed yet" / PENDING with "Unshielded",
+  "Not sent" or "Landed, but failed verification" once settled, reverted or refused. A verifier refusal found by the
+  startup step or a "Check again" is shown LOUD on #16's shielded-balance line and on the dashboard's shielded assets
+  for the rest of that wallet's session — by its code and a fixed sentence only. (Undrawn; README's visual pass.)
+- **§6 step 8 / carry 4 (M-3):** the returned outcome no longer carries the verifier's `detail` — the type holds "shown
+  nowhere"; the code and a fixed sentence are what #21 says.
+- **§11 error copy (M-4, the secure default):** where an error has a code, #16 and #21 show the code and a fixed sentence,
+  never the raw message (it may carry the RPC URL and its API key; #21 is not FLAG_SECURE); a raw message only when
+  there is no code. The own-account refusal names its role from a field of the error (`ownAccount`), no longer by
+  matching the message (M-7); the account's index is not shown.
+- **§16 M1c.V (M-1):** the fee payer listing is evidence of absence only when it also holds at least one landing of
+  the run; and M1c.V FAILS when a judged landing's blockTime is before the fee payer window's start ("the phone's clock
+  is ahead of devnet by more than the 2-minute margin — the fee payer window does not cover this run").
+
 ### Rev 3.3, 2026-11-16 — the M1b plan's execution: the departures of its seven tasks, the plan review's rulings and the task reports; text only, no owner decision changed
 
 Collected from the plan's per-task "Spec rev 3.3 lines" (`docs/superpowers/plans/2026-11-15-shielded-a0-m1b-deposit-recovery.md`),

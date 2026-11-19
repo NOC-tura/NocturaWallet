@@ -741,6 +741,43 @@ test('R-3 (probes G, K): an empty or array listing is no evidence of absence —
   assert.match(lineOf(r2, 'M1c.V').detail, /the relayer fee payer's signatures were not read/);
 });
 
+/** Every judged landing's blockTime moved to `seconds` before the fee payer window's start (the phone's clock ahead of devnet). */
+const skewed = (r, seconds) => {
+  const start = L.feePayerWindowStart(r.readouts);
+  for (const m of [r.chain.txs, r.chain.feePayerTxs]) {
+    for (const sig of Object.keys(m)) {
+      m[sig] = { ...structuredClone(m[sig]), blockTime: start - seconds };
+    }
+  }
+};
+
+test('final review M-1 (probe P2), half 1: a listing that holds NO landing of this run proves no absence — a null-read pending signature stays unjoined', () => {
+  const r = run();
+  skewed(r, 10);
+  r.chain.feePayerTxs = {};
+  const LOST = '6'.repeat(88);
+  const o = rowOf(r, x => x.event === 'unshield-outcome' && x.owner === FRESH);
+  r.readouts.push({ seenAt: o.at, readout: { ...o, seq: 99, status: 'pending', signature: LOST, reason: 'unconfirmed' } });
+  const { unjoined, notLanded } = L.landingsOf(r.readouts, { ...r.chain.txs, [LOST]: null }, r.chain.feePayerTxs);
+  assert.deepEqual(notLanded, []);
+  assert.ok(unjoined.some(u => u.signature === LOST && /the fee payer listing is incomplete/.test(u.why)), JSON.stringify(unjoined));
+  const v = lineOf({ ...r, chain: { ...r.chain, txs: { ...r.chain.txs, [LOST]: null } } }, 'M1c.V');
+  assert.equal(v.pass, false);
+  assert.doesNotMatch(v.detail, /named, not on devnet/);
+});
+
+test('final review M-1, half 2: a judged landing whose blockTime is BEFORE the fee payer window → V FAILS with the clock-skew text (the UNACCOUNTED check is blind there)', () => {
+  const r = run();
+  skewed(r, 10);
+  const v = lineOf(r, 'M1c.V');
+  assert.equal(v.pass, false, v.detail);
+  assert.match(v.detail, /the phone's clock is ahead of devnet by more than the 2-minute margin — the fee payer window does not cover this run/);
+  // control: at the window's start exactly, the run passes as before
+  const r2 = run();
+  skewed(r2, 0);
+  assert.equal(lineOf(r2, 'M1c.V').pass, true, lineOf(r2, 'M1c.V').detail);
+});
+
 test('R-2: a LISTED fee payer signature whose read has meta null is not read → V FAILS (never skipped as failed)', () => {
   const r = run();
   r.chain.feePayerTxs['8'.repeat(88)] = { ...r.chain.txs[SIG_FRESH], meta: null };

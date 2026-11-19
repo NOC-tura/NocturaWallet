@@ -39,7 +39,7 @@ jest.mock('../../../../modules/screenSecurity/screenSecurityModule', () => ({
     }
   },
 }));
-const mockCheck = {disabled: false, checking: false, note: null as string | null, run: jest.fn()};
+const mockCheck = {disabled: false, checking: false, note: null as string | null, unshield: null as unknown, run: jest.fn()};
 jest.mock('../../../../hooks/useA0Shielded', () => ({
   useA0Shielded: () => ({view: {kind: 'ready', unspent: 0n, pending: 0n, notes: 0}, refresh: jest.fn(), checkAgain: mockCheck}),
 }));
@@ -70,7 +70,7 @@ beforeEach(() => {
   mockUnshield.mockReset();
   mockRetrieve.mockReset().mockResolvedValue('words');
   mockCheck.run.mockReset();
-  Object.assign(mockCheck, {disabled: false, checking: false, note: null});
+  Object.assign(mockCheck, {disabled: false, checking: false, note: null, unshield: null});
   mockSecure.on = 0;
   mockSecure.off = 0;
   clock += 100_000;
@@ -116,7 +116,8 @@ describe('the run — one unshieldA0 call per mount', () => {
     await waitFor(() => expect(r.getByTestId('unshield-status-title')).toBeTruthy());
     expect(mockUnshield).not.toHaveBeenCalled();
     expect(title(r)).toBe('Not sent');
-    expect(sub(r)).toBe('E_KEYCHAIN_CANCELLED · user cancelled. Nothing was sent.');
+    // final review M-4: the code + a fixed sentence (the raw message is not shown where a code exists)
+    expect(sub(r)).toBe('E_KEYCHAIN_CANCELLED · The unshield stopped on this device. Nothing was sent.');
   });
 });
 
@@ -238,7 +239,8 @@ describe('#21 for the unshield — every outcome said as what it is', () => {
         note: 'spent',
         changeRecorded: true,
         linked: false,
-      }),
+        // a stray `detail` at run time (M-3 removed it from the type): the screen still never shows it
+      } as A0UnshieldOutcome),
     );
     expect(title(r)).toBe('Landed, but failed verification');
     expect(r.getByTestId('unshield-status-loud')).toBeTruthy();
@@ -262,7 +264,8 @@ describe('#21 for the unshield — every outcome said as what it is', () => {
         note: 'pending',
         changeRecorded: false,
         linked: true,
-      }),
+        // a stray `detail` at run time (M-3 removed it from the type): the screen still never shows it
+      } as A0UnshieldOutcome),
     );
     expect(r.getByText('Landed, but failed verification: E_A0_VERIFY_SEED_SIGNER · a key of this wallet signed it')).toBeTruthy();
     expect(r.getByTestId('unshield-line-note').props.children).toBe(
@@ -288,7 +291,8 @@ describe('#21 for the unshield — every outcome said as what it is', () => {
         note: 'pending',
         changeRecorded: true,
         linked: false,
-      }),
+        // a stray `detail` at run time (M-3 removed it from the type): the screen still never shows it
+      } as A0UnshieldOutcome),
     );
     expect(r.getByTestId('unshield-status-loud')).toBeTruthy();
     expect(r.getByText('Landed, but failed verification: E_A0_VERIFY_SEED_KEY · it names another account of this wallet')).toBeTruthy();
@@ -361,7 +365,7 @@ describe('#21 for the unshield — every outcome said as what it is', () => {
   it('E_A0_UNSHIELD_BUSY (a second unshield in this process) → "Not sent" with its code', async () => {
     const {r, ctl} = await run();
     await act(async () => ctl.reject(Object.assign(new Error('E_A0_UNSHIELD_BUSY: another unshield is in flight'), {code: 'E_A0_UNSHIELD_BUSY'})));
-    expect(sub(r)).toBe('E_A0_UNSHIELD_BUSY · another unshield is in flight. Nothing was sent.');
+    expect(sub(r)).toBe('E_A0_UNSHIELD_BUSY · Another unshield is still running on this device. Nothing was sent.');
   });
 
   it('a throw AFTER the submit stage (a note-store refusal) → "Not confirmed yet" with its code, never "Nothing was sent"', async () => {
@@ -370,7 +374,8 @@ describe('#21 for the unshield — every outcome said as what it is', () => {
     await step(ctl, 'confirm');
     await act(async () => ctl.reject(Object.assign(new Error('E_A0_STORE_LOCKED: not open'), {code: 'E_A0_STORE_LOCKED'})));
     expect(title(r)).toBe('Not confirmed yet');
-    expect(sub(r)).toMatch(/^E_A0_STORE_LOCKED · not open\. It may have been sent/);
+    expect(sub(r)).toMatch(/^E_A0_STORE_LOCKED · It may have been sent/);
+    expect(sub(r)).not.toContain('not open'); // M-4: the code, not the message
     expect(r.getByTestId('unshield-check-again')).toBeTruthy();
   });
 
@@ -423,7 +428,7 @@ describe('#21 for the unshield — every outcome said as what it is', () => {
     await step(ctl, 'proof');
     await act(async () => ctl.reject(Object.assign(new Error('E_A0_SUBMIT_PUBLIC_INPUTS: mismatch'), {code: 'E_A0_SUBMIT_PUBLIC_INPUTS'})));
     expect(title(r)).toBe('Not sent');
-    expect(sub(r)).toBe('E_A0_SUBMIT_PUBLIC_INPUTS · mismatch. Nothing was sent.');
+    expect(sub(r)).toBe('E_A0_SUBMIT_PUBLIC_INPUTS · The unshield stopped on this device. Nothing was sent.');
   });
 
   it.each([
@@ -448,7 +453,7 @@ describe('#21 for the unshield — every outcome said as what it is', () => {
     expect(r.getByTestId('unshield-status-back')).toBeTruthy();
   });
 
-  it('carry 3: "Another address" that is an account of this wallet → the flow\'s refusal naming the role, never a generic error', async () => {
+  it('carry 3 (M-4 / M-7 rewritten): "Another address" that is an account of this wallet → the refusal naming its role, from the error\'s FIELD in a fixed sentence', async () => {
     const {r, ctl} = await run({destination: {kind: 'external', owner: 'BPFLoaderUpgradeab1e11111111111111111111111'}, amount: '5'});
     await step(ctl, 'sync');
     await step(ctl, 'quote');
@@ -456,13 +461,13 @@ describe('#21 for the unshield — every outcome said as what it is', () => {
       ctl.reject(
         Object.assign(
           new Error('E_A0_UNSHIELD_DESTINATION: that address is an account of this wallet not offered as a destination (slip10:3, fresh-exit)'),
-          {code: 'E_A0_UNSHIELD_DESTINATION'},
+          {code: 'E_A0_UNSHIELD_DESTINATION', ownAccount: 'other'},
         ),
       ),
     );
     expect(title(r)).toBe('Not sent');
     expect(sub(r)).toBe(
-      'E_A0_UNSHIELD_DESTINATION · That address is an account of this wallet not offered as a destination (slip10:3, fresh-exit). Nothing was sent.',
+      'E_A0_UNSHIELD_DESTINATION · That address is an account of this wallet that is not offered as a destination. Nothing was sent.',
     );
     expect(r.getByTestId('unshield-status-back')).toBeTruthy();
   });
@@ -473,22 +478,46 @@ describe('#21 for the unshield — every outcome said as what it is', () => {
       ctl.reject(
         Object.assign(new Error('E_A0_UNSHIELD_DESTINATION: that address is your main account (slip10:0): choose "My main account"'), {
           code: 'E_A0_UNSHIELD_DESTINATION',
+          ownAccount: 'main',
         }),
       ),
     );
-    expect(sub(r)).toBe('E_A0_UNSHIELD_DESTINATION · That address is your main account (slip10:0): choose "My main account". Nothing was sent.');
+    expect(sub(r)).toBe('E_A0_UNSHIELD_DESTINATION · That address is your main account: choose "My main account". Nothing was sent.');
   });
 
   it.each([
     'the destination is not a public key',
     'no fresh account: no-grant',
-  ])('M-7: E_A0_UNSHIELD_DESTINATION that is NOT the own-account refusal ("%s") keeps the generic code · message form', async message => {
+    // M-7: a message that merely STARTS like the own-account refusal is not one (no field)
+    'that address is your main account (slip10:0): choose "My main account"',
+  ])('M-7 (rewritten): E_A0_UNSHIELD_DESTINATION without the own-account field ("%s") → the destination\'s fixed sentence', async message => {
     const {r, ctl} = await run();
     await act(async () =>
       ctl.reject(Object.assign(new Error(`E_A0_UNSHIELD_DESTINATION: ${message}`), {code: 'E_A0_UNSHIELD_DESTINATION'})),
     );
     expect(title(r)).toBe('Not sent');
-    expect(sub(r)).toBe(`E_A0_UNSHIELD_DESTINATION · ${message}. Nothing was sent.`);
+    expect(sub(r)).toBe(
+      "E_A0_UNSHIELD_DESTINATION · That destination cannot be used: a new account needs the relayer's SOL grant, and another address must be a wallet address outside this wallet. Nothing was sent.",
+    );
+  });
+
+  it('M-4: a raw message is never shown beside a code — a sentinel URL with an API key stays off the screen; without a code the message is all there is', async () => {
+    const SECRET = 'https://devnet.example-rpc.com/?api-key=SENTINEL123';
+    const {r, ctl} = await run();
+    await act(async () => ctl.reject(Object.assign(new Error(`E_A0_SYNC_RPC: request to ${SECRET} failed`), {code: 'E_A0_SYNC_RPC'})));
+    expect(JSON.stringify(r.toJSON())).not.toContain('SENTINEL123');
+    expect(sub(r)).toBe('E_A0_SYNC_RPC · The unshield stopped on this device. Nothing was sent.');
+    const second = await run();
+    await act(async () => second.ctl.reject(new Error('Network request failed')));
+    expect(sub(second.r)).toBe('Network request failed. Nothing was sent.');
+  });
+
+  it('M-4: a recorded throw (after the submit) with a code shows the code, not its message', async () => {
+    const {r, ctl} = await run();
+    await step(ctl, 'submit');
+    await act(async () => ctl.reject(Object.assign(new Error('E_A0_SYNC_RPC: https://x/?api-key=SENTINEL456'), {code: 'E_A0_SYNC_RPC'})));
+    expect(title(r)).toBe('Not confirmed yet');
+    expect(JSON.stringify(r.toJSON())).not.toContain('SENTINEL456');
   });
 
   it('a malformed amount param → "Not sent" E_A0_UNSHIELD_AMOUNT, no keychain read, no call', async () => {
@@ -497,5 +526,75 @@ describe('#21 for the unshield — every outcome said as what it is', () => {
     expect(title(r)).toBe('Not sent');
     expect(mockRetrieve).not.toHaveBeenCalled();
     expect(mockUnshield).not.toHaveBeenCalled();
+  });
+});
+
+describe('final review I-1: what "Check again" decided replaces "Not confirmed yet" on #21', () => {
+  const pendingRun = async () => {
+    const out = await run();
+    await act(async () => out.ctl.resolve({status: 'pending', signature: SIG, reason: 'unconfirmed'}));
+    expect(title(out.r)).toBe('Not confirmed yet');
+    return out;
+  };
+  const decide = (r: R, unshield: unknown) => {
+    Object.assign(mockCheck, {unshield});
+    r.rerender(<UnshieldRunScreen request={REQUEST} onDone={jest.fn()} onBack={jest.fn()} />);
+  };
+
+  it('settled (verified) → "Unshielded", CONFIRMED; no PENDING, no "Check again"', async () => {
+    const {r} = await pendingRun();
+    decide(r, {kind: 'settled'});
+    expect(title(r)).toBe('Unshielded');
+    expect(sub(r)).toBe('Checked again: it landed on Solana devnet and was verified · the destination received 1.25 TEST.');
+    expect(r.getByText('CONFIRMED')).toBeTruthy();
+    expect(r.queryByText('PENDING')).toBeNull();
+    expect(r.queryByTestId('unshield-check-again')).toBeNull();
+    expect(r.queryByText(/Not confirmed yet/)).toBeNull();
+  });
+
+  it('reverted → "Not sent" with the note back; no PENDING, no "Check again"', async () => {
+    const {r} = await pendingRun();
+    decide(r, {kind: 'reverted'});
+    expect(title(r)).toBe('Not sent');
+    expect(sub(r)).toBe('Checked again: it did not land in time, so it can no longer land. Your note is back in your shielded balance.');
+    expect(r.queryByText('PENDING')).toBeNull();
+    expect(r.queryByTestId('unshield-check-again')).toBeNull();
+  });
+
+  it('a verifier refusal → LOUD "Landed, but failed verification" from the CODE, UNVERIFIED; no PENDING', async () => {
+    const {r} = await pendingRun();
+    decide(r, {kind: 'unverified', code: 'E_A0_VERIFY_SEED_SIGNER'});
+    expect(title(r)).toBe('Landed, but failed verification');
+    expect(r.getByTestId('unshield-status-loud')).toBeTruthy();
+    expect(r.getByText('Landed, but failed verification: E_A0_VERIFY_SEED_SIGNER · a key of this wallet signed it')).toBeTruthy();
+    expect(r.getByText('UNVERIFIED')).toBeTruthy();
+    expect(r.queryByText('PENDING')).toBeNull();
+    expect(r.queryByTestId('unshield-check-again')).toBeNull();
+  });
+
+  it('still pending → unchanged: "Not confirmed yet", PENDING, "Check again" (control)', async () => {
+    const {r} = await pendingRun();
+    decide(r, {kind: 'pending'});
+    expect(title(r)).toBe('Not confirmed yet');
+    expect(r.getByText('PENDING')).toBeTruthy();
+    expect(r.getByTestId('unshield-check-again')).toBeTruthy();
+  });
+
+  it('a recorded throw (after the submit) is decided the same way', async () => {
+    const {r, ctl} = await run();
+    await step(ctl, 'submit');
+    await act(async () => ctl.reject(Object.assign(new Error('E_A0_STORE_LOCKED: not open'), {code: 'E_A0_STORE_LOCKED'})));
+    decide(r, {kind: 'settled'});
+    expect(title(r)).toBe('Unshielded');
+  });
+
+  it('control: an outcome that was already decided (spent) is not changed by a later check', async () => {
+    const {r, ctl} = await run();
+    await act(async () =>
+      ctl.resolve({status: 'spent', signature: SIG, changeLeafIndex: 21, changeAmount: 5n, grantLamports: null, destinationWithoutSol: false}),
+    );
+    decide(r, {kind: 'reverted'});
+    expect(title(r)).toBe('Unshielded');
+    expect(r.getByText('CONFIRMED')).toBeTruthy();
   });
 });

@@ -7,9 +7,10 @@ import {Text} from '../../../components/ui';
 import {cn} from '../../../utils/cn';
 import {formatTokenAmount} from '../../../utils/parseTokenAmount';
 import {ScreenSecurityManager} from '../../../modules/screenSecurity/screenSecurityModule';
-import {a0LandedUnverifiedText, unshieldA0} from '../../../modules/shielded/a0/unshieldFlow';
+import {unshieldA0} from '../../../modules/shielded/a0/unshieldFlow';
 import {takeA0SubmitHold} from '../../../modules/shielded/a0/submitHold';
 import type {
+  A0OwnAccountRefused,
   A0UnshieldDestination,
   A0UnshieldOutcome,
   A0UnshieldStage,
@@ -21,8 +22,9 @@ import {mnemonicToSeed} from '../../../modules/keyDerivation/mnemonicUtils';
 import {getConnection} from '../../../modules/solana/connection';
 import {explorerTxUrl} from '../../../constants/chain';
 import {useA0Shielded} from '../../../hooks/useA0Shielded';
+import type {A0UnshieldCheck} from '../../../hooks/useA0Shielded';
 import {CheckAgainLink} from '../../../components/CheckAgainLink';
-import {A0_VERIFY_REFUSAL_COPY} from './unshieldCopy';
+import {A0_OWN_ACCOUNT_REFUSAL_COPY, a0RefusalLoudText, a0UnshieldRefusalSentence} from './unshieldCopy';
 import {MetaRow, ProofHeroRing, StageRow, StatusRing, shortSignature} from '../shieldedParts';
 import type {StageRowStatus, StatusTone} from '../shieldedParts';
 
@@ -62,7 +64,11 @@ import type {StageRowStatus, StatusTone} from '../shieldedParts';
  *     confirmed yet" + "Check again", whatever its code (carry 9; E_A0_STORE_CHANGED is "Not in
  *     this wallet"); only a throw before the submit says nothing was sent — the native
  *     confirmation's `E_A0_CONFIRM_*` as the refused dialog (carry 6), "Another address" being an
- *     account of this wallet as the flow's own refusal naming its role (carry 3).
+ *     account of this wallet as the flow's own refusal naming its role (carry 3, from the error's
+ *     `ownAccount` field). Where a code exists the screen says the code and a fixed sentence, never
+ *     the error's message (final review M-4); a message only when there is no code;
+ *   - "Check again" decided (final review I-1) → an undecided outcome above becomes "Unshielded",
+ *     "Not sent" (reverted: the note is back) or the loud refusal, and PENDING / "Check again" go.
  *
  * DEPARTURES FROM THE DESIGN (listed for the owner's visual pass): no #19 / #20 for the unshield
  * (the approval is the native dialog — S4: a JS review screen before it would be a second,
@@ -117,15 +123,14 @@ type Phase =
   | {kind: 'auth'}
   | {kind: 'running'; stage: A0UnshieldStage}
   | {kind: 'done'; outcome: A0UnshieldOutcome}
-  /** a throw; `recorded`: the round reached `submit` and no NEW approval followed (the pending unshield may stand) */
-  | {kind: 'refused'; code: string | null; message: string; recorded: boolean};
+  /**
+   * a throw; `recorded`: the round reached `submit` and no NEW approval followed (the pending unshield
+   * may stand); `ownAccount`: the flow's own-account refusal names the role in this field
+   */
+  | {kind: 'refused'; code: string | null; message: string; recorded: boolean; ownAccount?: A0OwnAccountRefused};
 
 function seconds(ms: number): string {
   return `${(ms / 1000).toFixed(1)} s`;
-}
-
-function capitalised(text: string): string {
-  return text.length > 0 ? `${text[0]!.toUpperCase()}${text.slice(1)}` : text;
 }
 
 export function UnshieldRunScreen({request, onDone, onBack}: UnshieldRunScreenProps) {
@@ -211,7 +216,9 @@ export function UnshieldRunScreen({request, onDone, onBack}: UnshieldRunScreenPr
         setPhase({kind: 'done', outcome});
       } catch (e) {
         const err = a0ErrorText(e);
-        setPhase({kind: 'refused', ...err, recorded});
+        const own = (e as {ownAccount?: unknown} | null)?.ownAccount;
+        const ownAccount = own === 'main' || own === 'other' ? own : undefined;
+        setPhase({kind: 'refused', ...err, recorded, ...(ownAccount ? {ownAccount} : {})});
       }
     })();
     // one run per mount: the request is the route's, fixed for this mount
@@ -315,12 +322,16 @@ export function UnshieldRunScreen({request, onDone, onBack}: UnshieldRunScreenPr
     );
   }
 
-  const view = statusView(phase, amountText, start.current, now);
   const signature =
     phase.kind === 'done' && 'signature' in phase.outcome && phase.outcome.signature ? phase.outcome.signature : null;
-  const pending =
+  const undecided =
     (phase.kind === 'done' && (phase.outcome.status === 'pending' || (phase.outcome.status === 'landed-unverified' && phase.outcome.note === 'pending'))) ||
     (phase.kind === 'refused' && phase.recorded && phase.code !== 'E_A0_STORE_CHANGED'); // M-5: not this wallet's to check
+  // final review I-1: what "Check again" decided replaces "Not confirmed yet" (a still-pending answer
+  // keeps it). One unshield runs at a time, so a decision while this run's is undecided is its own.
+  const decided = undecided && checkAgain.unshield && checkAgain.unshield.kind !== 'pending' ? checkAgain.unshield : null;
+  const view = decided ? decidedView(decided, amountText) : statusView(phase, amountText, start.current, now);
+  const pending = undecided && decided === null;
   const nothingSent =
     (phase.kind === 'done' && phase.outcome.status === 'not-sent') || (phase.kind === 'refused' && !phase.recorded);
 
@@ -538,9 +549,6 @@ interface StatusView {
   lines: {id: string; text: string; warn?: boolean}[];
 }
 
-/** The start of `unshieldFlow`'s own-account refusals (`ownAccountRefusal`: "your main account", "an account of this wallet"). */
-const OWN_ACCOUNT_REFUSAL = 'that address is ';
-
 const KEPT =
   'Your note is kept pending on this device and is decided from the chain: the next time the wallet starts, or when you tap Check again. Nothing is sent twice.';
 
@@ -571,7 +579,9 @@ function statusView(
         : {...base, title: 'Submitting…', sub: `The relayer pays for and submits it · waiting for its answer${t}.`, tone: 'busy'};
     }
     case 'refused': {
-      const head = phase.code ? `${phase.code} · ` : '';
+      // final review M-4: where a code exists, the code and a fixed sentence; the raw message only
+      // when there is no code (an error's message may carry the RPC URL and its API key)
+      const head = phase.code ? `${phase.code} · ` : `${phase.message}. `;
       if (phase.recorded && phase.code === 'E_A0_STORE_CHANGED') {
         return {
           ...base,
@@ -584,7 +594,7 @@ function statusView(
         return {
           ...base,
           title: 'Not confirmed yet',
-          sub: `${head}${phase.message}. It may have been sent, but this device could not record its result. ${KEPT}`,
+          sub: `${head}It may have been sent, but this device could not record its result. ${KEPT}`,
           tone: 'warn',
           badge: 'PENDING',
         };
@@ -601,12 +611,15 @@ function statusView(
           tone: 'bad',
         };
       }
-      if (phase.code === 'E_A0_UNSHIELD_DESTINATION' && phase.message.startsWith(OWN_ACCOUNT_REFUSAL)) {
-        // carry 3: the flow's own-account refusal (it names the account's role), said as it is, the
-        // code kept (M-7); any other destination refusal takes the generic form below
-        return {...base, title: 'Not sent', sub: `${head}${capitalised(phase.message)}. Nothing was sent.`, tone: 'bad'};
+      if (phase.code === null) {
+        return {...base, title: 'Not sent', sub: `${head}Nothing was sent.`, tone: 'bad'};
       }
-      return {...base, title: 'Not sent', sub: `${head}${phase.message}. Nothing was sent.`, tone: 'bad'};
+      // carry 3: the own-account refusal names the account's role — from the error's field (M-7: no prefix match)
+      const why =
+        phase.code === 'E_A0_UNSHIELD_DESTINATION' && phase.ownAccount
+          ? A0_OWN_ACCOUNT_REFUSAL_COPY[phase.ownAccount]
+          : a0UnshieldRefusalSentence(phase.code);
+      return {...base, title: 'Not sent', sub: `${head}${why} Nothing was sent.`, tone: 'bad'};
     }
     case 'done': {
       const o = phase.outcome;
@@ -660,8 +673,8 @@ function statusView(
             sub: 'The relayer landed a transaction for this unshield that does not match what you approved. It is not retried.',
             tone: 'bad',
             badge: 'UNVERIFIED',
-            // carry 4: from the CODE only — `o.detail` names keys of this seed and is never shown
-            loud: a0LandedUnverifiedText(o.code, A0_VERIFY_REFUSAL_COPY[o.code]),
+            // carry 4: from the CODE only — the verifier's detail names keys of this seed; the outcome does not carry it (M-3)
+            loud: a0RefusalLoudText(o.code),
             lines,
           };
         }
@@ -683,5 +696,36 @@ function statusView(
           };
       }
     }
+  }
+}
+
+/** #21 once "Check again" decided an undecided outcome (final review I-1). */
+function decidedView(decided: Exclude<A0UnshieldCheck, {kind: 'pending'}>, amountText: string): StatusView {
+  const base = {badge: null, loud: null, lines: []};
+  switch (decided.kind) {
+    case 'settled':
+      return {
+        ...base,
+        title: 'Unshielded',
+        sub: `Checked again: it landed on Solana devnet and was verified · the destination received ${amountText}.`,
+        tone: 'ok',
+        badge: 'CONFIRMED',
+      };
+    case 'reverted':
+      return {
+        ...base,
+        title: 'Not sent',
+        sub: 'Checked again: it did not land in time, so it can no longer land. Your note is back in your shielded balance.',
+        tone: 'bad',
+      };
+    case 'unverified':
+      return {
+        ...base,
+        title: 'Landed, but failed verification',
+        sub: 'Checked again: the relayer landed a transaction for this unshield that does not match what you approved. It is not retried.',
+        tone: 'bad',
+        badge: 'UNVERIFIED',
+        loud: a0RefusalLoudText(decided.code),
+      };
   }
 }

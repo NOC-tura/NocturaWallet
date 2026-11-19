@@ -389,7 +389,9 @@ export function landingsOf(entries, txs, feePayerTxs = null) {
     return t && t.ok && !t.versioned && t.signers?.[0] === RELAYER_FEE_PAYER && (start === null || !Number.isInteger(t.blockTime) || t.blockTime >= start);
   });
   const missingFromListing = listing === null ? [] : landedNamed.filter(sig => !(sig in listing));
-  const listingComplete = listing !== null && missingFromListing.length === 0;
+  // final review M-1: and it must positively hold a landing of this run — a listing that holds none
+  // (none inside the window, e.g. the phone's clock ahead of devnet) proves nothing absent
+  const listingComplete = listing !== null && landedNamed.length >= 1 && missingFromListing.length === 0;
   // every refusal the app read out, whatever became of its signature here (R-1: the banner never hides one)
   const appRefusals = new Map();
   for (const { readout: r } of entries) {
@@ -580,13 +582,20 @@ export function judgeM1c({ readouts, chain, facts, wipe, kill, launches = [], ap
       vParts.push(`NOT READ ${sig.slice(0, 10)}…: the relayer fee payer listed it, devnet answered null to its read — run \`verify\` again`);
     }
   }
+  // final review M-1 (half 2): the window's start is the phone's clock; a judged landing before it
+  // means the window does not cover the run, and the UNACCOUNTED check above is blind for it
+  const feeStart = feePayerWindowStart(readouts);
+  const beforeWindow = feeStart === null ? [] : landings.filter(l => Number.isInteger(l.tx?.blockTime) && l.tx.blockTime < feeStart);
+  for (const l of beforeWindow) {
+    vParts.push(`${l.signature.slice(0, 10)}… landed at ${l.tx.blockTime}, before the fee payer window's start ${feeStart}: the phone's clock is ahead of devnet by more than the 2-minute margin — the fee payer window does not cover this run`);
+  }
   if (notLanded.length) {
     vParts.push(`named, not on devnet: ${notLanded.map(s => `${s.slice(0, 6)}…`).join(', ')} (a pending outcome whose tx never landed — not judged)`);
   }
   add(
     'M1c.V',
     'EVERY relayed unshield the phone recorded passes every §6.8 condition on its own devnet transaction (the desk\'s decoder), above all: the only signer is the pinned relayer fee payer and no key of this seed signed',
-    landings.length >= 1 && landings.every(passes) && unjoined.length === 0 && window !== null && window.unaccounted.length === 0 && window.unread.length === 0 && missingFromListing.length === 0,
+    landings.length >= 1 && landings.every(passes) && unjoined.length === 0 && window !== null && window.unaccounted.length === 0 && window.unread.length === 0 && missingFromListing.length === 0 && beforeWindow.length === 0,
     vParts.length ? vParts.join(' | ') : 'no landed unshield recorded (run `collect` after each unshield)',
   );
   if (appRefusals.size) {

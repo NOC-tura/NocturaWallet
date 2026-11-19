@@ -29,7 +29,7 @@ import {
 import type {A0ReadoutUnshield, A0ReadoutUnshieldContext} from '../checkpointReadout';
 import type {A0AccountEntry} from '../accountRegistry';
 import type {A0StartupResult, A0StartupState} from '../startup';
-import type {A0UnshieldReconcileReport} from '../unshieldFlow';
+import type {A0UnshieldOutcome, A0UnshieldReconcileReport} from '../unshieldFlow';
 import {
   A0_SUBMIT_HOLD_ARM_TTL_MS,
   A0_SUBMIT_HOLD_LINK,
@@ -138,7 +138,7 @@ function emitTheSample(): string[] {
   readA0UnshieldOutcome(U_OTHER, {status: 'not-sent', outcome: 'invalid_request'}, o(S2));
   readA0UnshieldOutcome(
     U_F1,
-    {status: 'landed-unverified', signature: SIG_FRESH, code: 'E_A0_VERIFY_SEED_SIGNER', detail: `sentinel ${NULLIFIER}`, note: 'spent', changeRecorded: true, linked: true},
+    {status: 'landed-unverified', signature: SIG_FRESH, code: 'E_A0_VERIFY_SEED_SIGNER', detail: `sentinel ${NULLIFIER}`, note: 'spent', changeRecorded: true, linked: true} as A0UnshieldOutcome,
     o(S2),
   );
   readA0UnshieldReconcile(

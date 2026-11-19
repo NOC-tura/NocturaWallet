@@ -19,6 +19,8 @@ import {useA0Shielded, retryA0Startup} from '../../hooks/useA0Shielded';
 import type {A0CheckAgain, A0ShieldedView} from '../../hooks/useA0Shielded';
 import {CheckAgainLink} from '../../components/CheckAgainLink';
 import {UnshieldSide} from './unshield/UnshieldSide';
+import {a0RefusalLoudText} from './unshield/unshieldCopy';
+import type {A0VerifyRefusal} from '../../modules/shielded/a0/landedVerifier';
 import type {A0UnshieldDestination} from '../../modules/shielded/a0/unshieldFlow';
 
 /**
@@ -86,7 +88,7 @@ function parseAmount(text: string): Parsed {
 export function ShieldUnshieldScreen({onBack, onShield, onUnshield, initialDirection, focusKey}: ShieldUnshieldScreenProps) {
   const {tokenBalances, solBalance} = useWalletStore();
   const [direction, setDirection] = useState<Direction>(initialDirection === 'public' ? 'public' : 'private');
-  const {view, checkAgain} = useA0Shielded();
+  const {view, checkAgain, refusal} = useA0Shielded();
   const [amount, setAmount] = useState('');
   const [poolNotes, setPoolNotes] = useState<number | null>(null);
   const [retrying, setRetrying] = useState(false);
@@ -134,7 +136,8 @@ export function ShieldUnshieldScreen({onBack, onShield, onUnshield, initialDirec
     setRetrying(true);
     setRetryError(null);
     const s = await retryA0Startup();
-    if (s.phase === 'error') setRetryError(s.code ? `${s.code}: ${s.message}` : s.message);
+    // final review M-4: the code and a fixed sentence; the raw message only without a code
+    if (s.phase === 'error') setRetryError(s.code ? `${s.code} · Retry again in a moment.` : s.message);
     setRetrying(false);
   }, [retrying]);
 
@@ -173,7 +176,7 @@ export function ShieldUnshieldScreen({onBack, onShield, onUnshield, initialDirec
           focusKey={focusKey}
           onUnshield={r => onUnshield?.(r)}
           shieldedLine={
-            <ShieldedLine view={view} retrying={retrying} retryError={retryError} onRetry={handleRetry} checkAgain={checkAgain} />
+            <ShieldedLine view={view} retrying={retrying} retryError={retryError} onRetry={handleRetry} checkAgain={checkAgain} refusal={refusal} />
           }
         />
       ) : (
@@ -183,7 +186,7 @@ export function ShieldUnshieldScreen({onBack, onShield, onUnshield, initialDirec
             contentContainerClassName="px-5 pb-6"
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}>
-            <ShieldedLine view={view} retrying={retrying} retryError={retryError} onRetry={handleRetry} checkAgain={checkAgain} />
+            <ShieldedLine view={view} retrying={retrying} retryError={retryError} onRetry={handleRetry} checkAgain={checkAgain} refusal={refusal} />
 
             {/* Amount card */}
             <View
@@ -381,17 +384,25 @@ function ShieldedLine({
   retryError,
   onRetry,
   checkAgain,
+  refusal,
 }: {
   view: A0ShieldedView;
   retrying: boolean;
   retryError: string | null;
   onRetry: () => void;
   checkAgain: A0CheckAgain;
+  /** final review I-1: a verifier refusal of a landed unshield found this session (undrawn) */
+  refusal?: A0VerifyRefusal | null;
 }) {
   const sym = A0_TOKEN.symbol;
   if (view.kind === 'ready') {
     return (
       <View className="px-1 mb-3">
+        {refusal ? (
+          <Banner tone="danger" testID="shielded-refusal">
+            {a0RefusalLoudText(refusal)}
+          </Banner>
+        ) : null}
         <View className="flex-row items-center justify-between" testID="shielded-line">
           <Text variant="body-sm" className="text-fg-secondary">
             Shielded balance
@@ -433,7 +444,7 @@ function ShieldedLine({
   return (
     <Banner tone={view.kind === 'error' ? 'danger' : 'warn'} testID="shielded-line">
       {head}
-      {view.kind === 'error' ? `\n${view.message}` : ''}
+      {view.kind === 'error' && view.code === null ? `\n${view.message}` : ''}
       {retryError ? `\n${retryError}` : ''}
       {'\n'}
       <Text

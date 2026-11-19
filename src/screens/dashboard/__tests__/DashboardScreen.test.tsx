@@ -15,8 +15,9 @@ import type {A0PoolNoteCount} from '../../../modules/shielded/a0/poolSize';
 // ── The A0 shielded view + the pool's note count ────────────────────────────
 const mockView: {current: A0ShieldedView} = {current: {kind: 'ready', unspent: 0n, pending: 0n, notes: 0}};
 const mockCheck = {disabled: false, checking: false, note: null as string | null, run: jest.fn()};
+const mockRefusal: {current: string | null} = {current: null};
 jest.mock('../../../hooks/useA0Shielded', () => ({
-  useA0Shielded: () => ({view: mockView.current, refresh: jest.fn(), checkAgain: mockCheck}),
+  useA0Shielded: () => ({view: mockView.current, refresh: jest.fn(), checkAgain: mockCheck, refusal: mockRefusal.current}),
 }));
 const mockPoolCount = jest.fn<Promise<A0PoolNoteCount>, []>();
 jest.mock('../../../modules/shielded/a0/poolSize', () => ({
@@ -150,6 +151,7 @@ beforeEach(() => {
   mockView.current = {kind: 'ready', unspent: 0n, pending: 0n, notes: 0};
   mockPoolCount.mockResolvedValue({status: 'unavailable'});
   Object.assign(mockCheck, {disabled: false, checking: false, note: null});
+  mockRefusal.current = null;
 });
 
 describe('DashboardScreen — transparent mode', () => {
@@ -189,6 +191,25 @@ describe('DashboardScreen — shielded mode, empty state', () => {
   it('does NOT render an anonymity set line when the count is unavailable', async () => {
     const {queryByText} = await renderDashboard();
     expect(queryByText(/Anonymity set/)).toBeNull();
+  });
+});
+
+describe('final review I-1: a verifier refusal is LOUD on the shielded assets (undrawn)', () => {
+  beforeEach(() => {
+    mockMode.current = 'shielded';
+  });
+  it.each<[string, A0ShieldedView]>([
+    ['nothing shielded any more', {kind: 'ready', unspent: 0n, pending: 0n, notes: 0}],
+    ['a balance', {kind: 'ready', unspent: 200_000_000n, pending: 0n, notes: 1}],
+  ])('%s: the loud line from the code; none without a refusal', async (_l, view) => {
+    mockView.current = view;
+    mockRefusal.current = 'E_A0_VERIFY_GRANT_TERMS';
+    const r = await renderDashboard();
+    expect(r.getByTestId('dashboard-shielded-refusal')).toBeTruthy();
+    expect(r.getByText("Landed, but failed verification: E_A0_VERIFY_GRANT_TERMS · its SOL grant is not the relayer's quoted one")).toBeTruthy();
+    r.unmount();
+    mockRefusal.current = null;
+    expect((await renderDashboard()).queryByTestId('dashboard-shielded-refusal')).toBeNull();
   });
 });
 

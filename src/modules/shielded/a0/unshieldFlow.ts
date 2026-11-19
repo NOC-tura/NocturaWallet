@@ -105,12 +105,20 @@
  * NO SELF-RELAY (R6). Nothing here builds, signs or sends a transaction; with the relayer
  * unavailable the unshield fails.
  *
- * THE WINDOW ARITHMETIC (m-1, R2-N2). `pendingSince` is the chain time read last before the
- * request leaves (after a hold too). The relayer fetches its blockhash after that, and a tx can
- * land only while that blockhash is valid (~150 slots, ~60–90 s) — so with a 300 s chain-time
- * window and a reconciliation that reads the clock BEFORE its sync, every landing is inside the
- * window with > 200 s to spare. The slot−1 … −4 fallback costs at most ~2 s of it; a hold that did
- * not re-read would cost its whole length (Task 9's is 30 s), which is why the re-read exists.
+ * THE WINDOW ARITHMETIC (m-1, R2-N2, final review I-2). `pendingSince` is the chain time read last
+ * before the request leaves (after a hold too). The relayer fetches its blockhash once it holds the
+ * request body, and a tx can land only while that blockhash is valid (~150 slots, ~60–90 s). It
+ * depends on a TRANSPORT BOUND: the body reaches the relayer before the JS deadline
+ * (`RELAYER_SUBMIT_TIMEOUT_MS` + margin, 135 s) when the submit is answered at all, so every
+ * landing is ≤ ~225 s after the anchor. A submit that ends by the deadline or a transport error is
+ * re-anchored to the chain time read after it (the native request is not cancelled by the JS
+ * deadline: OkHttp's connect and write timeouts are 120 s each, so ≤ ~105 s of native time is
+ * left, then ~90 s of blockhash). With the reconciliation reading the clock BEFORE its sync, the
+ * 300 s chain-time window holds every landing either way. The slot−1 … −4 fallback costs at most
+ * ~2 s of it; a hold that did not re-read would cost its whole length (Task 9's is 30 s), which is
+ * why that re-read exists. A re-read that fails keeps the earlier anchor: then only a stall of the
+ * native request past ~75 s after the deadline, with the chain clock unreadable at the deadline,
+ * could land past the window (M-6's fallback keeps that tx's change note).
  *
  * NOTES.
  *   - (m-8) A stranger who dusts a `fresh-pending` account (any tx naming it, before our exit
@@ -123,14 +131,15 @@
  *   - (R3-N4, the UX cost) an honest generic failure that cannot be proven dead shows "Not
  *     confirmed yet"; the note and its `fresh-pending` reservation are held up to 300 s of chain
  *     time, until the next start or "Check again".
- *   - (fix round 1, M-8) A pending unshield that a deposit pre-check or a restore settles FIRST
- *     (Task 5: the chain's spend wins in the merge) is never run through the verifier: a refusal
- *     such as a seed-key signer is not reported and `linked` is not set for it. Carried to the
- *     final review.
+ *   - (final review I-3) A deposit pre-check or a restore that finds a pending unshield's spend on
+ *     chain leaves the note pending (the merge's rule) and may store its change note; the
+ *     reconciliation then settles it through the verifier, accepting that stored change note.
+ *     Until then the note's amount reads as pending and its change as unspent.
  *   - (fix round 1, M-4, deferred) when R3-N4's re-sync already shows the note's nullifier, the
  *     flow still answers `pending`; the reconciliation ("Check again", the next start) settles it.
- *   - The verifier's `detail` names keys of this seed beside the signature: it reaches the
- *     returned outcome (the screen) only, never a readout line (R2-N3) — the readout carries the code.
+ *   - The verifier's `detail` names keys of this seed beside the signature: it is dropped at the
+ *     settle — neither the returned outcome nor a readout line carries it (R2-N3, final review
+ *     M-3); both carry the code, and the screen says what the code means.
  */
 import {PublicKey} from '@solana/web3.js';
 import type {Connection} from '@solana/web3.js';
@@ -228,12 +237,23 @@ export type A0UnshieldErrorCode =
   /** a reconciliation of a pending unshield was started without the seed */
   | 'E_A0_UNSHIELD_NEEDS_SEED';
 
+/** Which account of this wallet a typed "Another address" turned out to be (the own-account refusal). */
+export type A0OwnAccountRefused = 'main' | 'other';
+
 export class A0UnshieldError extends Error {
   readonly code: A0UnshieldErrorCode;
-  constructor(code: A0UnshieldErrorCode, message: string) {
+  /**
+   * Set only on the own-account refusal (`E_A0_UNSHIELD_DESTINATION`): the screen names the role in
+   * a fixed sentence from this field, never by parsing the message (final review M-4 / M-7).
+   */
+  readonly ownAccount?: A0OwnAccountRefused;
+  constructor(code: A0UnshieldErrorCode, message: string, ownAccount?: A0OwnAccountRefused) {
     super(`${code}: ${message}`);
     this.name = 'A0UnshieldError';
     this.code = code;
+    if (ownAccount !== undefined) {
+      this.ownAccount = ownAccount;
+    }
   }
 }
 
@@ -291,9 +311,13 @@ export function a0UnshieldSource(notes: readonly A0Note[], fee: bigint): A0Unshi
   return {note: best, maxAmount: best.amount - fee};
 }
 
-/** The loud text of a landed unshield the verifier refused (the controller's ruling). */
-export function a0LandedUnverifiedText(code: A0VerifyRefusal, detail: string): string {
-  return `Landed, but failed verification: ${code} · ${detail}`;
+/**
+ * The loud text of a landed unshield the verifier refused (the controller's ruling): the code and
+ * `meaning`, a fixed sentence of what the code means (`A0_VERIFY_REFUSAL_COPY`) — never the
+ * verifier's detail.
+ */
+export function a0LandedUnverifiedText(code: A0VerifyRefusal, meaning: string): string {
+  return `Landed, but failed verification: ${code} · ${meaning}`;
 }
 
 // ------------------------------------------------------------------ outcomes
@@ -315,8 +339,8 @@ export type A0UnshieldOutcome =
   | {
       status: 'landed-unverified';
       signature: string;
+      /** the code only: the verifier's detail names keys of this seed and is not carried (final review M-3) */
       code: A0VerifyRefusal;
-      detail: string;
       /** `spent`: the tx spends our note (chain truth); `pending`: it does not — the reconciliation decides */
       note: 'spent' | 'pending';
       changeRecorded: boolean;
@@ -465,15 +489,20 @@ export function a0OwnAccountOf(seed: Uint8Array, owner: string, bound: A0StoreBi
 
 function ownAccountRefusal(own: A0OwnAccount): A0UnshieldError {
   if (own.role === 'main') {
-    return new A0UnshieldError('E_A0_UNSHIELD_DESTINATION', `that address is your main account (${own.scheme}): choose "My main account"`);
+    return new A0UnshieldError('E_A0_UNSHIELD_DESTINATION', `that address is your main account (${own.scheme}): choose "My main account"`, 'main');
   }
   if (own.role !== null) {
     return new A0UnshieldError(
       'E_A0_UNSHIELD_DESTINATION',
       `that address is an account of this wallet not offered as a destination (${own.scheme}, ${own.role})`,
+      'other',
     );
   }
-  return new A0UnshieldError('E_A0_UNSHIELD_DESTINATION', `that address is an account of this wallet not offered as a destination (${own.scheme})`);
+  return new A0UnshieldError(
+    'E_A0_UNSHIELD_DESTINATION',
+    `that address is an account of this wallet not offered as a destination (${own.scheme})`,
+    'other',
+  );
 }
 
 async function assertDevnet(connection: Connection): Promise<void> {
@@ -547,9 +576,9 @@ const stillPendingUnshield = (rho: string, bound: A0StoreBinding): A0Note | null
 
 type Settled =
   | {kind: 'verified'; signature: string; changeLeafIndex: number; changeAmount: bigint; grantLamports: bigint | null; destinationWithoutSol: boolean}
-  | {kind: 'unverified'; signature: string; code: A0VerifyRefusal; detail: string; changeRecorded: boolean; linked: boolean}
+  | {kind: 'unverified'; signature: string; code: A0VerifyRefusal; changeRecorded: boolean; linked: boolean}
   | {kind: 'recovered'; signature: string; changeRecorded: boolean}
-  | {kind: 'not-ours'; signature: string; code: A0VerifyRefusal; detail: string};
+  | {kind: 'not-ours'; signature: string; code: A0VerifyRefusal};
 
 interface SettleContext {
   handle: A0Handle;
@@ -575,6 +604,29 @@ async function ourNullifier(handle: A0Handle, tx: A0SyncedTx, rho: string): Prom
   return null;
 }
 
+/**
+ * §7 "Change notes" (recovery's rule, no intent): the change of `tx`'s withdrawal of our nullifier,
+ * from the tx's OWN amounts — Rust recomputes the commitment with the change rho of the landed
+ * nullifier, and it must be the withdrawal's change commitment with exactly one matching leaf. Only
+ * this seed can make that commitment, so a match is ours. Null otherwise.
+ */
+async function changeByTheTx(
+  handle: A0Handle,
+  tx: A0SyncedTx,
+  note: A0Note,
+  nullifier: string,
+  withdrawal: A0SyncedTx['withdrawals'][number] | undefined,
+): Promise<A0ChangeNote | null> {
+  const amount = withdrawal ? a0ChangeAmount(note.amount, withdrawal.amount, withdrawal.fee) : null;
+  if (!withdrawal || amount === null) {
+    return null;
+  }
+  const rho = a0ChangeRho(nullifier);
+  const cm = await a0Commitment(handle, amount, rho);
+  const leaves = tx.leafInserted.filter(l => l.commitment === cm);
+  return cm === withdrawal.changeCommitment && leaves.length === 1 ? {commitment: cm, amount, rho, leafIndex: leaves[0]!.leafIndex} : null;
+}
+
 /** §6 step 8 + the controller's refusal semantics, for the tx that may spend `ctx.note`. */
 async function settleLanded(tx: A0SyncedTx, ctx: SettleContext): Promise<Settled> {
   const {handle, seed, bound, note, intent} = ctx;
@@ -588,16 +640,7 @@ async function settleLanded(tx: A0SyncedTx, ctx: SettleContext): Promise<Settled
     if (nullifier === null) {
       throw new A0UnshieldError('E_A0_UNSHIELD_NOTE_LEAF', `${tx.signature} does not spend the note`);
     }
-    let change: A0ChangeNote | null = null;
-    const amount = withdrawal ? a0ChangeAmount(note.amount, withdrawal.amount, withdrawal.fee) : null;
-    if (withdrawal && amount !== null) {
-      const rho = a0ChangeRho(nullifier);
-      const cm = await a0Commitment(handle, amount, rho);
-      const leaves = tx.leafInserted.filter(l => l.commitment === cm);
-      if (cm === withdrawal.changeCommitment && leaves.length === 1) {
-        change = {commitment: cm, amount, rho, leafIndex: leaves[0]!.leafIndex};
-      }
-    }
+    const change = await changeByTheTx(handle, tx, note, nullifier, withdrawal);
     settleA0Unshield(note.rho, tx.signature, change, bound);
     return {kind: 'recovered', signature: tx.signature, changeRecorded: change !== null};
   }
@@ -629,7 +672,6 @@ async function settleLanded(tx: A0SyncedTx, ctx: SettleContext): Promise<Settled
       kind: 'not-ours',
       signature: tx.signature,
       code: verdict.ok ? 'E_A0_VERIFY_NULLIFIER' : verdict.code,
-      detail: verdict.ok ? 'matchSpent does not attribute the spend to the note' : verdict.detail,
     };
   }
   const changeRho = a0ChangeRho(nullifier);
@@ -652,12 +694,14 @@ async function settleLanded(tx: A0SyncedTx, ctx: SettleContext): Promise<Settled
       destinationWithoutSol: verdict.destinationWithoutSol,
     };
   }
-  // REFUSED, but the tx spends our note: chain truth for the note, ours-only for the change
+  // REFUSED, but the tx spends our note: chain truth for the note, ours-only for the change. The
+  // change is looked up by the stored intent's amounts first; a tx made for ANOTHER intent (an
+  // earlier attempt of this note, final review M-6) falls back to the tx's own withdrawal
   const leaves = tx.leafInserted.filter(l => l.commitment === expectedChange);
   const change: A0ChangeNote | null =
     leaves.length === 1 && withdrawal?.changeCommitment === expectedChange
       ? {commitment: expectedChange!, amount: changeAmount, rho: changeRho, leafIndex: leaves[0]!.leafIndex}
-      : null;
+      : await changeByTheTx(handle, tx, note, nullifier, withdrawal);
   settleA0Unshield(note.rho, tx.signature, change, bound);
   let linked = false;
   if (intent.destination === 'fresh') {
@@ -668,7 +712,7 @@ async function settleLanded(tx: A0SyncedTx, ctx: SettleContext): Promise<Settled
       releaseA0FreshAccount(intent.scheme!, {bound});
     }
   }
-  return {kind: 'unverified', signature: tx.signature, code: verdict.code, detail: verdict.detail, changeRecorded: change !== null, linked};
+  return {kind: 'unverified', signature: tx.signature, code: verdict.code, changeRecorded: change !== null, linked};
 }
 
 /** The `pending` reason for a `reconcile` disposition, held by the compiler (no cast); anything else is `unknown`. */
@@ -700,13 +744,12 @@ function outcomeOf(s: Settled): A0UnshieldOutcome {
         status: 'landed-unverified',
         signature: s.signature,
         code: s.code,
-        detail: s.detail,
         note: 'spent',
         changeRecorded: s.changeRecorded,
         linked: s.linked,
       };
     case 'not-ours':
-      return {status: 'landed-unverified', signature: s.signature, code: s.code, detail: s.detail, note: 'pending', changeRecorded: false, linked: false};
+      return {status: 'landed-unverified', signature: s.signature, code: s.code, note: 'pending', changeRecorded: false, linked: false};
     case 'recovered':
       // the flow always holds its intent; only the reconciliation of an intent-less note gets here
       return {status: 'pending', signature: s.signature, reason: 'not-in-sync'};
@@ -886,10 +929,9 @@ export async function unshieldA0(
         registry: loadA0AccountRegistry({bound}) ?? [],
         heldMs,
       }));
-      if (heldMs > 0) {
-        await sleep(heldMs);
-        // m-1 / R2-N2: the window counts from the last chain time before the request leaves. A null
-        // or failing re-read KEEPS the earlier anchor and never fails the unshield.
+      // A null or failing re-read KEEPS the earlier anchor and never fails the unshield; an earlier
+      // time never moves it back (`refreshA0PendingSince`).
+      const reanchor = async (): Promise<void> => {
         let later: number | null = null;
         try {
           later = await a0ChainTime(connection);
@@ -899,6 +941,11 @@ export async function unshieldA0(
         if (later !== null) {
           refreshA0PendingSince(note.rho, later, bound);
         }
+      };
+      if (heldMs > 0) {
+        await sleep(heldMs);
+        // m-1 / R2-N2: the window counts from the last chain time before the request leaves
+        await reanchor();
       }
       let result: A0SubmitResult;
       try {
@@ -913,6 +960,14 @@ export async function unshieldA0(
         throw e;
       } finally {
         flight.payload = null; // the in-flight nullifier's last reference (R12)
+      }
+      if (result.outcome === 'unknown' && (result.cause === 'deadline' || result.cause === 'transport')) {
+        // final review I-2: the JS deadline does not cancel the native request, and OkHttp's
+        // per-phase timeouts let the body reach the relayer up to ~240 s after the anchor. From the
+        // deadline on, at most ~105 s of native time is left, then the blockhash's ~90 s: re-anchor
+        // here so the 300 s window still holds every landing. After a transport error the request
+        // is dead; any body it delivered arrived before now.
+        await reanchor();
       }
       const disposition = a0SubmitDisposition(result);
 

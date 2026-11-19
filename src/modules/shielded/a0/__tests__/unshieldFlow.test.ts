@@ -1101,14 +1101,102 @@ describe('m-1 / R2-N2: a held submit re-reads the chain clock after the hold and
   });
 });
 
+describe('final review I-2: a submit that ended by the deadline or a transport error RE-ANCHORS pendingSince (the native request may still be in flight)', () => {
+  const T0 = 1_794_200_000;
+  /** the submit, as the transport ends it after `chainSecondsLater` of chain time */
+  const endsBy = (cause: 'deadline' | 'transport' | null, chainSecondsLater: number, clock?: () => void) =>
+    jest.spyOn(relayerClient, 'submitA0WithdrawChange').mockImplementationOnce(async () => {
+      w.net.clock = {slot: w.net.clock.slot + chainSecondsLater * 2, blockTime: T0 + chainSecondsLater};
+      clock?.();
+      return cause === null
+        ? {outcome: 'unconfirmed', status: 502, forwarded: true, txSignature: w.relayer.landed[0] ?? '1'.repeat(64)}
+        : {outcome: 'unknown', status: null, forwarded: 'unknown', txSignature: null, cause};
+    });
+
+  it.each<['deadline' | 'transport']>([['deadline'], ['transport']])('%s at T0 + 135 s: pendingSince is the chain time read AFTER the submit returned; pending, the reservation kept', async cause => {
+    const spy = endsBy(cause, 135);
+    try {
+      expect(await run(fresh(400_000n))).toEqual({status: 'pending', signature: null, reason: 'unknown'});
+    } finally {
+      spy.mockRestore();
+    }
+    expect(noteOf(w.notes[0]!.rho)).toMatchObject({status: 'pending', pendingSince: T0 + 135, unshield: {scheme: 'slip10:1'}});
+    expect(registry()).toContainEqual({scheme: 'slip10:1', role: 'fresh-pending'});
+  });
+
+  it('the real deadline (the request never settles): the clock is read again after it and the later time kept', async () => {
+    w.relayer.script.push({answer: 'hang'});
+    const getSlot = w.net.connection.getSlot.bind(w.net.connection);
+    let submitted = false;
+    const spy = jest.spyOn(w.net.connection, 'getSlot').mockImplementation(async (...a) => {
+      if (submitted) {
+        w.net.clock = {slot: w.net.clock.slot + 1, blockTime: T0 + 140};
+      }
+      return getSlot(...a);
+    });
+    try {
+      const out = await run(fresh(400_000n), {transport: {...w.relayer.transport, deadlineMs: 30}, onStage: s => (s === 'submit' ? (submitted = true) : undefined)});
+      expect(out).toEqual({status: 'pending', signature: null, reason: 'unknown'});
+    } finally {
+      spy.mockRestore();
+    }
+    expect(noteOf(w.notes[0]!.rho)).toMatchObject({status: 'pending', pendingSince: T0 + 140});
+  });
+
+  it('a re-read with no block time KEEPS the anchor (never fails the unshield)', async () => {
+    const spy = endsBy('deadline', 135, () => (w.net.clock = {slot: w.net.clock.slot, blockTime: null}));
+    try {
+      expect(await run(fresh(400_000n))).toMatchObject({status: 'pending', reason: 'unknown'});
+    } finally {
+      spy.mockRestore();
+    }
+    expect(noteOf(w.notes[0]!.rho).pendingSince).toBe(T0);
+  });
+
+  it('a re-read that throws keeps the anchor too', async () => {
+    const spy = endsBy('transport', 135, () => {
+      jest.spyOn(w.net.connection, 'getSlot').mockRejectedValueOnce(new Error('rpc down'));
+    });
+    try {
+      expect(await run(fresh(400_000n))).toMatchObject({status: 'pending', reason: 'unknown'});
+    } finally {
+      spy.mockRestore();
+    }
+    expect(noteOf(w.notes[0]!.rho).pendingSince).toBe(T0);
+  });
+
+  it('control: an ANSWER (here unconfirmed) is not re-anchored — the relayer held the body before it answered, inside the JS deadline', async () => {
+    const spy = endsBy(null, 135);
+    try {
+      expect(await run(fresh(400_000n))).toMatchObject({status: 'pending', reason: 'unconfirmed'});
+    } finally {
+      spy.mockRestore();
+    }
+    expect(noteOf(w.notes[0]!.rho).pendingSince).toBe(T0);
+  });
+
+  it('the window counts from the re-anchor: a reconcile at T0 + 135 + 300 keeps the note pending; one second past it reverts', async () => {
+    const spy = endsBy('deadline', 135);
+    try {
+      await run(fresh(400_000n));
+    } finally {
+      spy.mockRestore();
+    }
+    w.net.clock = {slot: w.net.clock.slot + 600, blockTime: T0 + 135 + 300};
+    expect(await reconcileA0PendingUnshields(w.net.connection, seedBytes(TEST_SEED), {sync: {useCache: false}})).toMatchObject({stillPending: [{reason: 'in-window'}], reverted: []});
+    w.net.clock = {slot: w.net.clock.slot + 2, blockTime: T0 + 135 + 301};
+    expect(await reconcileA0PendingUnshields(w.net.connection, seedBytes(TEST_SEED), {sync: {useCache: false}})).toMatchObject({reverted: [{rho: w.notes[0]!.rho}]});
+  });
+});
+
 // ------------------------------------------------------------------ m-5, Task 6, Task 2, R2-N3 (the carry's rulings)
 
 describe('m-5: "Another address" refuses slip10:0 … 20 of this seed (21 local derivations) and every key of the seed set', () => {
-  const errOf = async (p: Promise<unknown>): Promise<{code?: string; message: string}> => {
+  const errOf = async (p: Promise<unknown>): Promise<{code?: string; message: string; ownAccount?: string}> => {
     try {
       await p;
     } catch (e) {
-      return e as {code?: string; message: string};
+      return e as {code?: string; message: string; ownAccount?: string};
     }
     throw new Error('resolved');
   };
@@ -1120,6 +1208,8 @@ describe('m-5: "Another address" refuses slip10:0 … 20 of this seed (21 local 
     const e = await errOf(run({destination: {kind: 'external', owner: ACCOUNT(n).address}, amount: 100_000n}));
     expect(e.code).toBe('E_A0_UNSHIELD_DESTINATION');
     expect(e.message).toContain('an account of this wallet not offered as a destination');
+    // final review M-4: the role travels as a FIELD, so #21 names it in a fixed sentence without the message
+    expect(e.ownAccount).toBe('other');
     expect([fake.approvals, w.relayer.submits.length]).toEqual([0, 0]);
     expect(noteOf(w.notes[0]!.rho)).toMatchObject({status: 'unspent'});
     expect(registry()).toEqual([{scheme: 'slip10:0', role: 'main'}]);
@@ -1129,6 +1219,7 @@ describe('m-5: "Another address" refuses slip10:0 … 20 of this seed (21 local 
     const e = await errOf(run({destination: {kind: 'external', owner: MAIN.address}, amount: 100_000n}));
     expect(e.code).toBe('E_A0_UNSHIELD_DESTINATION');
     expect(e.message).toContain('your main account');
+    expect(e.ownAccount).toBe('main');
     expect(fake.approvals).toBe(0);
   });
 
@@ -1169,11 +1260,12 @@ describe('the carry\'s rulings on Tasks 2, 4 and 6', () => {
     w.relayer.script.push({answer: 'confirmed', mutate: tx => (tx.transaction.message.accountKeys[0] = MAIN.address)});
     const out = await run(fresh(400_000n));
     expect(out).toMatchObject({status: 'landed-unverified', code: 'E_A0_VERIFY_SEED_SIGNER'});
-    expect(out.status === 'landed-unverified' && out.detail.includes(MAIN.address)).toBe(true); // non-vacuous
+    // final review M-3: the verifier's detail is not on the returned outcome at all (the type holds
+    // the invariant, not each consumer) — and the seed key it would name is nowhere in the outcome
+    expect(out).not.toHaveProperty('detail');
+    expect(JSON.stringify(out)).not.toContain(MAIN.address);
     // M1c Task 9 (R2-N3): the submitting line keeps the registry, so the main's address IS on that
-    // line — as the registry's main entry only. The detail itself, and the seed key it names, reach
-    // no other field of any line.
-    expect(lines.filter(l => out.status === 'landed-unverified' && l.includes(out.detail))).toEqual([]);
+    // line — as the registry's main entry only. The seed key reaches no other field of any line.
     const payloads = lines.map(l => JSON.parse(l.split(' ').slice(3).join(' ')) as Record<string, unknown>);
     const withoutRegistry = payloads.map(p => (p.event === 'unshield-submitting' ? {...p, registry: undefined} : p));
     expect(withoutRegistry.filter(p => JSON.stringify(p).includes(MAIN.address))).toEqual([]);

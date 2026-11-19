@@ -180,6 +180,32 @@ describe('landed after all: settled through the sync with the STORED intent, ver
   });
 });
 
+describe('final review M-6: a landed tx of the note made for ANOTHER intent (an earlier attempt) keeps its change note', () => {
+  it('the verifier refuses it against the stored intent, and the change is still recorded by the tx\'s own withdrawal (Rust recomputes it; one leaf)', async () => {
+    w.relayer.script.push({answer: 'unconfirmed', lands: false});
+    await unshieldFresh(); // the stored intent: 400 000
+    const note = w.notes[0]!;
+    // an earlier attempt of the same note, for 300 000, lands now
+    const change = expectedChange(note, 300_000n, LIVE_FEE);
+    const sig = appendWithdraw(w.net.chain, {nullifier: note.nullifier, changeCommitment: change.commitment, amount: 300_000n, fee: LIVE_FEE}).signature;
+    const r = await reconcile();
+    expect(r.settled).toHaveLength(1);
+    expect(r.settled[0]).toMatchObject({signature: sig, verified: false, changeRecorded: true});
+    expect(noteOf(note.rho)).toMatchObject({status: 'spent', spentTx: sig});
+    expect(noteOf(change.rho)).toEqual({commitment: change.commitment, amount: change.amount, rho: change.rho, leafIndex: RECORDED_LEAVES + 1, status: 'unspent'});
+  });
+
+  it('control: a change leaf that is NOT ours (a stranger\'s commitment) is still not recorded', async () => {
+    w.relayer.script.push({answer: 'unconfirmed', lands: false});
+    await unshieldFresh();
+    const note = w.notes[0]!;
+    const sig = appendWithdraw(w.net.chain, {nullifier: note.nullifier, changeCommitment: strangerField(9), amount: 300_000n, fee: LIVE_FEE}).signature;
+    const r = await reconcile();
+    expect(r.settled[0]).toMatchObject({signature: sig, verified: false, changeRecorded: false});
+    expect(loadA0NoteStore().notes.filter(n => n.status === 'unspent' && n.rho !== note.rho).map(n => n.commitment)).not.toContain(strangerField(9));
+  });
+});
+
 describe('the carry\'s rulings on Tasks 2 and 5, and m-2 in the reconciliation', () => {
   it('Task 2: a reservation released blindly, then the tx turns out LANDED — verified all the same (the account re-derived from the seed is ours) and fresh-exit again', async () => {
     w.relayer.script.push({answer: 'unconfirmed', lands: true});
@@ -192,30 +218,58 @@ describe('the carry\'s rulings on Tasks 2 and 5, and m-2 in the reconciliation',
     expect(noteOf(w.notes[0]!.rho)).toMatchObject({status: 'spent', spentTx: w.relayer.landed[0]});
   });
 
-  it('Task 5: a deposit pre-check settled the pending unshield first (spent + its change) — the reconcile never reverts it, never stores the change twice; the reservation is promoted by the history', async () => {
+  /** exactly what depositFlow's pre-check does on a hit: recover deposits + change notes on the synced tree, merge */
+  async function depositPrecheckMerge(): Promise<void> {
+    const {tree} = await syncA0Tree(w.net.connection, {useCache: false});
+    const handle = await a0KeysOpen(seedBytes(TEST_SEED));
+    try {
+      const rec = await recoverA0Deposits(handle, tree);
+      const change = await recoverA0ChangeNotes(handle, tree, rec.notes);
+      mergeA0RecoveredNotes(change.notes, rec.nextDepositIndex);
+    } finally {
+      await a0KeysClose(handle);
+    }
+  }
+
+  it('I-3 (Task 5\'s row rewritten): a deposit pre-check leaves the landed pending unshield PENDING (its change stored); the reconcile settles AND verifies it — the change once, the reservation promoted', async () => {
     w.relayer.script.push({answer: 'unconfirmed', lands: true});
     await unshieldFresh();
     const sig = w.relayer.landed[0]!;
     const since = noteOf(w.notes[0]!.rho).pendingSince!;
-    // exactly what depositFlow's pre-check does on a hit: recover deposits + change notes on the synced tree, merge
-    const {tree} = await syncA0Tree(w.net.connection, {useCache: false});
-    const handle = await a0KeysOpen(seedBytes(TEST_SEED));
-    const rec = await recoverA0Deposits(handle, tree);
-    const change = await recoverA0ChangeNotes(handle, tree, rec.notes);
-    mergeA0RecoveredNotes(change.notes, rec.nextDepositIndex);
-    await a0KeysClose(handle);
+    await depositPrecheckMerge();
     const expected = expectedChange(w.notes[0]!, 400_000n, LIVE_FEE);
-    expect(noteOf(w.notes[0]!.rho)).toMatchObject({status: 'spent', spentTx: sig});
+    // the merge no longer settles it past the verifier: still pending, with its intent
+    expect(noteOf(w.notes[0]!.rho)).toMatchObject({status: 'pending', pendingSince: since, unshield: {scheme: 'slip10:1'}});
     expect(loadA0NoteStore().notes.filter(n => n.rho === expected.rho)).toHaveLength(1);
 
-    w.net.clock = {slot: w.net.clock.slot + 10_000, blockTime: since + 10 * WINDOW_S}; // far past the window
+    w.net.clock = {slot: w.net.clock.slot + 10_000, blockTime: since + 10 * WINDOW_S}; // far past the window: a landing wins over it
     const r = await reconcile();
-    expect(r).toMatchObject({settled: [], reverted: [], stillPending: [], promoted: ['slip10:1'], released: []});
+    expect(r).toMatchObject({
+      settled: [{rho: w.notes[0]!.rho, signature: sig, verified: true, code: null, changeRecorded: true}],
+      reverted: [],
+      stillPending: [],
+      promoted: ['slip10:1'],
+      released: [],
+    });
     expect(noteOf(w.notes[0]!.rho)).toMatchObject({status: 'spent', spentTx: sig});
     expect(loadA0NoteStore().notes.filter(n => n.rho === expected.rho)).toEqual([
       {commitment: expected.commitment, amount: expected.amount, rho: expected.rho, leafIndex: RECORDED_LEAVES + 1, status: 'unspent'},
     ]);
     expect(registry()).toContainEqual({scheme: 'slip10:1', role: 'fresh-exit'});
+  });
+
+  it('I-3: a landed exit a KEY OF THIS SEED signed, merged by a deposit pre-check first, is still REFUSED by the verifier — read out with its code, the account linked', async () => {
+    w.relayer.script.push({answer: 'confirmed', hideForSyncs: 1, mutate: tx => (tx.transaction.message.accountKeys[0] = ACCOUNT(0).address)});
+    expect(await unshieldFresh(400_000n, {confirmSyncRetries: 0})).toMatchObject({status: 'pending', reason: 'not-in-sync'});
+    const sig = w.relayer.landed[0]!;
+    await depositPrecheckMerge();
+    expect(noteOf(w.notes[0]!.rho).status).toBe('pending');
+    const r = await reconcile();
+    expect(r).toMatchObject({settled: [{signature: sig, verified: false, code: 'E_A0_VERIFY_SEED_SIGNER'}], promoted: ['slip10:1']});
+    expect(noteOf(w.notes[0]!.rho)).toMatchObject({status: 'spent', spentTx: sig});
+    expect(loadA0AccountRegistry()!.find(e => e.scheme === 'slip10:1')).toMatchObject({role: 'fresh-exit', linked: true});
+    const line = lines.find(l => l.includes('"unshield-reconcile"'))!;
+    expect(line).toContain('E_A0_VERIFY_SEED_SIGNER');
   });
 
   it('m-2: the reconciliation\'s clock falls back to slot−1 … slot−4 too (a past-window time there reverts)', async () => {

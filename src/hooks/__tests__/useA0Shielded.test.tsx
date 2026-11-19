@@ -5,7 +5,8 @@
 import React from 'react';
 import {Text} from 'react-native';
 import {render, act, fireEvent} from '@testing-library/react-native';
-import {a0ShieldedView, checkA0PendingAgain, retryA0Startup, useA0Shielded} from '../useA0Shielded';
+import {a0ShieldedView, a0UnshieldCheckOf, checkA0PendingAgain, retryA0Startup, useA0Shielded} from '../useA0Shielded';
+import type {A0UnshieldReconcileReport} from '../../modules/shielded/a0/unshieldFlow';
 import type {A0StartupState} from '../../modules/shielded/a0/startup';
 import type {A0Note} from '../../modules/shielded/a0/noteStore';
 
@@ -255,6 +256,95 @@ describe('R1-m9 / R2-N2 / R3-N5: "Check again" on a pending deposit', () => {
     await act(async () => {
       fireEvent.press(r.getByTestId('run'));
     });
-    expect(r.getByTestId('note').props.children).toBe('E_A0_SYNC_RPC · timeout');
+    // final review M-4: where a code exists, the code + a fixed sentence — never the raw message
+    expect(r.getByTestId('note').props.children).toBe('E_A0_SYNC_RPC · The check could not finish. Check again in a moment.');
+    mockReconcile.mockRejectedValue(new Error('request to https://rpc.example/?api-key=SECRET failed'));
+    await act(async () => {
+      fireEvent.press(r.getByTestId('run'));
+    });
+    // no code: the raw message is all there is (the ruling's one exception)
+    expect(r.getByTestId('note').props.children).toBe('request to https://rpc.example/?api-key=SECRET failed');
+  });
+});
+
+describe('final review I-1: a reconciliation\'s result reaches the screens', () => {
+  const report = (over: Partial<A0UnshieldReconcileReport>): A0UnshieldReconcileReport => ({
+    settled: [],
+    reverted: [],
+    stillPending: [],
+    skipped: 0,
+    released: [],
+    promoted: [],
+    ...over,
+  });
+  const ok = {rho: 'r', signature: 'S1', verified: true, code: null, changeRecorded: true};
+  const refused = {rho: 'r2', signature: 'S2', verified: false, code: 'E_A0_VERIFY_SEED_SIGNER' as const, changeRecorded: true};
+
+  it('a0UnshieldCheckOf: a refusal first, then still pending, then settled, then reverted; nothing → null', () => {
+    expect(a0UnshieldCheckOf(report({settled: [ok, refused], reverted: [{rho: 'x'}], stillPending: [{rho: 'y', reason: 'in-window'}]}))).toEqual({
+      kind: 'unverified',
+      code: 'E_A0_VERIFY_SEED_SIGNER',
+    });
+    expect(a0UnshieldCheckOf(report({settled: [ok], stillPending: [{rho: 'y', reason: 'in-window'}]}))).toEqual({kind: 'pending'});
+    expect(a0UnshieldCheckOf(report({settled: [ok], reverted: [{rho: 'x'}]}))).toEqual({kind: 'settled'});
+    expect(a0UnshieldCheckOf(report({reverted: [{rho: 'x'}]}))).toEqual({kind: 'reverted'});
+    expect(a0UnshieldCheckOf(report({}))).toBeNull();
+    // an intent-less settle (recovery's rules: verified false with NO code) is settled, not a refusal
+    expect(a0UnshieldCheckOf(report({settled: [{...ok, verified: false}]}))).toEqual({kind: 'settled'});
+  });
+
+  const Probe = () => {
+    const {checkAgain, refusal} = useA0Shielded();
+    return (
+      <>
+        <Text testID="note">{checkAgain.note ?? ''}</Text>
+        <Text testID="unshield">{JSON.stringify(checkAgain.unshield)}</Text>
+        <Text testID="refusal">{refusal ?? ''}</Text>
+        <Text testID="run" onPress={checkAgain.run}>
+          run
+        </Text>
+      </>
+    );
+  };
+  const tap = async (r: ReturnType<typeof render>) =>
+    act(async () => {
+      fireEvent.press(r.getByTestId('run'));
+    });
+
+  it.each<[string, Partial<A0UnshieldReconcileReport>, string, string]>([
+    ['settled + verified', {settled: [ok]}, 'Confirmed · unshielded.', '{"kind":"settled"}'],
+    ['reverted', {reverted: [{rho: 'r'}], released: ['slip10:1']}, 'Not sent · your note is back in your shielded balance.', '{"kind":"reverted"}'],
+    ['still pending', {stillPending: [{rho: 'r', reason: 'in-window'}]}, 'Still not confirmed · checked just now.', '{"kind":"pending"}'],
+    ['a verifier refusal', {settled: [refused]}, 'Checked just now · it landed, but failed verification.', '{"kind":"unverified","code":"E_A0_VERIFY_SEED_SIGNER"}'],
+  ])('"Check again" that finds %s says so (the note and the typed result)', async (_l, over, text, typed) => {
+    mockState = READY;
+    mockReconcileUnshields.mockResolvedValue(report(over));
+    const r = render(<Probe />);
+    await tap(r);
+    expect(r.getByTestId('note').props.children).toBe(text);
+    expect(r.getByTestId('unshield').props.children).toBe(typed);
+  });
+
+  it('a refusal found by "Check again" is LOUD for the session of this wallet — on every screen that mounts after it, by its CODE only', async () => {
+    mockState = READY;
+    mockReconcileUnshields.mockResolvedValue(report({settled: [{...refused, detail: 'seed key SENTINELKEY'} as A0UnshieldReconcileReport['settled'][number]]}));
+    const r = render(<Probe />);
+    expect(r.getByTestId('refusal').props.children).toBe('');
+    await tap(r);
+    expect(r.getByTestId('refusal').props.children).toBe('E_A0_VERIFY_SEED_SIGNER');
+    expect(JSON.stringify(r.toJSON())).not.toContain('SENTINELKEY');
+    r.unmount();
+    const again = render(<Probe />); // e.g. the dashboard after #21's Done
+    expect(again.getByTestId('refusal').props.children).toBe('E_A0_VERIFY_SEED_SIGNER');
+    again.unmount();
+    mockInstance.current = {instance: 'B'}; // a wipe + import: another wallet
+    expect(render(<Probe />).getByTestId('refusal').props.children).toBe('');
+  });
+
+  it('a refusal the STARTUP step found is LOUD too (code only); a startup with none says nothing', () => {
+    mockState = {...READY, result: {...READY.result, unshields: report({settled: [ok, refused]})}} as A0StartupState;
+    expect(render(<Probe />).getByTestId('refusal').props.children).toBe('E_A0_VERIFY_SEED_SIGNER');
+    mockState = {...READY, result: {...READY.result, unshields: report({settled: [ok]})}} as A0StartupState;
+    expect(render(<Probe />).getByTestId('refusal').props.children).toBe('');
   });
 });

@@ -11,7 +11,8 @@
  */
 import {formatTokenAmount} from '../../../utils/parseTokenAmount';
 import {SOL_DECIMALS, displayAmount} from '../../../modules/shielded/a0/screenSupport';
-import type {A0FreshUnavailable} from '../../../modules/shielded/a0/unshieldFlow';
+import {a0LandedUnverifiedText} from '../../../modules/shielded/a0/unshieldFlow';
+import type {A0FreshUnavailable, A0OwnAccountRefused, A0UnshieldErrorCode} from '../../../modules/shielded/a0/unshieldFlow';
 import type {A0VerifyRefusal} from '../../../modules/shielded/a0/landedVerifier';
 
 /** Any relayed unshield (§11, verbatim). */
@@ -73,3 +74,47 @@ export const A0_VERIFY_REFUSAL_COPY: Record<A0VerifyRefusal, string> = {
   E_A0_VERIFY_GRANT_PRE_BALANCE: 'it sent SOL to an account that already held some',
   E_A0_VERIFY_GRANT_OFF_CURVE: 'it sent SOL to an address that is not a wallet',
 };
+
+/**
+ * Why an unshield stopped before anything was sent, said from its CODE alone (final review M-4,
+ * the secure default: an error's own message may carry the RPC endpoint's URL, which holds an API
+ * key, and #21 is not FLAG_SECURE). Every code of the flow is listed; any other code (the keychain,
+ * the sync, the prover, the relayer client) takes `A0_STOPPED_ON_DEVICE`. A message is shown only
+ * when there is no code at all.
+ */
+export const A0_UNSHIELD_REFUSAL_COPY: Record<A0UnshieldErrorCode, string> = {
+  E_A0_UNSHIELD_BUSY: 'Another unshield is still running on this device.',
+  E_A0_UNSHIELD_AMOUNT: 'This note cannot pay that amount with the relayer fee on top.',
+  E_A0_UNSHIELD_UNSUPPORTED: 'This device has no on-device prover.',
+  E_A0_UNSHIELD_NOT_READY: 'Your shielded notes are not restored yet.',
+  E_A0_UNSHIELD_CLUSTER: 'The network is not Solana devnet.',
+  E_A0_UNSHIELD_NO_NOTE: 'No shielded note can pay the relayer fee.',
+  E_A0_UNSHIELD_NOTE_LEAF: "Your note's place in the pool could not be verified.",
+  E_A0_UNSHIELD_DESTINATION:
+    "That destination cannot be used: a new account needs the relayer's SOL grant, and another address must be a wallet address outside this wallet.",
+  E_A0_UNSHIELD_TERMS: "The relayer's new terms cannot be met from this note.",
+  E_A0_UNSHIELD_CLOCK: "The chain's clock could not be read.",
+  E_A0_UNSHIELD_ROUNDS: "The relayer's terms or the pool changed three times in a row.",
+  E_A0_UNSHIELD_NEEDS_SEED: 'The keys of this wallet were not available.',
+};
+
+/** Any other code (the keychain, the sync, the prover, the relayer client). */
+export const A0_STOPPED_ON_DEVICE = 'The unshield stopped on this device.';
+
+/** The own-account refusal, by the role the flow names in its error's field (carry 3, M-7: never by the message). */
+export const A0_OWN_ACCOUNT_REFUSAL_COPY: Record<A0OwnAccountRefused, string> = {
+  main: 'That address is your main account: choose "My main account".',
+  other: 'That address is an account of this wallet that is not offered as a destination.',
+};
+
+/** The fixed sentence for a code (final review M-4). */
+export function a0UnshieldRefusalSentence(code: string): string {
+  return Object.prototype.hasOwnProperty.call(A0_UNSHIELD_REFUSAL_COPY, code)
+    ? A0_UNSHIELD_REFUSAL_COPY[code as A0UnshieldErrorCode]
+    : A0_STOPPED_ON_DEVICE;
+}
+
+/** The loud line of a verifier refusal, from its CODE only (#21, #16, the dashboard; I-1). */
+export function a0RefusalLoudText(code: A0VerifyRefusal): string {
+  return a0LandedUnverifiedText(code, A0_VERIFY_REFUSAL_COPY[code]);
+}

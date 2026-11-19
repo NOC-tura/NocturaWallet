@@ -167,6 +167,9 @@ the proof the app writes its pending unshield and **holds the submit for 30 s**;
 - [ ] **Wait at least 5 minutes after the kill** (the chain's clock must pass the submit + 300 s), then tap
       **"Check again"** (dashboard or #16). The pending unshield is put back: the balance includes its note again,
       `readout … unshield-reconcile` with `reverted 1, released 1`. If it says still pending, wait a minute, tap again.
+      The line beside "Check again" now says **"Not sent · your note is back in your shielded balance."** (on #21:
+      title "Not sent", no PENDING badge) — **if it still says "Not confirmed yet" after a revert, that is a FAIL to
+      report** (final review I-1).
 
 If `verify`'s M1c.F2 says the held unshield read out an outcome before the kill, or the second did not see the first
 reserved (you were slower than 5 minutes), repeat this step — a hold costs nothing. **The arm lapses after 10
@@ -289,6 +292,7 @@ CHECKPOINT PASSED
 | M1c.V `the relayer fee payer's signatures were not read` | `verify` could not list them (network) — run it again | |
 | M1c.V `NOT READ <sig>` / `… devnet answered null to its read` / `… its read is null` | devnet answered null to a transaction the desk needed (a signature the relayer fee payer listed, one the app settled, or one the app said was pending). A null read is "not read", never "did not land": run `verify` again (the public RPC lags or drops a read) | `chain.json` |
 | (detail, not a FAIL) `named, not on devnet: <sig>` | the app said "Not confirmed yet" with a signature that never landed: its tx FAILED on chain, or the relayer fee payer's own list (read) does not hold it. Nothing to do — the reconcile reverts it. "Absent from the list" is true at the time of the read: if the app still shows the unshield as "Not confirmed yet", run `verify` again after its reconcile has reverted it (a tx whose blockhash is still valid can land after the read) | |
+| M1c.V `… before the fee payer window's start …: the phone's clock is ahead of devnet` | a judged landing's blockTime is before the window the desk read the relayer fee payer's list for (the first `unshield-submitting` line's time − 2 min, the PHONE's clock): the window does not cover the run, so an unaccounted landing could be missed. Set the phone's clock to network time and repeat the checkpoint (final review M-1) | `readouts.jsonl` `at` vs `chain.json` |
 | (banner) `THE APP'S VERIFIER REFUSED` | the app showed "Landed, but failed verification" (#21, loud): report the signature and the code; never repeat that unshield | the readout's `code` |
 | M1c.C1 | the "Another address" got a grant (it held no SOL — fund it and repeat CP1a), or it is a key of this seed | its detail |
 | M1c.C2 | the owner was not the registry's main, or a grant / a created token account | its detail |
@@ -349,10 +353,31 @@ BiometricPrompt follows it (two prompts per unshield, above).
 9. the refused-confirmation copy on #21 ("The confirmation did not complete (<code>): nothing was approved and
    nothing was sent");
 10. the own-account refusal on the run screen's #21 layout (a typed address of this wallet): `E_A0_UNSHIELD_DESTINATION
-    · That address is …` naming the account's role, "Nothing was sent", "Back to unshield";
+    · That address is your main account: choose "My main account".` or `… · That address is an account of this wallet
+    that is not offered as a destination.`, "Nothing was sent", "Back to unshield" (final review M-4: a fixed
+    sentence from the role; the account's index is no longer shown);
 11. the loud box of "Landed, but failed verification": the code and one sentence of what it means (never the
     verifier's detail text);
 12. the caption **"Unshield <amount> TEST"** under #18's hero sub on the unshield run (the design has no caption there).
+
+**Added in the final review's fix wave (undrawn — look at these too):**
+13. #21 after **"Check again" decided** a "Not confirmed yet" unshield (I-1): "Unshielded" (CONFIRMED, "Checked again:
+    it landed on Solana devnet and was verified · the destination received <amount>"), "Not sent" ("Checked again: it
+    did not land in time, so it can no longer land. Your note is back in your shielded balance.") or "Landed, but
+    failed verification" (UNVERIFIED, the loud box with the code); the PENDING badge and "Check again" go;
+14. the **"Check again" captions** on #16 / #21 / the dashboard: "Confirmed · unshielded.", "Not sent · your note is
+    back in your shielded balance.", "Checked just now · it landed, but failed verification.", and a failed check
+    "<code> · The check could not finish. Check again in a moment." (I-1, M-4);
+15. a **loud refusal line** on #16's shielded-balance line (a danger banner) and on the dashboard's shielded assets (a
+    danger box): "Landed, but failed verification: <code> · <what it means>", shown for the rest of the session once
+    the startup step or a "Check again" found a verifier refusal of a landed unshield (I-1; the design has no place
+    for it — say where it should live);
+16. **error copy is the code + a fixed sentence** wherever a code exists (M-4, the secure default: a raw message may
+    carry the RPC URL and its API key, and #21 is not FLAG_SECURE): #21 "Not sent" ("<code> · <why>. Nothing was
+    sent." — e.g. "The unshield stopped on this device."), #21 "Not confirmed yet" ("<code> · It may have been sent,
+    …"), #16's quote refusal ("Ask the relayer again in a moment."), #16's restore error and its Retry ("<code> ·
+    Retry again in a moment."). A raw message is shown only when there is no code. The deposit's #18 / #19 / #21
+    still print the raw message (M1b's screens, outside this wave).
 
 **Changed in Task 8's fix round (look at these too):**
 - #18's **hero ring** is now drawn on the unshield run, as on the deposit's #18 (the CPU glyph in the shielded-accent

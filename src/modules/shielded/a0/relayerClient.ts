@@ -143,7 +143,8 @@ export type A0SubmitResult =
       outcome: 'relay_failed';
       status: number;
       /**
-       * `false` ONLY for an unreadable 4xx (refused before forwarding); `true` with a signature;
+       * `false` ONLY for an unreadable 4xx other than 409 that names no forward-capable outcome
+       * (refused before forwarding); `true` with a signature;
        * `'unknown'` for the readable generic signature-less `relay_failed` (R2-N1: the relayer
        * answers it for a preflight refusal AND for a transport failure after the node took the tx).
        * `a0SubmitDisposition` is the authority on what to do, NOT this field: a signature-less
@@ -151,7 +152,10 @@ export type A0SubmitResult =
        */
       forwarded: boolean | 'unknown';
       txSignature: string | null;
-      /** false: the answer could not be read (an unreadable 4xx); true: the relayer said `relay_failed` */
+      /**
+       * false: the answer could not be read (an unreadable 4xx other than 409 that names no
+       * forward-capable outcome); true: the relayer said `relay_failed`
+       */
       recognised: boolean;
     }
   | {outcome: A0RelayerRefusal; status: number; forwarded: false; txSignature: null}
@@ -183,7 +187,8 @@ export function a0SubmitDisposition(r: A0SubmitResult): A0SubmitDisposition {
     case 'unknown':
       return 'reconcile';
     case 'relay_failed':
-      // Only an unreadable 4xx is certainly not forwarded. A signature-less generic relay_failed is
+      // Only an unreadable 4xx other than 409 that names no forward-capable outcome is certainly not
+      // forwarded. A signature-less generic relay_failed is
       // `reconcile` (R2-N1): Task 7 re-syncs once and reverts only when R3-N4's three conditions prove the
       // tx can never land; otherwise the chain-time window and the sync decide.
       return r.forwarded === false ? 'not-forwarded' : 'reconcile';

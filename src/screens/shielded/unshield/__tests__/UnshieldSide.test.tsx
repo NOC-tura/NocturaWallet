@@ -303,6 +303,9 @@ describe('#16 unshield — the quote', () => {
     mockQuote.mockRejectedValueOnce(Object.assign(new Error('E_A0_QUOTE_FEE_PAYER: not the pinned relayer'), {code: 'E_A0_QUOTE_FEE_PAYER'}));
     const r = await screen();
     expect(r.getByText(/The relayer's quote was refused · E_A0_QUOTE_FEE_PAYER/)).toBeTruthy();
+    // final review M-4: the code + a fixed sentence, never the message beside a code
+    expect(r.queryByText(/not the pinned relayer/)).toBeNull();
+    expect(r.getByText(/Ask the relayer again in a moment\./)).toBeTruthy();
     expect(disabled(r, 'unshield-dest-main')).toBe(true);
     fireEvent.changeText(r.getByTestId('unshield-amount-input'), '1');
     expect(disabled(r, 'unshield-cta')).toBe(true);
@@ -312,6 +315,15 @@ describe('#16 unshield — the quote', () => {
     expect(mockQuote).toHaveBeenCalledTimes(2);
     expect(r.queryByText(/quote was refused/)).toBeNull();
     expect(disabled(r, 'unshield-cta')).toBe(false);
+  });
+});
+
+describe('#16 unshield — final review M-4: raw messages only without a code', () => {
+  it('a quote refused without a code shows its message', async () => {
+    mockQuote.mockRejectedValueOnce(new Error('Network request failed'));
+    const r = await screen();
+    expect(r.getByText(/The relayer's quote was refused · error/)).toBeTruthy();
+    expect(r.getByText(/Network request failed/)).toBeTruthy();
   });
 });
 

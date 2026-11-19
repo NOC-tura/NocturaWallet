@@ -349,7 +349,7 @@ describe('two successful withdrawals with one nullifier (impossible on chain: th
 });
 
 describe('the restore into an existing store (chain truth wins for note state)', () => {
-  it('a stored note mid-unshield (pending, pendingSince) whose spend LANDED becomes spent with the landed tx; its change comes back', async () => {
+  it('a stored note mid-unshield (pending, pendingSince) whose spend LANDED stays PENDING for the reconciliation (I-3); its change comes back', async () => {
     const chain = fresh();
     const d0 = ownDeposit(chain, 0n, 1_000_000n);
     addA0PendingDeposit({commitment: d0.commitment, amount: 1_000_000n, rho: d0.rho, depositIndex: 0n, lastValidBlockHeight: 1});
@@ -362,8 +362,11 @@ describe('the restore into an existing store (chain truth wins for note state)',
     expect(loadA0NoteStore().notes[0]).toMatchObject({status: 'pending', pendingSince: 1763400000});
     const u = ownUnshield(chain, d0, {to: STRANGER});
     await restore(chain);
+    // M1c final review I-3 (rewritten: the note used to become `spent` here, past the verifier): the
+    // pending unshield is the reconciliation's — it settles it with the verifier (unshieldReconcile's
+    // I-3 rows); the change note is stored now, and that settle accepts it as already stored
     expect(loadA0NoteStore().notes).toEqual([
-      {commitment: d0.commitment, amount: 1_000_000n, rho: d0.rho, depositIndex: 0n, leafIndex: 17, status: 'spent', spentTx: u.signature},
+      {commitment: d0.commitment, amount: 1_000_000n, rho: d0.rho, depositIndex: 0n, leafIndex: 17, status: 'pending', pendingSince: 1763400000},
       {commitment: u.commitment, amount: 590_000n, rho: u.rho, leafIndex: 18, status: 'unspent'},
     ]);
   });
