@@ -242,7 +242,14 @@ export function appendDepositPair(
 }
 
 /**
- * Append a relayed unshield spending `nullifier` (a clone of 3UfCx5TD…) with change leaf
+ * The recorded relayed withdraws an unshield can be cloned from (M1c Task 7): `3UfCx5TD…` (P0:
+ * create-ATA, no grant, owner at 0 lamports), `47k56NfB…` (P1 + P2: create-ATA + the 3,000,000
+ * grant to a 0-lamport owner) and `3oHktG2X…` (P2: create-ATA no-op, an owner holding SOL).
+ */
+export type WithdrawTemplate = '3UfCx5TD' | '47k56NfB' | '3oHktG2X';
+
+/**
+ * Append a relayed unshield spending `nullifier` (a clone of 3UfCx5TD…, or of `template`) with change leaf
  * `changeCommitment`, moving `amount` (default: the template's 400,000) to the destination and `fee`
  * (default: the template's 10,000) to the fee destination, both out of the vault. `to` (M1c Task 5)
  * lands it to another owner: the template's destination token account (key 5, also the
@@ -252,10 +259,27 @@ export function appendDepositPair(
  */
 export function appendWithdraw(
   chain: RecordedChain,
-  w: {nullifier: string; changeCommitment: string; amount?: bigint; fee?: bigint; to?: {owner: string; ata: string}},
+  w: {
+    nullifier: string;
+    changeCommitment: string;
+    amount?: bigint;
+    fee?: bigint;
+    to?: {owner: string; ata: string};
+    /** M1c Task 7: the recorded withdraw to clone (default 3UfCx5TD…) */
+    template?: WithdrawTemplate;
+    /** M1c Task 7: the landed tx's chain time (default: the template's) */
+    blockTime?: number;
+    /** M1c Task 7: the instruction's merkle_root argument and proof bytes (default: the template's) */
+    merkleRoot?: string;
+    proofBytes?: string;
+  },
 ): AppendedDeposit {
   const {sig, slot} = nextId();
-  const tx = cloneAsNewest(chain, txOf(chain, '3UfCx5TD').tx, sig, slot);
+  const tx = cloneAsNewest(chain, txOf(chain, w.template ?? '3UfCx5TD').tx, sig, slot);
+  if (w.blockTime !== undefined) {
+    tx.blockTime = w.blockTime;
+    chain.signatures[0]!.blockTime = w.blockTime;
+  }
   const ix = poolIx(tx);
   if (w.to) {
     const keys = tx.transaction.message.accountKeys;
@@ -281,6 +305,12 @@ export function appendWithdraw(
   }
   data.set(fromHex(w.nullifier), 40);
   data.set(fromHex(w.changeCommitment), 80);
+  if (w.merkleRoot !== undefined) {
+    data.set(fromHex(w.merkleRoot), 8);
+  }
+  if (w.proofBytes !== undefined) {
+    data.set(fromHex(w.proofBytes), 124); // after disc | root | nullifier | amount | change | fee | u32 256
+  }
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
   if (w.amount !== undefined) {
     view.setBigUint64(72, w.amount, true);

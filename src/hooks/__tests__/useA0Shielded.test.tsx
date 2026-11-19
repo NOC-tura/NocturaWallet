@@ -42,11 +42,22 @@ const mockReconcile = jest.fn();
 jest.mock('../../modules/shielded/a0/depositFlow', () => ({
   reconcileA0PendingDeposits: (...a: unknown[]) => mockReconcile(...a),
 }));
+let mockPendingUnshields = false;
+const mockReconcileUnshields = jest.fn();
+jest.mock('../../modules/shielded/a0/unshieldFlow', () => ({
+  a0HasPendingUnshields: () => mockPendingUnshields,
+  reconcileA0PendingUnshields: (...a: unknown[]) => mockReconcileUnshields(...a),
+}));
 
 const note = (amount: bigint, status: A0Note['status']): A0Note => ({commitment: 'c', amount, rho: 'r', status});
 const READY: A0StartupState = {
   phase: 'ready',
-  result: {restoredBecause: null, restore: null, reconcile: {confirmed: [], dropped: [], stillPending: [], skipped: 0}},
+  result: {
+    restoredBecause: null,
+    restore: null,
+    reconcile: {confirmed: [], dropped: [], stillPending: [], skipped: 0},
+    unshields: {settled: [], reverted: [], stillPending: [], skipped: 0, released: [], promoted: []},
+  },
 };
 
 beforeEach(() => {
@@ -59,6 +70,8 @@ beforeEach(() => {
   mockRetrieve.mockReset().mockResolvedValue('words');
   mockInstance.current = {instance: 'A'};
   mockReconcile.mockReset().mockResolvedValue({confirmed: [], dropped: [], stillPending: [], skipped: 0});
+  mockPendingUnshields = false;
+  mockReconcileUnshields.mockReset().mockResolvedValue({settled: [], reverted: [], stillPending: [], skipped: 0, released: [], promoted: []});
 });
 
 describe('a0ShieldedView', () => {
@@ -130,15 +143,44 @@ describe('retryA0Startup', () => {
 
 describe('R1-m9 / R2-N2 / R3-N5: "Check again" on a pending deposit', () => {
   const EMPTY = {confirmed: [], dropped: [], stillPending: [], skipped: 0};
+  const EMPTY_U = {settled: [], reverted: [], stillPending: [], skipped: 0, released: [], promoted: []};
 
   it('runs reconcileA0PendingDeposits bound to the instance open NOW (no seed, no keychain read)', async () => {
     const open = mockInstance.current;
     mockState = READY;
-    expect(await checkA0PendingAgain()).toEqual({status: 'done', report: EMPTY});
+    expect(await checkA0PendingAgain()).toEqual({status: 'done', report: EMPTY, unshields: EMPTY_U});
     expect(mockReconcile).toHaveBeenCalledTimes(1);
     expect(mockReconcile).toHaveBeenCalledWith({rpc: 'fake'}, {bound: open});
     expect(mockReconcile.mock.calls[0]![1].bound).toBe(open);
     expect(mockRetrieve).not.toHaveBeenCalled();
+  });
+
+  it('M1c: no pending unshield → the unshields\' reconciliation runs WITHOUT the seed (null), bound to the same instance; no keychain read', async () => {
+    const open = mockInstance.current;
+    mockState = READY;
+    await checkA0PendingAgain();
+    expect(mockReconcileUnshields).toHaveBeenCalledTimes(1);
+    expect(mockReconcileUnshields.mock.calls[0]![1]).toBeNull();
+    expect(mockReconcileUnshields.mock.calls[0]![2].bound).toBe(open);
+    expect(mockRetrieve).not.toHaveBeenCalled();
+  });
+
+  it('M1c: a pending unshield → ONE keychain read, its seed handed to the unshields\' reconciliation', async () => {
+    mockState = READY;
+    mockPendingUnshields = true;
+    await checkA0PendingAgain();
+    expect(mockRetrieve).toHaveBeenCalledTimes(1);
+    const seed = mockReconcileUnshields.mock.calls[0]![1] as Uint8Array;
+    expect(seed).toBeInstanceOf(Uint8Array);
+    expect(seed).toHaveLength(64);
+  });
+
+  it('M1c: a refused keychain read is a result with its code, never a rejection', async () => {
+    mockState = READY;
+    mockPendingUnshields = true;
+    mockRetrieve.mockRejectedValue(Object.assign(new Error('E_KEYCHAIN_CANCELLED: no'), {code: 'E_KEYCHAIN_CANCELLED'}));
+    expect(await checkA0PendingAgain()).toEqual({status: 'error', code: 'E_KEYCHAIN_CANCELLED', message: 'no'});
+    expect(mockReconcileUnshields).not.toHaveBeenCalled();
   });
 
   it('refused while the startup step is running (busy): no reconcile', async () => {

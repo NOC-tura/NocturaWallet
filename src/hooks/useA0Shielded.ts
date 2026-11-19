@@ -11,6 +11,8 @@ import {getConnection} from '../modules/solana/connection';
 import {mmkvSecure} from '../store/mmkv/instances';
 import {reconcileA0PendingDeposits} from '../modules/shielded/a0/depositFlow';
 import type {A0ReconcileReport} from '../modules/shielded/a0/depositFlow';
+import {a0HasPendingUnshields, reconcileA0PendingUnshields} from '../modules/shielded/a0/unshieldFlow';
+import type {A0UnshieldReconcileReport} from '../modules/shielded/a0/unshieldFlow';
 
 /**
  * The shielded balance as the screens may state it (spec §11; Task 4's rule: the balance is the
@@ -71,7 +73,7 @@ export function useA0StartupState(): A0StartupState {
 }
 
 export type A0CheckAgainResult =
-  | {status: 'done'; report: A0ReconcileReport}
+  | {status: 'done'; report: A0ReconcileReport; unshields: A0UnshieldReconcileReport}
   /** the startup step is running (it reconciles itself): nothing was asked */
   | {status: 'busy'}
   | {status: 'error'; code: string | null; message: string};
@@ -79,11 +81,13 @@ export type A0CheckAgainResult =
 let checking: Promise<A0CheckAgainResult> | null = null;
 
 /**
- * "Check again" on a pending deposit (R1-m9, R2-N2, R3-N5): the startup reconciliation once more,
- * now — it needs no seed (no keychain read). BOUND to the encrypted instance open at the tap
- * (`{bound: mmkvSecure()}`), so a wipe + import while it runs refuses (`E_A0_STORE_CHANGED`)
- * instead of writing the old wallet's note into the new one. Refused (`busy`) while the startup
- * step is `running`; a tap while one check runs shares it. Never rejects.
+ * "Check again" on a pending deposit or unshield (R1-m9, R2-N2, R3-N5): the startup
+ * reconciliations once more, now. The deposits' needs no seed; the unshields' (M1c) needs the keys
+ * only when a pending unshield exists — then, and only then, ONE keychain read (biometric). BOUND to
+ * the encrypted instance open at the tap (`{bound: mmkvSecure()}`), so a wipe + import while it
+ * runs refuses (`E_A0_STORE_CHANGED`) instead of writing the old wallet's note into the new one.
+ * Refused (`busy`) while the startup step is `running`; a tap while one check runs shares it.
+ * Never rejects.
  */
 export function checkA0PendingAgain(): Promise<A0CheckAgainResult> {
   if (!isShieldedEnabled() || !isProverSupported()) {
@@ -96,8 +100,13 @@ export function checkA0PendingAgain(): Promise<A0CheckAgainResult> {
     return checking;
   }
   const bound = mmkvSecure();
-  const run = reconcileA0PendingDeposits(getConnection(), {bound}).then(
-    (report): A0CheckAgainResult => ({status: 'done', report}),
+  const run = (async (): Promise<A0CheckAgainResult> => {
+    const report = await reconcileA0PendingDeposits(getConnection(), {bound});
+    const seed = a0HasPendingUnshields(bound) ? await mnemonicToSeed(await keychainManager.retrieveSeed()) : null;
+    const unshields = await reconcileA0PendingUnshields(getConnection(), seed, {bound});
+    return {status: 'done', report, unshields};
+  })().then(
+    (r): A0CheckAgainResult => r,
     (e: unknown): A0CheckAgainResult => ({status: 'error', ...a0ErrorText(e)}),
   );
   checking = run;
@@ -153,7 +162,7 @@ export function useA0Shielded(): {view: A0ShieldedView; refresh: () => void; che
         setNote(r.code ? `${r.code} · ${r.message}` : r.message);
       } else if (r.status === 'busy') {
         setNote('Restoring from the chain · check again when it finishes.');
-      } else if (r.report.stillPending.length > 0) {
+      } else if (r.report.stillPending.length > 0 || r.unshields.stillPending.length > 0) {
         setNote('Still not confirmed · checked just now.');
       }
       refresh(); // the store changed under the view (useA0StartupState only moves on a state change)

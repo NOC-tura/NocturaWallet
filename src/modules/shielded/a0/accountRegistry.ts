@@ -83,6 +83,12 @@ export interface A0AccountEntry {
   role: A0AccountRole;
   /** the account's base58 public key, derived from the seed when the entry was written */
   address: string;
+  /**
+   * `fresh-exit` only (M1c Task 7): the exit landed, but a key of this seed signed it (the
+   * post-landing verifier's `E_A0_VERIFY_SEED_SIGNER`), so the account is linked to the seed on
+   * chain — the screens show it with the linking warning (M1d). Never set otherwise.
+   */
+  linked?: true;
 }
 
 export type A0AccountRegistryErrorCode =
@@ -224,6 +230,9 @@ function ruleBroken(entries: readonly A0AccountEntry[]): string | null {
     if (!isAddress(e.address) || seenAddress.has(e.address)) {
       return `address ${String(e.address)}`;
     }
+    if (e.linked !== undefined && (e.linked !== true || e.role !== 'fresh-exit')) {
+      return `a linked mark on ${e.scheme} (${e.role})`;
+    }
     seenAddress.add(e.address);
   }
   return null;
@@ -248,10 +257,15 @@ function decode(raw: string): A0AccountEntry[] {
       throw err('E_A0_ACCOUNTS_CORRUPT', 'an entry that is not an object');
     }
     const e = a as Record<string, unknown>;
-    if (Object.keys(e).sort().join(',') !== 'address,role,scheme') {
+    const keys = Object.keys(e).sort().join(',');
+    if (keys !== 'address,role,scheme' && keys !== 'address,linked,role,scheme') {
       throw err('E_A0_ACCOUNTS_CORRUPT', `an entry with the fields ${Object.keys(e).join(',')}`);
     }
-    return {scheme: e.scheme as string, role: e.role as A0AccountRole, address: e.address as string};
+    const entry: A0AccountEntry = {scheme: e.scheme as string, role: e.role as A0AccountRole, address: e.address as string};
+    if (keys === 'address,linked,role,scheme') {
+      entry.linked = e.linked as true;
+    }
+    return entry;
   });
   const broken = ruleBroken(entries);
   if (broken !== null) {
@@ -263,7 +277,7 @@ function decode(raw: string): A0AccountEntry[] {
 const encode = (entries: readonly A0AccountEntry[]): string =>
   JSON.stringify({
     schema: A0_ACCOUNT_REGISTRY_SCHEMA,
-    accounts: entries.map(e => ({scheme: e.scheme, role: e.role, address: e.address})),
+    accounts: entries.map(e => ({scheme: e.scheme, role: e.role, address: e.address, ...(e.linked ? {linked: true} : {})})),
   });
 
 function storage(bound?: A0StoreBinding): MMKV {
@@ -433,26 +447,32 @@ async function reserveOnce(rpc: A0HistoryRpc, seed: Uint8Array, bound: A0StoreBi
 
 /**
  * §6.8: the unshield to a reserved account landed — `fresh-pending` → `fresh-exit`. Already
- * `fresh-exit` → no change (`'already'`; a second settler of the same exit). Any other role →
- * `E_A0_ACCOUNTS_STATE`; no such entry → `E_A0_ACCOUNTS_UNKNOWN`.
+ * `fresh-exit` → no role change (`'already'`; a second settler of the same exit). Any other role →
+ * `E_A0_ACCOUNTS_STATE`; no such entry → `E_A0_ACCOUNTS_UNKNOWN`. `linked` (M1c Task 7): the exit
+ * landed with a key of this seed as a signer — the entry is also marked `linked` (also on an
+ * existing `fresh-exit`); the mark is never removed.
  */
-export function promoteA0FreshAccount(scheme: string, options: A0RegistryOptions = {}): 'promoted' | 'already' {
+export function promoteA0FreshAccount(
+  scheme: string,
+  options: A0RegistryOptions & {linked?: boolean} = {},
+): 'promoted' | 'already' {
   const entries = readExisting(options.bound);
   const i = entries.findIndex(e => e.scheme === scheme);
   if (i < 0) {
     throw err('E_A0_ACCOUNTS_UNKNOWN', `no entry ${scheme}`);
   }
   const e = entries[i]!;
-  if (e.role === 'fresh-exit') {
-    return 'already';
-  }
-  if (e.role !== 'fresh-pending') {
+  if (e.role !== 'fresh-exit' && e.role !== 'fresh-pending') {
     throw err('E_A0_ACCOUNTS_STATE', `${scheme} is ${e.role}, not fresh-pending`);
   }
+  const mark = options.linked === true && e.linked !== true;
+  if (e.role === 'fresh-exit' && !mark) {
+    return 'already';
+  }
   const next = [...entries];
-  next[i] = {...e, role: 'fresh-exit'};
+  next[i] = {...e, role: 'fresh-exit', ...(options.linked === true || e.linked ? {linked: true as const} : {})};
   write(next, options.bound);
-  return 'promoted';
+  return e.role === 'fresh-exit' ? 'already' : 'promoted';
 }
 
 /**

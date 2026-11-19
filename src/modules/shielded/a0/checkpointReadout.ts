@@ -44,6 +44,7 @@ import type {KnownNetwork} from '../../../constants/networkGuard';
 import type {A0DepositOutcome} from './depositFlow';
 import type {A0Note} from './noteStore';
 import type {A0StartupState} from './startup';
+import type {A0UnshieldOutcome, A0UnshieldReconcileReport} from './unshieldFlow';
 
 export const A0_READOUT_TAG = 'NOCTURA-A0-READOUT';
 export const A0_READOUT_SCHEMA = 'noctura.a0.readout/1';
@@ -289,6 +290,79 @@ export function readA0PinnedControl(run: number, p: A0ReadoutPinnedProbe, o: A0R
             validForSeconds: q.validForSeconds,
           }
         : null,
+    },
+    o,
+  );
+}
+
+/**
+ * An unshield's public part (M1c Task 7): the destination owner and its token account, the amount
+ * and the fee — what the relayer is sent and the chain shows once it lands — and the destination's
+ * kind. Never the nullifier, the proof, the payload, a rho or the registry index.
+ */
+export interface A0ReadoutUnshield {
+  owner: string;
+  ata: string;
+  amount: bigint;
+  fee: bigint;
+  destination: 'fresh' | 'main' | 'external';
+}
+
+const unshieldFields = (u: A0ReadoutUnshield): {[k: string]: Json} => ({
+  owner: u.owner,
+  ata: u.ata,
+  amount: u.amount.toString(),
+  fee: u.fee.toString(),
+  destination: u.destination,
+});
+
+/** Just before the relayer is asked to submit (the pending unshield is written) — the kill window opens here. */
+export function readA0UnshieldSubmitting(u: A0ReadoutUnshield, o: A0ReadoutOptions = {}): void {
+  emit('unshield-submitting', unshieldFields(u), o);
+}
+
+/** The unshield's outcome as `unshieldA0` returns it; a verifier refusal is read out with its code. */
+export function readA0UnshieldOutcome(u: A0ReadoutUnshield, out: A0UnshieldOutcome, o: A0ReadoutOptions = {}): void {
+  const f: {[k: string]: Json} = {...unshieldFields(u), status: out.status};
+  switch (out.status) {
+    case 'spent':
+      f.signature = out.signature;
+      f.changeLeafIndex = out.changeLeafIndex;
+      f.grantLamports = out.grantLamports === null ? null : out.grantLamports.toString();
+      f.destinationWithoutSol = out.destinationWithoutSol;
+      break;
+    case 'landed-unverified':
+      f.signature = out.signature;
+      f.code = out.code;
+      f.note = out.note;
+      f.changeRecorded = out.changeRecorded;
+      f.linked = out.linked;
+      break;
+    case 'pending':
+      f.signature = out.signature;
+      f.reason = out.reason;
+      break;
+    case 'not-sent':
+      f.outcome = out.outcome;
+      break;
+  }
+  emit('unshield-outcome', f, o);
+}
+
+/** A reconciliation of pending unshields that decided anything (counts, signatures, codes — no rho). */
+export function readA0UnshieldReconcile(r: A0UnshieldReconcileReport, o: A0ReadoutOptions = {}): void {
+  if (r.settled.length + r.reverted.length + r.stillPending.length + r.released.length + r.promoted.length === 0) {
+    return;
+  }
+  emit(
+    'unshield-reconcile',
+    {
+      settled: r.settled.map(x => ({signature: x.signature, verified: x.verified, code: x.code, changeRecorded: x.changeRecorded})),
+      reverted: r.reverted.length,
+      stillPending: r.stillPending.map(x => ({reason: x.reason})),
+      skipped: r.skipped,
+      released: r.released.length,
+      promoted: r.promoted.length,
     },
     o,
   );

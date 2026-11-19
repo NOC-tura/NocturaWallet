@@ -27,6 +27,11 @@
  * the release) so a test can wipe and re-open the encrypted store while the flow is in flight
  * (R1-C1 / R2-N1 / R3-N5); `onRequest` sees each request before it is answered (R1-I2's growing
  * chain).
+ *
+ * M1c Task 7 adds the three generic requests an unshield makes besides the sync: `getSlot` and
+ * `getBlockTime` (the chain's clock, `clock` — `blockTime: null` answers null) and
+ * `getMinimumBalanceForRentExemption(0)` (`rent0`, the quote's grant floor). The relayer is
+ * `liveRelayer.ts`, which lands on this same chain.
  */
 import {Connection, PublicKey, VersionedTransaction} from '@solana/web3.js';
 import {base58} from '@scure/base';
@@ -78,6 +83,14 @@ export interface LiveDevnet {
   release(): void;
   /** called with every request (after a hold, before the answer) */
   onRequest: ((method: string, params: unknown[]) => void) | null;
+  /**
+   * M1c: the chain's clock (getSlot / getBlockTime). `earlier[k − 1]` is the block time of
+   * `slot − k` for k = 1 … 4 (default null: no block time); `errorAt` lists slots whose getBlockTime
+   * answers a JSON-RPC error (devnet's "block not available"). Any other slot is refused.
+   */
+  clock: {slot: number; blockTime: number | null; earlier?: (number | null)[]; errorAt?: number[]};
+  /** M1c: getMinimumBalanceForRentExemption(0) — devnet's, measured 2026-11-17 */
+  rent0: number;
 }
 
 const NEVER = new Promise<never>(() => undefined);
@@ -200,6 +213,8 @@ export function liveDevnet(chain: RecordedChain): LiveDevnet {
       open?.();
     },
     onRequest: null,
+    clock: {slot: 523_400_000, blockTime: 1_794_200_000},
+    rent0: 650_240,
   };
 
   const land = (sig: string, tx: VersionedTransaction): 'land' | 'failed-init' => {
@@ -225,6 +240,26 @@ export function liveDevnet(chain: RecordedChain): LiveDevnet {
     switch (method) {
       case 'getGenesisHash':
         return net.genesisHash;
+      case 'getSlot':
+        if (cfg.commitment !== 'confirmed') {
+          throw new RpcRefusal(`getSlot ${JSON.stringify(cfg)}`);
+        }
+        return net.clock.slot;
+      case 'getBlockTime': {
+        const k = typeof params[0] === 'number' ? net.clock.slot - params[0] : -1;
+        if (!(Number.isInteger(k) && k >= 0 && k <= 4)) {
+          throw new RpcRefusal(`getBlockTime of slot ${String(params[0])}, not the current one or the 4 before it`);
+        }
+        if (net.clock.errorAt?.includes(params[0] as number)) {
+          throw new RpcRefusal(`getBlockTime of slot ${String(params[0])}: block not available`);
+        }
+        return k === 0 ? net.clock.blockTime : (net.clock.earlier?.[k - 1] ?? null);
+      }
+      case 'getMinimumBalanceForRentExemption':
+        if (params[0] !== 0) {
+          throw new RpcRefusal(`getMinimumBalanceForRentExemption(${String(params[0])})`);
+        }
+        return net.rent0;
       case 'getBlockHeight': {
         const c = cfg.commitment;
         if (c !== 'confirmed' && c !== 'finalized') {

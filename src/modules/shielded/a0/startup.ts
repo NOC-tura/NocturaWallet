@@ -7,7 +7,10 @@
  *      asked with `hasA0NoteRecord()` BEFORE anything reads the store, because the store's first
  *      read writes an empty record (its one-time v1 clear) and an empty record would read as "no
  *      notes" from then on. A restore that fails writes nothing, so the next start restores again;
- *   2. the pending deposits are reconciled (`reconcileA0PendingDeposits`).
+ *   2. the pending deposits are reconciled (`reconcileA0PendingDeposits`);
+ *   3. (M1c) the pending unshields are reconciled (`reconcileA0PendingUnshields`, unshieldFlow.ts):
+ *      a landed one settled and verified, one past its chain-time window put back; no pending
+ *      unshield and no orphaned fresh reservation → no request.
  *
  * THE SHIELDED BALANCE IS SHOWN ONLY AFTER THIS (Task 5 (screens)): `a0StartupState().phase === 'ready'`.
  * Before it (`running`) the balance is unknown, and an `error` is shown as such — never as 0.
@@ -33,6 +36,8 @@ import {restoreA0FromSeed} from './recovery';
 import type {A0RestoreStats} from './recovery';
 import {reconcileA0PendingDeposits} from './depositFlow';
 import type {A0ReconcileReport} from './depositFlow';
+import {reconcileA0PendingUnshields} from './unshieldFlow';
+import type {A0UnshieldReconcileReport} from './unshieldFlow';
 import type {A0SyncOptions} from './treeSync';
 import {readA0Startup} from './checkpointReadout';
 
@@ -41,6 +46,8 @@ export interface A0StartupResult {
   restoredBecause: 'no-record' | 'corrupt-record' | null;
   restore: A0RestoreStats | null;
   reconcile: A0ReconcileReport;
+  /** M1c: the pending unshields' reconciliation */
+  unshields: A0UnshieldReconcileReport;
 }
 
 export type A0StartupState =
@@ -50,8 +57,9 @@ export type A0StartupState =
   | {phase: 'error'; code: string | null; message: string};
 
 /**
- * Steps 1–2. `seed` (64 bytes) is CONSUMED: handed to the restore when one runs, zero-filled
- * otherwise (and in any case on return). Throws `E_A0_STORE_LOCKED` before any request without
+ * Steps 1–3. `seed` (64 bytes) is CONSUMED: handed to the restore when one runs (a copy is kept for
+ * step 3, which needs the keys only when a pending unshield exists), zero-filled otherwise (and in
+ * any case on return). Throws `E_A0_STORE_LOCKED` before any request without
  * the encrypted instance, `E_A0_STORE_CHANGED` when the instance captured at its start (or
  * `options.bound`) was replaced before a write; the restore's and the reconciliation's errors
  * pass through.
@@ -61,6 +69,7 @@ export async function runA0Startup(
   seed: Uint8Array,
   options: {sync?: A0SyncOptions; bound?: A0StoreBinding} = {},
 ): Promise<A0StartupResult> {
+  const unshieldSeed = seed.slice();
   try {
     const bound = options.bound ?? mmkvSecure();
     const bind = {...options, bound};
@@ -79,9 +88,11 @@ export async function runA0Startup(
     }
     const restore = restoredBecause ? (await restoreA0FromSeed(connection, seed, bind)).stats : null;
     const reconcile = await reconcileA0PendingDeposits(connection, bind);
-    return {restoredBecause, restore, reconcile};
+    const unshields = await reconcileA0PendingUnshields(connection, unshieldSeed, bind);
+    return {restoredBecause, restore, reconcile, unshields};
   } finally {
     seed.fill(0);
+    unshieldSeed.fill(0);
   }
 }
 

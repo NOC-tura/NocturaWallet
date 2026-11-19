@@ -19,10 +19,14 @@ import {
   dropA0PendingDeposit,
   hasA0NoteRecord,
   loadA0NoteStore,
+  markA0PendingUnshield,
   mergeA0RecoveredNotes,
+  refreshA0PendingSince,
+  revertA0PendingUnshield,
   setA0NextDepositIndex,
+  settleA0Unshield,
 } from '../noteStore';
-import type {A0Note} from '../noteStore';
+import type {A0Note, A0PendingUnshield} from '../noteStore';
 
 const KEY = 'v1_a0_notes';
 /** Spec §8, copied from its text: the ONLY fields a stored note may carry. */
@@ -394,5 +398,143 @@ describe('a0WipeRisk — what a wipe would lose (WipeWalletScreen, M1b), read wi
     clearAllStores();
     expect(mmkvSecure()).toBeNull();
     expect(a0WipeRisk()).toBe('unreadable');
+  });
+});
+
+describe('M1c Task 7: the pending unshield — mark, revert, settle (§6 steps 7–8, §8)', () => {
+  const OWNER = 'Hh8QwFUA6MtVu1qAoq12ucvFHNwCcVTV7hpWjeY1Hztb';
+  const RELAYER = '3jvhiz9qcJAe2zGHvRAiRYXiaFCdjEQrB9KuE5NuFaGe';
+  const intent: A0PendingUnshield = {
+    owner: OWNER,
+    amount: 400_000n,
+    fee: 10_000n,
+    feePayer: RELAYER,
+    gasGrantLamports: 3_000_000n,
+    destination: 'fresh',
+    scheme: 'slip10:1',
+  };
+  const SPENT_TX = '47k56NfB' + '2'.repeat(80);
+  const change = {commitment: cm(N1, '1000000000'), amount: 999_590_000n, rho: N1.rho, leafIndex: 18};
+  beforeEach(() => {
+    mergeA0RecoveredNotes([unspent(N0, 0n, 17)], 1n);
+  });
+
+  it('mark: unspent → pending with pendingSince and the intent, in ONE write; it decodes back with BigInts; no nullifier field exists', () => {
+    const sets = jest.spyOn(mmkvSecure()!, 'set');
+    markA0PendingUnshield(N0.rho, 1_794_200_000, intent);
+    expect(sets).toHaveBeenCalledTimes(1);
+    sets.mockRestore();
+    expect(loadA0NoteStore().notes).toEqual([{...unspent(N0, 0n, 17), status: 'pending', pendingSince: 1_794_200_000, unshield: intent}]);
+    expect((raw().notes as Record<string, unknown>[])[0]!.unshield).toEqual({
+      owner: OWNER,
+      amount: '400000',
+      fee: '10000',
+      feePayer: RELAYER,
+      gasGrantLamports: '3000000',
+      destination: 'fresh',
+      scheme: 'slip10:1',
+    });
+    expect(mmkvSecure()!.getString(KEY)).not.toContain(N0.nullifier);
+  });
+
+  it('mark refuses a note that is not unspent (a second unshield of it, a pending deposit) and an intent that breaks a rule', () => {
+    markA0PendingUnshield(N0.rho, 1, intent);
+    expect(code(() => markA0PendingUnshield(N0.rho, 2, intent))).toBe('E_A0_NOTE_STATE');
+    addA0PendingDeposit(pending(N1, 1n));
+    expect(code(() => markA0PendingUnshield(N1.rho, 2, intent))).toBe('E_A0_NOTE_STATE');
+    revertA0PendingUnshield(N0.rho);
+    for (const bad of [
+      {...intent, scheme: undefined},
+      {...intent, destination: 'main' as const},
+      {...intent, amount: 0n},
+      {...intent, amount: 1_000_000_000n},
+      {...intent, nullifier: N0.nullifier} as unknown as A0PendingUnshield,
+      {...intent, owner: 'not a key'},
+    ]) {
+      expect(code(() => markA0PendingUnshield(N0.rho, 3, bad))).toBe('E_A0_NOTE_INVALID');
+    }
+    expect(loadA0NoteStore().notes.find(n => n.rho === N0.rho)!.status).toBe('unspent');
+  });
+
+  it('an intent stored on a note that is not a pending unshield does not decode (CORRUPT)', () => {
+    const r = raw();
+    (r.notes as Record<string, unknown>[])[0]!.unshield = {owner: OWNER, amount: '1', fee: '0', feePayer: RELAYER, gasGrantLamports: null, destination: 'main'};
+    mmkvSecure()!.set(KEY, JSON.stringify(r));
+    expect(code(() => loadA0NoteStore())).toBe('E_A0_STORE_CORRUPT');
+  });
+
+  it('revert: back to unspent at its leaf, pendingSince and intent gone; anything else → NOTE_STATE', () => {
+    expect(code(() => revertA0PendingUnshield(N0.rho))).toBe('E_A0_NOTE_STATE');
+    markA0PendingUnshield(N0.rho, 1, intent);
+    revertA0PendingUnshield(N0.rho);
+    expect(loadA0NoteStore().notes).toEqual([unspent(N0, 0n, 17)]);
+  });
+
+  it('settle: spent with spentTx + the change note unspent (no depositIndex) in ONE write; a second settler is "already" and writes nothing', () => {
+    markA0PendingUnshield(N0.rho, 1, intent);
+    const sets = jest.spyOn(mmkvSecure()!, 'set');
+    expect(settleA0Unshield(N0.rho, SPENT_TX, change)).toBe('settled');
+    expect(sets).toHaveBeenCalledTimes(1);
+    expect(loadA0NoteStore().notes).toEqual([
+      {...unspent(N0, 0n, 17), status: 'spent', spentTx: SPENT_TX},
+      {...change, status: 'unspent'},
+    ]);
+    expect(settleA0Unshield(N0.rho, SPENT_TX, change)).toBe('already');
+    expect(settleA0Unshield(N0.rho, SPENT_TX, null)).toBe('already');
+    expect(sets).toHaveBeenCalledTimes(1);
+    sets.mockRestore();
+  });
+
+  it('settle refuses another spentTx, a change that collides with a stored note, and a pending deposit; a zero change is a note', () => {
+    markA0PendingUnshield(N0.rho, 1, intent);
+    settleA0Unshield(N0.rho, SPENT_TX, null);
+    expect(code(() => settleA0Unshield(N0.rho, '3oHktG2X' + '2'.repeat(80), null))).toBe('E_A0_NOTE_STATE');
+    expect(code(() => settleA0Unshield(N0.rho, SPENT_TX, {...change, commitment: cm(N0, '1000000000')}))).toBe('E_A0_NOTE_DUPLICATE');
+    addA0PendingDeposit(pending(N2, 1n));
+    expect(code(() => settleA0Unshield(N2.rho, SPENT_TX, null))).toBe('E_A0_NOTE_STATE');
+    expect(settleA0Unshield(N0.rho, SPENT_TX, {...change, amount: 0n})).toBe('settled');
+    expect(loadA0NoteStore().notes.find(n => n.rho === N1.rho)).toEqual({...change, amount: 0n, status: 'unspent'});
+  });
+
+  it('settle of an UNSPENT note (a restore reverted it meanwhile): chain truth — it is spent', () => {
+    expect(settleA0Unshield(N0.rho, SPENT_TX, null)).toBe('settled');
+    expect(loadA0NoteStore().notes[0]).toMatchObject({status: 'spent', spentTx: SPENT_TX});
+  });
+
+  it('R2-N2 / m-1: refresh moves pendingSince LATER only, in one write; an earlier or equal time writes nothing; the intent kept', () => {
+    markA0PendingUnshield(N0.rho, 1_794_200_000, intent);
+    const sets = jest.spyOn(mmkvSecure()!, 'set');
+    expect(refreshA0PendingSince(N0.rho, 1_794_200_040)).toBe('moved');
+    expect(sets).toHaveBeenCalledTimes(1);
+    expect(refreshA0PendingSince(N0.rho, 1_794_200_040)).toBe('kept');
+    expect(refreshA0PendingSince(N0.rho, 1_794_200_001)).toBe('kept');
+    expect(sets).toHaveBeenCalledTimes(1);
+    sets.mockRestore();
+    expect(loadA0NoteStore().notes).toEqual([{...unspent(N0, 0n, 17), status: 'pending', pendingSince: 1_794_200_040, unshield: intent}]);
+  });
+
+  it('R2-N2: refresh refuses anything but a pending unshield (an unspent, a spent note, a pending deposit) and a time that is not one', () => {
+    expect(code(() => refreshA0PendingSince(N0.rho, 5))).toBe('E_A0_NOTE_STATE');
+    addA0PendingDeposit(pending(N1, 1n));
+    expect(code(() => refreshA0PendingSince(N1.rho, 5))).toBe('E_A0_NOTE_STATE');
+    markA0PendingUnshield(N0.rho, 1, intent);
+    expect(code(() => refreshA0PendingSince(N0.rho, 2.5))).toBe('E_A0_NOTE_INVALID');
+    settleA0Unshield(N0.rho, SPENT_TX, null);
+    expect(code(() => refreshA0PendingSince(N0.rho, 9))).toBe('E_A0_NOTE_STATE');
+    const old = mmkvSecure();
+    clearAllStores();
+    initSecureMmkv('another-wallet');
+    expect(code(() => refreshA0PendingSince(N0.rho, 9, old))).toBe('E_A0_STORE_CHANGED');
+  });
+
+  it('mark / revert / settle bound to a replaced instance refuse before writing (E_A0_STORE_CHANGED); none creates the record', () => {
+    const old = mmkvSecure();
+    clearAllStores(); // "Wipe wallet"
+    initSecureMmkv('another-wallet'); // the import
+    expect(code(() => markA0PendingUnshield(N0.rho, 1, intent, old))).toBe('E_A0_STORE_CHANGED');
+    expect(code(() => revertA0PendingUnshield(N0.rho, old))).toBe('E_A0_STORE_CHANGED');
+    expect(code(() => settleA0Unshield(N0.rho, SPENT_TX, null, old))).toBe('E_A0_STORE_CHANGED');
+    expect(code(() => markA0PendingUnshield(N0.rho, 1, intent))).toBe('E_A0_NOTE_UNKNOWN');
+    expect(mmkvSecure()!.getString(KEY)).toBeUndefined();
   });
 });

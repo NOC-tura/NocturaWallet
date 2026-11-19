@@ -2,11 +2,15 @@
  * The A0 note store (spec §8): the wallet's own notes in the A0 pool, as PUBLIC or
  * spend-irrelevant fields only, and the monotone deposit counter.
  *
- * FIELDS — exactly §8's: `{commitment, amount, rho, depositIndex?, lastValidBlockHeight?,
- * leafIndex?, status: pending | unspent | spent, spentTx?, pendingSince?}`. No spend secret, no
- * diversifier (every own note is under `d_self`, which stays in Rust, R9) and no nullifier of an
- * unspent note (R12) — there is no field to put one in, and a record carrying any other field
- * does not decode.
+ * FIELDS — §8's: `{commitment, amount, rho, depositIndex?, lastValidBlockHeight?,
+ * leafIndex?, status: pending | unspent | spent, spentTx?, pendingSince?}`, plus (M1c Task 7) a
+ * pending unshield's `unshield` intent — the terms the human approved: `{owner, amount, fee,
+ * feePayer, gasGrantLamports, destination, scheme?}`, all values the relayer is sent and the chain
+ * shows once the tx lands — so the post-landing verifier can run on a pending unshield found by a
+ * reconciliation after the app died (§6 step 8). No spend secret, no diversifier (every own note
+ * is under `d_self`, which stays in Rust, R9) and no nullifier of an unspent note (R12) — there is
+ * no field to put one in (the intent has none either), and a record carrying any other field does
+ * not decode.
  *
  * METADATA (I-4) — `nextDepositIndex`, one counter per `nk`: it only ever increases. A pending
  * deposit takes exactly the current value and moves it on in the SAME storage write as the note
@@ -63,6 +67,30 @@ export interface A0Note {
   spentTx?: string;
   /** a PENDING UNSHIELD's start, chain time (unix seconds) — M1c's */
   pendingSince?: number;
+  /** a PENDING UNSHIELD's approved terms (M1c Task 7); absent on a pending unshield written without them */
+  unshield?: A0PendingUnshield;
+}
+
+/**
+ * What a pending unshield was approved for (M1c Task 7, spec §6 steps 4–8): the native
+ * authorization's owner, amount and fee, the quote's fee payer and grant, and the destination
+ * the user chose (with the reserved registry scheme for a fresh account). Public once the tx
+ * lands; never a nullifier, a proof or a payload (R12: the in-flight nullifier lives in memory only).
+ */
+export interface A0PendingUnshield {
+  /** the destination wallet address (base58) — the ATA is derived from it */
+  owner: string;
+  /** base units the destination receives, 1..2^64-1 */
+  amount: bigint;
+  /** the relayer fee (the quote's minFee.withdraw_change, R5) */
+  fee: bigint;
+  /** the quote's fee payer (= the pinned relayer) */
+  feePayer: string;
+  /** the quote's grant, or null when it carried none */
+  gasGrantLamports: bigint | null;
+  destination: 'fresh' | 'main' | 'external';
+  /** `fresh` only: the reserved `slip10:n` */
+  scheme?: string;
 }
 
 export interface A0NoteStoreState {
@@ -105,6 +133,9 @@ const U64_MAX = 2n ** 64n - 1n;
 const HEX64 = /^[0-9a-f]{64}$/;
 const B58_SIG = /^[1-9A-HJ-NP-Za-km-z]{64,88}$/;
 const DEC = /^(0|[1-9][0-9]*)$/;
+const B58_KEY = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+const FRESH_SCHEME = /^slip10:(0|[1-9][0-9]{0,9})$/;
+const INTENT_FIELDS = 'amount,destination,feePayer,fee,gasGrantLamports,owner,scheme';
 /** 2^20 leaves (depth 20) */
 const LEAF_LIMIT = 1_048_576;
 const FIELDS = new Set([
@@ -117,6 +148,7 @@ const FIELDS = new Set([
   'status',
   'spentTx',
   'pendingSince',
+  'unshield',
 ]);
 
 const invalid = (what: string): never => {
@@ -128,6 +160,40 @@ const field = (v: unknown, what: string): string =>
   typeof v === 'string' && HEX64.test(v) && BigInt(`0x${v}`) < FIELD_MODULUS ? v : invalid(`${what} is not a canonical 64-hex field element`);
 const u64 = (v: unknown, what: string): bigint =>
   typeof v === 'bigint' && v >= 0n && v <= U64_MAX ? v : invalid(`${what} is not a u64`);
+
+/** A copy of a pending unshield's intent, every field checked (`E_A0_NOTE_INVALID`). */
+function checkIntent(u: A0PendingUnshield): A0PendingUnshield {
+  if (u === null || typeof u !== 'object') {
+    invalid('the unshield intent is not an object');
+  }
+  for (const k of Object.keys(u)) {
+    if (!INTENT_FIELDS.split(',').includes(k)) {
+      invalid(`an unshield intent field "${k}"`);
+    }
+  }
+  const key = (v: unknown, what: string): string => (typeof v === 'string' && B58_KEY.test(v) ? v : invalid(`${what} is not a base58 key`));
+  const out: A0PendingUnshield = {
+    owner: key(u.owner, 'the unshield owner'),
+    amount: u64(u.amount, 'the unshield amount'),
+    fee: u64(u.fee, 'the unshield fee'),
+    feePayer: key(u.feePayer, 'the unshield fee payer'),
+    gasGrantLamports: u.gasGrantLamports === null ? null : u64(u.gasGrantLamports, 'the unshield grant'),
+    destination: u.destination,
+  };
+  if (out.amount === 0n || out.amount + out.fee > U64_MAX) {
+    invalid('the unshield amount is not 1..2^64-1 with its fee');
+  }
+  if (out.destination !== 'fresh' && out.destination !== 'main' && out.destination !== 'external') {
+    invalid(`unshield destination ${String(out.destination)}`);
+  }
+  if ((out.destination === 'fresh') !== (u.scheme !== undefined)) {
+    invalid('a fresh destination names its reserved scheme, and only a fresh one');
+  }
+  if (u.scheme !== undefined) {
+    out.scheme = typeof u.scheme === 'string' && FRESH_SCHEME.test(u.scheme) ? u.scheme : invalid('the unshield scheme');
+  }
+  return out;
+}
 
 /** A copy of `n` with every field checked and the state rules of §5 / §8 held. */
 function checkNote(n: A0Note): A0Note {
@@ -160,6 +226,9 @@ function checkNote(n: A0Note): A0Note {
   if (n.spentTx !== undefined) {
     out.spentTx = typeof n.spentTx === 'string' && B58_SIG.test(n.spentTx) ? n.spentTx : invalid('spentTx');
   }
+  if (n.unshield !== undefined) {
+    out.unshield = checkIntent(n.unshield);
+  }
   // state rules: a pending note is a pending deposit (lastValidBlockHeight, a counter, no leaf yet)
   // or a pending unshield (pendingSince, a leaf); unspent / spent notes have their leaf and no
   // pending-only field; only a spent note names its spending tx.
@@ -175,7 +244,18 @@ function checkNote(n: A0Note): A0Note {
     if (unshield && out.leafIndex === undefined) {
       invalid('a pending unshield spends a note with a leaf');
     }
-  } else if (out.leafIndex === undefined || out.lastValidBlockHeight !== undefined || out.pendingSince !== undefined) {
+    if (out.unshield !== undefined && !unshield) {
+      invalid('only a pending unshield carries an unshield intent');
+    }
+    if (out.unshield !== undefined && out.unshield.amount + out.unshield.fee > out.amount) {
+      invalid('the unshield spends more than the note holds');
+    }
+  } else if (
+    out.leafIndex === undefined ||
+    out.lastValidBlockHeight !== undefined ||
+    out.pendingSince !== undefined ||
+    out.unshield !== undefined
+  ) {
     invalid(`an ${out.status} note has its leaf index and no pending-only field`);
   }
   if (out.spentTx !== undefined && out.status !== 'spent') {
@@ -219,6 +299,18 @@ function decodeNote(v: Json): A0Note {
       n[k] = big(v[k]);
     }
   }
+  const u = v.unshield;
+  if (u !== undefined) {
+    if (u === null || typeof u !== 'object' || Array.isArray(u)) {
+      throw new Corrupt('unshield intent');
+    }
+    n.unshield = {
+      ...u,
+      amount: big(u.amount),
+      fee: big(u.fee),
+      gasGrantLamports: u.gasGrantLamports === null ? null : big(u.gasGrantLamports),
+    };
+  }
   try {
     return checkNote(n as unknown as A0Note);
   } catch (e) {
@@ -228,7 +320,7 @@ function decodeNote(v: Json): A0Note {
 
 function encode(state: A0NoteStoreState): string {
   const notes = state.notes.map(n => {
-    const o: Record<string, string | number> = {
+    const o: Record<string, string | number | Record<string, string | null>> = {
       commitment: n.commitment,
       amount: n.amount.toString(),
       rho: n.rho,
@@ -248,6 +340,18 @@ function encode(state: A0NoteStoreState): string {
     }
     if (n.pendingSince !== undefined) {
       o.pendingSince = n.pendingSince;
+    }
+    if (n.unshield !== undefined) {
+      const u = n.unshield;
+      o.unshield = {
+        owner: u.owner,
+        amount: u.amount.toString(),
+        fee: u.fee.toString(),
+        feePayer: u.feePayer,
+        gasGrantLamports: u.gasGrantLamports === null ? null : u.gasGrantLamports.toString(),
+        destination: u.destination,
+        ...(u.scheme !== undefined ? {scheme: u.scheme} : {}),
+      };
     }
     return o;
   });
@@ -496,6 +600,138 @@ export function dropA0PendingDeposit(rho: string, bound?: A0StoreBinding): void 
     throw new A0NoteStoreError('E_A0_NOTE_STATE', `the note with rho ${rho} is not a pending deposit`);
   }
   write({...s, notes: s.notes.filter((_n, j) => j !== i)}, bound);
+}
+
+const isPendingUnshield = (n: A0Note): boolean => n.status === 'pending' && n.pendingSince !== undefined;
+
+/**
+ * §6 step 7 (M1c Task 7): BEFORE the submit, the note being spent becomes a pending unshield —
+ * `pendingSince` (the chain time read just before the submit) and the approved intent, in ONE
+ * write. Only an `unspent` note can be: anything else refuses (`E_A0_NOTE_STATE`), so one note is
+ * never in two unshields. Never creates the record.
+ */
+export function markA0PendingUnshield(
+  rho: string,
+  pendingSince: number,
+  unshield: A0PendingUnshield,
+  bound?: A0StoreBinding,
+): void {
+  const s = readExisting(rho, bound);
+  const i = indexOfRho(s, rho);
+  const n = s.notes[i]!;
+  if (n.status !== 'unspent') {
+    throw new A0NoteStoreError('E_A0_NOTE_STATE', `the note with rho ${rho} is ${n.status}, not unspent`);
+  }
+  const next = checkNote({...n, status: 'pending', pendingSince, unshield});
+  const notes = [...s.notes];
+  notes[i] = next;
+  write({...s, notes}, bound);
+}
+
+/**
+ * §6 step 8 (M1c Task 7): a pending unshield that is known NOT to have landed (nothing was
+ * forwarded, or the chain-time window passed with a completed sync and no Withdraw of it) goes
+ * back to `unspent` at its leaf. Anything but a pending unshield refuses (`E_A0_NOTE_STATE`).
+ */
+export function revertA0PendingUnshield(rho: string, bound?: A0StoreBinding): void {
+  const s = readExisting(rho, bound);
+  const i = indexOfRho(s, rho);
+  const n = s.notes[i]!;
+  if (!isPendingUnshield(n)) {
+    throw new A0NoteStoreError('E_A0_NOTE_STATE', `the note with rho ${rho} is not a pending unshield`);
+  }
+  const back: A0Note = {...n, status: 'unspent'};
+  delete back.pendingSince;
+  delete back.unshield;
+  const notes = [...s.notes];
+  notes[i] = checkNote(back);
+  write({...s, notes}, bound);
+}
+
+/**
+ * R2-N2 / m-1 (M1c Task 7): a HELD submit re-reads the chain clock after the hold, and the later
+ * value becomes `pendingSince` — the landing window counts from the last chain time read before
+ * the request leaves. Only ever LATER (`'moved'`, one write); an equal or earlier time writes
+ * nothing (`'kept'`). Anything but a pending unshield refuses (`E_A0_NOTE_STATE`); a time that is
+ * not a whole non-negative number refuses (`E_A0_NOTE_INVALID`).
+ */
+export function refreshA0PendingSince(rho: string, pendingSince: number, bound?: A0StoreBinding): 'moved' | 'kept' {
+  const s = readExisting(rho, bound);
+  const i = indexOfRho(s, rho);
+  const n = s.notes[i]!;
+  if (!isPendingUnshield(n)) {
+    throw new A0NoteStoreError('E_A0_NOTE_STATE', `the note with rho ${rho} is not a pending unshield`);
+  }
+  const next = checkNote({...n, pendingSince});
+  if (next.pendingSince! <= n.pendingSince!) {
+    return 'kept';
+  }
+  const notes = [...s.notes];
+  notes[i] = next;
+  write({...s, notes}, bound);
+  return 'moved';
+}
+
+/** A change note as an unshield's settle stores it (§6 step 8; Task 5's recovery stores the same). */
+export interface A0ChangeNote {
+  commitment: string;
+  /** input − amount − fee; 0 is a note too (the program side's zero_change vector) */
+  amount: bigint;
+  /** Poseidon3(0x13, nullifier, 0) of the PUBLIC (landed) nullifier */
+  rho: string;
+  leafIndex: number;
+}
+
+/**
+ * §6 step 8 (M1c Task 7): the chain shows the spend — the note becomes `spent` with `spentTx`,
+ * and its change note (when the landed change leaf is ours; null otherwise) is added `unspent`,
+ * in ONE write. Chain truth: a pending unshield OR an unspent note (a restore may have reverted
+ * it meanwhile) can be settled. A second settler is a no-op: the note already `spent` with the
+ * SAME `spentTx` and the change note already stored as given → nothing written. Another
+ * `spentTx`, or a stored note with the change's rho or commitment that is not exactly it, refuses
+ * (`E_A0_NOTE_STATE` / `E_A0_NOTE_DUPLICATE`).
+ */
+export function settleA0Unshield(
+  rho: string,
+  spentTx: string,
+  change: A0ChangeNote | null,
+  bound?: A0StoreBinding,
+): 'settled' | 'already' {
+  const s = readExisting(rho, bound);
+  const i = indexOfRho(s, rho);
+  const n = s.notes[i]!;
+  const changeNote: A0Note | null = change
+    ? checkNote({commitment: change.commitment, amount: change.amount, rho: change.rho, leafIndex: change.leafIndex, status: 'unspent'})
+    : null;
+  const sameChange = (m: A0Note): boolean =>
+    changeNote !== null &&
+    m.rho === changeNote.rho &&
+    m.commitment === changeNote.commitment &&
+    m.leafIndex === changeNote.leafIndex &&
+    m.amount === changeNote.amount &&
+    m.depositIndex === undefined;
+  const changeStored = changeNote !== null && s.notes.some(sameChange);
+  if (n.status === 'spent') {
+    if (n.spentTx !== spentTx) {
+      throw new A0NoteStoreError('E_A0_NOTE_STATE', `the note with rho ${rho} is spent by ${String(n.spentTx)}, not ${spentTx}`);
+    }
+    if (changeNote === null || changeStored) {
+      return 'already';
+    }
+  } else if (n.status !== 'unspent' && !isPendingUnshield(n)) {
+    throw new A0NoteStoreError('E_A0_NOTE_STATE', `the note with rho ${rho} is a pending deposit`);
+  }
+  const spent: A0Note = {...n, status: 'spent', spentTx};
+  delete spent.pendingSince;
+  delete spent.unshield;
+  const notes = [...s.notes];
+  notes[i] = checkNote(spent);
+  if (changeNote !== null && !changeStored) {
+    notes.push(changeNote);
+  }
+  checkUnique(notes);
+  write({...s, notes}, bound);
+  return 'settled';
 }
 
 /** The stored note vs the chain's view of the same rho (the rules of `mergeA0RecoveredNotes`). */

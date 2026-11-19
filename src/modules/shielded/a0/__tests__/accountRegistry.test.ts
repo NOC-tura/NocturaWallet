@@ -392,6 +392,33 @@ describe('promote / release (§6.8) and the binding (R3-N5)', () => {
   });
 });
 
+describe('M1c Task 7: the linked mark (a landed exit a key of this seed signed)', () => {
+  it('promote with linked → fresh-exit + linked, stored and read back; an existing fresh-exit gains the mark ("already")', async () => {
+    const {rpc} = historyRpc();
+    await reserveA0FreshAccount(rpc, seedOf(ABANDON));
+    expect(promoteA0FreshAccount('slip10:1', {linked: true})).toBe('promoted');
+    expect(loadA0AccountRegistry()![1]).toEqual({...entry(ABANDON, 'slip10:1', 'fresh-exit'), linked: true});
+    expect((raw() as {accounts: unknown[]}).accounts[1]).toEqual({scheme: 'slip10:1', role: 'fresh-exit', address: addr(ABANDON, 'slip10:1'), linked: true});
+    await reserveA0FreshAccount(rpc, seedOf(ABANDON));
+    expect(promoteA0FreshAccount('slip10:2')).toBe('promoted');
+    expect(promoteA0FreshAccount('slip10:2', {linked: true})).toBe('already');
+    expect(loadA0AccountRegistry()![2]).toEqual({...entry(ABANDON, 'slip10:2', 'fresh-exit'), linked: true});
+    expect(promoteA0FreshAccount('slip10:2')).toBe('already'); // the mark is never removed
+    expect(loadA0AccountRegistry()![2]!.linked).toBe(true);
+  });
+  it('a record with linked on a fresh-pending / main entry, or linked: false, does not decode (CORRUPT)', () => {
+    for (const bad of [
+      {...entry(ABANDON, 'slip10:1', 'fresh-pending'), linked: true},
+      {...entry(ABANDON, 'slip10:1', 'fresh-exit'), linked: false},
+    ]) {
+      setRaw([entry(ABANDON, 'slip10:0', 'main'), bad]);
+      expect(code(() => loadA0AccountRegistry())).toBe('E_A0_ACCOUNTS_CORRUPT');
+    }
+    setRaw([{...entry(ABANDON, 'slip10:0', 'main'), linked: true}]);
+    expect(code(() => loadA0AccountRegistry())).toBe('E_A0_ACCOUNTS_CORRUPT');
+  });
+});
+
 describe('the public-key set and the restore\'s writer (handed to Tasks 4–7)', () => {
   it('the public-key set is every entry\'s address — main, fresh-pending, fresh-exit — re-derived from the seed', async () => {
     const {rpc} = historyRpc();

@@ -20,11 +20,25 @@
  * a set, every value is 64 lowercase canonical hex (`E_A0_NON_CANONICAL`), every u64 a canonical
  * decimal (`E_A0_NOT_U64`). Every call is logged in `calls` (method + arguments) for the
  * handle-lifetime and "one matchSpent" assertions.
+ *
+ * THE UNSHIELD (M1c Task 7) follows Rust's authorization contract (spec §3 / §4, M1a `state.rs`):
+ * `confirmUnshield` asks the test's `confirmer` (the human at the native dialog); on "approve" it
+ * records ONE authorization `{authId, handle, owner, ata, amount, fee}` — refusing AFTER the
+ * approval with `E_A0_AUTH_IN_FLIGHT` while one is live (Task 6's hand-over: a second dialog that
+ * cannot succeed); `keysOpen` / `keysClose` kill it; EVERY `prove` consumes it first, whatever its
+ * circuit or arguments. A `withdraw_change` prove is computed OFFLINE: the witness is exactly the
+ * allow-list, the path must fold to `merkleRoot` (Poseidon2, the leaf = the offline commitment),
+ * `amount + fee ≤ inputAmount`, and the public inputs are `[merkleRoot, nullifier(rho), amount,
+ * be_mod_r(ata), mintHash, commitment(input − amount − fee, rhoChange(nullifier)), fee]`. The
+ * owner's ATA is a LOOKUP in the offline exit-account vectors (`a0-exit-account-vectors.json`,
+ * written by `scripts/a0-vectors/gen-exit-account-vectors.mjs` from Node crypto), never derived by
+ * code under test; an owner outside them is refused by the fake.
  */
 import {readFileSync} from 'fs';
 import {join} from 'path';
 import {poseidon2, poseidon3, poseidon5} from 'poseidon-lite';
 import {sha512} from '@noble/hashes/sha2.js';
+import {base58} from '@scure/base';
 
 export const FIELD_R =
   21888242871839275222246405745257275088548364400416034343698204186575808495617n;
@@ -55,6 +69,24 @@ export const KEY_VECTORS_PATH = join(
   '../../../../../native/noctura-prover/tests/fixtures/a0-key-vectors.json',
 );
 export const KEY_VECTORS = JSON.parse(readFileSync(KEY_VECTORS_PATH, 'utf8')) as KeyVectors;
+
+/** The offline exit-account vectors: `slip10:n` → address and ATA(address, mint) for both test seeds. */
+export interface ExitAccountVector {
+  scheme: string;
+  address: string;
+  ata: string;
+}
+export const EXIT_ACCOUNT_VECTORS = (
+  JSON.parse(readFileSync(join(__dirname, '../__tests__/fixtures/a0-exit-account-vectors.json'), 'utf8')) as {
+    seeds: {accounts: ExitAccountVector[]}[];
+  }
+).seeds;
+/** owner → its ATA, from the offline vectors only */
+const OFFLINE_ATA = new Map(EXIT_ACCOUNT_VECTORS.flatMap(s => s.accounts.map(a => [a.address, a.ata] as const)));
+/** ATA(owner, mint) from the offline vectors, or undefined for an owner outside them. */
+export function offlineAta(owner: string): string | undefined {
+  return OFFLINE_ATA.get(owner);
+}
 
 /** The repo's public test mnemonic (abandon … about) — the "own" seed of every recovery test. */
 export const TEST_SEED = KEY_VECTORS.seeds[0]!;
@@ -112,6 +144,60 @@ export class OfflineA0Keys {
 export function offlineKeys(seed: KeyVectorSeed): OfflineA0Keys {
   return new OfflineA0Keys(seed.nk);
 }
+
+/**
+ * The withdraw_change circuit computed OFFLINE for one live authorization (spec §3 `prove`, §1
+ * public inputs). Throws the Rust core's codes for a witness it would refuse.
+ */
+export function offlineWithdrawProof(
+  keys: OfflineA0Keys,
+  witnessJson: string,
+  auth: {ata: string; amount: bigint; fee: bigint},
+): {proofBytes: string; publicInputs: string[]} {
+  const w = JSON.parse(witnessJson) as Record<string, unknown>;
+  if (Object.keys(w).sort().join(',') !== 'inputAmount,merkleRoot,pathElements,pathIndices,rho') {
+    throw new NativeRefusal('E_A0_WITNESS_UNKNOWN_KEY', `fake withdraw prover: keys ${Object.keys(w).join(',')}`);
+  }
+  const root = canonical(w.merkleRoot, 'merkleRoot');
+  const rho = canonical(w.rho, 'rho');
+  const input = u64(w.inputAmount, 'inputAmount');
+  const els = w.pathElements as unknown[];
+  const idx = w.pathIndices as unknown[];
+  if (!Array.isArray(els) || !Array.isArray(idx) || els.length !== 20 || idx.length !== 20) {
+    throw new NativeRefusal('E_A0_WITNESS_VALUE', 'the path is not 20 levels');
+  }
+  if (auth.amount + auth.fee > input) {
+    throw new NativeRefusal('E_A0_WITHDRAW_EXCEEDS_INPUT', `${auth.amount} + ${auth.fee} > ${input}`);
+  }
+  let cur = BigInt(`0x${keys.commitment(input, rho)}`);
+  els.forEach((e, i) => {
+    const sib = BigInt(`0x${canonical(e, `pathElements[${i}]`)}`);
+    if (idx[i] !== 0 && idx[i] !== 1) {
+      throw new NativeRefusal('E_A0_WITNESS_VALUE', `pathIndices[${i}]`);
+    }
+    cur = idx[i] === 1 ? poseidon2([sib, cur]) : poseidon2([cur, sib]);
+  });
+  if (hex64(cur) !== root) {
+    throw new NativeRefusal('E_A0_WITNESS_NOT_IN_TREE', 'the path does not reach merkleRoot');
+  }
+  const nullifier = keys.nullifier(rho);
+  const change = keys.commitment(input - auth.amount - auth.fee, keys.rhoChange(nullifier));
+  const publicInputs = [
+    root,
+    nullifier,
+    hex64(auth.amount),
+    hex64(beModR(base58.decode(auth.ata))),
+    hex64(MINT_HASH),
+    change,
+    hex64(auth.fee),
+  ];
+  const seed = enc.encode(publicInputs.join(''));
+  const proof = cat(...[4, 5, 6, 7].map(k => sha512(cat(Uint8Array.of(k), seed))));
+  return {proofBytes: Buffer.from(proof).toString('hex'), publicInputs};
+}
+
+/** What the human at the native dialog does with one request (the fake's `confirmer`). */
+export type FakeConfirmer = (req: {owner: string; amount: string; fee: string}) => 'approve' | Error;
 
 /** A fresh copy of a vector seed's 64 bytes (the bridge consumes — zero-fills — what it is given). */
 export function seedBytes(seed: KeyVectorSeed): Uint8Array {
@@ -207,9 +293,18 @@ export interface FakeProverNative {
     zkeyPath: string,
     wasmPath: string,
   ): Promise<{proofBytes: string; publicInputs: string[]}>;
+  confirmUnshield(handle: string, owner: string, amount: string, fee: string): Promise<{authId: string; owner: string; ata: string}>;
   /** test controls */
   /** plug a prover in (null = refuse every prove, the default: recovery never proves) */
   setProver(p: FakeProver | null): void;
+  /** the human at the native dialog (null = cancel every request, the default) */
+  setConfirmer(c: FakeConfirmer | null): void;
+  /** the live authorization, or null */
+  liveAuth(): {authId: string; handle: string; owner: string; ata: string; amount: bigint; fee: bigint} | null;
+  /** dialogs approved by the human (incl. ones Rust then refused) */
+  readonly approvals: number;
+  /** edit the next withdraw_change proof's public inputs (once) — a core that disagrees with JS */
+  tamperNextProof(edit: (publicInputs: string[]) => string[]): void;
   readonly calls: FakeCall[];
   /** the live handle, or null */
   liveHandle(): string | null;
@@ -225,6 +320,11 @@ export function createFakeProverNative(): FakeProverNative {
   let counter = 0;
   const failures = new Map<string, Error>();
   let prover: FakeProver | null = null;
+  let confirmer: FakeConfirmer | null = null;
+  let auth: {authId: string; handle: string; owner: string; ata: string; amount: bigint; fee: bigint} | null = null;
+  let approvals = 0;
+  let authSerial = 0;
+  let tamper: ((pi: string[]) => string[]) | null = null;
 
   const enter = (method: string, args: unknown[]): void => {
     calls.push({method, args: JSON.parse(JSON.stringify(args)) as unknown[]});
@@ -244,6 +344,38 @@ export function createFakeProverNative(): FakeProverNative {
   return {
     calls,
     liveHandle: () => live?.handle ?? null,
+    get approvals() {
+      return approvals;
+    },
+    liveAuth: () => auth,
+    setConfirmer: c => {
+      confirmer = c;
+    },
+    tamperNextProof: edit => {
+      tamper = edit;
+    },
+    confirmUnshield: async (handle, owner, amount, fee) => {
+      enter('confirmUnshield', [handle, owner, amount, fee]);
+      keysOf(handle);
+      const ata = OFFLINE_ATA.get(owner);
+      if (ata === undefined) {
+        throw new NativeRefusal('E_A0_OWNER_OFF_CURVE', `the fake knows no ATA for ${owner}`);
+      }
+      const a = u64(amount, 'amount');
+      const f = u64(fee, 'fee');
+      const decision = confirmer ? confirmer({owner, amount, fee}) : new NativeRefusal('E_A0_CONFIRM_CANCELLED', 'cancelled');
+      if (decision instanceof Error) {
+        throw decision;
+      }
+      approvals += 1;
+      if (auth !== null) {
+        // Rust refuses a second authorizeUnshield while one is live — AFTER the human approved
+        throw new NativeRefusal('E_A0_AUTH_IN_FLIGHT', 'an authorization is live');
+      }
+      authSerial += 1;
+      auth = {authId: authSerial.toString(16).padStart(32, '0'), handle, owner, ata, amount: a, fee: f};
+      return {authId: auth.authId, owner, ata};
+    },
     failNext: (method, error) => {
       failures.set(method, error);
     },
@@ -255,12 +387,33 @@ export function createFakeProverNative(): FakeProverNative {
       live = null;
       failures.clear();
       prover = null;
+      confirmer = null;
+      auth = null;
+      approvals = 0;
+      tamper = null;
     },
     isSupported: () => true,
     prove: async (handle, circuit, witnessJson, authId, zkeyPath, wasmPath) => {
       // the witness is logged (it is a test's own data); the app never logs it
       enter('prove', [handle, circuit, witnessJson, authId, zkeyPath, wasmPath]);
+      // EVERY prove consumes the live authorization first (rev 3.2), whatever follows
+      const taken = auth;
+      auth = null;
       const keys = keysOf(handle);
+      if (circuit === 'withdraw_change') {
+        if (authId === null || taken === null || taken.authId !== authId) {
+          throw new NativeRefusal('E_A0_AUTH_ABSENT', 'no live authorization with this authId');
+        }
+        if (taken.handle !== handle) {
+          throw new NativeRefusal('E_A0_AUTH_WRONG_HANDLE', 'the authorization was recorded under another handle');
+        }
+        const out = offlineWithdrawProof(keys, witnessJson, taken);
+        if (tamper) {
+          out.publicInputs = tamper(out.publicInputs);
+          tamper = null;
+        }
+        return out;
+      }
       if (!prover) {
         throw new NativeRefusal('E_FAKE_NO_PROVE', 'the fake proves nothing (recovery never proves)');
       }
@@ -269,6 +422,7 @@ export function createFakeProverNative(): FakeProverNative {
     keysOpen: async (seed: number[]) => {
       enter('keysOpen', [seed.length]); // the seed itself is never logged
       live = null; // a second open ends the live session before validating the new seed (rev 3.2)
+      auth = null; // …and kills a live authorization
       if (!Array.isArray(seed) || seed.length !== 64) {
         throw new NativeRefusal('E_A0_SEED_LENGTH', `seed of ${seed.length} bytes`);
       }
@@ -285,6 +439,7 @@ export function createFakeProverNative(): FakeProverNative {
       enter('keysClose', [handle]);
       keysOf(handle);
       live = null;
+      auth = null; // keysClose invalidates a live authorization
       return null;
     },
     depositRho: async (handle: string, depositIndex: string) => {

@@ -77,7 +77,12 @@ describe('runA0Startup', () => {
     const net = liveDevnet(chainWithOwnDeposit());
     const seed = seedBytes(TEST_SEED);
     const res = await runA0Startup(net.connection, seed, SYNC);
-    expect(res).toEqual({restoredBecause: null, restore: null, reconcile: {confirmed: [], dropped: [], stillPending: [], skipped: 0}});
+    expect(res).toEqual({
+      restoredBecause: null,
+      restore: null,
+      reconcile: {confirmed: [], dropped: [], stillPending: [], skipped: 0},
+      unshields: {settled: [], reverted: [], stillPending: [], skipped: 0, released: [], promoted: []},
+    });
     expect(fake.calls).toEqual([]);
     expect(net.requests).toEqual([]);
     expect(zeroed(seed)).toBe(true);

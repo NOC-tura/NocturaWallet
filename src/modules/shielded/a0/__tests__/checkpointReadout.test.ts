@@ -87,6 +87,8 @@ const READY: A0StartupState = {
       stillPending: [],
       skipped: 0,
     },
+    // M1c: the startup line is built from its fixed list — the unshields' reconciliation has its own line
+    unshields: {settled: [], reverted: [], stillPending: [], skipped: 0, released: [], promoted: []},
   },
 };
 
