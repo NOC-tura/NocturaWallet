@@ -244,15 +244,37 @@ export function appendDepositPair(
 /**
  * Append a relayed unshield spending `nullifier` (a clone of 3UfCx5TD…) with change leaf
  * `changeCommitment`, moving `amount` (default: the template's 400,000) to the destination and `fee`
- * (default: the template's 10,000) to the fee destination, both out of the vault.
+ * (default: the template's 10,000) to the fee destination, both out of the vault. `to` (M1c Task 5)
+ * lands it to another owner: the template's destination token account (key 5, also the
+ * create-ATA's `ata`) and owner (key 13, the create-ATA's `owner`) are replaced, and the
+ * destination's token-balance entries name the new owner. The caller gives `ata` = ATA(owner, mint)
+ * computed its own way.
  */
 export function appendWithdraw(
   chain: RecordedChain,
-  w: {nullifier: string; changeCommitment: string; amount?: bigint; fee?: bigint},
+  w: {nullifier: string; changeCommitment: string; amount?: bigint; fee?: bigint; to?: {owner: string; ata: string}},
 ): AppendedDeposit {
   const {sig, slot} = nextId();
   const tx = cloneAsNewest(chain, txOf(chain, '3UfCx5TD').tx, sig, slot);
   const ix = poolIx(tx);
+  if (w.to) {
+    const keys = tx.transaction.message.accountKeys;
+    const create = tx.transaction.message.instructions.find(
+      i => keys[i.programIdIndex] === 'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL',
+    );
+    // create-ATA-idempotent accounts: payer, ata, owner, mint, system, token
+    if (!create || create.accounts[1] !== ix.accounts[3]) {
+      throw new Error('ownHistory: the withdraw template\'s create-ATA does not create its destination');
+    }
+    keys[ix.accounts[3]!] = w.to.ata;
+    keys[create.accounts[2]!] = w.to.owner;
+    const meta = tx.meta as unknown as {preTokenBalances: TokenBalance[]; postTokenBalances: TokenBalance[]};
+    for (const t of [...meta.preTokenBalances, ...meta.postTokenBalances]) {
+      if (t.accountIndex === ix.accounts[3]) {
+        t.owner = w.to.owner;
+      }
+    }
+  }
   const data = base58.decode(ix.data);
   if (data.length !== 380 || toHex(data.subarray(0, 8)) !== WITHDRAW_DISC) {
     throw new Error('ownHistory: the withdraw template is not a 380-byte withdraw_with_change');
@@ -283,4 +305,42 @@ export function appendWithdraw(
   }
   setBlob(tx, wd[0]!.line, Uint8Array.from([...fromHex(WITHDRAW), ...fromHex(w.nullifier)]));
   return {signature: sig, leafIndex, root};
+}
+
+/**
+ * Append ONE transaction carrying two relayed unshields (M1c Task 5): `first` as in `appendWithdraw`,
+ * then `second` as a second top-level `withdraw_with_change` (same accounts) with its own frame,
+ * LeafInserted and Withdraw event — so the second spend's change leaf is NOT the transaction's
+ * first LeafInserted.
+ */
+export function appendWithdrawPair(
+  chain: RecordedChain,
+  first: {nullifier: string; changeCommitment: string; amount?: bigint; fee?: bigint},
+  second: {nullifier: string; changeCommitment: string; amount: bigint; fee: bigint},
+): {signature: string; leafIndices: [number, number]} {
+  const a = appendWithdraw(chain, first);
+  const tx = chain.transactions[a.signature]!;
+  const ix = poolIx(tx);
+  const data = base58.decode(ix.data);
+  const firstAmount = u64At(data, 72);
+  const firstFee = u64At(data, 112);
+  data.set(fromHex(second.nullifier), 40);
+  data.set(fromHex(second.changeCommitment), 80);
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  view.setBigUint64(72, second.amount, true);
+  view.setBigUint64(112, second.fee, true);
+  const {leafIndex, root} = insertLeaf(chain, second.changeCommitment);
+  appendTopLevelIx(tx, {
+    program: PROGRAM,
+    accounts: ix.accounts.map(k => tx.transaction.message.accountKeys[k]!),
+    data,
+    blobs: [leafBlob(LEAF_INSERTED, second.changeCommitment, leafIndex, root), Uint8Array.from([...fromHex(WITHDRAW), ...fromHex(second.nullifier)])],
+  });
+  // the tx's net movement is both unshields
+  moveTokens(tx, [
+    {index: ix.accounts[2]!, delta: -(firstAmount + firstFee + second.amount + second.fee)},
+    {index: ix.accounts[3]!, delta: firstAmount + second.amount},
+    {index: ix.accounts[6]!, delta: firstFee + second.fee},
+  ]);
+  return {signature: a.signature, leafIndices: [a.leafIndex, leafIndex]};
 }

@@ -1,0 +1,326 @@
+{
+  "description": "slip10:n (SLIP-0010 ed25519 m/44'/501'/n'/0') addresses and their associated token accounts for the A0 mint ERkpCFGaoWmeZPhKTUHumrqHTP1QmyHVhMJUnxbRPKCs, n = 0..30 (spec §7 \"Accounts\"). Written by scripts/a0-vectors/gen-exit-account-vectors.mjs from Node crypto (PBKDF2, HMAC-SHA512, OpenSSL Ed25519, SHA-256), its own Ed25519 decompression check and its own base58; it imports neither core/keys/transparent.ts nor @solana/web3.js nor micro-key-producer nor @noble. Anchored to the extension's slip10:0 vector, to a0-account-vectors.json and to three published ATAs (relayer fee destination, pool vault, 3UfCx5TD…'s destination). Rerun: node scripts/a0-vectors/gen-exit-account-vectors.mjs [--check].",
+  "mint": "ERkpCFGaoWmeZPhKTUHumrqHTP1QmyHVhMJUnxbRPKCs",
+  "seeds": [
+    {
+      "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+      "accounts": [
+        {
+          "scheme": "slip10:0",
+          "address": "HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk",
+          "ata": "7PwxRaRJgLFoQkaYGtzVD9CK4tpGjrSBDVJowSRrR3rs"
+        },
+        {
+          "scheme": "slip10:1",
+          "address": "Hh8QwFUA6MtVu1qAoq12ucvFHNwCcVTV7hpWjeY1Hztb",
+          "ata": "7LXQnRYaqq6kW2danuBXDEXWjhE39rQpm8Jwq2M4xe9q"
+        },
+        {
+          "scheme": "slip10:2",
+          "address": "7WktogJEd2wQ9eH2oWusmcoFTgeYi6rS632UviTBJ2jm",
+          "ata": "212qYkvq1x9PGRADzGsycAUdqKsPAfUVCFjGqoRJdE59"
+        },
+        {
+          "scheme": "slip10:3",
+          "address": "3YqEpfo3c818GhvbQ1UmVY1nJxw16vtu4JB9peJXT94k",
+          "ata": "9BatdAwD71gPwQuysv7k7y7QQi4WDtfgKtmw5RFu7WGv"
+        },
+        {
+          "scheme": "slip10:4",
+          "address": "6nod592sTfEWD3VSVPdQndLMVBCNmMc6ngt7MyGBK21j",
+          "ata": "5BpZiXCcwbewP51r5o1hdgCUUE7rWrdvGkYNwNTzL55C"
+        },
+        {
+          "scheme": "slip10:5",
+          "address": "2EUrWmf5xMmWER9BtDbXbGbZjoL7R3eTDMXYR6H6cKPj",
+          "ata": "Fj7MUcj5T93wUajVKjHUMDAvs4bujoYHn1eRqxcpDteH"
+        },
+        {
+          "scheme": "slip10:6",
+          "address": "5P2eQoLncuFMjAmNNF4PspnAXYNaDSE2t1gb5os76Svw",
+          "ata": "39db5wJKSfx7Rf2R3tdJ8LrPpCBtt37chZD3HPDYZCH1"
+        },
+        {
+          "scheme": "slip10:7",
+          "address": "9h1cLBiraaUqM1CdJTaVaew1oQtgQUW24FZ8YdnLLgJY",
+          "ata": "SwUZcw7UAHsF9FYXHq81HS96HfYTVUCbQR1Vv4j3P15"
+        },
+        {
+          "scheme": "slip10:8",
+          "address": "GS6Y8rQB8W3SWfLpQuooT1pEm7mqRKnTP1EkNKL2Xeha",
+          "ata": "eNXtgAYnUjKmqJzorXY7w47FzmHe8ZnUK2B7CGq4pYq"
+        },
+        {
+          "scheme": "slip10:9",
+          "address": "HDyTY5B1TJ3WgyfaziZtDGaBqj3ofKm8499Q8meqk4nx",
+          "ata": "GTE947m65Y2n6HAbM8ACXjwMz8Ju7qDcZJVibuuRCYAm"
+        },
+        {
+          "scheme": "slip10:10",
+          "address": "AcLS2t8rzEqeQnbJK4HBS7g8NBCa7SowjARdvxtqBE3t",
+          "ata": "96gYaSs19m5vagSxQbkgb95B2PvrNUmqR25g7zHhN8vi"
+        },
+        {
+          "scheme": "slip10:11",
+          "address": "FLzoxtpBbnn5nGcyokN47Di2M3VJ7FaiUNGpeZWVRUgz",
+          "ata": "J5rmj6E31GTbYWzL6a5v1i5p2aPU5mzcCAYqZERkphVW"
+        },
+        {
+          "scheme": "slip10:12",
+          "address": "3ih2doS8hZJsnMnZ4Xho4rckrZKq8Co5N5GdCEnD6Mx3",
+          "ata": "6m6qE9Bu34WhvLGQYZW1M615ZajAvzgYuWTju7RmcY17"
+        },
+        {
+          "scheme": "slip10:13",
+          "address": "HQmgK6Syw5XG8zkEnSoBaNz3fhrGHLt1LUfeGWaVuhLh",
+          "ata": "HhCwWu3LSvFfVohoGzsWWpzgNzeE8ZMKnL2Ndmkbs1Yo"
+        },
+        {
+          "scheme": "slip10:14",
+          "address": "8qRMXdEGhfrVMSEgYiBvDrPVQTR83PXWPzUFsLzwp1hS",
+          "ata": "5FJN8vVwt4V49YmsQ8mB97YPDy8eL2p32WBM3mR3jqw"
+        },
+        {
+          "scheme": "slip10:15",
+          "address": "DsjwrNNNQL9LpRrGmgvzvuFHrApXDCQ2mVTZg4NT4mGr",
+          "ata": "CB6qHCJLemJykmqH9ntiEjic15148y4xqBqAVYka4avS"
+        },
+        {
+          "scheme": "slip10:16",
+          "address": "GG9npDte2RMSejBwzBuLsdENouHZVdcMgTK3FEnsdHxF",
+          "ata": "2nAc4cGaCUeuZ5Enseu5BkWrj7s1szfvExkoj4bXYTei"
+        },
+        {
+          "scheme": "slip10:17",
+          "address": "9Pd8ratWtmsyVXtcThE6rzURzSk77iAheqBn87Q66RtB",
+          "ata": "3ZnajwYWFYRQHqPFVg9Qh4Z1V6F41yJBAYrFQqjEUXqv"
+        },
+        {
+          "scheme": "slip10:18",
+          "address": "Cz4FDEewmYtKpoBQYmMVaXXL6GJPU3ZjHx7RH2enm5Pp",
+          "ata": "C78ukxwJo5EZTewNSBnwxiNWeBhdGuBP5w21fHBfKM9v"
+        },
+        {
+          "scheme": "slip10:19",
+          "address": "CWJKBYW8VndqhBJyMLX1kaHbx5R47CTKCbHHx78dhFQV",
+          "ata": "FkAWe75x2LSG9b3R1MF5VRQphHMVibn12GaN6HCvvutQ"
+        },
+        {
+          "scheme": "slip10:20",
+          "address": "BfRvWRsTyQRGgeZJNzumCiDrRQriyL1Jwwdhrua6wtig",
+          "ata": "Dkt5PgmASoAcim8zWKmEsZVffRUGuoXFveeW5pofxqHL"
+        },
+        {
+          "scheme": "slip10:21",
+          "address": "2e6CkjBeCbQgP4qP1ciPLThDk287sVWmRDMJT5hRQrPg",
+          "ata": "36zSuB3fbGWCrDnDUMT3NCYyeAx4GGSKEdnezixRjaKq"
+        },
+        {
+          "scheme": "slip10:22",
+          "address": "3wnbBJSib6ZjdJ3G66RFquW7wNdfcPyH6yYLYsv93gxk",
+          "ata": "BkTSQTCTJc18VvuiNZRJYMxQnop2c3rB3SDJvXoAW5hw"
+        },
+        {
+          "scheme": "slip10:23",
+          "address": "EqsEFkT3hWbTSrpoWAbBh3h1yikdzaznz1pSBSaJiS6D",
+          "ata": "9MvXJbNU3BwXdaZiceUK1Xc2rD1rhJmb3PSQjCM1hxKe"
+        },
+        {
+          "scheme": "slip10:24",
+          "address": "HAURooQQ5w6UAKyZ6kEf8kskEQenUFajxvppQ6v3HArs",
+          "ata": "97FvBMqzdE6gGAPWuSjnh5rkjkwKbCkc5cinuKKSqntk"
+        },
+        {
+          "scheme": "slip10:25",
+          "address": "FWJJ8uXpDe362f9eqLX4DUZmaLLVZEi9w1FXorqu4THn",
+          "ata": "ku6vYYVctHEgK9KXNbT27qRGoLuHEnFtdiLPxRJfBDs"
+        },
+        {
+          "scheme": "slip10:26",
+          "address": "J4ZUNJJUxkduMQHsUTC4LFFMGtVjzTJwCaonxDWrpSji",
+          "ata": "JBFA2KRxr7RrCV387D3tPLeY9QrxHWTd5e7jn8JsLor2"
+        },
+        {
+          "scheme": "slip10:27",
+          "address": "B2vUWrNcAayxcYHEeMZMzDKU7A6AzLM1RX7USbYcmqPD",
+          "ata": "HVFZP4bpQGXDyrBduUDoQ6BXFYFnzAWtZ3ZYrUttS19Y"
+        },
+        {
+          "scheme": "slip10:28",
+          "address": "8CoTAujDP76aWGD2WPN96hHv8nGEcCgb7P84LCVJ8zgg",
+          "ata": "6TJ2mjmFpAYCErakq6DSPffo82Q3toNnJVw9e5eDsQVW"
+        },
+        {
+          "scheme": "slip10:29",
+          "address": "9uXZcnGP4sQwRYDCtzYrRFFL4EbbxMisnYiABuWFiRM5",
+          "ata": "5TF2fEUrX4jutktrbtXhGpC5ThuNBB2Dvq9cSFiix5a"
+        },
+        {
+          "scheme": "slip10:30",
+          "address": "2SpHb3LRSSXAoofK7QcRg9Le7vMnGku9rEZVhRBEt4XT",
+          "ata": "JARUJkGrYgdKrZXezrX2fuU6Fjyy2KmbiaiK9zgrHbmG"
+        }
+      ]
+    },
+    {
+      "mnemonic": "zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong",
+      "accounts": [
+        {
+          "scheme": "slip10:0",
+          "address": "E48cosDiQZK1iDSsyUzhvW4WxJeoKuDk5qgcdkmANV4N",
+          "ata": "4YTrnJS2nGbt4QuQw2zvL9Z1LQrnR1ktsRwdduz1o8Wk"
+        },
+        {
+          "scheme": "slip10:1",
+          "address": "ETjNGPNMYV9cdSWfabNMdMYtFxPziaiavoLuzvJo12qg",
+          "ata": "9gSRRheYuUupKqWUDA1yLpE5d8V3E7RZgoYs3gjeH9Kq"
+        },
+        {
+          "scheme": "slip10:2",
+          "address": "3EwCPNjUS1xKNbHcbMmo6wAtMA9ZVzwkiLVQ5H3ZvntC",
+          "ata": "UYukwTHmu45DpVh8YeDBDBRVJFaJWgdbs2S5aJVnmzp"
+        },
+        {
+          "scheme": "slip10:3",
+          "address": "wpsZdXo6gFeQUXKFCBvbFKLbYtyrko1M1KHFwCtDRj1",
+          "ata": "7v9K5NtHTxvafxd2QXJoj6CQaKXjhz3Sr39Xh3zJowy1"
+        },
+        {
+          "scheme": "slip10:4",
+          "address": "F6wmBCXagkZy4nYER1BbspT56MrjzzQhpEoUyLXFd2Jf",
+          "ata": "FU2QsT5nCVV9WGHy78RYaWKGxfTHMXLqvz8bMmdCThQs"
+        },
+        {
+          "scheme": "slip10:5",
+          "address": "v5PXxVwJbfmFBvEdbHYYYGWuC7PMVyutLG8rcnQaJHf",
+          "ata": "9oW7MiydUt98CsBHEp3rSmg3HdyHWPQ8kXcMQMM2971X"
+        },
+        {
+          "scheme": "slip10:6",
+          "address": "DJqCQkFAipfFKMkCADvTRSvdAGYEAwE8g3MnreWD7UP4",
+          "ata": "9Sct375ZmbvaS3vpKTsmZbQWcH2Y38y8cRt12DGswa6v"
+        },
+        {
+          "scheme": "slip10:7",
+          "address": "GEkjftcBFoJp2JntMzEcTERkyKH8CnCBnwMjdbrcgqFb",
+          "ata": "8Fq15AT4YCU2VuCmkKcxKB17szQv3WnidTKEhsRw1AYz"
+        },
+        {
+          "scheme": "slip10:8",
+          "address": "AgiRoMS7i7qpHMWV2CEEF65KZujHjj1hhyCA73AAP3EG",
+          "ata": "2DFSYp5Bs9kYHApvZXv3nPcJMhtBwDT6rJ3aw9CoHFph"
+        },
+        {
+          "scheme": "slip10:9",
+          "address": "7rxWcB43PNuPr8bjSHdKcsXudF6hz7qAwAcgXaKJounw",
+          "ata": "BqyQPrKhToG9Dz6hwW1QoJRCjurTkX2shQCtJkHx7N3m"
+        },
+        {
+          "scheme": "slip10:10",
+          "address": "Ee5KNeBJYY6pLKGnnAF68AaTXvc4fQquHkXSc4Eq1FDY",
+          "ata": "3jpxcSeo62EDEF4fRZpRUHXapai4yfL5K2jBanfRuLXg"
+        },
+        {
+          "scheme": "slip10:11",
+          "address": "695BSK6inFoHRTmmF3XMQRjRkyaJDqHMrvQgxUU7nGtv",
+          "ata": "CgbdECkr8BpK6oDCu6kgfBzD2iWnHfnEh31XVvx1jSov"
+        },
+        {
+          "scheme": "slip10:12",
+          "address": "H8Nt93NHUVMLrwuoXGH7GMCRCNDLRusoWFLcQHbFbUSg",
+          "ata": "5rJ7FGZBHYMy6LWemuXuMxL5r8MzQ7rWwiRSy4KRjrNH"
+        },
+        {
+          "scheme": "slip10:13",
+          "address": "Ed9mJKxTqLM4NKWmVr3eRNr5pv8QjJGcX2b9WCmUkMTK",
+          "ata": "DgyDxbhqQ7WS13AM1woJBczYzmRmhrUbueRDfZsPc5LN"
+        },
+        {
+          "scheme": "slip10:14",
+          "address": "HpNUf13u6238QPUCedoMZ9s8w9bzEcatbEq92BprYnRk",
+          "ata": "F7bUEdjwgCntvkTBk43TNEvj7xBW9KcGaLDJmz8CHshz"
+        },
+        {
+          "scheme": "slip10:15",
+          "address": "G8D98eoe6fECp72fvG921LBJuaGhwxwv4eWAHJMbecDb",
+          "ata": "AkHGUwaqZmYgrX5ph1XsWhgGKUiAngR6468UaCfMqGX8"
+        },
+        {
+          "scheme": "slip10:16",
+          "address": "8XM3iZPPpDRBfc4HbY88uBiVRo2wDREJcuz5x9PzTN9n",
+          "ata": "3HqDPg4rudpF5hNJDQSSv91jhgLuS3TLh1cBRJKyFS19"
+        },
+        {
+          "scheme": "slip10:17",
+          "address": "1278CVNM3Qa6nnygGNvnbWuTaRuKH8joQkyY3R7WGeA4",
+          "ata": "7fu4gKQAyfwDQ46WmXn56HXKkAZYYWKW1FWcLLiPmxAa"
+        },
+        {
+          "scheme": "slip10:18",
+          "address": "9zZhyCpttYYNpGNawPuvS73menmztxxr6Xz4AvE7qNH8",
+          "ata": "Eui43Jid9dd4b4AV671uFu1CfvKWqheDfhNFsC6vtff2"
+        },
+        {
+          "scheme": "slip10:19",
+          "address": "Et8UYrYDRuTKxcKiLXUmW13nxKhu63oMVvvC4Jd6yTsc",
+          "ata": "2i9JBc4CVwDqzFVdV2UxoAZUj5X3NjbJok7gvc9zCs7v"
+        },
+        {
+          "scheme": "slip10:20",
+          "address": "HP1krm2Zk5imgaw7HpQwV8WhY2T2fvQXJ2fKZ9A6cDWe",
+          "ata": "3EHuPH9fPW7B36EVnLSnhWYSKLdowkYERSn4URiZpci8"
+        },
+        {
+          "scheme": "slip10:21",
+          "address": "BfnEvh6LN3SpdDYkCkHn8qmE3YJSNfDkpz3cv6YC3jn9",
+          "ata": "ggqS4Dh9QfoTHy5wxhGJ7j4dNUG5Hv2ad4H4ZHYQyYZ"
+        },
+        {
+          "scheme": "slip10:22",
+          "address": "GZ3vWPdm5ovu55vNQntcNTofLgLMXf8oBq4XXU1bCAi9",
+          "ata": "HcCEoLMto5DJ5bZxWPQm1VcBNDzarnzB5okYUoBgxvBX"
+        },
+        {
+          "scheme": "slip10:23",
+          "address": "CnesYyycAysLsiU4wuKDyg2LXWH17Vw9x66nu6bTd9Lz",
+          "ata": "FzF7N4h1b4wRqwZcwsj5c9PPT9r99WQa7DeZ7dbW95YG"
+        },
+        {
+          "scheme": "slip10:24",
+          "address": "G9TenRUdveiGGCjWcL3mMjwBncV95oK96cygKddiHmZa",
+          "ata": "HpxmBmNffFd8APDocSrmQybseKNDUCyBLw9j1STcXZn5"
+        },
+        {
+          "scheme": "slip10:25",
+          "address": "9c89ZGRt7Q225dCbnuL8Co79xintJSZXhHqKVzCGUpjU",
+          "ata": "BLH7wqcgD2aYpzxcskSB5c7cohS6mJAnVS9xpbH78dXZ"
+        },
+        {
+          "scheme": "slip10:26",
+          "address": "EQXdZGoYamCSgtw8JAd3vfXqEePLWfZM9KrFTcVFGFwN",
+          "ata": "GZrMsJYsfNpES9kqN8hvr87i4Vmqx4XRuqEFoBZgxsP2"
+        },
+        {
+          "scheme": "slip10:27",
+          "address": "dv5acCwngng5Rta4GfmkpiUiDHwvTvfrVUheZHBLFKn",
+          "ata": "AJnMYnTk6wx6XMY2xqWbXCgZZfQjA6BkwCqGKaTNwzSJ"
+        },
+        {
+          "scheme": "slip10:28",
+          "address": "9eX7ZLrNQjypgQ8iCGANSCF4Kf18vSKa4AT7ypj5115o",
+          "ata": "B5EzSkikPNFWjb6SskZFQiz4yegQVGMjZguSTY2arg1J"
+        },
+        {
+          "scheme": "slip10:29",
+          "address": "2PhKWH6hrCt3T3tBgxFS418EEg4Dx4zjTcnKn1uXni19",
+          "ata": "9hgqhsdoxnMpWiybyj2vvSnzYwCS6zQsrLUUWNea5qfp"
+        },
+        {
+          "scheme": "slip10:30",
+          "address": "5r9cXKHUYmnbf1XfNyoTWx9M5UqJKYZVkmmo2AQV6STG",
+          "ata": "GuDsaePKbqn9hkhQSAphiG4wqT8VcPAkZ2wNAY5uqxPo"
+        }
+      ]
+    }
+  ]
+}

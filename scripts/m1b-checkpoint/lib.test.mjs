@@ -171,12 +171,12 @@ const head = (event, session, seq) => ({ schema: L.READOUT_SCHEMA, event, sessio
 /** A consistent run built from the recorded chain: deposit S1, the kill around S2, the wipe, prod. */
 function scenario() {
   const readouts = [
-    { seenAt: at('01:00'), readout: { ...head('startup', 'aaa', 1), phase: 'ready', restoredBecause: 'no-record', restore: { treeTransactions: 15, durationMs: 4000, syncDurationMs: 3000, depositIndicesTried: 20, ownNotes: 0, highestHit: null, finishedAt: at('00:59'), r13TriggerReached: false }, reconcile: { confirmed: [], dropped: [], stillPending: [], skipped: 0 }, notes: { pending: 0, unspent: 0, spent: 0, unspentBalance: '0', unspentNotes: [] } } },
+    { seenAt: at('01:00'), readout: { ...head('startup', 'aaa', 1), phase: 'ready', restoredBecause: 'no-record', restore: { treeTransactions: 15, durationMs: 4000, syncDurationMs: 3000, depositIndicesTried: 100, ownNotes: 0, highestHit: null, finishedAt: at('00:59'), r13TriggerReached: false }, reconcile: { confirmed: [], dropped: [], stillPending: [], skipped: 0 }, notes: { pending: 0, unspent: 0, spent: 0, unspentBalance: '0', unspentNotes: [] } } },
     { seenAt: at('02:00'), readout: { ...head('deposit-submitted', 'aaa', 2), signature: S1, depositor: GOBAM, amount: dep1.amount.toString(), commitment: dep1.commitment } },
     { seenAt: at('02:10'), readout: { ...head('deposit-outcome', 'aaa', 3), signature: S1, status: 'unspent', depositor: GOBAM, amount: dep1.amount.toString(), commitment: dep1.commitment, leafIndex: l1.leafIndex, root: l1.root } },
     { seenAt: at('03:00'), readout: { ...head('deposit-submitted', 'aaa', 4), signature: S2, depositor: GOBAM, amount: dep2.amount.toString(), commitment: dep2.commitment } },
     { seenAt: at('04:00'), readout: { ...head('startup', 'bbb', 1), phase: 'ready', restoredBecause: null, restore: null, reconcile: { confirmed: [{ leafIndex: l2.leafIndex, signature: S2 }], dropped: [], stillPending: [], skipped: 0 }, notes: { pending: 0, unspent: 2, spent: 0, unspentBalance: (dep1.amount + dep2.amount).toString(), unspentNotes: [{ leafIndex: l1.leafIndex, commitment: dep1.commitment, amount: dep1.amount.toString() }, { leafIndex: l2.leafIndex, commitment: dep2.commitment, amount: dep2.amount.toString() }] } } },
-    { seenAt: at('06:00'), readout: { ...head('startup', 'ccc', 1), phase: 'ready', restoredBecause: 'no-record', restore: { treeTransactions: 15, durationMs: 5200, syncDurationMs: 4100, depositIndicesTried: 22, ownNotes: 2, highestHit: 1, finishedAt: at('05:58'), r13TriggerReached: false }, reconcile: { confirmed: [], dropped: [], stillPending: [], skipped: 0 }, notes: { pending: 0, unspent: 2, spent: 0, unspentBalance: (dep1.amount + dep2.amount).toString(), unspentNotes: [{ leafIndex: l1.leafIndex, commitment: dep1.commitment, amount: dep1.amount.toString() }, { leafIndex: l2.leafIndex, commitment: dep2.commitment, amount: dep2.amount.toString() }] } } },
+    { seenAt: at('06:00'), readout: { ...head('startup', 'ccc', 1), phase: 'ready', restoredBecause: 'no-record', restore: { treeTransactions: 15, durationMs: 5200, syncDurationMs: 4100, depositIndicesTried: 102, ownNotes: 2, highestHit: 1, finishedAt: at('05:58'), r13TriggerReached: false }, reconcile: { confirmed: [], dropped: [], stillPending: [], skipped: 0 }, notes: { pending: 0, unspent: 2, spent: 0, unspentBalance: (dep1.amount + dep2.amount).toString(), unspentNotes: [{ leafIndex: l1.leafIndex, commitment: dep1.commitment, amount: dep1.amount.toString() }, { leafIndex: l2.leafIndex, commitment: dep2.commitment, amount: dep2.amount.toString() }] } } },
   ];
   return {
     readouts,
@@ -260,7 +260,7 @@ describe('the judge — every line, and a negative control for each', () => {
   });
   test('verify\'s record carries the restore\'s highest counter hit (R1-m4 / R2-N4) and the next start\'s skipped count', () => {
     const s = scenario();
-    assert.match(lineOf(s, 'M1b.5').detail, /22 counters tried, highest counter hit 1 \(gap limit 20\)/);
+    assert.match(lineOf(s, 'M1b.5').detail, /102 counters tried, highest counter hit 1 \(gap limit 100\)/);
     s.readouts[5].readout.restore.highestHit = null;
     assert.match(lineOf(s, 'M1b.5').detail, /highest counter hit none/);
     assert.match(lineOf(s, 'M1b.6').detail, /skipped 0$/);

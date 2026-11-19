@@ -19,8 +19,8 @@
  *   - the restore's `highestHit` (R1-m4 / R2-N4): how far the deposit-counter walk found a hit —
  *     a count of the walk (the counters this wallet used, which its main account's public deposit
  *     history already shows), never attached to a note, so no note's depositIndex can be read
- *     from it. It is read out so the checkpoint record shows the gap-limit hazard (20 consecutive
- *     expired or front-run deposits hide every later own deposit from a restore);
+ *     from it. It is read out so the checkpoint record shows the gap-limit hazard (100 consecutive
+ *     expired or front-run deposits — S15, was 20 — hide every later own deposit from a restore);
  *   - the reconciliation's `skipped`: the pending notes another flow settled while this run reached
  *     them (they are in none of the three lists).
  *

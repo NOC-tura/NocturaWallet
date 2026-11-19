@@ -31,8 +31,11 @@ export const DEVNET_PACKAGE = 'com.nocturawallet.devnet';
 export const PRODUCTION_PACKAGE = 'com.nocturawallet';
 /** spec R13: more than 5,000 tree transactions or more than 60 s makes an indexer pre-mainnet. */
 export const R13_TRIGGER = { treeTransactions: 5000, durationMs: 60000 };
-/** spec §7: the restore's deposit-counter walk stops after this many consecutive misses (recorded with M1b.5, R1-m4). */
-export const A0_GAP_LIMIT = 20;
+/**
+ * spec §7: the restore's deposit-counter walk stops after this many consecutive misses (recorded
+ * with M1b.5, R1-m4). S15 (lands with M1c): 100, was 20 — the app's `A0_DEPOSIT_GAP_LIMIT`.
+ */
+export const A0_GAP_LIMIT = 100;
 export const READOUT_TAG = 'NOCTURA-A0-READOUT';
 export const READOUT_SCHEMA = 'noctura.a0.readout/1';
 

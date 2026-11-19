@@ -127,6 +127,28 @@ jobs:
           git diff --exit-code -- native/noctura-prover/tests/fixtures
           echo "the generators' --check is falsifiable; fixtures restored"
 
+      # M1c Task 5: the exit-account vectors (slip10:n addresses + their ATAs, Node crypto and an own
+      # Ed25519 decompression check; no web3.js, no app code) the restore's account walk is tested
+      # against. Its NEGATIVE CONTROL: two accounts' ATAs swapped (exactly two lines change) must
+      # fail --check; restored with git, and the restore is asserted.
+      - name: Re-derive the exit-account vector fixture (gen-exit-account-vectors --check, with its negative control)
+        working-directory: .
+        run: |
+          node scripts/a0-vectors/gen-exit-account-vectors.mjs --check
+          f=src/modules/shielded/a0/__tests__/fixtures/a0-exit-account-vectors.json
+          node -e '
+            const fs = require("fs"); const f = process.argv[1];
+            const j = JSON.parse(fs.readFileSync(f, "utf8")); const a = j.seeds[0].accounts;
+            [a[5].ata, a[6].ata] = [a[6].ata, a[5].ata];
+            fs.writeFileSync(f, JSON.stringify(j, null, 2) + "\n");' "$f"
+          [ "$(git diff --numstat -- "$f" | cut -f1,2)" = "$(printf '2\t2')" ] || { echo "::error::the tamper of $f did not change exactly two lines"; exit 1; }
+          if node scripts/a0-vectors/gen-exit-account-vectors.mjs --check; then
+            echo "::error::gen-exit-account-vectors --check PASSED a fixture with swapped values"; exit 1
+          fi
+          git checkout -- "$f"
+          git diff --exit-code -- "$f"
+          echo "gen-exit-account-vectors --check is falsifiable; fixture restored"
+
       # THE M1a CHECKPOINT'S DESK TESTS (Fable review 1, R1-I4): the desk values from the mnemonic,
       # the Pool-account VK decode against the recorded devnet read, the independent Groth16
       # verifier (positive control: the two landed proofs), the §16 judge with a negative control

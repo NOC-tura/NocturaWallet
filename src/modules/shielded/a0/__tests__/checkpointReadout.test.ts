@@ -71,6 +71,13 @@ const READY: A0StartupState = {
       spentNotes: 0,
       foreignRhoHits: 0,
       highestHit: 0,
+      // M1c Task 5's counters: not read out (yet — Task 9 picks what the checkpoint needs); the
+      // sample below has none of them, so the fixed field list keeps them out
+      changeNotes: 0,
+      unmatchedChangeLeaves: 0,
+      attributionCalls: 0,
+      accountIndicesTried: 0,
+      exitAccounts: 0,
       finishedAt: '2026-11-15T19:59:58.000Z',
       r13TriggerReached: false,
     },

@@ -261,15 +261,14 @@ CHECKPOINT PASSED
       `R13 TRIGGER REACHED … PRE-MAINNET` is printed, the coordinator tree indexer becomes a pre-mainnet item (§13):
       record that too. `M1b.5` passes either way (it is a measurement); it fails only when the phone's numbers are
       not consistent with the chain's list.
-- [ ] **The gap limit (R1-m4):** `M1b.5`'s detail also carries `<K> counters tried, highest counter hit <H> (gap limit
-      20)` — copy it too. The restore walks the deposit counters 0, 1, 2, … and stops after **20 consecutive counters
-      with no deposit on chain**; a counter is never handed back, so a deposit that expired (never landed) or was
-      front-run still uses one up. **20 consecutive expired or front-run deposits therefore hide every later deposit
-      of this wallet from a restore from the phrase** (the funds are on chain, the app does not find them). The gap
-      limit stays 20 as in the plan you approved; whether to raise it or count only landed deposits is open for you
-      (R1-m4, asked at the M1b finish). For a devnet wallet that made only this checkpoint's two
-      deposits, expect `highest counter hit 1` and `22 counters tried` (`0` / `21` if the killed deposit never
-      landed).
+- [ ] **The gap limit (R1-m4, S15):** `M1b.5`'s detail also carries `<K> counters tried, highest counter hit <H> (gap
+      limit 100)` — copy it too. The restore walks the deposit counters 0, 1, 2, … and stops after **100 consecutive
+      counters with no deposit on chain**; a counter is never handed back, so a deposit that expired (never landed) or
+      was front-run still uses one up. **100 consecutive expired or front-run deposits therefore hide every later
+      deposit of this wallet from a restore from the phrase** (the funds are on chain, the app does not find them).
+      You decided it (S15, "gap limit 100"): the limit is 100 (was 20) from M1c on. For a devnet wallet that made
+      only this checkpoint's two deposits, expect `highest counter hit 1` and `102 counters tried` (`0` / `101` if
+      the killed deposit never landed).
 - [ ] **Then clear the phone's log** (R1-m6): `adb logcat -c`. The readout lines stay in the phone's log buffer
       until it rotates, and together they are this devnet wallet's note set (public values each, but a full list of
       its deposits, commitments and leaf indices). A bug report (`adb bugreport`, or one taken from the phone's

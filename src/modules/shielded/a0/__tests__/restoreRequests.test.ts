@@ -5,15 +5,19 @@
  *
  * A recording Connection (the REAL web3.js Connection over recordedRpc.ts, which logs every
  * JSON-RPC method and its params) serves the recorded devnet history extended with the test
- * seed's own deposits and an unshield of one of them (ownHistory.ts). The assertions:
+ * seed's own deposits, a relayed unshield of one of them with OUR change note, and an unshield of
+ * that change note to the seed's own `slip10:1` (an exit account) — so the restore recovers
+ * deposits, change notes and an account (M1c Task 5) (ownHistory.ts). The assertions:
  *   1. the restore's request log is EXACTLY the log of a plain tree sync over the same chain;
  *   2. its methods are within getSignaturesForAddress(5URd…), getTransaction(<a listed pool tx>),
  *      getAccountInfo(5URd…) — stricter than §14's set, which also allows the registry's balance
  *      reads (M1b's restore makes none);
  *   3. no param, in any encoding (hex, base58, base64 of the 32 bytes), equals a commitment, rho,
- *      nullifier, rho-PDA or nullifier-PDA of the own notes.
+ *      nullifier, rho-PDA or nullifier-PDA of the own notes — deposits AND change notes — nor the
+ *      exit account's address or its token account (M1c: the account walk is local).
  * POSITIVE controls: the same checker flags a restore variant that looks up one nullifier PDA, one
- * that lists one rho PDA's signatures, and one that filters accounts by one own commitment.
+ * that lists one rho PDA's signatures, one that filters accounts by one own commitment, and (M1c)
+ * one that reads the exit account's balance and one that looks up a change note's nullifier PDA.
  *
  * WARM CACHE (R1-m3): a second restore starts from the encrypted sync cache, so its walk carries
  * `until` = the cache's cursor, the newest finalized tree signature. That signature MAY be one of
@@ -38,7 +42,7 @@ import {PublicKey} from '@solana/web3.js';
 import type {Connection} from '@solana/web3.js';
 import {base58} from '@scure/base';
 import {clearAllStores, initSecureMmkv} from '../../../../store/mmkv/instances';
-import {TEST_SEED, offlineKeys, seedBytes, strangerField} from '../__testing__/offlineA0';
+import {TEST_SEED, offlineKeys, seedBytes} from '../__testing__/offlineA0';
 import type {FakeProverNative} from '../__testing__/offlineA0';
 import {appendDeposit, appendWithdraw, nullifierPda, rhoPda} from '../__testing__/ownHistory';
 import {chainFrom, recordedConnection} from '../__testing__/recordedRpc';
@@ -53,10 +57,18 @@ const TREE = JSON.parse(
 const fake = NativeModules.NocturaProver as unknown as FakeProverNative;
 const own = offlineKeys(TEST_SEED);
 
+/** slip10:1 of the test seed and its ATA, from the offline exit-account vectors (gen-exit-account-vectors.mjs). */
+const EXIT_1 = (
+  JSON.parse(readFileSync(join(__dirname, 'fixtures/a0-exit-account-vectors.json'), 'utf8')) as {
+    seeds: {accounts: {scheme: string; address: string; ata: string}[]}[];
+  }
+).seeds[0]!.accounts[1]!;
+
 /**
- * The recorded history + three own deposits (counters 0, 1, 2) + an unshield of the second —
- * appended after the third deposit, or (`ownDepositNewest`) before it, so that the newest tree tx
- * is our own deposit 2.
+ * The recorded history + three own deposits (counters 0, 1, 2) + a relayed unshield of the second
+ * with OUR change note (c1) + an unshield of c1 to the seed's slip10:1 with our change (c2) — the
+ * unshields appended after the third deposit, or (`ownDepositNewest`) before it, so that the
+ * newest tree tx is our own deposit 2.
  */
 function chainWithOwnNotes(ownDepositNewest = false): {
   chain: RecordedChain;
@@ -65,13 +77,23 @@ function chainWithOwnNotes(ownDepositNewest = false): {
 } {
   const chain = chainFrom(TREE);
   const depositSignatures: string[] = [];
-  const notes = [0n, 1n, 2n].map(i => ({rho: own.rho(i), amount: 10n + i}));
+  const notes = [0n, 1n, 2n].map(i => ({rho: own.rho(i), amount: 1_000_000n + i}));
   const withNullifier = notes.map(n => ({...n, commitment: own.commitment(n.amount, n.rho), nullifier: own.nullifier(n.rho)}));
   const deposit = (k: number) => {
     const n = withNullifier[k]!;
     depositSignatures.push(appendDeposit(chain, {amount: n.amount, rho: n.rho, commitment: n.commitment}).signature);
   };
-  const unshield = () => appendWithdraw(chain, {nullifier: withNullifier[1]!.nullifier, changeCommitment: strangerField(9)});
+  // the change notes, from the offline equations: rho_change = P3(0x13, nullifier, 0), input − 400,000 − 10,000
+  const c1rho = own.rhoChange(withNullifier[1]!.nullifier);
+  const c1 = {rho: c1rho, amount: 1_000_001n - 410_000n, commitment: '', nullifier: own.nullifier(c1rho)};
+  c1.commitment = own.commitment(c1.amount, c1.rho);
+  const c2rho = own.rhoChange(c1.nullifier);
+  const c2 = {rho: c2rho, amount: c1.amount - 110_000n, commitment: '', nullifier: own.nullifier(c2rho)};
+  c2.commitment = own.commitment(c2.amount, c2.rho);
+  const unshield = () => {
+    appendWithdraw(chain, {nullifier: withNullifier[1]!.nullifier, changeCommitment: c1.commitment});
+    appendWithdraw(chain, {nullifier: c1.nullifier, changeCommitment: c2.commitment, amount: 100_000n, to: {owner: EXIT_1.address, ata: EXIT_1.ata}});
+  };
   deposit(0);
   deposit(1);
   if (ownDepositNewest) {
@@ -88,13 +110,15 @@ function chainWithOwnNotes(ownDepositNewest = false): {
     ownValues.set(base58.encode(bytes), label);
     ownValues.set(Buffer.from(bytes).toString('base64'), label);
   };
-  withNullifier.forEach((n, i) => {
+  [...withNullifier, c1, c2].forEach((n, i) => {
     add(`rho[${i}]`, Buffer.from(n.rho, 'hex'));
     add(`commitment[${i}]`, Buffer.from(n.commitment, 'hex'));
     add(`nullifier[${i}]`, Buffer.from(n.nullifier, 'hex'));
     add(`rhoPda[${i}]`, new PublicKey(rhoPda(n.rho)).toBytes());
     add(`nullifierPda[${i}]`, new PublicKey(nullifierPda(n.nullifier)).toBytes());
   });
+  add('exitAccount', new PublicKey(EXIT_1.address).toBytes());
+  add('exitTokenAccount', new PublicKey(EXIT_1.ata).toBytes());
   return {chain, ownValues, depositSignatures};
 }
 
@@ -137,12 +161,19 @@ beforeEach(() => {
   fake.reset();
 });
 
-it('the fixture has own notes to leak: 3 deposits, 1 spent, 15 distinct own values × 3 encodings', async () => {
+it('the fixture has own notes to leak: 3 deposits + 2 change notes (2 spent), an exit account — 27 distinct own values × 3 encodings', async () => {
   const {chain, ownValues} = chainWithOwnNotes();
-  expect(new Set(ownValues.values()).size).toBe(15);
-  expect(ownValues.size).toBe(45);
+  expect(new Set(ownValues.values()).size).toBe(27);
+  expect(ownValues.size).toBe(81);
   const res = await restoreA0FromSeed(recordedConnection(chain).connection, seedBytes(TEST_SEED), {sync: {useCache: false}});
-  expect(res.notes.map(n => n.status)).toEqual(['unspent', 'spent', 'unspent']);
+  expect(res.notes.map(n => [n.depositIndex ?? 'change', n.status])).toEqual([
+    [0n, 'unspent'],
+    [1n, 'spent'],
+    [2n, 'unspent'],
+    ['change', 'spent'],
+    ['change', 'unspent'],
+  ]);
+  expect(res.exitAccounts).toEqual(['slip10:1']);
 });
 
 it('a full restore makes exactly the tree sync\'s requests, none of them note-specific', async () => {
@@ -153,7 +184,7 @@ it('a full restore makes exactly the tree sync\'s requests, none of them note-sp
   const plain = recordedConnection(chain);
   await syncA0Tree(plain.connection, {useCache: false});
   expect(rec.requests).toEqual(plain.requests);
-  expect(rec.requests).toHaveLength(1 + 19 + 1);
+  expect(rec.requests).toHaveLength(1 + 20 + 1);
 
   expect([...new Set(rec.requests.map(r => r.method))].sort()).toEqual([
     'getAccountInfo',
@@ -169,7 +200,7 @@ it('R1-m3: a warm-cache restore (two runs) makes exactly two plain cached syncs\
   const first = await restoreA0FromSeed(rec.connection, seedBytes(TEST_SEED));
   const second = await restoreA0FromSeed(rec.connection, seedBytes(TEST_SEED));
   expect(second.notes).toEqual(first.notes);
-  expect(second.notes.map(n => n.status)).toEqual(['unspent', 'spent', 'unspent']);
+  expect(second.notes.map(n => n.status)).toEqual(['unspent', 'spent', 'unspent', 'spent', 'unspent']);
 
   clearAllStores();
   initSecureMmkv('test-key');
@@ -177,14 +208,14 @@ it('R1-m3: a warm-cache restore (two runs) makes exactly two plain cached syncs\
   await syncA0Tree(plain.connection);
   await syncA0Tree(plain.connection);
   expect(rec.requests).toEqual(plain.requests);
-  // run 1: the full walk (1 + 19 + 1); run 2: one page `until` the cursor (nothing newer) + the account
-  expect(rec.requests).toHaveLength(21 + 2);
-  const warm = rec.requests[21]!;
+  // run 1: the full walk (1 + 20 + 1); run 2: one page `until` the cursor (nothing newer) + the account
+  expect(rec.requests).toHaveLength(22 + 2);
+  const warm = rec.requests[22]!;
   expect(warm.method).toBe('getSignaturesForAddress');
   // the cursor is the newest tree tx — here OUR deposit 2's signature, which the RPC already
   // forwarded and lists to everyone (the file header)
   expect((warm.params[1] as {until?: string}).until).toBe(depositSignatures[2]);
-  expect(rec.requests[22]!.method).toBe('getAccountInfo');
+  expect(rec.requests[23]!.method).toBe('getAccountInfo');
   expect(noteSpecificRequests(rec.requests, chain, ownValues)).toEqual([]);
 });
 
@@ -200,27 +231,43 @@ describe('positive controls: the checker flags a restore that asks about one not
   it('a lookup of one own nullifier PDA (the spent-check a restore must not make)', async () => {
     const pda = nullifierPda(own.nullifier(own.rho(0n)));
     expect(await variant(c => c.getAccountInfo(new PublicKey(pda)))).toEqual([
-      `#21 getAccountInfo(${pda}) is not one of the sync's requests`,
-      '#21 getAccountInfo carries nullifierPda[0]',
+      `#22 getAccountInfo(${pda}) is not one of the sync's requests`,
+      '#22 getAccountInfo carries nullifierPda[0]',
     ]);
   });
 
   it('a signature listing of one own rho PDA (the deposit-time pre-check, made at restore)', async () => {
     const pda = rhoPda(own.rho(2n));
     expect(await variant(c => c.getSignaturesForAddress(new PublicKey(pda), {limit: 1}))).toEqual([
-      `#21 getSignaturesForAddress(${pda}) is not one of the sync's requests`,
-      '#21 getSignaturesForAddress carries rhoPda[2]',
+      `#22 getSignaturesForAddress(${pda}) is not one of the sync's requests`,
+      '#22 getSignaturesForAddress carries rhoPda[2]',
+    ]);
+  });
+
+  it('(M1c) a balance read of the recovered exit account (the account walk must stay local)', async () => {
+    expect(await variant(c => c.getBalance(new PublicKey(EXIT_1.address)))).toEqual([
+      `#22 getBalance(${EXIT_1.address}) is not one of the sync's requests`,
+      '#22 getBalance carries exitAccount',
+    ]);
+  });
+
+  it('(M1c) a lookup of a CHANGE note\'s nullifier PDA', async () => {
+    const c1 = own.rhoChange(own.nullifier(own.rho(1n)));
+    const pda = nullifierPda(own.nullifier(c1));
+    expect(await variant(c => c.getAccountInfo(new PublicKey(pda)))).toEqual([
+      `#22 getAccountInfo(${pda}) is not one of the sync's requests`,
+      '#22 getAccountInfo carries nullifierPda[3]',
     ]);
   });
 
   it('an account filter on one own commitment', async () => {
-    const cmBytes = Buffer.from(own.commitment(11n, own.rho(1n)), 'hex');
+    const cmBytes = Buffer.from(own.commitment(1_000_001n, own.rho(1n)), 'hex');
     const flagged = await variant(c =>
       c.getProgramAccounts(new PublicKey(A0.programId), {filters: [{memcmp: {offset: 8, bytes: base58.encode(cmBytes)}}]}),
     );
     expect(flagged).toEqual([
-      `#21 getProgramAccounts(${A0.programId}) is not one of the sync's requests`,
-      '#21 getProgramAccounts carries commitment[1]',
+      `#22 getProgramAccounts(${A0.programId}) is not one of the sync's requests`,
+      '#22 getProgramAccounts carries commitment[1]',
     ]);
   });
 });

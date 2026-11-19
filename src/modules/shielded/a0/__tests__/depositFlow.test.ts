@@ -568,10 +568,10 @@ describe('R1-I2: the pre-check\'s GAP and LIMIT refusals', () => {
     net.accounts.set(rhoPda(rho), {owner: PROGRAM, finalized: true});
   };
 
-  it('(a) the store counter is 21 past the last own hit, its PDA present and its deposit SYNCED → E_A0_DEPOSIT_PRECHECK_GAP; the store byte-identical, keys closed', async () => {
+  it('(a) the store counter is 101 past the last own hit, its PDA present and its deposit SYNCED → E_A0_DEPOSIT_PRECHECK_GAP; the store byte-identical, keys closed', async () => {
     ownDeposit(0n, 700n);
-    ownDeposit(21n, 800n); // in the synced history (else UNSYNCED fires first), past the gap limit of 20
-    setA0NextDepositIndex(21n);
+    ownDeposit(101n, 800n); // in the synced history (else UNSYNCED fires first), past the gap limit of 100 (S15)
+    setA0NextDepositIndex(101n);
     const before = raw();
     await expect(prepare()).rejects.toMatchObject({code: 'E_A0_DEPOSIT_PRECHECK_GAP'});
     expect(raw()).toBe(before);
@@ -581,12 +581,19 @@ describe('R1-I2: the pre-check\'s GAP and LIMIT refusals', () => {
     expect(net.sent).toHaveLength(0);
   });
 
-  it('(a) control: 20 past (inside the gap limit) → recovery reaches it, both imported, the deposit proceeds at 21', async () => {
+  it('(a) control: 100 past (inside the gap limit) → recovery reaches it, both imported, the deposit proceeds at 101', async () => {
     ownDeposit(0n, 700n);
-    ownDeposit(20n, 800n);
-    setA0NextDepositIndex(20n);
-    await expect(prepare()).resolves.toMatchObject({depositIndex: 21n, importedNotes: 2});
-    expect(loadA0NoteStore().notes.map(n => n.depositIndex)).toEqual([0n, 20n]);
+    ownDeposit(100n, 800n);
+    setA0NextDepositIndex(100n);
+    await expect(prepare()).resolves.toMatchObject({depositIndex: 101n, importedNotes: 2});
+    expect(loadA0NoteStore().notes.map(n => n.depositIndex)).toEqual([0n, 100n]);
+  });
+
+  it('(a) S15: 21 past the last own hit — the M1b refusal — is now inside the limit: imported, the deposit proceeds at 22', async () => {
+    ownDeposit(0n, 700n);
+    ownDeposit(21n, 800n);
+    setA0NextDepositIndex(21n);
+    await expect(prepare()).resolves.toMatchObject({depositIndex: 22n, importedNotes: 2});
   });
 
   /** `n` consecutive pool-owned PDAs from counter 0 whose deposits appear one per check (another
