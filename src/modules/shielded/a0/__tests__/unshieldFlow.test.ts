@@ -39,6 +39,7 @@ import {loadA0NoteStore} from '../noteStore';
 import type {A0Note} from '../noteStore';
 import {loadA0AccountRegistry, resetA0ReservationsForTests} from '../accountRegistry';
 import {resetA0ReadoutForTests, setA0ReadoutDefaultsForTests} from '../checkpointReadout';
+import {A0_SUBMIT_HOLD_MS, armA0SubmitHold, resetA0SubmitHoldForTests, takeA0SubmitHold} from '../submitHold';
 import * as relayerClient from '../relayerClient';
 import {interpretA0SubmitAnswer} from '../relayerClient';
 import {A0RelayerUrlError} from '../relayerTransport';
@@ -239,6 +240,137 @@ describe('confirmed → the sync → the verifier → settled (§6 step 8)', () 
     expect(Object.keys(o!).sort()).toEqual(
       ['amount', 'at', 'ata', 'changeLeafIndex', 'destination', 'destinationWithoutSol', 'event', 'fee', 'grantLamports', 'owner', 'schema', 'seq', 'session', 'signature', 'status'].sort(),
     );
+  });
+});
+
+// ------------------------------------------------------------------ the M1c checkpoint's readout context and the submit hold (Task 9)
+
+describe('the checkpoint context on "unshield-submitting" (M1c Task 9, R2-N3)', () => {
+  it('the line carries the quote\'s fee payer and grant, the wallet kind, the registry and the hold — no seed-key set, no index', async () => {
+    await run(fresh(400_000n));
+    const [s] = readouts('unshield-submitting');
+    expect(s).toMatchObject({
+      owner: FRESH1.address,
+      ata: FRESH1.ata,
+      destination: 'fresh',
+      feePayer: RELAYER_FEE_PAYER,
+      gasGrantLamports: LIVE_GRANT.toString(),
+      walletKind: 'slip10',
+      heldMs: 0,
+    });
+    expect(s!.registry).toEqual([
+      {address: MAIN.address, role: 'main', linked: false},
+      {address: FRESH1.address, role: 'fresh-pending', linked: false},
+    ]);
+    // R2-N3: the seed's public-key set is read out once per start (startup-accounts), never here
+    expect(s).not.toHaveProperty('seedKeys');
+    expect(JSON.stringify(s)).not.toContain('slip10:');
+  });
+
+  it('"Another address": the registry is the main alone', async () => {
+    await run({destination: {kind: 'external', owner: OTHER.address}, amount: 250_000n});
+    const [s] = readouts('unshield-submitting');
+    expect(s!.registry).toEqual([{address: MAIN.address, role: 'main', linked: false}]);
+  });
+});
+
+describe('the devnet submit hold goes ONLY through options.holdMs (Task 7 ruling; M1c Task 9)', () => {
+  const T0 = 1_794_200_000;
+  /** the 30 s pause made instant; `during` runs inside it (the chain moves, the app is killed, …) */
+  const shortHold = (during: () => void = () => undefined) => {
+    const real = global.setTimeout;
+    const seen = {pauses: 0, submitsAtPause: -1};
+    const spy = jest.spyOn(global, 'setTimeout').mockImplementation(((fn: () => void, ms?: number) => {
+      if (ms === A0_SUBMIT_HOLD_MS) {
+        seen.pauses += 1;
+        seen.submitsAtPause = w.relayer.submits.length;
+        during();
+        return real(fn, 0);
+      }
+      return real(fn, ms);
+    }) as typeof setTimeout);
+    return {seen, restore: () => spy.mockRestore()};
+  };
+  // what the screen passes (UnshieldRunScreen): the one-shot hold, taken at the submit
+  const theScreensHold = {holdMs: () => takeA0SubmitHold()};
+
+  beforeEach(() => resetA0SubmitHoldForTests());
+
+  it('armed: the line says heldMs 30000, the request waits 30 s after the line, then goes out once; the next unshield is not held', async () => {
+    const h = shortHold();
+    try {
+      expect(armA0SubmitHold(true)).toBe(true);
+      expect(await run(fresh(400_000n), theScreensHold)).toMatchObject({status: 'spent'});
+    } finally {
+      h.restore();
+    }
+    expect(h.seen).toEqual({pauses: 1, submitsAtPause: 0}); // the pause came BEFORE the request
+    expect(w.relayer.submits).toHaveLength(1);
+    expect(readouts('unshield-submitting')[0]).toMatchObject({heldMs: A0_SUBMIT_HOLD_MS});
+    expect(readouts('submit-hold').map(p => p.state)).toEqual(['armed', 'taken']);
+    lines.length = 0;
+    await run({destination: {kind: 'main'}, amount: 10_000n}, theScreensHold);
+    expect(readouts('unshield-submitting')[0]).toMatchObject({heldMs: 0});
+  });
+
+  it('armed: the chain clock is re-read AFTER the hold — pendingSince is the later time (m-1)', async () => {
+    w.relayer.script.push({answer: 'unconfirmed', lands: false});
+    const h = shortHold(() => (w.net.clock = {slot: w.net.clock.slot + 75, blockTime: T0 + 30}));
+    try {
+      armA0SubmitHold(true);
+      await run(fresh(400_000n), theScreensHold);
+    } finally {
+      h.restore();
+    }
+    expect(h.seen.pauses).toBe(1);
+    expect(noteOf(w.notes[0]!.rho)).toMatchObject({status: 'pending', pendingSince: T0 + 30});
+  });
+
+  it('not armed: no pause, heldMs 0 (control)', async () => {
+    const h = shortHold();
+    try {
+      await run(fresh(400_000n), theScreensHold);
+    } finally {
+      h.restore();
+    }
+    expect(h.seen.pauses).toBe(0);
+    expect(readouts('unshield-submitting')[0]).toMatchObject({heldMs: 0});
+  });
+
+  it('killed inside the hold: nothing was sent; the note is PENDING with its intent, the reservation fresh-pending', async () => {
+    armA0SubmitHold(true);
+    const flow = run(fresh(400_000n), theScreensHold);
+    flow.catch(() => undefined);
+    for (let i = 0; i < 400 && readouts('unshield-submitting').length === 0; i++) {
+      await new Promise(r => setTimeout(r, 25));
+    }
+    expect(readouts('unshield-submitting')[0]).toMatchObject({heldMs: A0_SUBMIT_HOLD_MS});
+    await new Promise(r => setTimeout(r, 100));
+    resetA0UnshieldForTests(); // the kill: the pause's timer is gone, the call never resumes
+    expect(w.relayer.submits).toHaveLength(0);
+    const note = noteOf(w.notes[0]!.rho);
+    expect(note.status).toBe('pending');
+    expect(note.unshield).toMatchObject({owner: FRESH1.address, amount: 400_000n, destination: 'fresh', scheme: 'slip10:1'});
+    expect(registry()).toEqual([
+      {scheme: 'slip10:0', role: 'main'},
+      {scheme: 'slip10:1', role: 'fresh-pending'},
+    ]);
+  });
+
+  it('M-2: the `submit` stage is emitted AT the pending write — a throw inside the hold window comes after it (never "Not sent" over a pending note)', async () => {
+    const stages: A0UnshieldStage[] = [];
+    const code = await codeOf(
+      run(fresh(400_000n), {
+        onStage: st => stages.push(st),
+        holdMs: () => {
+          throw Object.assign(new Error('inside the hold window'), {code: 'E_TEST_HOLD'});
+        },
+      }),
+    );
+    expect(code).toBe('E_TEST_HOLD');
+    expect(stages[stages.length - 1]).toBe('submit');
+    expect(noteOf(w.notes[0]!.rho)).toMatchObject({status: 'pending'});
+    expect(w.relayer.submits).toHaveLength(0);
   });
 });
 
@@ -1038,7 +1170,17 @@ describe('the carry\'s rulings on Tasks 2, 4 and 6', () => {
     const out = await run(fresh(400_000n));
     expect(out).toMatchObject({status: 'landed-unverified', code: 'E_A0_VERIFY_SEED_SIGNER'});
     expect(out.status === 'landed-unverified' && out.detail.includes(MAIN.address)).toBe(true); // non-vacuous
-    expect(lines.filter(l => l.includes(MAIN.address))).toEqual([]);
+    // M1c Task 9 (R2-N3): the submitting line keeps the registry, so the main's address IS on that
+    // line — as the registry's main entry only. The detail itself, and the seed key it names, reach
+    // no other field of any line.
+    expect(lines.filter(l => out.status === 'landed-unverified' && l.includes(out.detail))).toEqual([]);
+    const payloads = lines.map(l => JSON.parse(l.split(' ').slice(3).join(' ')) as Record<string, unknown>);
+    const withoutRegistry = payloads.map(p => (p.event === 'unshield-submitting' ? {...p, registry: undefined} : p));
+    expect(withoutRegistry.filter(p => JSON.stringify(p).includes(MAIN.address))).toEqual([]);
+    expect(readouts('unshield-submitting')[0]!.registry).toEqual([
+      {address: MAIN.address, role: 'main', linked: false},
+      {address: FRESH1.address, role: 'fresh-pending', linked: false},
+    ]);
     expect(readouts('unshield-outcome')[0]).not.toHaveProperty('detail');
   });
 });

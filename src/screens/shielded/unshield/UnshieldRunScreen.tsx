@@ -8,6 +8,7 @@ import {cn} from '../../../utils/cn';
 import {formatTokenAmount} from '../../../utils/parseTokenAmount';
 import {ScreenSecurityManager} from '../../../modules/screenSecurity/screenSecurityModule';
 import {a0LandedUnverifiedText, unshieldA0} from '../../../modules/shielded/a0/unshieldFlow';
+import {takeA0SubmitHold} from '../../../modules/shielded/a0/submitHold';
 import type {
   A0UnshieldDestination,
   A0UnshieldOutcome,
@@ -195,7 +196,14 @@ export function UnshieldRunScreen({request, onDone, onBack}: UnshieldRunScreenPr
         return;
       }
       try {
-        const outcome = await unshieldA0(getConnection(), seed, {destination: request.destination, amount}, {onStage});
+        // the devnet checkpoint's one-shot submit hold enters the flow ONLY here, through holdMs
+        // (submitHold.ts; always 0 in production — the readout gate is closed there)
+        const outcome = await unshieldA0(
+          getConnection(),
+          seed,
+          {destination: request.destination, amount},
+          {onStage, holdMs: () => takeA0SubmitHold()},
+        );
         const t = Date.now();
         const current = at.stage;
         if (current !== null && done.current[current] === undefined) done.current[current] = t;

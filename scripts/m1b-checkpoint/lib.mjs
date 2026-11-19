@@ -433,7 +433,7 @@ export function judge({ readouts, wipe, kill, main, chain, launches = [], apkLin
       const still = nextStart.reconcile.stillPending.length;
       killPass = dropped === 1 && still === 0 && nextStart.notes?.pending === 0;
       killDetail = still
-        ? `not landed and still undecided (${nextStart.reconcile.stillPending.map(p => p.reason).join(',')}): wait ~2 min, restart the devnet app, collect, verify again`
+        ? `not landed and still undecided (${nextStart.reconcile.stillPending.map(p => p.reason).join(',')}): wait ~4 min (the blockhash expiry + the 300-block margin), restart the devnet app, collect, verify again`
         : `not landed on devnet; next start dropped ${dropped} expired pending deposit(s) — nothing left the account`;
     } else {
       killDetail = `the killed deposit FAILED on chain (${JSON.stringify(ktx.err)}); next start must have dropped it`;

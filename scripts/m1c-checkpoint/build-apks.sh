@@ -1,14 +1,18 @@
 #!/usr/bin/env bash
 # Builds the two APKs of the M1c checkpoint from ONE commit (spec §16: "each checkpoint also
 # builds the production APK of the same commit"), into OUT (default build/m1c-checkpoint/apks):
-#   devnet.apk       the devnet release app (ENVFILE=.env.devnet, com.nocturawallet.devnet)
-#   production.apk   the production release app (ENVFILE=.env.production, com.nocturawallet)
+#   devnet.apk               the devnet release app (ENVFILE=.env.devnet, com.nocturawallet.devnet)
+#   devnet-androidTest.apk   (only with NOCTURA_A0_KEYS_DIR set) the instrumentation APK of devnet.apk —
+#                            Task 6's A0ConfirmWindowTest, run by `phone --instrument` (M1c.N2); M1a's
+#                            build rule: it stages the four pinned A0 key files, so it needs their dir
+#   production.apk           the production release app (ENVFILE=.env.production, com.nocturawallet)
 # then reads both APKs' BuildConfig off the built files (m1c-checkpoint.mjs check-apks: the
 # readout gate is open in devnet.apk and closed in production.apk, with its negative control; the
 # devnet API_BASE ends in exactly one /v1 — the relayer URLs append bare paths to it) and writes
-# COMMIT, SHA256SUMS and CONFIG.json next to them. (M1b's script, adapted; M1c Task 9 extends it.)
+# COMMIT, SHA256SUMS and CONFIG.json next to them. (M1b's script, adapted; extended by M1c Task 9.)
 #
-#   ANDROID_NDK_HOME=~/Android/Sdk/ndk/27.1.12297006 scripts/m1c-checkpoint/build-apks.sh [OUT]
+#   ANDROID_NDK_HOME=~/Android/Sdk/ndk/27.1.12297006 [NOCTURA_A0_KEYS_DIR=<program side>/zk/keys/v2] \
+#     scripts/m1c-checkpoint/build-apks.sh [OUT]
 #
 # Needs: android/keystore.properties (release signing), the gitignored .env.devnet (NETWORK=devnet,
 # FEATURES_SHIELDED=true, LOCAL_PROVING=true, APP_ID_SUFFIX=.devnet — README "Before you start")
@@ -47,17 +51,31 @@ dirty=$(git -C "$root" status --porcelain --untracked-files=no)
 
 "$root/native/noctura-prover/build-android.sh"
 
-gradle=(./gradlew assembleRelease --console=plain --max-workers=3 -Pkotlin.compiler.execution.strategy=in-process)
+gradle=(./gradlew --console=plain --max-workers=3 -Pkotlin.compiler.execution.strategy=in-process)
 apk="$root/android/app/build/outputs/apk/release/app-release.apk"
 mkdir -p "$out"
 rm -f "$out"/*.apk "$out/CONFIG.json"
-(cd "$root/android" && ENVFILE="$devnet_env" "${gradle[@]}")
+tasks=(assembleRelease)
+if [ -n "${NOCTURA_A0_KEYS_DIR:-}" ]; then
+  tasks+=(assembleReleaseAndroidTest)
+else
+  echo "NOTE: NOCTURA_A0_KEYS_DIR is not set — no devnet-androidTest.apk; M1c.N2 (the confirmation window on the phone) cannot run" >&2
+fi
+(cd "$root/android" && ENVFILE="$devnet_env" "${gradle[@]}" "${tasks[@]}")
 cp "$apk" "$out/devnet.apk"
-(cd "$root/android" && ENVFILE=.env.production "${gradle[@]}")
+test_apk="$root/android/app/build/outputs/apk/androidTest/release/app-release-androidTest.apk"
+if [ -n "${NOCTURA_A0_KEYS_DIR:-}" ]; then
+  cp "$test_apk" "$out/devnet-androidTest.apk"
+  # the harness stays out of the release APK (M1a's reading, with its control on the test APK)
+  "$here/../m1a-checkpoint/check-release-apk.sh" "$out/devnet.apk"
+  "$here/../m1a-checkpoint/check-release-apk.sh" --expect-present "$out/devnet-androidTest.apk"
+fi
+(cd "$root/android" && ENVFILE=.env.production "${gradle[@]}" assembleRelease)
 cp "$apk" "$out/production.apk"
+"$here/../m1a-checkpoint/check-release-apk.sh" "$out/production.apk"
 
 echo "$commit${dirty:+ (dirty)}" > "$out/COMMIT"
-(cd "$out" && sha256sum devnet.apk production.apk > SHA256SUMS)
+(cd "$out" && sha256sum -- *.apk > SHA256SUMS)
 node "$here/m1c-checkpoint.mjs" check-apks --apks "$out"
 echo "built from $commit into $out:"
 cat "$out/SHA256SUMS"

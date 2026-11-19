@@ -2,6 +2,7 @@ import {useEffect} from 'react';
 import {Linking} from 'react-native';
 import {a0ReadoutEnabled} from '../modules/shielded/a0/checkpointReadout';
 import {A0_PINNED_CONTROL_LINK, runA0PinnedControl} from '../modules/shielded/a0/pinnedControl';
+import {A0_SUBMIT_HOLD_LINK, armA0SubmitHold} from '../modules/shielded/a0/submitHold';
 
 /**
  * The desk's trigger for the M1c `pinnedFetch` on-device control (spec §6.0; `pinnedControl.ts`):
@@ -20,6 +21,11 @@ import {A0_PINNED_CONTROL_LINK, runA0PinnedControl} from '../modules/shielded/a0
  * `{enabled: true}`. Forcing it open here would leave production (or any build with the hook's own
  * `enabled` wrongly true) depending on this file alone to keep the control closed, instead of on
  * the same `a0ReadoutEnabled()` check both this hook's default and the control itself use.
+ *
+ * M1c Task 9: the same listener reads the desk's second devnet link, `noctura://a0-hold-next-submit`
+ * (`submitHold.ts`, sent by `m1c-checkpoint.mjs hold-kill`): it arms the one-shot submit hold of the
+ * next unshield and nothing else — no request, no navigation. Exact match only (no prefix), and
+ * `armA0SubmitHold()` with no override, for the same one-gate reason as the control.
  */
 export function useA0PinnedControlLink(enabled: boolean = a0ReadoutEnabled()): void {
   useEffect(() => {
@@ -27,6 +33,10 @@ export function useA0PinnedControlLink(enabled: boolean = a0ReadoutEnabled()): v
       return undefined;
     }
     const handle = (url: string | null) => {
+      if (url === A0_SUBMIT_HOLD_LINK) {
+        armA0SubmitHold();
+        return;
+      }
       if (url !== A0_PINNED_CONTROL_LINK) {
         return;
       }

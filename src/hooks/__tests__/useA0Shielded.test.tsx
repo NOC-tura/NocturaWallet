@@ -57,6 +57,7 @@ const READY: A0StartupState = {
     restore: null,
     reconcile: {confirmed: [], dropped: [], stillPending: [], skipped: 0},
     unshields: {settled: [], reverted: [], stillPending: [], skipped: 0, released: [], promoted: []},
+    seedKeys: null,
   },
 };
 

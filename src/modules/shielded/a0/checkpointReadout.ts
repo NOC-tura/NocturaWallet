@@ -41,6 +41,7 @@
 import {isShieldedEnabled} from '../../../constants/features';
 import {NETWORK} from '../../../constants/programs';
 import type {KnownNetwork} from '../../../constants/networkGuard';
+import type {A0AccountEntry} from './accountRegistry';
 import type {A0DepositOutcome} from './depositFlow';
 import type {A0Note} from './noteStore';
 import type {A0StartupState} from './startup';
@@ -99,9 +100,19 @@ export function a0ReadoutLines(id: string, payload: {[k: string]: Json}, chunk: 
   return lines;
 }
 
+/**
+ * Whether a readout with these options is written: `o.enabled`, else the test defaults', else the
+ * gate (`a0ReadoutEnabled()`). The devnet checkpoint's submit hold (`submitHold.ts`) and the
+ * startup step's seed-key derivation (`startup.ts`, R2-N3) use the same answer, so neither can be
+ * live where its line would not be written.
+ */
+export function a0ReadoutActive(o: A0ReadoutOptions = {}): boolean {
+  return {...testDefaults, ...o}.enabled ?? a0ReadoutEnabled();
+}
+
 function emit(event: string, fields: {[k: string]: Json}, given: A0ReadoutOptions): void {
   const o = {...testDefaults, ...given};
-  if (!(o.enabled ?? a0ReadoutEnabled())) {
+  if (!a0ReadoutActive(given)) {
     return;
   }
   const session = o.session ?? SESSION;
@@ -316,9 +327,61 @@ const unshieldFields = (u: A0ReadoutUnshield): {[k: string]: Json} => ({
   destination: u.destination,
 });
 
-/** Just before the relayer is asked to submit (the pending unshield is written) — the kill window opens here. */
-export function readA0UnshieldSubmitting(u: A0ReadoutUnshield, o: A0ReadoutOptions = {}): void {
-  emit('unshield-submitting', unshieldFields(u), o);
+/**
+ * What the M1c checkpoint's desk needs beside the unshield's public part (Task 9), read out ONCE
+ * per unshield, on the `unshield-submitting` line:
+ *   - `feePayer` / `gasGrantLamports`: the quote the human approved (public: the relayer's quote);
+ *   - `walletKind`: `slip10` | `cli` — the KIND of the wallet's scheme, never its index;
+ *   - `registry`: the registry at that moment, `{address, role, linked}` in registry order — the
+ *     desk reads the destination's role and, for the second fresh unshield of §16 M1c CP2, that
+ *     the first's reservation was still `fresh-pending` when the second reserved its own;
+ *   - `heldMs`: the devnet checkpoint's one-shot submit hold (`submitHold.ts`; 0 = none).
+ * NOT the seed's public-key set (R2-N3): that is read out once per start on `startup-accounts`;
+ * this line adds no linkage beyond it. Never the registry's index, the scheme string, a rho or
+ * the nullifier.
+ */
+export interface A0ReadoutUnshieldContext {
+  feePayer: string;
+  gasGrantLamports: bigint | null;
+  walletKind: 'slip10' | 'cli';
+  registry: readonly A0AccountEntry[];
+  heldMs: number;
+}
+
+const registryFields = (entries: readonly A0AccountEntry[]): Json[] =>
+  entries.map(e => ({address: e.address, role: e.role, linked: e.linked === true}));
+
+const codeOf = (e: unknown, fallback: string): string =>
+  typeof (e as {code?: unknown})?.code === 'string' ? (e as {code: string}).code : fallback;
+
+/**
+ * Just before the relayer is asked to submit (the pending unshield is written) — the kill window
+ * opens here. `context` is read only when the gate is open (the production build never computes
+ * it). A context that throws is reported by its code only (`contextError`, never its message) — a
+ * readout never breaks the flow it reports on.
+ */
+export function readA0UnshieldSubmitting(
+  u: A0ReadoutUnshield,
+  context: () => A0ReadoutUnshieldContext,
+  o: A0ReadoutOptions = {},
+): void {
+  if (!a0ReadoutActive(o)) {
+    return;
+  }
+  let f: {[k: string]: Json};
+  try {
+    const c = context();
+    f = {
+      feePayer: c.feePayer,
+      gasGrantLamports: c.gasGrantLamports === null ? null : c.gasGrantLamports.toString(),
+      walletKind: c.walletKind,
+      registry: registryFields(c.registry),
+      heldMs: c.heldMs,
+    };
+  } catch (e) {
+    f = {contextError: codeOf(e, 'E_A0_READOUT_CONTEXT')};
+  }
+  emit('unshield-submitting', {...unshieldFields(u), ...f}, o);
 }
 
 /** The unshield's outcome as `unshieldA0` returns it; a verifier refusal is read out with its code. */
@@ -366,4 +429,75 @@ export function readA0UnshieldReconcile(r: A0UnshieldReconcileReport, o: A0Reado
     },
     o,
   );
+}
+
+/**
+ * After the startup step settled `ready` (M1c Task 9), right after `startup`: a separate event, so
+ * M1b's `startup` line — a byte contract with its desk — stays as it is. It carries:
+ *   - `accounts`: the registry as stored (`{address, role, linked}`; the desk judges "the fresh
+ *     account comes back" from the first one after a wipe); an unreadable registry is reported by
+ *     its code only (`accountsError`), never as an empty list; no record yet → null;
+ *   - `seedKeys` (R2-N3): the seed's public-key set (registry ∪ `cli` ∪ `slip10:0`), derived by the
+ *     startup step with the gate open (`A0StartupResult.seedKeys`) — the desk's "no signer is a key
+ *     of this seed" reads it; once per start, so every unshield line after it adds no linkage.
+ *     Not derived → null; a derivation that failed → null and its code (`seedKeysError`);
+ *   - `restore`: the restore's M1c counters (null without a restore), each named for what it
+ *     counts (Task 5 M3 / M7):
+ *       `changeNotes`            change notes imported by the restore;
+ *       `unmatchedChangeLeaves`  spends of our notes whose change was NOT imported: a Withdraw
+ *                                event without its instruction, a change amount below zero, or a
+ *                                change commitment that is not ours (three cases, one count);
+ *       `attributionCalls`       the attribution's local `matchSpent([n], …)` calls (no request);
+ *       `accountIndicesTried`    the `slip10` indices the account walk derived;
+ *       `exitAccounts`           the `slip10` indices the walk MATCHED to an exit — index 0 (the
+ *                                main) included when a withdrawal went to the main: it is NOT a
+ *                                count of fresh accounts.
+ * Public values only: addresses and counts, never an index, a scheme string, a rho or a nullifier.
+ */
+export function readA0StartupAccounts(
+  state: A0StartupState,
+  accounts: () => readonly A0AccountEntry[] | null,
+  o: A0ReadoutOptions = {},
+): void {
+  if (state.phase !== 'ready' || !a0ReadoutActive(o)) {
+    return;
+  }
+  const r = state.result.restore;
+  const seed = state.result.seedKeys;
+  let list: Json = null;
+  let accountsError: string | null = null;
+  try {
+    const entries = accounts();
+    list = entries === null ? null : registryFields(entries);
+  } catch (e) {
+    accountsError = codeOf(e, 'E_A0_READOUT_ACCOUNTS');
+  }
+  emit(
+    'startup-accounts',
+    {
+      restoredBecause: state.result.restoredBecause,
+      restore: r
+        ? {
+            changeNotes: r.changeNotes,
+            unmatchedChangeLeaves: r.unmatchedChangeLeaves,
+            attributionCalls: r.attributionCalls,
+            accountIndicesTried: r.accountIndicesTried,
+            exitAccounts: r.exitAccounts,
+          }
+        : null,
+      accounts: list,
+      accountsError,
+      seedKeys: seed?.keys ? [...seed.keys] : null,
+      seedKeysError: seed?.error ?? null,
+    },
+    o,
+  );
+}
+
+/**
+ * The devnet checkpoint's submit hold (`submitHold.ts`): `armed` by the desk's link, `taken` by an
+ * unshield, or `expired` — an arm older than ten minutes found by the next unshield (m-4).
+ */
+export function readA0SubmitHold(state: 'armed' | 'taken' | 'expired', heldMs: number, o: A0ReadoutOptions = {}): void {
+  emit('submit-hold', {state, heldMs}, o);
 }

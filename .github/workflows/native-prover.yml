@@ -180,12 +180,16 @@ jobs:
       # THE M1c CHECKPOINT'S DESK TESTS (Task 1: the pinnedFetch gate): the pinned-control readouts
       # parsed from the hand-written sample (the app's Jest suite holds its lines to the same file), the
       # §6.0 judge with a FAIL row per field it decides and the negative control's own line, the API
-      # base read off the recorded dexdump, and the trigger over a mocked adb. No network, no device.
+      # base read off the recorded dexdump, and the trigger over a mocked adb. Task 9: the unshield
+      # readouts (their hand-written sample), the desk's OWN decoder of a relayed withdraw held to the
+      # two recorded devnet txs with a failing row per §6.8 check, the programData / wchange_vk readings
+      # (the real-ELF row skips loudly without NOCTURA_A0_PROGRAM_SO), the M1c judge per line with its
+      # negative controls, the hold + kill and the manual wipe over a mocked adb. No network, no device.
       - name: The M1c checkpoint desk tests (node --test scripts/m1c-checkpoint/*.test.mjs)
         working-directory: .
         run: |
           files=(scripts/m1c-checkpoint/*.test.mjs)
-          [ "${#files[@]}" -ge 2 ] && [ -f "${files[0]}" ] || { echo "::error::no M1c desk test files matched: ${files[*]}"; exit 1; }
+          [ "${#files[@]}" -ge 3 ] && [ -f "${files[0]}" ] || { echo "::error::no M1c desk test files matched: ${files[*]}"; exit 1; }
           node --no-warnings --test "${files[@]}"
 
       - uses: dtolnay/rust-toolchain@stable

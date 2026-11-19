@@ -10,7 +10,12 @@
  *   2. the pending deposits are reconciled (`reconcileA0PendingDeposits`);
  *   3. (M1c) the pending unshields are reconciled (`reconcileA0PendingUnshields`, unshieldFlow.ts):
  *      a landed one settled and verified, one past its chain-time window put back; no pending
- *      unshield and no orphaned fresh reservation → no request.
+ *      unshield and no orphaned fresh reservation → no request;
+ *   4. (M1c Task 9, R2-N3; DEVNET READOUT GATE ONLY) the seed's public-key set for the checkpoint's
+ *      `startup-accounts` line (`a0SeedPublicKeys`: registry ∪ `cli` ∪ `slip10:0`), derived from
+ *      its own copy of the seed AFTER step 3 (the registry is then this start's) and BEFORE the
+ *      `finally` zero-fills every copy. Under a closed gate (production) no copy is taken and
+ *      nothing is derived; a derivation that fails is carried by its code and never fails the step.
  *
  * THE SHIELDED BALANCE IS SHOWN ONLY AFTER THIS (Task 5 (screens)): `a0StartupState().phase === 'ready'`.
  * Before it (`running`) the balance is unknown, and an `error` is shown as such — never as 0.
@@ -39,7 +44,8 @@ import type {A0ReconcileReport} from './depositFlow';
 import {reconcileA0PendingUnshields} from './unshieldFlow';
 import type {A0UnshieldReconcileReport} from './unshieldFlow';
 import type {A0SyncOptions} from './treeSync';
-import {readA0Startup} from './checkpointReadout';
+import {a0ReadoutActive, readA0Startup, readA0StartupAccounts} from './checkpointReadout';
+import {a0SeedPublicKeys, loadA0AccountRegistry} from './accountRegistry';
 
 export interface A0StartupResult {
   /** why a restore ran, or null when the record existed and decoded */
@@ -48,7 +54,12 @@ export interface A0StartupResult {
   reconcile: A0ReconcileReport;
   /** M1c: the pending unshields' reconciliation */
   unshields: A0UnshieldReconcileReport;
+  /** M1c Task 9 (R2-N3): the seed's public keys for the checkpoint readout; null under a closed gate */
+  seedKeys: A0StartupSeedKeys | null;
 }
+
+/** The seed's public-key set (registry ∪ cli ∪ slip10:0), or the code of a derivation that failed. */
+export type A0StartupSeedKeys = {keys: readonly string[]; error: null} | {keys: null; error: string};
 
 export type A0StartupState =
   | {phase: 'idle'}
@@ -70,6 +81,8 @@ export async function runA0Startup(
   options: {sync?: A0SyncOptions; bound?: A0StoreBinding} = {},
 ): Promise<A0StartupResult> {
   const unshieldSeed = seed.slice();
+  // R2-N3: the readout's copy, taken only with the gate open (production never derives the set)
+  const readoutSeed = a0ReadoutActive() ? seed.slice() : null;
   try {
     const bound = options.bound ?? mmkvSecure();
     const bind = {...options, bound};
@@ -89,10 +102,20 @@ export async function runA0Startup(
     const restore = restoredBecause ? (await restoreA0FromSeed(connection, seed, bind)).stats : null;
     const reconcile = await reconcileA0PendingDeposits(connection, bind);
     const unshields = await reconcileA0PendingUnshields(connection, unshieldSeed, bind);
-    return {restoredBecause, restore, reconcile, unshields};
+    let seedKeys: A0StartupSeedKeys | null = null;
+    if (readoutSeed !== null) {
+      try {
+        seedKeys = {keys: a0SeedPublicKeys(readoutSeed, {bound}), error: null};
+      } catch (e) {
+        const code = typeof (e as {code?: unknown})?.code === 'string' ? (e as {code: string}).code : 'E_A0_READOUT_SEED_KEYS';
+        seedKeys = {keys: null, error: code};
+      }
+    }
+    return {restoredBecause, restore, reconcile, unshields, seedKeys};
   } finally {
     seed.fill(0);
     unshieldSeed.fill(0);
+    readoutSeed?.fill(0);
   }
 }
 
@@ -109,6 +132,8 @@ function setState(s: A0StartupState): void {
   }
   // The M1b checkpoint's readout (devnet build only; public values only — checkpointReadout.ts).
   readA0Startup(s, () => loadA0NoteStore().notes);
+  // M1c's checkpoint: the registry, the seed's public keys and the restore's M1c counters (own event)
+  readA0StartupAccounts(s, () => loadA0AccountRegistry());
 }
 
 /** The session's startup state (for the shielded balance, Task 5 (screens)). */

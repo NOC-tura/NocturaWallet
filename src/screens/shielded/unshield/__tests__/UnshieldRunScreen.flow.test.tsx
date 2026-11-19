@@ -36,7 +36,8 @@ import type {FakeProverNative} from '../../../../modules/shielded/a0/__testing__
 import {WITHDRAW_IO, unshieldWorld} from '../../../../modules/shielded/a0/__testing__/unshieldWorld';
 import type {UnshieldWorld} from '../../../../modules/shielded/a0/__testing__/unshieldWorld';
 import {resetA0ReservationsForTests} from '../../../../modules/shielded/a0/accountRegistry';
-import {resetA0ReadoutForTests} from '../../../../modules/shielded/a0/checkpointReadout';
+import {resetA0ReadoutForTests, setA0ReadoutDefaultsForTests} from '../../../../modules/shielded/a0/checkpointReadout';
+import {A0_SUBMIT_HOLD_MS, armA0SubmitHold, resetA0SubmitHoldForTests} from '../../../../modules/shielded/a0/submitHold';
 import {loadA0NoteStore} from '../../../../modules/shielded/a0/noteStore';
 import {resetA0UnshieldForTests} from '../../../../modules/shielded/a0/unshieldFlow';
 import type {A0UnshieldOptions, A0UnshieldStage} from '../../../../modules/shielded/a0/unshieldFlow';
@@ -135,5 +136,68 @@ describe('the run over the real flow — R3-N4 (M-3)', () => {
     expect(r.getByTestId('unshield-check-again')).toBeTruthy();
     expect(r.queryByText(/Not sent|Nothing was sent/)).toBeNull();
     expect(loadA0NoteStore().notes.find(n => n.rho === w.notes[0]!.rho)!.status).toBe('pending');
+  }, 120_000);
+});
+
+describe('the devnet submit hold through the screen (M1c Task 9: the hold only via options.holdMs; M-2)', () => {
+  let lines: string[];
+  const readouts = (event: string) =>
+    lines.map(l => JSON.parse(l.split(' ').slice(3).join(' ')) as Record<string, unknown>).filter(p => p.event === event);
+  /** the 30 s pause made instant; `during` runs inside it */
+  const shortHold = (during: () => void) => {
+    const real = global.setTimeout;
+    const spy = jest.spyOn(global, 'setTimeout').mockImplementation(((fn: () => void, ms?: number) => {
+      if (ms === A0_SUBMIT_HOLD_MS) {
+        during();
+        return real(fn, 0);
+      }
+      return real(fn, ms);
+    }) as typeof setTimeout);
+    return () => spy.mockRestore();
+  };
+  beforeEach(() => {
+    lines = [];
+    resetA0SubmitHoldForTests();
+    // the devnet gate, opened for these rows (the hold is closed under Jest's production config)
+    setA0ReadoutDefaultsForTests({enabled: true, sink: l => lines.push(l), session: 's'});
+  });
+  afterEach(() => resetA0SubmitHoldForTests());
+
+  it('armed by the desk\'s link: the screen\'s run takes the hold (heldMs 30000 on its line) and lands as usual', async () => {
+    let paused = 0;
+    const restore = shortHold(() => (paused += 1));
+    try {
+      armA0SubmitHold(true);
+      const r = await runScreen();
+      expect(title(r)).toBe('Unshielded');
+    } finally {
+      restore();
+    }
+    expect(paused).toBe(1);
+    expect(readouts('unshield-submitting')[0]).toMatchObject({heldMs: A0_SUBMIT_HOLD_MS});
+    expect(readouts('submit-hold').map(p => p.state)).toEqual(['armed', 'taken']);
+  }, 120_000);
+
+  it('a throw INSIDE the hold window (the wallet replaced while held) never reads "Not sent" over the pending note', async () => {
+    const rho = w.notes[0]!.rho;
+    let before: ReturnType<typeof loadA0NoteStore> | null = null;
+    const restore = shortHold(() => {
+      before = loadA0NoteStore();
+      clearAllStores();
+      initSecureMmkv('another-wallet');
+    });
+    let r: ReturnType<typeof render>;
+    try {
+      armA0SubmitHold(true);
+      r = await runScreen();
+    } finally {
+      restore();
+    }
+    // the pending unshield WAS written before the hold (in the replaced wallet's store)
+    expect(before!.notes.find(n => n.rho === rho)).toMatchObject({status: 'pending'});
+    expect(w.relayer.submits).toHaveLength(0);
+    expect(stages[stages.length - 1]).toBe('submit');
+    expect(title(r!)).toBe('Not in this wallet');
+    expect(r!.queryByText(/Not sent|Nothing was sent/)).toBeNull();
   }, 120_000);
 });

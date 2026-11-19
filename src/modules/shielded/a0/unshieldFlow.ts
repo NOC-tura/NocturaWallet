@@ -36,8 +36,11 @@
  *      when a slot has none, m-2), THE one anchor (R2-N2), then the PENDING UNSHIELD is written (§8:
  *      `pendingSince` + the approved intent, one write), and only then `submit` (kind
  *      withdraw_change, destination = the approved ATA, destinationOwner = the approved owner,
- *      cuLimit 200,000). A hold between the write and the submit (`holdMs`, Task 9's devnet hold)
- *      re-reads the clock after it and keeps the LATER value (m-1); a null or failing re-read keeps
+ *      cuLimit 200,000). The `submit` STAGE is emitted at the pending write (Task 8 review M-2): from
+ *      there on the unshield may stand, whatever throws before the request leaves. A hold between
+ *      the write and the request (`holdMs`, Task 9's devnet hold, `submitHold.ts` via the run
+ *      screen) is asked once per submit, read out as `heldMs` on `unshield-submitting`, and
+ *      re-reads the clock after it, keeping the LATER value (m-1); a null or failing re-read keeps
  *      the anchor and never fails the unshield;
  *   9. the outcome (§6 step 8), by Task 3's disposition:
  *      - `verify` (`confirmed`) → `confirm`: the tree sync, retried up to
@@ -869,8 +872,20 @@ export async function unshieldA0(
       const pub = {owner: approval.owner, ata: approval.ata, amount, fee: quote.fee, destination: kind};
       markA0PendingUnshield(note.rho, pendingSince, intent, bound);
       pendingWritten = true;
-      readA0UnshieldSubmitting(pub);
+      // M1c Task 9 / Task 8 review M-2: the `submit` stage starts AT the pending write — from here on
+      // the unshield may stand, so a throw inside a hold (or anywhere before the request) is never
+      // read as "nothing was sent" by the run screen, whose `recorded` flag is set on `submit`
+      onStage('submit');
       const heldMs = options.holdMs?.() ?? 0;
+      const quoted = quote;
+      // the checkpoint's context (devnet readout gate only; R2-N3: the registry, never the seed set)
+      readA0UnshieldSubmitting(pub, () => ({
+        feePayer: quoted.feePayer,
+        gasGrantLamports: quoted.gasGrantLamports,
+        walletKind: scheme.kind,
+        registry: loadA0AccountRegistry({bound}) ?? [],
+        heldMs,
+      }));
       if (heldMs > 0) {
         await sleep(heldMs);
         // m-1 / R2-N2: the window counts from the last chain time before the request leaves. A null
@@ -885,7 +900,6 @@ export async function unshieldA0(
           refreshA0PendingSince(note.rho, later, bound);
         }
       }
-      onStage('submit');
       let result: A0SubmitResult;
       try {
         result = await submitA0WithdrawChange(flight.payload, options.transport);

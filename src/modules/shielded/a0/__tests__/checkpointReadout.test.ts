@@ -71,8 +71,8 @@ const READY: A0StartupState = {
       spentNotes: 0,
       foreignRhoHits: 0,
       highestHit: 0,
-      // M1c Task 5's counters: not read out (yet — Task 9 picks what the checkpoint needs); the
-      // sample below has none of them, so the fixed field list keeps them out
+      // M1c Task 5's counters: never on THIS line — Task 9 reads them out on the separate
+      // "startup-accounts" line; the sample below has none of them (the fixed field list keeps them out)
       changeNotes: 0,
       unmatchedChangeLeaves: 0,
       attributionCalls: 0,
@@ -89,6 +89,8 @@ const READY: A0StartupState = {
     },
     // M1c: the startup line is built from its fixed list — the unshields' reconciliation has its own line
     unshields: {settled: [], reverted: [], stillPending: [], skipped: 0, released: [], promoted: []},
+    // M1c Task 9 (R2-N3): the seed keys go on the separate startup-accounts line, never on this one
+    seedKeys: {keys: ['GoBAmZzHvD6F4KHLNmBFh2wZAGE1dwwufeTbifSHEYfd'], error: null},
   },
 };
 

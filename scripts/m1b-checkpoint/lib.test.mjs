@@ -256,7 +256,7 @@ describe('the judge — every line, and a negative control for each', () => {
     assert.equal(lineOf(s, 'M1b.4').pass, true, lineOf(s, 'M1b.4').detail);
     s.readouts[4].readout.reconcile = { confirmed: [], dropped: [], stillPending: [{ reason: 'not-expired' }] };
     assert.equal(lineOf(s, 'M1b.6').pass, false);
-    assert.match(lineOf(s, 'M1b.6').detail, /wait ~2 min/);
+    assert.match(lineOf(s, 'M1b.6').detail, /wait ~4 min \(the blockhash expiry \+ the 300-block margin\)/);
   });
   test('verify\'s record carries the restore\'s highest counter hit (R1-m4 / R2-N4) and the next start\'s skipped count', () => {
     const s = scenario();

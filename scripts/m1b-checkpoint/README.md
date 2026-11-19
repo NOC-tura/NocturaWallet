@@ -303,7 +303,7 @@ CHECKPOINT PASSED
 | M1b.3 | no wipe, another package, or the next start found a record (the wipe did not clear the encrypted store) | `wipe.json`, the first `startup` readout after it |
 | M1b.4 | a landed deposit did not come back, or came back at another leaf / amount | the `startup` readout's `notes` |
 | M1b.5 | the phone's count is not within the chain's list (more than listed, or fewer than listed a minute before its run) | `chain.json` → `tree` |
-| M1b.6 | no kill, too late, not reconciled, or still pending (then: wait 2 min, restart the app, `collect`, `verify`) | `kill.json`, the `startup` readout after it |
+| M1b.6 | no kill, too late, not reconciled, or still pending (then: wait ~4 min — the blockhash expiry + the 300-block margin —, restart the app, `collect`, `verify`) | `kill.json`, the `startup` readout after it |
 | M1b.7 | the I-3 test failed or ran at another commit | `i3-jest.json` |
 | M1b.A1–A3 | the APKs are not the devnet / production builds of this commit | `apks/CONFIG.json`, `apks/COMMIT` |
 | M1b.8–10 | a launch failed, crashed, or the production app wrote a readout line (**the gate leaked** — stop) | `launches.json`, `crash-*.txt` |
