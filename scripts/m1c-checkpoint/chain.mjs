@@ -254,7 +254,11 @@ export function decodeRelayedTx(result) {
     }
   }
   const index = a => keys.indexOf(a);
-  const lamports = (which, a) => (index(a) < 0 ? null : BigInt(meta[which]?.[index(a)] ?? 0));
+  // a missing balance array or entry is no value (never 0: "owner pre-balance 0" must be read)
+  const lamports = (which, a) => {
+    const v = index(a) < 0 ? undefined : meta[which]?.[index(a)];
+    return Number.isInteger(v) ? BigInt(v) : null;
+  };
   const tokens = (which, a) => {
     const e = (meta[which] ?? []).find(t => t.accountIndex === index(a) && t.mint === A0.mint);
     return e ? BigInt(e.uiTokenAmount.amount) : null;

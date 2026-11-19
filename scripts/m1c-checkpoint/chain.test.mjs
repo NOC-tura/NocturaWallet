@@ -212,6 +212,15 @@ test('R2-I1: a landing no readout gives the phone\'s values for (out null — na
   assert.ok(C.judgeRelayedUnshield({ tx: decoded(FRESH), sub: { ...FRESH.sub, gasGrantLamports: '2000000' }, out: null }).checks.some(x => x.name === 'grant' && !x.pass));
 });
 
+test('a missing pre/post balance is no value — never read as 0 (fix round 1, minor)', () => {
+  const noPre = r => { const m = { ...r.meta }; delete m.preBalances; return { ...r, meta: m }; };
+  for (const out of [FRESH.out, null]) {
+    const j = C.judgeRelayedUnshield({ tx: decoded(FRESH, noPre), sub: FRESH.sub, out });
+    assert.equal(j.ownerPreLamports, null);
+    assert.ok(j.checks.some(x => x.name === 'grant' && !x.pass), String(out));
+  }
+});
+
 test('relayedWithdrawKey: the (ATA, amount, fee) of the ONE FeGSS withdraw_with_change, or null; decodeAnyTx never throws', () => {
   assert.deepEqual(C.relayedWithdrawKey(decoded(FRESH)), { ata: FRESH.sub.ata, amount: 400000n, fee: 10000n });
   assert.deepEqual(C.relayedWithdrawKey(decoded(EXISTING)), { ata: EXISTING.sub.ata, amount: 400000n, fee: 10000n });

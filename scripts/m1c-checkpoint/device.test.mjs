@@ -139,6 +139,17 @@ test('m-4: a lapsed arm ("submit-hold expired") is reported, never a kill — th
   assert.equal(k2.expired, null);
 });
 
+test('the killer keeps only the readout lines of the stream (no quadratic re-parse of a chatty log; fix round 1, minor)', () => {
+  const k = new D.HeldSubmitKiller({ kill: () => ({ out: '' }) });
+  const noise = Array.from({ length: 2000 }, (_, i) => `11-19 10:00:00.000  1234  1234 I SomeApp: line ${i}`).join('\n') + '\n';
+  k.push(noise);
+  assert.equal(k.text, '');
+  // control: a readout among the noise is kept and still kills
+  k.push(noise + logOf(ulines[5]) + '\n' + noise);
+  assert.notEqual(k.killed, null);
+  assert.equal(k.text.split('\n').filter(Boolean).length, 1);
+});
+
 test('the kill is a force-stop of the DEVNET app only (the guard allows it; no data touched)', () => {
   const calls = [];
   D.killDevnetApp(args => (calls.push(args), { status: 0, out: '' }));

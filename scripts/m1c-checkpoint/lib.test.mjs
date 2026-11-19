@@ -538,12 +538,13 @@ test('the fee payer\'s window: other programs\', other testers\' and earlier txs
   early.blockTime += 1;
   assert.equal(lineOf(r, 'M1c.V').pass, false);
   // garbage, a failed tx, a tx of another program, another tester's withdraw: no throw, no FAIL
+  // (fix round 1, I-2: a listed signature whose READ is null is no longer "skipped" — probe D's row)
   const r2 = run();
   const other = structuredClone(r2.chain.txs[SIG_EXT]);
   other.transaction[0] = other.transaction[0].slice(0, 40); // a truncated wire
   const failed = structuredClone(r2.chain.txs[SIG_FRESH]);
   failed.meta.err = { InstructionError: [3, { Custom: 6001 }] };
-  Object.assign(r2.chain.feePayerTxs, { ['2'.repeat(88)]: other, ['3'.repeat(88)]: failed, ['5'.repeat(88)]: null });
+  Object.assign(r2.chain.feePayerTxs, { ['2'.repeat(88)]: other, ['3'.repeat(88)]: failed });
   rowOf(r2, x => x.event === 'unshield-submitting' && x.owner === FRESH).fee = '10000';
   assert.equal(lineOf(r2, 'M1c.V').pass, true, lineOf(r2, 'M1c.V').detail);
   // the listing not read at all: V cannot say nothing went unaccounted
@@ -571,6 +572,99 @@ test('R2-N3: the seed set is the SESSION\'s startup-accounts line — missing, u
   assert.deepEqual(failsWith(r => { Object.assign(rowOf(r, x => x.event === 'startup-accounts' && x.session === 's5'), { seedKeys: null, seedKeysError: 'E_A0_ACCOUNTS_CORRUPT' }); }), ['M1c.V', 'M1c.C3']);
   // the line's own registry joins the set: a registry address that signed is a seed signer
   assert.deepEqual(failsWith(r => { rowOf(r, x => x.event === 'unshield-submitting' && x.walletKind === 'cli').registry.push({ address: FP, role: 'fresh-exit', linked: false }); }), ['M1c.V', 'M1c.C3']);
+});
+
+// ------------------------------------------------ fix round 1 (review I-1 / I-2): a pending outcome that NAMES its signature
+
+/** CP2a's fresh unshield read out `pending / unconfirmed` WITH its signature (the ordinary not-in-sync / unconfirmed path). */
+const freshPendingWithSig = r => {
+  const o = rowOf(r, x => x.event === 'unshield-outcome' && x.owner === FRESH);
+  for (const k of ['changeLeafIndex', 'grantLamports', 'destinationWithoutSol']) {
+    delete o[k];
+  }
+  Object.assign(o, { status: 'pending', signature: SIG_FRESH, reason: 'unconfirmed' });
+};
+
+test('I-1 (probe A): pending WITH its signature, then the reconcile settles it verified:false → V FAILS and the banner names it', () => {
+  const r = run();
+  freshPendingWithSig(r);
+  settledByCheckAgain(r);
+  Object.assign(rowOf(r, x => x.event === 'unshield-reconcile' && x.reverted === 1).settled[0], { verified: false, code: 'E_A0_VERIFY_GRANT' });
+  const j = L.judgeM1c(r);
+  assert.equal(j.lines.find(l => l.id === 'M1c.V').pass, false);
+  assert.match(j.info.join('\n'), new RegExp(`VERIFIER REFUSED 1 landed unshield\\(s\\): ${SIG_FRESH} E_A0_VERIFY_GRANT`));
+  // control: settled verified:true → V passes, and the detail says the app settled it
+  const r2 = run();
+  freshPendingWithSig(r2);
+  settledByCheckAgain(r2);
+  const v2 = lineOf(r2, 'M1c.V');
+  assert.equal(v2.pass, true, v2.detail);
+  assert.ok(v2.detail.includes(`${SIG_FRESH.slice(0, 10)}… fresh (the app said pending; settled by a reconcile): all 12 §6.8 checks pass`), v2.detail);
+  // and with no reconcile naming it yet: judged on the chain, said so
+  const r3 = run();
+  freshPendingWithSig(r3);
+  assert.ok(lineOf(r3, 'M1c.V').detail.includes('(the app said pending; not yet settled by the app)'), lineOf(r3, 'M1c.V').detail);
+});
+
+test('I-2 (probe B): pending WITH its signature, the app settled it, the desk\'s read is null → V FAILS (a null read is not "never landed")', () => {
+  const r = run();
+  freshPendingWithSig(r);
+  settledByCheckAgain(r);
+  r.chain.txs[SIG_FRESH] = null;
+  const v = lineOf(r, 'M1c.V');
+  assert.equal(v.pass, false);
+  assert.ok(v.detail.includes(`${SIG_FRESH.slice(0, 10)}… the app settled it, but devnet answered null`), v.detail);
+});
+
+test('I-2 (probe C): pending WITH its signature, the read is null, the fee payer listing holds it → V FAILS (not read — run verify again)', () => {
+  const r = run();
+  freshPendingWithSig(r);
+  r.chain.txs[SIG_FRESH] = null;
+  const v = lineOf(r, 'M1c.V');
+  assert.equal(v.pass, false);
+  assert.ok(v.detail.includes(`${SIG_FRESH.slice(0, 10)}… named by an unshield-outcome (pending) and listed by the relayer fee payer, but its read is null`), v.detail);
+});
+
+test('I-2 (probe D): a fee payer signature whose own read came back null → V FAILS (not read, never "not ours")', () => {
+  const r = run();
+  r.chain.feePayerTxs['7'.repeat(88)] = null;
+  const v = lineOf(r, 'M1c.V');
+  assert.equal(v.pass, false);
+  assert.match(v.detail, /NOT READ 7777777777…: the relayer fee payer listed it, devnet answered null to its read — run `verify` again/);
+});
+
+test('I-2: "never landed" is positive evidence only — the listing was read and lacks it, or the tx failed on chain; otherwise V FAILS', () => {
+  // the read is null AND the fee payer's listing (read) does not hold it → listed, not judged, no failure
+  const r = run();
+  freshPendingWithSig(r);
+  r.chain.txs[SIG_FRESH] = null;
+  delete r.chain.feePayerTxs[SIG_FRESH];
+  const v = lineOf(r, 'M1c.V');
+  assert.equal(v.pass, true, v.detail);
+  assert.match(v.detail, /named, not on devnet: 5F8Ks5…/);
+  // the tx is on chain but FAILED (err): not a landing either
+  const r2 = run();
+  freshPendingWithSig(r2);
+  const failed = structuredClone(r2.chain.txs[SIG_FRESH]);
+  failed.meta.err = { InstructionError: [3, { Custom: 6001 }] };
+  r2.chain.txs[SIG_FRESH] = failed;
+  delete r2.chain.feePayerTxs[SIG_FRESH];
+  assert.equal(lineOf(r2, 'M1c.V').pass, true, lineOf(r2, 'M1c.V').detail);
+  // …but the listing NOT read: a null read proves nothing → FAIL
+  const r3 = run();
+  freshPendingWithSig(r3);
+  r3.chain.txs[SIG_FRESH] = null;
+  delete r3.chain.feePayerTxs;
+  assert.equal(lineOf(r3, 'M1c.V').pass, false);
+});
+
+test('a fee payer tx with an unknown blockTime counts as inside the window (minor)', () => {
+  const r = run();
+  freshPendingWithoutSig(r);
+  const t = structuredClone(r.chain.feePayerTxs[SIG_FRESH]);
+  t.blockTime = null;
+  r.chain.feePayerTxs[SIG_FRESH] = t;
+  assert.match(lineOf(r, 'M1c.V').detail, new RegExp(`UNACCOUNTED landing ${SIG_FRESH}`));
 });
 
 test('no recorded run fails every judged line (no vacuous PASS)', () => {

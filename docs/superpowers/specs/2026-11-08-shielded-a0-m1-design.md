@@ -195,6 +195,11 @@ made before this execution and is recorded, not made, here.
   own signature list from the first submit − 2 min is read too, and a relayed withdraw to a submitted (ATA, amount, fee)
   that no readout names FAILS (R1-I1 / R2-I1 / R3). A signature-less line accounts for nothing; the desk accounts by
   signature, never by `reason`. The phone's own leaf / grant comparisons are "n/a" where no readout carries them.
+  The app's verdict on a landing is its outcome AND every settled[] entry of that signature (a `pending` outcome
+  hides no later refusal). The one exception to "every named signature is judged": a `pending` outcome's signature
+  that never landed is listed, not judged — only on positive evidence (its tx FAILED on chain, or the fee payer's
+  listing was read and lacks it). A null `getTransaction` is "not read", never evidence: a named or listed signature
+  whose read is null FAILS ("run verify again").
 - **§16 M1c "no signer is a key of this seed":** the signers are exactly `[3jvhiz…FaGe]`, no signer is in the seed set
   the devnet readout reports, and the only seed key in the tx is the destination owner (ruling 5). **The seed set
   (R2-N3):** read out ONCE per app start on `startup-accounts` (`seedKeys` = registry ∪ `cli` ∪ `slip10:0`, derived by

@@ -98,7 +98,12 @@ export class HeldSubmitKiller {
     if (cut < 0) {
       return [];
     }
-    this.text += this.buffer.slice(0, cut + 1);
+    // only the readout lines are kept (the parser reads nothing else): a chatty log is not re-parsed whole
+    for (const line of this.buffer.slice(0, cut + 1).split('\n')) {
+      if (line.includes(L.READOUT_TAG)) {
+        this.text += `${line}\n`;
+      }
+    }
     this.buffer = this.buffer.slice(cut + 1);
     const fresh = [];
     for (const r of L.readoutsFromLog(this.text).readouts) {

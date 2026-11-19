@@ -357,20 +357,29 @@ export function feePayerWindowStart(entries) {
 
 /**
  * The landings the desk judges (R1-I1 / R2-I1 / R3), each joined to the `unshield-submitting` line
- * it settles:
+ * it settles. A null `getTransaction` is "not read", never evidence (review I-2): the desk passes
+ * only on a tx it decoded.
  *   - every `unshield-outcome` naming a signature (any status), joined to the last submitting line
- *     before it in the same process with the same public part; a `pending` one whose signature is
- *     not on devnet (or failed there) is not a landing (`notLanded`, listed, never a failure);
- *   - every `unshield-reconcile.settled[]` signature no outcome named, joined by the (destination
- *     ATA, amount, fee) read from ITS decoded tx to the last submitting line before the reconcile
- *     line (any process — the reconcile runs at a later start); no such line, or no decodable
- *     relayed withdraw on devnet → `unjoined` (a FAIL of M1c.V).
- * Returns {landings: [{via, signature, sub, subEntry, out, outSeenAt, verified, code, seedKeys,
- * tx}], unjoined: [{signature, why}], notLanded: [signature]}.
+ *     before it in the same process with the same public part. Its app verdict is the outcome's
+ *     AND every `unshield-reconcile.settled[]` entry of the same signature (review I-1: a `pending`
+ *     outcome hides nothing the app settled later; `verified: false` anywhere is a refusal). A
+ *     `pending` one is "never landed" (`notLanded`: listed, not judged, no failure) ONLY on positive
+ *     evidence: its tx was read and FAILED on chain, or the relayer fee payer's listing was read and
+ *     does not hold it (every relayed tx is signed by that key). A null read that a settled[] entry
+ *     or the fee payer listing contradicts — or with no listing read — is `unjoined` (a FAIL);
+ *   - every settled[] signature no outcome named, joined by the (destination ATA, amount, fee) read
+ *     from ITS decoded tx to the last submitting line before the reconcile line (any process); no
+ *     such line, or no decodable relayed withdraw on devnet → `unjoined`.
+ * `feePayerTxs`: the fee payer's listing as `verify` read it (null: not read).
+ * Returns {landings: [{via, signature, sub, subEntry, out, outSeenAt, verified, code, settledByApp,
+ * seedKeys, tx}], unjoined: [{signature, why}], notLanded: [signature]}.
  */
-export function landingsOf(entries, txs) {
+export function landingsOf(entries, txs, feePayerTxs = null) {
   const same = (a, b) => UNSHIELD_KEYS.every(k => a[k] === b[k]);
   const isSub = x => x.readout.event === 'unshield-submitting' && !('contextError' in x.readout);
+  const listing = feePayerTxs && typeof feePayerTxs === 'object' ? feePayerTxs : null;
+  const settledOf = sig =>
+    entries.flatMap(x => (x.readout.event === 'unshield-reconcile' ? x.readout.settled.filter(s => s.signature === sig) : []));
   const landings = [];
   const unjoined = [];
   const notLanded = [];
@@ -381,9 +390,21 @@ export function landingsOf(entries, txs) {
       return;
     }
     byOutcome.add(r.signature);
-    const tx = C.decodeAnyTx(txs[r.signature] ?? null);
+    const raw = txs[r.signature] ?? null;
+    const tx = C.decodeAnyTx(raw);
+    const settled = settledOf(r.signature);
     if (r.status === 'pending' && (!tx || !tx.ok)) {
-      notLanded.push(r.signature);
+      if (tx && !tx.ok) {
+        notLanded.push(r.signature); // read, and it FAILED on chain: not a landing
+      } else if (settled.length) {
+        unjoined.push({ signature: r.signature, why: `the app settled it, but devnet answered null to its read — run \`verify\` again` });
+      } else if (listing === null) {
+        unjoined.push({ signature: r.signature, why: 'named by an unshield-outcome (pending), its read is null and the fee payer listing was not read: no evidence it never landed' });
+      } else if (r.signature in listing) {
+        unjoined.push({ signature: r.signature, why: 'named by an unshield-outcome (pending) and listed by the relayer fee payer, but its read is null — run `verify` again' });
+      } else {
+        notLanded.push(r.signature); // the listing was read and the relayer never signed it
+      }
       return;
     }
     const subs = entries.slice(0, i).filter(y => isSub(y) && y.readout.session === r.session && same(y.readout, r));
@@ -392,7 +413,10 @@ export function landingsOf(entries, txs) {
       unjoined.push({ signature: r.signature, why: `named by an unshield-outcome (${r.status}): no unshield-submitting line before it in its process` });
       return;
     }
-    landings.push({ via: 'outcome', signature: r.signature, sub: subEntry.readout, subEntry, out: r, outSeenAt: x.seenAt, verified: r.status !== 'landed-unverified', code: r.code ?? null, seedKeys: seedKeysOf(entries, subEntry), tx });
+    const refusal = settled.find(s => !s.verified);
+    const verified = r.status !== 'landed-unverified' && !refusal;
+    const code = r.status === 'landed-unverified' ? r.code : refusal ? refusal.code : null;
+    landings.push({ via: 'outcome', signature: r.signature, sub: subEntry.readout, subEntry, out: r, outSeenAt: x.seenAt, verified, code, settledByApp: settled.length > 0, seedKeys: seedKeysOf(entries, subEntry), tx });
   });
   entries.forEach((x, i) => {
     const r = x.readout;
@@ -417,7 +441,9 @@ export function landingsOf(entries, txs) {
         unjoined.push({ signature: s.signature, why: `named by a reconcile: no unshield-submitting line before it for (${key.ata}, ${key.amount}, ${key.fee})` });
         continue;
       }
-      landings.push({ via: 'settled', signature: s.signature, sub: subEntry.readout, subEntry, out: null, outSeenAt: x.seenAt, verified: s.verified, code: s.code, seedKeys: seedKeysOf(entries, subEntry), tx });
+      const all = settledOf(s.signature);
+      const refusal = all.find(e => !e.verified);
+      landings.push({ via: 'settled', signature: s.signature, sub: subEntry.readout, subEntry, out: null, outSeenAt: x.seenAt, verified: !refusal, code: refusal ? refusal.code : null, settledByApp: true, seedKeys: seedKeysOf(entries, subEntry), tx });
     }
   });
   return { landings, unjoined, notLanded };
@@ -425,9 +451,11 @@ export function landingsOf(entries, txs) {
 
 /**
  * R1-I1: the relayed FeGSS `withdraw_with_change` txs the relayer fee payer landed in the session's
- * window to an (ATA, amount, fee) this session submitted that NO readout names. `feePayerTxs`:
- * {signature: getTransaction result}, the fee payer's listing as `verify` read it (other programs',
- * other testers' and failed txs are skipped without throwing). null when the listing was not read.
+ * window to an (ATA, amount, fee) this session submitted that NO readout names (`unaccounted`), and
+ * the listed signatures whose own read came back null (`unread` — "not read", never "not ours",
+ * review I-2). `feePayerTxs`: {signature: getTransaction result}, the listing as `verify` read it;
+ * other programs', other testers' and failed txs are skipped without throwing; a tx with no known
+ * blockTime counts as inside the window. null when the listing was not read.
  */
 export function unaccountedLandings(entries, feePayerTxs) {
   if (!feePayerTxs || typeof feePayerTxs !== 'object') {
@@ -437,9 +465,14 @@ export function unaccountedLandings(entries, feePayerTxs) {
   const submitted = entries.filter(x => x.readout.event === 'unshield-submitting').map(x => x.readout);
   const named = new Set(namedSignatures(entries));
   const out = [];
+  const unread = [];
   for (const [signature, result] of Object.entries(feePayerTxs)) {
+    if (result === null || result === undefined) {
+      unread.push(signature);
+      continue;
+    }
     const tx = C.decodeAnyTx(result);
-    if (!tx || !tx.ok || start === null || !Number.isInteger(tx.blockTime) || tx.blockTime < start) {
+    if (!tx || !tx.ok || start === null || (Number.isInteger(tx.blockTime) && tx.blockTime < start)) {
       continue;
     }
     const key = C.relayedWithdrawKey(tx);
@@ -450,7 +483,7 @@ export function unaccountedLandings(entries, feePayerTxs) {
       out.push({ signature, ...key });
     }
   }
-  return out;
+  return { unaccounted: out, unread };
 }
 
 /**
@@ -468,8 +501,8 @@ export function judgeM1c({ readouts, chain, facts, wipe, kill, launches = [], ap
   const info = [];
   const add = (id, text, pass, detail = '') => lines.push({ id, text, pass: Boolean(pass), detail });
   const all = unshieldsOf(readouts);
-  const { landings, unjoined, notLanded } = landingsOf(readouts, chain.txs ?? {});
-  const unaccounted = unaccountedLandings(readouts, chain.feePayerTxs);
+  const { landings, unjoined, notLanded } = landingsOf(readouts, chain.txs ?? {}, chain.feePayerTxs ?? null);
+  const window = unaccountedLandings(readouts, chain.feePayerTxs);
   const verdictOf = l => C.judgeRelayedUnshield({ tx: l.tx, sub: { ...l.sub, seedKeys: l.seedKeys }, out: l.out });
   const fails = j => j.checks.filter(c => !c.pass);
   const fmt = j => (fails(j).length ? `FAILED: ${fails(j).map(c => `${c.name} (${c.detail})`).join('; ')}` : `all ${j.checks.length} §6.8 checks pass`);
@@ -489,16 +522,19 @@ export function judgeM1c({ readouts, chain, facts, wipe, kill, launches = [], ap
   // M1c.V — EVERY landed signature any readout names (R1-I1 / R2-I1), and nothing landed unnamed
   const vParts = landings.map(
     l =>
-      `${l.signature.slice(0, 10)}… ${l.sub.destination}${l.via === 'settled' ? ' (settled by a reconcile)' : ''}${l.verified ? '' : ` (the app's verifier REFUSED it: ${l.code})`}${l.via === 'outcome' && l.out.status !== 'spent' ? ` (the app said ${l.out.status})` : ''}: ${fmt(verdicts.get(l))}`,
+      `${l.signature.slice(0, 10)}… ${l.sub.destination}${l.via === 'settled' ? ' (settled by a reconcile)' : ''}${l.via === 'outcome' && l.out.status === 'pending' ? ` (the app said pending; ${l.settledByApp ? 'settled by a reconcile' : 'not yet settled by the app'})` : ''}${l.via === 'outcome' && l.out.status === 'landed-unverified' ? ' (the app said landed-unverified)' : ''}${l.verified ? '' : ` (the app's verifier REFUSED it: ${l.code})`}: ${fmt(verdicts.get(l))}`,
   );
   for (const u of unjoined) {
     vParts.push(`${u.signature.slice(0, 10)}… ${u.why}`);
   }
-  if (unaccounted === null) {
+  if (window === null) {
     vParts.push('the relayer fee payer\'s signatures were not read (`verify` reads them): an unaccounted landing cannot be excluded');
   } else {
-    for (const u of unaccounted) {
+    for (const u of window.unaccounted) {
       vParts.push(`UNACCOUNTED landing ${u.signature}: a relayed withdraw to (${u.ata}, ${u.amount}, ${u.fee}) this session submitted, named by no readout`);
+    }
+    for (const sig of window.unread) {
+      vParts.push(`NOT READ ${sig.slice(0, 10)}…: the relayer fee payer listed it, devnet answered null to its read — run \`verify\` again`);
     }
   }
   if (notLanded.length) {
@@ -507,7 +543,7 @@ export function judgeM1c({ readouts, chain, facts, wipe, kill, launches = [], ap
   add(
     'M1c.V',
     'EVERY relayed unshield the phone recorded passes every §6.8 condition on its own devnet transaction (the desk\'s decoder), above all: the only signer is the pinned relayer fee payer and no key of this seed signed',
-    landings.length >= 1 && landings.every(passes) && unjoined.length === 0 && unaccounted !== null && unaccounted.length === 0,
+    landings.length >= 1 && landings.every(passes) && unjoined.length === 0 && window !== null && window.unaccounted.length === 0 && window.unread.length === 0,
     vParts.length ? vParts.join(' | ') : 'no landed unshield recorded (run `collect` after each unshield)',
   );
   const refused = landings.filter(l => !l.verified);
