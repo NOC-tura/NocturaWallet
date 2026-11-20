@@ -10,6 +10,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-11-20-shielded-ux-b-vocabulary-design.md` (owner-approved 2026-11-20). Executors read the spec and this plan together; where they differ, the "Spec ambiguities and their resolutions" section below says which reading this plan takes and why.
 
+**Revision 2 (2026-11-20):** after Fable plan review 1 (`.superpowers/sdd/2026-11-20-shielded-ux-b-plan-review.md`: 0 Critical, 7 Important, 9 Minor) and two owner decisions of 2026-11-20 — A1: when the fresh account is unavailable NOTHING is preselected (M1c's S11 stays; spec §3.3 amended in the same commit); A10: "Amounts and parties stay private on-chain." is deleted from Receive's M2 branch. The section "Review 1 resolutions" at the end lists each finding and what changed.
+
 **Base:** branch `feat/shielded-ux-b-vocabulary`, stacked on part A (`feat/shielded-ux-a-quick-fixes`, PR #124). Retarget to `main` once #124 merges; never merge the two back to back without retargeting (lesson of PR #97).
 
 ## Global Constraints
@@ -24,11 +26,12 @@
 - M1c's flow, reconcile and verifier suites (`src/modules/shielded/a0/__tests__/**`) keep every assertion unchanged. Only screen-copy rows change, and each changed row gets a trailing comment `// part B: <old> → <new>` (spec §6 "each changed row says why"). A negative row that names an old word (`queryByText(/Unshielded|CONFIRMED/)`) is rewritten to the new word, never deleted — left alone it would pass vacuously.
 - Cardinal rules (CLAUDE.md): BigInt amounts end to end, TypeScript strict (no `any`, no `@ts-ignore`), no `// TODO`, every send/sign CTA debounced 500 ms and disabled on tap (unchanged logic — keep it).
 - Gates, every task, with their real exit codes read (not the tick): `npx jest` (alone, nothing else on the line), `npx tsc --noEmit`, `npm run lint:ci` (exactly `✖ 144 problems (0 errors, 144 warnings)` — no new warnings), `node scripts/check-no-tge-date.mjs`. When a Kotlin file or an Android resource changes (Task 6), also the Kotlin JVM job of `.github/workflows/android-jvm.yml` (command in Task 6).
-- Commits end with the trailer `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. One commit per task.
+- Reviews (spec §7, owner rule: every review goes to Fable): each task has one implementer, then a Fable task review, a fix loop, and a scoped Fable re-review of the fixes, before the next task starts; after Task 8's owner approval, a final Fable review of the whole branch. See "Execution notes".
+- Commits end with the trailer `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`, whichever model implements the task. This is the session-mandated attribution (controller ruling, as on PRs #123 / #124); the PR body states which model implemented which task. One commit per task.
 
 ## Review Focus
 
-1. **The fresh account is unavailable (cli wallet S9, no grant S11) → main is preselected (spec §3.3).** A person who never opens "Change" must still see that the exit links to the deposit: the main-account warning shows at once under the collapsed row, and the CTA hands over `{kind: 'main'}` only on a tap. Test: Task 3, "Review Focus 1".
+1. **The fresh account is unavailable (cli wallet S9, no grant S11) → nothing is preselected (owner decision A1).** The collapsed row reads "To: Choose a destination · Change", the one-line reason is visible, and the CTA stays disabled until the person picks; picking "My main account" shows the link warning at once, and only a tap hands over `{kind: 'main'}`. Test: Task 3, "Review Focus 1" (M1c's S11 row, its assertions kept, and the S9 row).
 2. **A blocking condition is never hidden behind Details.** The SOL-short warning, "no private note can pay the relayer fee", the refused quote, the over-the-limit hint and the honest sentences stay visible with Details collapsed. Test: Task 3, "Review Focus 2".
 3. **The amount boundary on Make public.** MAX fills exactly the max; exactly the max → no hint and the CTA enabled; one base unit more → the hint and the CTA disabled (BigInt, not float). Test: Task 3, "Review Focus 3" (plus Task 2's component rows).
 4. **Import retry after a failed balance RPC.** The warning and the full list first; a Retry that then finds one funded account shows "We found your wallet" (the "Use a different account" state is reset), and a wallet whose only funded account is the CLI scheme is offered that account. Test: Task 7, "Review Focus 4".
@@ -38,16 +41,17 @@
 
 These are the readings this plan takes. Each is the smaller or the more secure change; the owner may overturn any.
 
-- **A1 — "main is preselected" (spec §3.3) vs M1c's S11 ("otherwise nothing is").** `a0UnshieldDestinationOffer` returns `preselected: null` when the fresh account is unavailable, and M1c's module tests assert it. Resolution: the module is untouched (out of scope); `UnshieldSide` preselects `'main'` when the offer's `preselected` is null, once, as the spec says. The S11 screen row ("nothing preselected, the CTA disabled until a choice") is rewritten to the spec's behaviour, and Review Focus 1 makes the link warning visible without a tap. This reverses an M1c screen ruling at the owner's word; it is listed for the owner's phone pass.
-- **A2 — "Your deposit is public on chain" "stays" (spec §4, deposit #19–#21), but no screen shows that sentence today.** Resolution: Task 4 adds it on the deposit #21 card whenever a signature exists (the deposit was sent), testID `shield-status-public`. Adding an honest line is the safe direction.
-- **A3 — the banned-word scan covers ALL of `src/screens/**` and `src/components/**` (spec §3.1), which includes screens §4 does not list:** #15 explainer, Receive (shielded payment code), Send's shielded-address error, History's "Shielded" filter, the shielded #19 of the old transfer (`TxSimulateScreen`), onboarding Success, Portfolio. Resolution: Task 5 swaps the word in each (no layout change). Two module files render screen copy and are added to the scan: `src/modules/shielded/a0/unshieldCheck.ts` (the "Check again" captions) and `src/hooks/useA0Shielded.ts` (one message).
-- **A4 — "one-line reason" for the unavailable fresh account (spec §3.3).** M1c's §11 reasons are one or two sentences and tested verbatim. Resolution: shown as one caption (not truncated), text unchanged (it contains no banned word).
+- **A1 — OWNER DECISION 2026-11-20: nothing is preselected when the fresh account is unavailable.** Spec §3.3 said "main is preselected" while also keeping M1c's selection logic, and M1c's S11 says "no option is preselected". The owner kept M1c's ruling; spec §3.3 is amended in the plan's commit. `a0UnshieldDestinationOffer` and `UnshieldSide`'s preselection effect stay as M1c built them (fresh when granted, otherwise `null`). `DestinationRow` collapsed shows "To: Choose a destination · Change" (`DESTINATION_NONE` in `modes.ts`), the unavailable reason shows, and the CTA is disabled until a pick. M1c's S11 screen row keeps its assertions (it only gains the "open Change" step, since the options now sit behind it).
+- **A2 — "Your deposit is public on chain" "stays" (spec §4, deposit #19–#21), but no screen shows that sentence today.** Resolution: Task 4 adds it on the deposit #21 card only when the deposit landed (`done` with `unspent`), testID `shield-status-public` — never while it runs, when it is pending, or in the `dropped` outcome ("yours did not land"), where it would be false (review I-2).
+- **A3 — the banned-word scan covers ALL of `src/screens/**` and `src/components/**` (spec §3.1), which includes screens §4 does not list:** #15 explainer, Receive (shielded payment code), Send's shielded-address error, History's "Shielded" filter, the shielded #19 of the old transfer (`TxSimulateScreen`), onboarding Success, Portfolio. Resolution: Task 5 swaps the word in each (no layout change). Files outside `src/screens` / `src/components` whose strings reach the user are added to the scan: `src/modules/shielded/a0/unshieldCheck.ts` (the "Check again" captions) and `src/hooks/useA0Shielded.ts` (one message), swapped in Task 4; `src/app/Navigator.tsx` (`recipient: 'Shielded pool'`, printed whole on #10 UnlockSend in every deposit — review I-3), swapped in Task 4 to `'Pool'`; `src/constants/errors.ts` (E013, E050, E062, E110) and `src/modules/geoFence/geoFenceModule.ts` (two messages), swapped in Task 5. `TxSimulateScreen`'s "Private simulation passed" and `SendScreen`'s "Use a private transfer for private addresses" are bare word swaps on paths hidden until M2: M2 rewrites them (review M-9).
+- **A4 — "one-line reason" for the unavailable fresh account (spec §3.3).** M1c's §11 reasons are one or two sentences and tested verbatim. Resolution: shown as one caption under the collapsed row (not truncated), text unchanged (it contains no banned word); hidden while the options are open, where the fresh option's own description already says it (review M-5).
 - **A5 — AmountLimitHint's text is Make-public specific ("make up to … public at once").** Resolution: the component takes its message; Make public passes `makePublicLimit(max, sym)`, Make private keeps today's "Insufficient balance · max {max} {sym}" through the same component.
 - **A6 — "no technical term visible by default" vs the many sentences that say "note", "pool", "relayer".** The spec bans five words, not these. Resolution: those words stay where §2/§4 do not move them; the pool-size row on Make private ("Notes in the pool after this deposit") moves into Details with the fee rows (it is the deposit's anonymity measure, like the dashboard's, which §4 moves into Details); "Relayer fee" stays visible (§4 says so).
 - **A7 — #18 "stage labels in plain words": the spec gives no strings.** Resolution (Task 4): unshield rows `Check the pool` / `Relayer fee` / `Your approval` / `Make the proof`; deposit rows `Prepare` / `Make the proof` / `Check the proof` / `Ready`; "Groth16" and "witness" leave the visible copy; every row keeps its measured time.
 - **A8 — #21 unshield sub "The destination received {x} {sym}." drops today's "Landed on Solana devnet and verified ·".** Resolution: the spec's sentence verbatim; the CONFIRMED badge stays and says the same. The "Checked again: … verified …" subs of a decided outcome keep their wording (they are the decided captions §4 keeps).
 - **A9 — `scripts/m1c-checkpoint/README.md` quotes the old captions** ("Not sent · your note is back in your shielded balance.", the dialog's fee line). The spec forbids renaming the desk. Resolution: the README is not edited; the owner's phone pass reads the new words (listed in Task 6's notes).
-- **A10 — `ReceiveScreen`'s shielded branch says "Amounts and parties stay private on-chain."** (pre-existing, an M2 path not reachable from the Private dashboard, which has no Receive). Resolution: only its banned word is swapped; the sentence is flagged here for the owner, not rewritten (out of scope).
+- **A10 — OWNER DECISION 2026-11-20: delete "Amounts and parties stay private on-chain." from `ReceiveScreen`'s shielded (M2) branch** — a deletion, not a rewording (M2 writes its own copy). Done in Task 1, because Task 1's forbidden-phrase row (which now includes `/stays? private on-?chain/i`, review I-5 / M-2) would otherwise be red on that file.
+- **A11 — "Private pool" (review M-4).** The pool is a public account and the native dialog labels it "Pool". Resolution: #20 says "Pool · 8VMe…", #19 "→ the pool", #10's recipient "Pool". Listed for the owner's phone pass (reversible).
 
 ## File map
 
@@ -62,6 +66,8 @@ These are the readings this plan takes. Each is the smaller or the more secure c
 - Modify `src/screens/onboarding/SelectAccountScreen.tsx`; create `src/screens/onboarding/__tests__/SelectAccountScreen.test.tsx` (Task 7).
 - Modify (outside the repo, after backups, behind the owner's approval) `/home/user/Downloads/index.html`, `/home/user/Downloads/screen.md` (Task 8).
 - Modify `src/screens/shielded/__tests__/privacyClaims.test.ts` — scope only (Tasks 1, 2, 4, 5, 6, 7).
+- Modify `src/screens/transparent/ReceiveScreen.tsx` + its test (Task 1: the A10 deletion; Task 5: the word swap), `src/app/Navigator.tsx` (Task 4), `src/constants/errors.ts`, `src/modules/geoFence/geoFenceModule.ts` (Task 5).
+- Modify `docs/superpowers/specs/2026-11-20-shielded-ux-b-vocabulary-design.md` §3.3 (owner decision A1 — done in this plan's revision commit, not by a task).
 
 Task order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8. Spec §7 step 4 is split into Tasks 4 (the run screens), 5 (dashboard and remaining screens) and 6 (Kotlin strings): a reviewer can reject the Kotlin resource change, or the out-of-§4 screens, without rejecting the run screens.
 
@@ -75,12 +81,13 @@ Task order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8. Spec §7 step 4 is spli
 - Create: `src/copy/__tests__/modes.test.ts`
 - Create: `src/copy/__tests__/bannedWords.test.ts`
 - Modify: `src/screens/shielded/__tests__/privacyClaims.test.ts` (the `EXTRA_COPY` list and the positive control; regexes untouched)
+- Modify: `src/screens/transparent/ReceiveScreen.tsx` (owner decision A10: one sentence deleted), `src/screens/transparent/__tests__/ReceiveScreen.test.tsx` (one row)
 
 **Interfaces:**
 - Consumes: nothing.
 - Produces (`src/copy/modes.ts`, every later task imports these exact names):
-  - `MODE_PUBLIC = 'Public'`, `MODE_PRIVATE = 'Private'`, `MAKE_PRIVATE = 'Make private'`, `MAKE_PUBLIC = 'Make public'`, `PRIVATE_PUBLIC_TITLE = 'Private ⇄ Public'`, `PRIVATE_BALANCE = 'Private balance'`, `PUBLIC_BALANCE = 'Public balance'`, `PRIVATE_ASSETS = 'Private assets'`, `PRIVATE_SUFFIX = ' · private'`, `PRIVATE_MARK = 'Private'`, `MAKING_PUBLIC = 'Making public…'`, `NOW_PUBLIC = 'Now public'`, `MAKING_PRIVATE = 'Making private…'`, `NOW_PRIVATE = 'Now private'`, `PRIVATE_CARD_BODY`, `NATIVE_CONFIRM_TITLE`, `NATIVE_FEE_LINE`, `NATIVE_PROMPT_TITLE`, `NATIVE_PROMPT_SUBTITLE`, `DETAILS = 'Details'`, `DESTINATION_FRESH = 'A new account'`, `DESTINATION_MAIN = 'My main account'`, `DESTINATION_EXTERNAL = 'Another address'`, `DESTINATION_EXTERNAL_SUB = 'A wallet address outside this wallet'`, `RECOMMENDED = ' (recommended)'`, `CHANGE = 'Change'`;
-  - `makePublicCta(amount: string, sym: string): string`, `makePrivateCta(amount: string, sym: string): string`, `makePublicCtaIdle(sym: string): string`, `makePrivateCtaIdle(sym: string): string`, `makePublicLimit(max: string, sym: string): string`, `destinationSummary(name: string | null): string`.
+  - `MODE_PUBLIC = 'Public'`, `MODE_PRIVATE = 'Private'`, `MAKE_PRIVATE = 'Make private'`, `MAKE_PUBLIC = 'Make public'`, `PRIVATE_PUBLIC_TITLE = 'Private ⇄ Public'`, `PRIVATE_BALANCE = 'Private balance'`, `PUBLIC_BALANCE = 'Public balance'`, `PRIVATE_ASSETS = 'Private assets'`, `PRIVATE_SUFFIX = ' · private'`, `PRIVATE_MARK = 'Private'`, `MAKING_PUBLIC = 'Making public…'`, `NOW_PUBLIC = 'Now public'`, `MAKING_PRIVATE = 'Making private…'`, `NOW_PRIVATE = 'Now private'`, `PRIVATE_CARD_BODY`, `NATIVE_CONFIRM_TITLE`, `NATIVE_FEE_LINE`, `NATIVE_PROMPT_TITLE`, `NATIVE_PROMPT_SUBTITLE`, `DETAILS = 'Details'`, `DESTINATION_FRESH = 'A new account'`, `DESTINATION_MAIN = 'My main account'`, `DESTINATION_EXTERNAL = 'Another address'`, `DESTINATION_EXTERNAL_SUB = 'A wallet address outside this wallet'`, `RECOMMENDED = ' (recommended)'`, `CHANGE = 'Change'`, `DESTINATION_NONE = 'Choose a destination'` (owner decision A1);
+  - `makePublicCta(amount: string, sym: string): string`, `makePrivateCta(amount: string, sym: string): string`, `makePublicCtaIdle(sym: string): string`, `makePrivateCtaIdle(sym: string): string`, `makePublicLimit(max: string, sym: string): string`, `destinationSummary(name: string | null): string` (`null` → "To: Choose a destination").
 - Produces (`src/copy/__testing__/copyScan.ts`): `BANNED_WORDS: RegExp`, `FORBIDDEN_NEW: readonly RegExp[]`, `interface VisibleString {line: number; text: string}`, `userVisibleStrings(fileName: string, source: string): VisibleString[]`, `bannedStrings(fileName: string, source: string): VisibleString[]`, `forbiddenClaims(fileName: string, source: string): string[]`, `walkSources(dir: string): string[]`.
 - Produces (`bannedWords.test.ts`): the ratchet `NOT_YET_SWAPPED: Record<string, number>` — Tasks 3, 4 and 5 edit its lines.
 
@@ -128,6 +135,7 @@ describe('src/copy/modes.ts — the §2 table', () => {
     expect(modes.DESTINATION_EXTERNAL_SUB).toBe('A wallet address outside this wallet');
     expect(modes.RECOMMENDED).toBe(' (recommended)');
     expect(modes.CHANGE).toBe('Change');
+    expect(modes.DESTINATION_NONE).toBe('Choose a destination'); // owner decision A1
   });
 
   it('the CTAs: with an amount, and the disabled form without one', () => {
@@ -140,7 +148,7 @@ describe('src/copy/modes.ts — the §2 table', () => {
   it('AmountLimitHint and DestinationRow lines (spec §3.3, §3.4)', () => {
     expect(modes.makePublicLimit('1.99999', 'TEST')).toBe('You can make up to 1.99999 TEST public at once.');
     expect(modes.destinationSummary('A new account (recommended)')).toBe('To: A new account (recommended)');
-    expect(modes.destinationSummary(null)).toBe('To: —');
+    expect(modes.destinationSummary(null)).toBe('To: Choose a destination'); // owner decision A1: nothing preselected
   });
 
   it('the Private balance card keeps the honest sentence (spec §2 "Kept as is")', () => {
@@ -167,6 +175,11 @@ describe('src/copy/modes.ts — honesty', () => {
     expect(forbiddenClaims('f.ts', "const a = 'Invisible on chain';")).toEqual(['invisible']);
     expect(forbiddenClaims('f.ts', "const a = 'It is fully private';")).toEqual(['fully private']);
     expect(forbiddenClaims('f.ts', "const a = 'No one can see it';")).toEqual(['no one can see']);
+    // review M-2 / I-5: what IMPLIES it, too
+    expect(forbiddenClaims('f.ts', 'const a = "It can\'t be traced";')).toHaveLength(1);
+    expect(forbiddenClaims('f.ts', "const a = 'It cannot be traced';")).toHaveLength(1);
+    expect(forbiddenClaims('f.ts', "const a = 'Hidden from everyone';")).toEqual(['hidden from everyone']);
+    expect(forbiddenClaims('f.ts', "const a = 'Amounts and parties stay private on-chain.';")).toEqual(['stays? private on-?chain']);
     expect(forbiddenClaims('f.ts', "// anonymous, in a comment\nconst a = 'Deposits are public on chain.';")).toEqual([]);
   });
 });
@@ -187,8 +200,14 @@ import {bannedStrings, forbiddenClaims, walkSources} from '../__testing__/copySc
 
 const ROOT = path.resolve(__dirname, '../../..');
 
-/** Module files whose strings reach a screen as they are (spec ambiguity A3). */
-const EXTRA = ['src/modules/shielded/a0/unshieldCheck.ts', 'src/hooks/useA0Shielded.ts'];
+/** Files outside src/screens and src/components whose strings reach the user as they are (plan A3, review I-3). */
+const EXTRA = [
+  'src/modules/shielded/a0/unshieldCheck.ts',
+  'src/hooks/useA0Shielded.ts',
+  'src/app/Navigator.tsx',
+  'src/constants/errors.ts',
+  'src/modules/geoFence/geoFenceModule.ts',
+];
 
 function sources(): Array<{file: string; text: string}> {
   return [
@@ -223,6 +242,9 @@ const NOT_YET_SWAPPED: Record<string, number> = {
   'src/screens/transparent/TxSimulateScreen.tsx': 3,
   'src/modules/shielded/a0/unshieldCheck.ts': 3,
   'src/hooks/useA0Shielded.ts': 1,
+  'src/app/Navigator.tsx': 1,
+  'src/constants/errors.ts': 4,
+  'src/modules/geoFence/geoFenceModule.ts': 2,
 };
 
 const FIXTURE = [
@@ -249,6 +271,10 @@ describe('the banned words (spec §2) are out of every user-visible string', () 
     },
   );
 
+  it('review M-1: JSX text is copy even as a lower-case fragment between expressions', () => {
+    expect(bannedStrings('f.tsx', 'const C = () => <Text>Move into the {x} vault</Text>;').map(s => s.text)).toEqual(['vault']);
+  });
+
   it('negative controls: a test id, a class name, a comparison, an object value token, an import, a comment, a URI scheme are not copy', () => {
     const only = FIXTURE.replace('>Unshield<', '><');
     expect(bannedStrings('fixture.tsx', only)).toEqual([]);
@@ -265,6 +291,8 @@ describe('the banned words (spec §2) are out of every user-visible string', () 
         'src/screens/onboarding/SelectAccountScreen.tsx',
         'src/components/CheckAgainLink.tsx',
         'src/modules/shielded/a0/unshieldCheck.ts',
+        'src/app/Navigator.tsx',
+        'src/constants/errors.ts',
       ]),
     );
     expect(files.some(f => f.includes('__tests__'))).toBe(false);
@@ -330,19 +358,28 @@ import * as ts from 'typescript';
  *
  * A user-visible string is a string literal, a template literal (its fixed parts) or JSX text,
  * EXCEPT where the code uses it as a token rather than as copy:
- *   - import / export specifiers, and anything in a type position;
+ *   - import / export specifiers and anything in a type position;
  *   - the JSX attributes in NON_COPY_ATTRIBUTES (test ids, class names, colours, enum props);
  *   - arguments of cn / clsx / require / console.* / jest.*;
  *   - an operand of === / !==, a `case` label, an object key;
- *   - a lower-case token with no space ('shielded', 'transparent', 'slip10:0').
+ *   - a lower-case token with no space (`'shielded'`, `'transparent'`, `'slip10:0'`).
  * Comments are never strings. accessibilityLabel IS copy (a screen reader says it).
  */
 
-/** spec §2: the words that leave user-visible copy. A word glued to `-`, `+`, `/` or a letter is a token (`accent-shielded`, `noctura+shielded:`). */
+/** spec §2: the words that disappear from user-visible copy. A word glued to `-`, `+`, `/` or a letter is a token (`accent-shielded`, `noctura+shielded:`). */
 export const BANNED_WORDS = /(?<![\w+/-])(?:un)?shield(?:ed|ing|s)?(?![\w-])|(?<![\w+/-])(?:transparent|vaults?)(?![\w-])/i;
 
-/** spec §2 "Forbidden": no new copy may say or imply these. */
-export const FORBIDDEN_NEW: readonly RegExp[] = [/anonymous/i, /untraceable/i, /invisible/i, /fully private/i, /no one can see/i];
+/** spec §2 "Forbidden": no new copy may say or imply these (the last three: what implies it — review M-2 / I-5). */
+export const FORBIDDEN_NEW: readonly RegExp[] = [
+  /anonymous/i,
+  /untraceable/i,
+  /invisible/i,
+  /fully private/i,
+  /no one can see/i,
+  /can(?:'|no)?t be traced/i,
+  /hidden from everyone/i,
+  /stays? private on-?chain/i,
+];
 
 const MACHINE_TOKEN = /^[a-z0-9_.:/#@-]*$/;
 const NON_COPY_ATTRIBUTES = new Set([
@@ -397,14 +434,17 @@ export function userVisibleStrings(fileName: string, source: string): VisibleStr
   };
   const visit = (node: ts.Node): void => {
     let text: string | null = null;
+    let jsx = false;
     if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
       text = node.text;
     } else if (ts.isTemplateExpression(node)) {
       text = [node.head.text, ...node.templateSpans.map(s => s.literal.text)].join(' ');
     } else if (ts.isJsxText(node)) {
       text = node.text.trim();
+      jsx = true;
     }
-    if (text !== null && text !== '' && !MACHINE_TOKEN.test(text) && !notCopy(node)) {
+    // JSX text is always copy (a lower-case fragment like "vault" between two expressions too)
+    if (text !== null && text !== '' && (jsx || !MACHINE_TOKEN.test(text)) && !notCopy(node)) {
       out.push({line: sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1, text});
     }
     if (ts.isTemplateExpression(node)) {
@@ -438,7 +478,7 @@ export function walkSources(dir: string): string[] {
 }
 ```
 
-(The planner ran this exact scanner, compiled `--strict`, over the branch at 402323e: 79 files, the counts in the ratchet above, the fixture rows as written, `forbiddenClaims` 0 everywhere.)
+(The planner ran this exact scanner, compiled `--strict`, over the branch at 402323e plus the three EXTRA files of review I-3: 82 files, exactly the 21 counts in the ratchet above, the fixture rows as written; `forbiddenClaims` is 0 everywhere except `ReceiveScreen.tsx` (`stays? private on-?chain`), which Step 4b removes.)
 
 - [ ] **Step 4: Write the vocabulary module**
 
@@ -513,10 +553,12 @@ export const DESTINATION_EXTERNAL = 'Another address';
 export const DESTINATION_EXTERNAL_SUB = 'A wallet address outside this wallet';
 export const RECOMMENDED = ' (recommended)';
 export const CHANGE = 'Change';
+/** Nothing chosen yet (owner decision A1, 2026-11-20): no quote yet, or the fresh account is not offered (S9 / S11). */
+export const DESTINATION_NONE = 'Choose a destination';
 
-/** "To: {selected}" — the collapsed destination row; "—" before a destination can be chosen. */
+/** "To: {selected}" — the collapsed destination row; "To: Choose a destination" while nothing is chosen. */
 export function destinationSummary(name: string | null): string {
-  return `To: ${name ?? '—'}`;
+  return `To: ${name ?? DESTINATION_NONE}`;
 }
 
 /** The CTAs (§2 row 2), with an amount. */
@@ -543,10 +585,32 @@ export function makePublicLimit(max: string, sym: string): string {
 }
 ```
 
+- [ ] **Step 4b: Owner decision A10 — delete the Receive overclaim**
+
+In `src/screens/transparent/__tests__/ReceiveScreen.test.tsx`, inside `describe('shielded variant (#13.shielded)', …)`, add:
+
+```tsx
+    it('owner decision A10 (2026-11-20): the M2 banner makes no "stay private on-chain" claim', () => {
+      const {queryByText} = renderScreen({address: NOC, shielded: true});
+      expect(queryByText(/stay private on-chain/)).toBeNull();
+      expect(queryByText(/must support Noctura/)).toBeTruthy(); // positive control: the banner is rendered
+    });
+```
+
+Run `npx jest src/screens/transparent/__tests__/ReceiveScreen.test.tsx` — expected FAIL on that row. Then in `src/screens/transparent/ReceiveScreen.tsx` delete the second sentence of the shielded banner, so its JSX text is only:
+
+```tsx
+            <Text variant="caption" className="flex-1 text-shield-300">
+              The sender's wallet must support Noctura shielded payment codes.
+            </Text>
+```
+
+(a deletion, not a rewording; the banned word in the first sentence is Task 5's — the ratchet's count for this file stays 11 because both sentences were one JSX text). Rerun: PASS.
+
 - [ ] **Step 5: Run the tests to verify they pass**
 
-Run: `npx jest src/copy src/screens/shielded/__tests__/privacyClaims.test.ts`
-Expected: PASS. The ratchet rows pass because every listed file still has exactly its count.
+Run: `npx jest src/copy src/screens/shielded/__tests__/privacyClaims.test.ts src/screens/transparent/__tests__/ReceiveScreen.test.tsx`
+Expected: PASS. The ratchet rows pass because every listed file still has exactly its count; the forbidden-phrase rows are empty in every file.
 
 - [ ] **Step 6: Prove the ratchet is a check (mutation, then revert)**
 
@@ -566,7 +630,7 @@ Expected: jest all green (the new suites included); tsc exit 0; lint `✖ 144 pr
 - [ ] **Step 8: Commit**
 
 ```bash
-git add src/copy src/screens/shielded/__tests__/privacyClaims.test.ts
+git add src/copy src/screens/shielded/__tests__/privacyClaims.test.ts src/screens/transparent/ReceiveScreen.tsx src/screens/transparent/__tests__/ReceiveScreen.test.tsx
 git commit -m "feat(shielded-ux-b): the one vocabulary (src/copy/modes.ts), the source scanner and the banned-word ratchet (part B Task 1)
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
@@ -585,7 +649,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - Modify: `src/screens/shielded/__tests__/privacyClaims.test.ts` (scope: the new directory)
 
 **Interfaces:**
-- Consumes (Task 1): `DETAILS`, `CHANGE`, `RECOMMENDED`, `DESTINATION_FRESH`, `DESTINATION_MAIN`, `DESTINATION_EXTERNAL`, `DESTINATION_EXTERNAL_SUB`, `destinationSummary` from `src/copy/modes.ts`.
+- Consumes (Task 1): `DETAILS`, `CHANGE`, `RECOMMENDED`, `DESTINATION_NONE` (through `destinationSummary`), `DESTINATION_FRESH`, `DESTINATION_MAIN`, `DESTINATION_EXTERNAL`, `DESTINATION_EXTERNAL_SUB`, `destinationSummary` from `src/copy/modes.ts`.
 - Produces (`src/components/private/index.ts`):
   - `DetailsDisclosure({testID, children}: {testID: string; children: React.ReactNode})` — test ids `${testID}` (wrapper), `${testID}-toggle` (the "Details ▾/▴" button), `${testID}-body` (only when open);
   - `type DestinationChoice = 'fresh' | 'main' | 'external'`; `interface DestinationRowProps {testID: string; choice: DestinationChoice | null; onChoose: (c: DestinationChoice) => void; disabled: boolean; fresh: {available: boolean; sub: string}; mainSub: string; mainMono: boolean; freshReason: string | null; warning: {testID: string; text: string} | null; children?: React.ReactNode}`; `DestinationRow(props)` — test ids `${testID}` (card), `${testID}-summary` (its children: the "To: …" string), `${testID}-change`, `${testID}-fresh-reason`, `${testID}-options` (open only), `${testID}-fresh` / `-main` / `-external` (options, `accessibilityRole="radio"`, `accessibilityState={{selected, disabled}}`), `${testID}-fresh-sub` / `-main-sub` / `-external-sub`;
@@ -683,13 +747,13 @@ describe('DestinationRow', () => {
     expect(r.getByTestId('dest-change').props.accessibilityState).toMatchObject({expanded: false, disabled: false});
   });
 
-  it('the summary names the selected destination; nothing chosen yet → "To: —"', () => {
+  it('the summary names the selected destination; nothing chosen yet → "To: Choose a destination"', () => {
     const r = render(<DestinationRow {...props({choice: 'main'})} />);
     expect(summary(r)).toBe('To: My main account');
     r.rerender(<DestinationRow {...props({choice: 'external'})} />);
     expect(summary(r)).toBe('To: Another address');
     r.rerender(<DestinationRow {...props({choice: null})} />);
-    expect(summary(r)).toBe('To: —');
+    expect(summary(r)).toBe('To: Choose a destination'); // owner decision A1
   });
 
   it('Change opens the three options with their one-line descriptions; a pick calls onChoose and collapses', () => {
@@ -706,11 +770,14 @@ describe('DestinationRow', () => {
     expect(r.queryByTestId('dest-options')).toBeNull();
   });
 
-  it('an unavailable fresh account: its reason shows under the COLLAPSED row; its option is disabled and a tap chooses nothing', () => {
-    const p = props({choice: 'main', fresh: {available: false, sub: REASON}, freshReason: REASON});
+  it('an unavailable fresh account: its reason shows under the COLLAPSED row (once — not repeated while open); its option is disabled and a tap chooses nothing', () => {
+    const p = props({choice: null, fresh: {available: false, sub: REASON}, freshReason: REASON});
     const r = render(<DestinationRow {...p} />);
+    expect(summary(r)).toBe('To: Choose a destination');
     expect(r.getByTestId('dest-fresh-reason').props.children).toBe(REASON);
     fireEvent.press(r.getByTestId('dest-change'));
+    expect(r.queryByTestId('dest-fresh-reason')).toBeNull(); // review M-5: the option's own sub says it
+    expect(r.getAllByText(REASON)).toHaveLength(1);
     expect(r.getByTestId('dest-fresh').props.accessibilityState).toMatchObject({disabled: true, selected: false});
     fireEvent.press(r.getByTestId('dest-fresh'));
     expect(p.onChoose).not.toHaveBeenCalled();
@@ -855,10 +922,11 @@ import {
 
 /**
  * The destination of Make public (Shielded UX part B, spec §3.3, decision B-5), replacing the three
- * cards of M1c's #16. Collapsed: "To: {selected} · Change". Change opens the three options with
- * their one-line descriptions; a pick closes them. The selected destination's warning (main /
- * another address) and the fresh account's unavailable reason show under the row whether it is
- * open or not — never behind Change, never inside Details.
+ * cards of M1c's #16. Collapsed: "To: {selected} · Change" ("To: Choose a destination" while
+ * nothing is chosen — owner decision A1). Change opens the three options with their one-line
+ * descriptions; a pick closes them. The selected destination's warning (main / another address)
+ * shows under the row whether it is open or not — never behind Change, never inside Details; the
+ * fresh account's unavailable reason shows under the collapsed row (open, the option says it).
  *
  * Presentational: WHICH destinations are offered, what is preselected and every refusal rule stay
  * with M1c's code in `UnshieldSide.tsx` (`a0UnshieldDestinationOffer`, `externalOwnerProblem`).
@@ -876,7 +944,7 @@ export interface DestinationRowProps {
   fresh: {available: boolean; sub: string};
   mainSub: string;
   mainMono: boolean;
-  /** the reason shown under the collapsed row while the fresh account is unavailable (S9 / S11) */
+  /** the reason shown under the COLLAPSED row while the fresh account is unavailable (S9 / S11) */
   freshReason: string | null;
   /** the chosen destination's warning, always visible under the row */
   warning: {testID: string; text: string} | null;
@@ -933,7 +1001,7 @@ export function DestinationRow({
           </Text>
         </Pressable>
       </View>
-      {freshReason !== null ? (
+      {freshReason !== null && !open ? (
         <Text variant="caption" className="text-fg-tertiary mt-1" testID={`${testID}-fresh-reason`}>
           {freshReason}
         </Text>
@@ -1125,7 +1193,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 **Files:**
 - Modify: `src/screens/shielded/ShieldUnshieldScreen.tsx` (whole file replaced below)
 - Modify: `src/screens/shielded/shieldedParts.tsx` (add `BalanceRow`)
-- Modify: `src/screens/shielded/unshield/UnshieldSide.tsx` (imports, preselection, render body; M1c's internal `DestinationRow` removed — it now lives in `src/components/private/DestinationRow.tsx` as `OptionRow`)
+- Modify: `src/screens/shielded/unshield/UnshieldSide.tsx` (imports, render body — its preselection stays M1c's; M1c's internal `DestinationRow` removed — it now lives in `src/components/private/DestinationRow.tsx` as `OptionRow`)
 - Modify: `src/screens/shielded/unshield/unshieldCopy.ts` (three #16 strings)
 - Modify: `src/copy/__tests__/bannedWords.test.ts` (ratchet: three lines)
 - Test: `src/screens/shielded/__tests__/ShieldUnshieldScreen.test.tsx`, `src/screens/shielded/unshield/__tests__/UnshieldSide.test.tsx`, `src/screens/shielded/__tests__/shieldedParts.test.tsx`
@@ -1138,7 +1206,7 @@ What changes on #16 (spec §4):
 - the title is "Private ⇄ Public", the tabs come from the module;
 - ONE balance line per tab (decision B-2): "Public balance" on Make private (was "Available"), "Private balance" on Make public (was "Vault balance"). The old "Shielded balance" line above the card is gone; what stays of it is the STATUS: the startup banners, the refusal, "X pending", its caption and "Check again";
 - Make private: the fee card shows "You'll make private" and its total; Network fee, ZK proof fee, Deposit record rent and the pool-size row move into `DetailsDisclosure` (testID `shield-details`) — spec ambiguity A6 for the pool-size row;
-- Make public: `DestinationRow` replaces the three cards (preselection: fresh when offered, otherwise main — spec ambiguity A1); the fee card shows "Relayer fee" and "Destination receives" and the amount line; Network fee, ZK proof fee and the one-note explanation move into `DetailsDisclosure` (testID `unshield-details`); `AmountLimitHint` replaces "Max per unshield: …"; the withdraw banner keeps its title and the relayed sentence (the two destination warnings moved under the destination row);
+- Make public: `DestinationRow` replaces the three cards (preselection unchanged from M1c: fresh when offered, otherwise nothing — "To: Choose a destination", owner decision A1); the fee card shows "Relayer fee" and "Destination receives" and the amount line; Network fee, ZK proof fee and the one-note explanation move into `DetailsDisclosure` (testID `unshield-details`); `AmountLimitHint` replaces "Max per unshield: …"; the withdraw banner keeps its title and the relayed sentence (the two destination warnings moved under the destination row);
 - CTAs and their accessibility labels from the module.
 
 - [ ] **Step 1: Write the failing tests — `shieldedParts.test.tsx`**
@@ -1252,7 +1320,9 @@ Replace the three balance-line rows of `describe('#16 — gated on the A0 startu
   });
 ```
 
-In the `it.each([...])('%s: a stated state, no balance figure, …')` table replace `/Restoring your shielded notes from the chain/` with `/Restoring your private balance from the chain/` (`// part B`), and in its body replace `expect(r.queryByText(/Shielded balance/)).toBeNull();` with `expect(r.queryByText(/Private balance/)).toBeNull(); // part B: the negative row follows the new word`.
+In the `it.each([...])('%s: a stated state, no balance figure, …')` table replace `/Restoring your shielded notes from the chain/` with `/Restoring your private balance from the chain/` (`// part B`); `/needs the on-device prover/` stays as it is (the new sentence is "Your private balance needs the on-device prover …"). In its body replace `expect(r.queryByText(/Shielded balance/)).toBeNull();` with `expect(r.queryByTestId('shielded-line-pending')).toBeNull(); // part B (review I-4): no figure of the private side in a non-ready state — a "Private balance" negative would be vacuous on this tab`.
+
+In `it('re-review N-2: the last pending item decided → …')` (lines 267, 269, in `describe('#16 — gated on the A0 startup step', …)`) feed and expect the new caption: `'Not sent · your note is back in your private balance.'` (`// part B: the fixture follows the caption Task 4 ships`).
 
 - [ ] **Step 3: Write the failing tests — `UnshieldSide.test.tsx` (the Make public side)**
 
@@ -1317,6 +1387,7 @@ Replace the bodies of three rows of `describe('#16 unshield — the design (stat
     expect(disabled(r, 'unshield-cta')).toBe(false);
     fireEvent.changeText(r.getByTestId('unshield-amount-input'), '1.999990001');
     expect(text(r, 'unshield-over-max')).toBe('You can make up to 1.99999 TEST public at once.'); // part B: AmountLimitHint
+    expect(r.queryByTestId('unshield-details-body')).toBeNull(); // Review Focus 2: the hint is visible with Details collapsed
     expect(disabled(r, 'unshield-cta')).toBe(true);
     fireEvent.press(r.getByTestId('unshield-cta'));
     expect(onUnshield).not.toHaveBeenCalled();
@@ -1326,7 +1397,7 @@ Replace the bodies of three rows of `describe('#16 unshield — the design (stat
 In `no note can pay the fee → said, …` replace the expected text with `'No private note can pay the relayer fee of 0.00001 TEST.'` (`// part B`). Add after it:
 
 ```tsx
-  it('Review Focus 2: a refused quote, "no private note can pay", the over-limit hint and the relayed sentence are all visible with Details collapsed', async () => {
+  it('Review Focus 2: a refused quote, "no private note can pay" and the relayed sentence are all visible with Details collapsed', async () => {
     mockNotes = [note(10_000n, 1)];
     mockQuote.mockRejectedValueOnce(Object.assign(new Error('E_A0_QUOTE_FEE_PAYER: x'), {code: 'E_A0_QUOTE_FEE_PAYER'}));
     const r = await screen();
@@ -1338,6 +1409,17 @@ In `no note can pay the fee → said, …` replace the expected text with `'No p
     });
     expect(text(r, 'unshield-no-note')).toBe('No private note can pay the relayer fee of 0.00001 TEST.');
     expect(r.queryByTestId('unshield-details-body')).toBeNull();
+  });
+
+  it.each([
+    ['running', {kind: 'running'} as A0ShieldedView],
+    ['idle', {kind: 'idle'} as A0ShieldedView],
+    ['error', {kind: 'error', code: 'E_A0_SYNC_RPC', message: 'x'} as A0ShieldedView],
+    ['unsupported', {kind: 'unsupported'} as A0ShieldedView],
+  ])('review I-4: startup %s → the one balance line says "—", never a figure', async (_n, view) => {
+    mockView = view;
+    const r = await screen();
+    expect(text(r, 'unshield-vault-value')).toBe('—');
   });
 ```
 
@@ -1357,35 +1439,49 @@ describe('#16 unshield — the destination row (part B, spec §3.3; M1c S3 / S9 
     );
   });
 
-  it('Review Focus 1 / S11 (spec §3.3, ambiguity A1): a quote WITHOUT a grant → MAIN preselected, the one-line reason and the link warning visible without opening anything; the CTA hands over {kind: "main"} only on a tap', async () => {
+  it('Review Focus 1 / S11 (M1c\'s row, its assertions kept; owner decision A1): a quote WITHOUT a grant → "To: Choose a destination", the reason visible, fresh disabled, NOTHING preselected, the CTA disabled until a choice; main → its warning, then {kind: "main"} only on a tap', async () => {
     mockQuote.mockResolvedValue(quote({gasGrantLamports: null, grantFloorLamports: null}));
     const r = await screen();
-    expect(summary(r)).toBe('To: My main account'); // part B: was "nothing preselected" (M1c S11 screen row)
+    expect(summary(r)).toBe('To: Choose a destination'); // part B: the collapsed row (owner decision A1)
     expect(text(r, 'unshield-dest-fresh-reason')).toBe(
       'A new account is not available yet: the relayer cannot send it SOL for its own fees, and funding it from your other accounts would link them.',
     );
-    expect(text(r, 'unshield-warning-main')).toBe('This links your exit to your deposit: your main account made the deposit.');
-    fireEvent.changeText(r.getByTestId('unshield-amount-input'), '1');
-    expect(onUnshield).not.toHaveBeenCalled(); // never sent without the tap
-    expect(disabled(r, 'unshield-cta')).toBe(false);
-    openDest(r);
+    openDest(r); // part B: the options sit behind Change
     expect(disabled(r, 'unshield-dest-fresh')).toBe(true);
+    expect(text(r, 'unshield-dest-fresh-sub')).toBe(
+      'A new account is not available yet: the relayer cannot send it SOL for its own fees, and funding it from your other accounts would link them.',
+    );
+    for (const id of ['unshield-dest-fresh', 'unshield-dest-main', 'unshield-dest-external']) {
+      expect(selected(r, id)).toBe(false);
+    }
+    fireEvent.changeText(r.getByTestId('unshield-amount-input'), '1');
+    expect(disabled(r, 'unshield-cta')).toBe(true);
     fireEvent.press(r.getByTestId('unshield-dest-fresh')); // a tap on the disabled row selects nothing
-    expect(summary(r)).toBe('To: My main account');
+    expect(selected(r, 'unshield-dest-fresh')).toBe(false);
+    expect(r.queryByTestId('unshield-warning-main')).toBeNull();
+    fireEvent.press(r.getByTestId('unshield-dest-main'));
+    expect(disabled(r, 'unshield-cta')).toBe(false);
+    expect(text(r, 'unshield-warning-main')).toBe('This links your exit to your deposit: your main account made the deposit.');
+    expect(onUnshield).not.toHaveBeenCalled(); // never sent without the tap
     fireEvent.press(r.getByTestId('unshield-cta'));
     expect(onUnshield).toHaveBeenCalledWith({destination: {kind: 'main'}, amount: '1000000000'});
   });
 
-  it('S9 / Review Focus 1: a cli wallet → fresh disabled with the cli reason, main preselected with its warning, even when the quote grants', async () => {
+  it('S9 / Review Focus 1 (M1c\'s row, its assertions kept): a cli wallet → fresh disabled with the cli reason and not selected, nothing preselected, even when the quote grants', async () => {
     mockScheme = {kind: 'cli'};
     const r = await screen();
-    expect(summary(r)).toBe('To: My main account');
+    expect(summary(r)).toBe('To: Choose a destination');
     expect(text(r, 'unshield-dest-fresh-reason')).toBe(
       'This wallet uses the Solana CLI key scheme, which has a single account, so no new account can be created for this exit.',
     );
-    expect(text(r, 'unshield-warning-main')).toBe('This links your exit to your deposit: your main account made the deposit.');
     openDest(r);
     expect(disabled(r, 'unshield-dest-fresh')).toBe(true);
+    expect(selected(r, 'unshield-dest-fresh')).toBe(false);
+    expect(text(r, 'unshield-dest-fresh-sub')).toBe(
+      'This wallet uses the Solana CLI key scheme, which has a single account, so no new account can be created for this exit.',
+    );
+    fireEvent.changeText(r.getByTestId('unshield-amount-input'), '1');
+    expect(disabled(r, 'unshield-cta')).toBe(true);
   });
 
   it('"My main account" → the link warning (§11 verbatim) under the row and the main address in its option; the request carries {kind: "main"}', async () => {
@@ -1445,7 +1541,7 @@ describe('#16 unshield — the destination row (part B, spec §3.3; M1c S3 / S9 
   it('the preselection happens once: the user\'s own pick survives every later render (and a quote that arrives after a Retry still preselects)', async () => {
     mockQuote.mockRejectedValueOnce(Object.assign(new Error('E_A0_QUOTE_UNAVAILABLE: no answer'), {code: 'E_A0_QUOTE_UNAVAILABLE'}));
     const r = await screen();
-    expect(summary(r)).toBe('To: —'); // no quote, no offer
+    expect(summary(r)).toBe('To: Choose a destination'); // no quote, no offer
     expect(disabled(r, 'unshield-dest-change')).toBe(true);
     await act(async () => {
       fireEvent.press(r.getByTestId('unshield-quote-retry'));
@@ -1942,7 +2038,7 @@ function ShieldedLine({
   if (view.kind === 'unsupported') {
     return (
       <Banner tone="warn" testID="shielded-line">
-        Private balances need the on-device prover, which this device does not have (64-bit ARM phones only).
+        Your private balance needs the on-device prover, which this device does not have (64-bit ARM phones only).
       </Banner>
     );
   }
@@ -2076,8 +2172,8 @@ import {
  *
  * Shielded UX part B (spec 2026-11-20 §3–§4): one balance line ("Private balance", decision B-2);
  * `DestinationRow` replaces the three cards (decision B-5) — when the fresh account is not offered
- * (S9 cli, S11 no grant) MAIN is preselected (spec §3.3; plan ambiguity A1), its link warning
- * visible under the row; the network fee, the ZK proof fee and the one-note explanation behind
+ * (S9 cli, S11 no grant) NOTHING is preselected, as M1c ruled ("To: Choose a destination"; owner
+ * decision 2026-11-20, plan A1), and a chosen destination's warning shows under the row; the network fee, the ZK proof fee and the one-note explanation behind
  * "Details ▾" (decision B-3); `AmountLimitHint` above the max (decision B-4).
 ```
 
@@ -2089,16 +2185,15 @@ export type UnshieldChoice = DestinationChoice;
 
 and add `import type {DestinationChoice} from '../../../components/private';` to the imports.
 
-8d. Replace the preselection effect with:
+8d. The preselection effect stays M1c's, unchanged (owner decision A1) — shown here so the reviewer can check nothing moved:
 
 ```tsx
-  // S11 / controller ruling 4: the fresh account is preselected when the quote grants SOL; part B
-  // (spec §3.3, plan A1): otherwise MAIN is — its link warning shows at once under the row. The
+  // S11 / controller ruling 4: the fresh account is preselected when the quote grants SOL; the
   // preselection happens once (a later re-fetch never overrides the user's own pick).
   useEffect(() => {
     if (offer && !preselectedRef.current) {
       preselectedRef.current = true;
-      setChoice(offer.preselected ?? 'main');
+      if (offer.preselected !== null) setChoice(offer.preselected);
     }
   }, [offer]);
 ```
@@ -2400,7 +2495,7 @@ Expected: PASS. If the ratchet row for a #16 file fails, its hit list names the 
 
 - [ ] **Step 11: Mutations (each must go red, then revert)**
 
-1. `UnshieldSide` preselection `offer.preselected ?? 'main'` → `offer.preselected` → "Review Focus 1 / S11" and "S9" fail.
+1. `UnshieldSide` preselection `if (offer.preselected !== null) setChoice(offer.preselected)` → `setChoice(offer.preselected ?? 'main')` → "Review Focus 1 / S11" and "S9" fail (the owner's A1 is held by a test).
 2. Move `<FeeRow label="Relayer fee" …/>` inside `DetailsDisclosure` → "idle: … the relayer fee visible" fails.
 3. Move the `unshield-no-note` Text inside `DetailsDisclosure` → "Review Focus 2" fails.
 4. `ShieldedLine`'s early `return null` condition dropped (always render the wrapper) — must stay green (no test depends on an empty wrapper); then render a `BalanceRow` for `PRIVATE_BALANCE` inside it → "decision B-2" rows fail.
@@ -2433,6 +2528,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - Modify: `src/screens/shielded/unshield/unshieldCopy.ts` (the refusal sentences)
 - Modify: `src/screens/shielded/ZkProofScreen.tsx` (deposit #18), `ShieldSimulateScreen.tsx` (#19), `ShieldConfirmScreen.tsx` (#20), `ShieldStatusScreen.tsx` (#21)
 - Modify: `src/modules/shielded/a0/unshieldCheck.ts` (`a0CheckCaption`'s three strings only), `src/hooks/useA0Shielded.ts` (one message)
+- Modify: `src/app/Navigator.tsx` (one string: #10 UnlockSend's recipient on the deposit path, review I-3)
 - Modify: `src/copy/__tests__/bannedWords.test.ts` (ratchet), `src/screens/shielded/__tests__/privacyClaims.test.ts` (scope)
 - Test: `src/screens/shielded/unshield/__tests__/UnshieldRunScreen.test.tsx`, `UnshieldRunScreen.flow.test.tsx`, `src/screens/shielded/__tests__/ZkProofScreen.test.tsx`, `ShieldTxFlow.test.tsx`, `src/hooks/__tests__/useA0Shielded.test.tsx`
 
@@ -2471,8 +2567,9 @@ The string swaps, all of them (old → new). Every one is a visible-copy change;
 | `ZkProofScreen.tsx` `SUBSTEP.proving` | `'running the Groth16 prover'` | `'making the proof'` |
 | `ZkProofScreen.tsx` `heroOf` running | labels `'Building witness'` / `'Proving'` / `'Verifying'`; row-2 sub `'Running the Groth16 prover on this device.'` | `'Preparing'` / `'Making the proof'` / `'Checking the proof'`; `'Making the proof on this device.'` |
 | `ZkProofScreen.tsx` header | overline `SHIELDED` | overline `{PRIVATE_MARK}` + title `{MAKING_PRIVATE}` (`zk-title`) |
-| `ShieldSimulateScreen.tsx` | overline `Shielded`; `shielded pool`; `'This deposit is no longer prepared. Go back and start the shield again.'`; `DeltaRow label="Shielding"`; `Simulating shield deposit`; `` `Shield simulation passed · ${…} CU` `` / `'Shield simulation passed'` | `{PRIVATE_MARK}`; `private pool`; `'This deposit is no longer prepared. Go back and start again.'`; `label="Making private"`; `Simulating the deposit`; `` `Simulation passed · ${…} CU` `` / `'Simulation passed'` |
-| `ShieldConfirmScreen.tsx` | overline `Shielded`; headline, a11y label and CTA `` `Shield ${amount}` ``; `You are about to shield`; `'This deposit is no longer prepared. Go back and start the shield again.'`; `` `Shielded pool · ${…}` `` | `{PRIVATE_MARK}`; `makePrivateCta(figure, intent.tokenSymbol)` (×3); `You are about to make this private`; `'This deposit is no longer prepared. Go back and start again.'`; `` `Private pool · ${…}` `` |
+| `ShieldSimulateScreen.tsx` | overline `Shielded`; `shielded pool`; `'This deposit is no longer prepared. Go back and start the shield again.'`; `DeltaRow label="Shielding"`; `Simulating shield deposit`; `` `Shield simulation passed · ${…} CU` `` / `'Shield simulation passed'` | `{PRIVATE_MARK}`; `the pool` (A11); `'This deposit is no longer prepared. Go back and start again.'`; `label="Making private"`; `Simulating the deposit`; `` `Simulation passed · ${…} CU` `` / `'Simulation passed'` |
+| `ShieldConfirmScreen.tsx` | overline `Shielded`; headline, a11y label and CTA `` `Shield ${amount}` ``; `You are about to shield`; `'This deposit is no longer prepared. Go back and start the shield again.'`; `` `Shielded pool · ${…}` `` | `{PRIVATE_MARK}`; `makePrivateCta(figure, intent.tokenSymbol)` (×3); `You are about to make this private`; `'This deposit is no longer prepared. Go back and start again.'`; `` `Pool · ${…}` `` (A11) |
+| `src/app/Navigator.tsx` (`ShieldConfirmScreenNav`) | `recipient: 'Shielded pool'` (shown whole on #10 UnlockSend) | `recipient: 'Pool'` (A11) |
 | `ShieldStatusScreen.tsx` | Alert `'Shield in progress'`; overline `Shielded` (×2); h2 `running ? 'Shielding…' : 'Shield'`; `` `Shielded balance now ${…}` ``; `viewOf` running title `'Shielding…'`; missing `'… Start the shield again.'`; unspent title `'Shielded'`; dropped title `'Not shielded'` | `MAKING_PRIVATE`; `{PRIVATE_MARK}` (×2); `running ? MAKING_PRIVATE : MAKE_PRIVATE`; `` `Private balance now ${…}` ``; `MAKING_PRIVATE`; `'… Start again from Make private.'`; `NOW_PRIVATE`; `'Not made private'` |
 
 - [ ] **Step 1: Write the failing tests — the unshield run**
@@ -2559,8 +2656,8 @@ In `src/screens/shielded/__tests__/ZkProofScreen.test.tsx`: `'Build witness: …
 
 In `src/screens/shielded/__tests__/ShieldTxFlow.test.tsx`:
 - line 85: `'Simulating the deposit'`; 86: `'Simulation passed · 142,287 CU'`; 117: `'Simulation passed'`;
-- line 145: `'Make 2.5 TEST private'`; 146: `'You are about to make this private'`; 150: `/^Private pool · 8VMe…/`;
-- line 224: `expect(title(r)).toBe('Now private');`; 228: `'Private balance now 4 TEST'`; 291: `'Not made private'`; the test title on line 285 `"Not shielded"` → `"Not made private"`;
+- line 145: `'Make 2.5 TEST private'`; 146: `'You are about to make this private'`; 150: `/^Pool · 8VMe…/` (A11);
+- line 224: `expect(title(r)).toBe('Now private');`; 228: `'Private balance now 4 TEST'`; 291: `'Not made private'`; the test title on line 285 `"Not shielded"` → `"Not made private"`; line 282 `queryByText(/fail|Not shielded/i)` → `queryByText(/fail|Not made private/i)` (`// part B (review I-4): the negative row follows the new word`);
 - after line 228 add:
 
 ```tsx
@@ -2568,7 +2665,8 @@ In `src/screens/shielded/__tests__/ShieldTxFlow.test.tsx`:
     expect(r.getByTestId('shield-status-details')).toBeTruthy(); // the explorer stays (a deposit is public by design)
 ```
 
-- in the "Not sent" refusal row (line ~304, `E_A0_DEPOSIT_SIGNER`), add `expect(r.queryByTestId('shield-status-public')).toBeNull(); // nothing was broadcast: the line is not said`.
+- in the "Not sent" refusal row (line ~304, `E_A0_DEPOSIT_SIGNER`), add `expect(r.queryByTestId('shield-status-public')).toBeNull(); // nothing was broadcast: the line is not said`;
+- review I-2 — the line is said only when the deposit LANDED. In the first row, after `await act(async () => ctl.stage('confirming', SIG));` (line ~220, a signature exists, still running) add `expect(r.queryByTestId('shield-status-public')).toBeNull(); // running: not landed yet`; in the `dropped` row (line ~291) add `expect(r.queryByTestId('shield-status-public')).toBeNull(); // "yours did not land": the line would be false`; in the pending row with a foreign signature (line ~281) add the same `toBeNull()` with `// pending: not landed`.
 
 - [ ] **Step 3: Run the tests to verify they fail**
 
@@ -2768,14 +2866,14 @@ and the header centre:
         </View>
 ```
 
-6b. `ShieldSimulateScreen.tsx`: add `import {PRIVATE_MARK} from '../../copy/modes';`; the overline child `{PRIVATE_MARK}`; the table's other four rows as literals (`private pool`, `Go back and start again.`, `label="Making private"`, `Simulating the deposit`, `Simulation passed`).
+6b. `ShieldSimulateScreen.tsx`: add `import {PRIVATE_MARK} from '../../copy/modes';`; the overline child `{PRIVATE_MARK}`; the table's other four rows as literals (`the pool`, `Go back and start again.`, `label="Making private"`, `Simulating the deposit`, `Simulation passed`).
 
-6c. `ShieldConfirmScreen.tsx`: add `import {PRIVATE_MARK, makePrivateCta} from '../../copy/modes';`; after `const amount = …` add `const figure = displayAmount(BigInt(intent.amount), intent.decimals);` and `const headline = makePrivateCta(figure, intent.tokenSymbol);`; use `{headline}` for the h1, the CTA's text and its `accessibilityLabel`; the overline `{PRIVATE_MARK}`; `You are about to make this private`; `` {`Private pool · ${A0.pool.slice(0, 4)}…${A0.pool.slice(-4)}`} ``; the missing line `This deposit is no longer prepared. Go back and start again.`.
+6c. `ShieldConfirmScreen.tsx`: add `import {PRIVATE_MARK, makePrivateCta} from '../../copy/modes';`; after `const amount = …` add `const figure = displayAmount(BigInt(intent.amount), intent.decimals);` and `const headline = makePrivateCta(figure, intent.tokenSymbol);`; use `{headline}` for the h1, the CTA's text and its `accessibilityLabel`; the overline `{PRIVATE_MARK}`; `You are about to make this private`; `` {`Pool · ${A0.pool.slice(0, 4)}…${A0.pool.slice(-4)}`} ``; the missing line `This deposit is no longer prepared. Go back and start again.`.
 
-6d. `ShieldStatusScreen.tsx`: add `import {MAKE_PRIVATE, MAKING_PRIVATE, NOW_PRIVATE, PRIVATE_MARK} from '../../copy/modes';`; apply the table's rows; and in the amount card, after the `shield-status-balance` line, add (spec §4 "Your deposit is public on chain … stay"; plan A2 — only once a signature exists, i.e. the deposit was sent):
+6d. `ShieldStatusScreen.tsx`: add `import {MAKE_PRIVATE, MAKING_PRIVATE, NOW_PRIVATE, PRIVATE_MARK} from '../../copy/modes';`; apply the table's rows; and in the amount card, after the `shield-status-balance` line, add (spec §4 "Your deposit is public on chain … stay"; plan A2 — only when the deposit LANDED, review I-2: never while it runs, when it is pending, or `dropped`):
 
 ```tsx
-          {signature ? (
+          {phase.kind === 'done' && phase.outcome.status === 'unspent' ? (
             <Text variant="caption" className="text-fg-tertiary text-center" testID="shield-status-public">
               Your deposit is public on chain.
             </Text>
@@ -2784,16 +2882,19 @@ and the header centre:
 
 - [ ] **Step 7: Widen the guard and shrink the ratchet**
 
-In `privacyClaims.test.ts` add to `EXTRA_COPY` (comment: `// part B: module copy a screen shows as it is (the "Check again" captions, the unavailable message)`):
+6e. `src/app/Navigator.tsx`: in `ShieldConfirmScreenNav`, `recipient: 'Shielded pool',` → `recipient: 'Pool',` (the #10 UnlockSend re-auth prints it whole; A11).
+
+In `privacyClaims.test.ts` add to `EXTRA_COPY` (comment: `// part B: copy a screen shows as it is (the "Check again" captions, the unavailable message, #10's recipient)`):
 
 ```ts
   path.join(ROOT, 'src/modules/shielded/a0/unshieldCheck.ts'),
   path.join(ROOT, 'src/hooks/useA0Shielded.ts'),
+  path.join(ROOT, 'src/app/Navigator.tsx'),
 ```
 
-and add both paths to the positive control's `expect.arrayContaining([...])`.
+and add the three paths to the positive control's `expect.arrayContaining([...])`.
 
-In `bannedWords.test.ts` delete the lines for `ShieldConfirmScreen.tsx`, `ShieldSimulateScreen.tsx`, `ShieldStatusScreen.tsx`, `ZkProofScreen.tsx`, `unshield/UnshieldRunScreen.tsx`, `unshield/unshieldCopy.ts`, `src/modules/shielded/a0/unshieldCheck.ts`, `src/hooks/useA0Shielded.ts`.
+In `bannedWords.test.ts` delete the lines for `ShieldConfirmScreen.tsx`, `ShieldSimulateScreen.tsx`, `ShieldStatusScreen.tsx`, `ZkProofScreen.tsx`, `unshield/UnshieldRunScreen.tsx`, `unshield/unshieldCopy.ts`, `src/modules/shielded/a0/unshieldCheck.ts`, `src/hooks/useA0Shielded.ts`, `src/app/Navigator.tsx`.
 
 - [ ] **Step 8: Run the tests to verify they pass**
 
@@ -2804,7 +2905,7 @@ Expected: PASS, including every M1c module suite with no edit (`git diff --stat 
 
 1. `statusView` spent `title: NOW_PUBLIC` → `title: 'Unshielded'` → the ratchet row for `UnshieldRunScreen.tsx` (exactly 0) and the spent row fail.
 2. Move the `MetaRow label="Tx hash"` out of `DetailsDisclosure` → the spent row's `queryByText('4Hq7Mb…5e6f')).toBeNull()` fails.
-3. `ShieldStatusScreen`: render `shield-status-public` unconditionally → the "Not sent" row fails.
+3. `ShieldStatusScreen`: render `shield-status-public` for every phase with a signature (`{signature ? … : null}`) → the running, pending and `dropped` rows fail (review I-2).
 4. `a0CheckCaption` reverted → `'…shielded balance.'` → the `useA0Shielded` caption row and the ratchet for `unshieldCheck.ts` fail.
 
 - [ ] **Step 10: Run the gates**
@@ -2821,7 +2922,7 @@ Expected: jest green; tsc 0; lint `✖ 144 problems (0 errors, 144 warnings)`; T
 - [ ] **Step 11: Commit**
 
 ```bash
-git add src/screens/shielded src/modules/shielded/a0/unshieldCheck.ts src/hooks/useA0Shielded.ts src/hooks/__tests__/useA0Shielded.test.tsx src/copy/__tests__/bannedWords.test.ts
+git add src/screens/shielded src/modules/shielded/a0/unshieldCheck.ts src/hooks/useA0Shielded.ts src/hooks/__tests__/useA0Shielded.test.tsx src/app/Navigator.tsx src/copy/__tests__/bannedWords.test.ts
 git commit -m "feat(shielded-ux-b): #18–#21 for both runs in the new words — headers, plain stage labels, Details on the result, the deposit's public line (part B Task 4)
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
@@ -2834,6 +2935,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - Modify: `src/screens/dashboard/DashboardScreen.tsx`
 - Modify: `src/screens/shielded/ShieldedExplainerScreen.tsx`
 - Modify: `src/screens/transparent/ReceiveScreen.tsx`, `SendScreen.tsx`, `TransactionHistoryScreen.tsx`, `TxSimulateScreen.tsx`; `src/screens/onboarding/SuccessScreen.tsx`; `src/screens/portfolio/PortfolioScreen.tsx` (spec ambiguity A3: copy only)
+- Modify: `src/constants/errors.ts` (four `action` strings), `src/modules/geoFence/geoFenceModule.ts` (two `message` strings) — review I-3
 - Modify: `src/copy/__tests__/bannedWords.test.ts` (the ratchet is deleted), `src/screens/shielded/__tests__/privacyClaims.test.ts` (scope)
 - Test: `src/screens/dashboard/__tests__/DashboardScreen.test.tsx`, `src/screens/shielded/__tests__/ShieldedExplainerScreen.test.tsx`, `src/screens/transparent/__tests__/ReceiveScreen.test.tsx`, `src/screens/transparent/__tests__/TransactionHistoryScreen.test.tsx`
 
@@ -2859,7 +2961,7 @@ jest.mock('../../../store/zustand/publicSettingsStore', () => ({
 
 and add `mockHide.current = false;` to the top-level `beforeEach`.
 
-1b. Change these rows (`// part B: <old> → <new>`): every `'Nothing shielded yet'` → `'Nothing private yet'` (the positive row on line 183 AND the negative rows on lines 171, 290, 321 — a negative row left on the old word passes vacuously); line 188 `'Tap Shield to make a token private'` → `'Tap Make private to move a token in'`; line 240 `'0.2 · shielded'` → `'0.2 · private'` (and its test title); line 302 `getByText('Shield')` → `getByText('Make private')`; in `describe('UX-A 7: …')` `labels.indexOf('Shield')` → `labels.indexOf('Make private')` and `getByLabelText('Shield')` → `getByLabelText('Make private')`.
+1b. Change these rows (`// part B: <old> → <new>`): every `'Nothing shielded yet'` → `'Nothing private yet'` (the positive row on line 183 AND the negative rows on lines 171, 290, 321 — a negative row left on the old word passes vacuously); line 188 `'Tap Shield to make a token private'` → `'Tap Make private to move a token in'`; line 240 `'0.2 · shielded'` → `'0.2 · private'` (and its test title); line 302 `getByText('Shield')` → `getByText('Make private')`; in `describe('UX-A 7: …')` `labels.indexOf('Shield')` → `labels.indexOf('Make private')` and `getByLabelText('Shield')` → `getByLabelText('Make private')`; lines 225 and 227 feed and expect the new caption `'Not sent · your note is back in your private balance.'` (the fixture follows the caption Task 4 ships). Line 315's `/needs the on-device prover/` stays as it is: Step 5h's sentence is "Your private balance needs the on-device prover …" (review I-4).
 
 1c. Replace `it('shows the anonymity set line: the A0 pool note count', …)` with:
 
@@ -3008,7 +3110,7 @@ import {
           ? `Your private balance could not be restored (${view.code ?? 'error'}). Open Make private to retry.`
           : view.kind === 'idle'
             ? 'Your private balance is not loaded yet. Open Make private to load it.'
-            : 'Private balances need the on-device prover, which this device does not have.';
+            : 'Your private balance needs the on-device prover, which this device does not have.';
 ```
 
 the empty state `Nothing shielded yet` → `Nothing private yet`, `Tap Shield to make a token private` → `Tap Make private to move a token in`; and the amount `` `${displayAmount(view.unspent, A0_TOKEN.decimals)} · shielded` `` → `` `${displayAmount(view.unspent, A0_TOKEN.decimals)}${PRIVATE_SUFFIX}` ``.
@@ -3018,12 +3120,14 @@ the empty state `Nothing shielded yet` → `Nothing private yet`, `Tap Shield to
 - [ ] **Step 6: Implement the other screens (copy only)**
 
 - `ShieldedExplainerScreen.tsx`: add `import {PRIVATE_MARK} from '../../copy/modes';`; the overline `SHIELDED` → `{PRIVATE_MARK}`; `Shielded mode moves SOL into a ZK pool.` → `Private mode moves SOL into a ZK pool.` (the rest of that paragraph unchanged); `title="Move into the vault"` → `title="Move into your private balance"`; `For every shielded action,` → `For every private action,`.
-- `ReceiveScreen.tsx`: `'My Noctura shielded payment code'` → `'My Noctura private payment code'`; `'No shielded address'` → `'No private address'`; `"Your shielded address isn't ready yet. Open the Shielded tab to unlock private mode, then try again."` → `"Your private address isn't ready yet. Open the Private tab to unlock private mode, then try again."`; `'Shielded · payment request'` → `'Private · payment request'`; `'Shielded · payment code'` → `'Private · payment code'`; `'Transparent · pay request'` → `'Public · pay request'`; `'Transparent · public address'` → `'Public · address'`; `'Copy shielded payment code'` → `'Copy private payment code'`; `'Shielded payment code'` → `'Private payment code'`; `receive shielded transfers` → `receive private transfers`; `Noctura shielded payment codes.` → `Noctura private payment codes.` (the next sentence is not edited — spec ambiguity A10). In the file's doc comment, `an unlinkable per-request blob` → `a fresh per-request blob` (the guard reads comments; this file joins its scope in Step 7).
+- `ReceiveScreen.tsx`: `'My Noctura shielded payment code'` → `'My Noctura private payment code'`; `'No shielded address'` → `'No private address'`; `"Your shielded address isn't ready yet. Open the Shielded tab to unlock private mode, then try again."` → `"Your private address isn't ready yet. Open the Private tab to unlock private mode, then try again."`; `'Shielded · payment request'` → `'Private · payment request'`; `'Shielded · payment code'` → `'Private · payment code'`; `'Transparent · pay request'` → `'Public · pay request'`; `'Transparent · public address'` → `'Public · address'`; `'Copy shielded payment code'` → `'Copy private payment code'`; `'Shielded payment code'` → `'Private payment code'`; `receive shielded transfers` → `receive private transfers`; `Noctura shielded payment codes.` → `Noctura private payment codes.` (its second sentence was already deleted in Task 1 — owner decision A10). In the file's doc comment, `an unlinkable per-request blob` → `a fresh per-request blob` (the guard reads comments; this file joins its scope in Step 7).
 - `SendScreen.tsx`: `'Use Shielded Transfer for private addresses'` → `'Use a private transfer for private addresses'`.
 - `TransactionHistoryScreen.tsx`: in the `FilterTab` type and in `FILTER_TABS`, `'Shielded'` → `'Private'` (the filter's comment "Shielded and Staking: not yet distinguishable …" may stay).
 - `TxSimulateScreen.tsx`: `'Simulating shielded transfer'` → `'Simulating the private transfer'`; `'Shielded simulation passed'` → `'Private simulation passed'`; the overline `Shielded` → `Private`.
 - `SuccessScreen.tsx`: `"Try a shielded send (privacy by design)"` → `"Try making a token private"` (the dropped parenthesis was a claim — the safe direction).
 - `PortfolioScreen.tsx`: the two-line JSX text → `Holdings breakdown, allocation by token, and the public / private split. Coming soon.`
+- `src/constants/errors.ts` (review I-3): E013 `'You need NOC tokens for shielded transactions'` → `'You need NOC tokens for private transactions'`; E050 `'Transparent mode is fully functional'` → `'Public mode is fully functional'`; E062 `'… Shielded history is not available.'` → `'… Private history is not available.'`; E110 `'Shielded addresses start with noc1. Check and try again.'` → `'Private addresses start with noc1. Check and try again.'`. Keys and codes unchanged.
+- `src/modules/geoFence/geoFenceModule.ts` (review I-3): `'VPN or proxy detected. Shielded features may be limited.'` → `'VPN or proxy detected. Private features may be limited.'`; `'Jurisdiction check unavailable. Shielded features temporarily limited.'` → `'Jurisdiction check unavailable. Private features temporarily limited.'`. The `transparentAllowed` field names stay (identifiers).
 
 - [ ] **Step 7: Widen the guard**
 
@@ -3036,6 +3140,8 @@ In `privacyClaims.test.ts` add to `EXTRA_COPY` (comment `// part B: every file t
   path.join(ROOT, 'src/screens/transparent/TxSimulateScreen.tsx'),
   path.join(ROOT, 'src/screens/onboarding/SuccessScreen.tsx'),
   path.join(ROOT, 'src/screens/portfolio/PortfolioScreen.tsx'),
+  path.join(ROOT, 'src/constants/errors.ts'),
+  path.join(ROOT, 'src/modules/geoFence/geoFenceModule.ts'),
 ```
 
 and `'src/screens/transparent/ReceiveScreen.tsx'` to the positive control's list.
@@ -3065,7 +3171,7 @@ Expected: jest green; tsc 0; lint `✖ 144 problems (0 errors, 144 warnings)`; T
 - [ ] **Step 11: Commit**
 
 ```bash
-git add src/screens src/copy/__tests__/bannedWords.test.ts
+git add src/screens src/constants/errors.ts src/modules/geoFence/geoFenceModule.ts src/copy/__tests__/bannedWords.test.ts
 git commit -m "feat(shielded-ux-b): the dashboard and every remaining screen in the one vocabulary; the banned-word scan reaches zero (part B Task 5)
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
@@ -3789,96 +3895,175 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 ---
-### Task 8: The owner's design files (decision B-7) — backup, update, then STOP for the owner's approval
+### Task 8: The owner's design files (decision B-7) — edit COPIES, show the diff, install only after the owner approves
 
 **Files (outside the repo — nothing in the repo changes in this task):**
-- Create: `/home/user/Downloads/index.html.bak-2026-11-20`, `/home/user/Downloads/screen.md.bak-2026-11-20` (byte-identical copies)
-- Modify: `/home/user/Downloads/index.html`, `/home/user/Downloads/screen.md`
-- Create (scratch, for the owner): `<scratchpad>/design-b.index.diff`, `<scratchpad>/design-b.screen.diff`
+- Read only until approval: `/home/user/Downloads/index.html`, `/home/user/Downloads/screen.md` (the originals stay untouched while the approval is pending — every other session reads them as the binding design, CLAUDE.md)
+- Create (work dir): `$W/index.html`, `$W/screen.md` (the copies being edited), `$W/stage1/` (the copies after the word swaps), `$W/design-b.1-words.index.diff`, `$W/design-b.1-words.screen.diff`, `$W/design-b.2-phones.index.diff`, `$W/design-b.2-phones.screen.diff`
+- Create only after approval: `/home/user/Downloads/index.html.bak-2026-11-20`, `/home/user/Downloads/screen.md.bak-2026-11-20`; then the approved copies replace the originals.
 
 **Interfaces:**
-- Consumes: the strings of Tasks 1–7 exactly as merged on this branch (the design must say what the code says); the test ids are not drawn.
+- Consumes: the strings of Tasks 1–7 exactly as merged on this branch (the design must say what the code says); test ids are not drawn.
 - Produces: an updated design for #8, #11, #16, #17, #18, #19, #20, #21 and the native dialog, in the existing design-system classes; colours and every other screen untouched.
 
-**THE GATE (spec §5, binding):** these files are the owner's — the source of truth for every screen (CLAUDE.md "Design — Source of Truth"). After the backups and the edits, the executor shows the owner the two diffs and STOPS. Nothing else on the branch proceeds — no final review, no APK, no phone pass — until the owner approves the diff in chat. If the owner rejects it, or asks for changes, restore from the backups (Step 6) or edit and show the diff again. There is no repo commit for these files at any point; the approval is recorded in the PR description ("design files updated 2026-11-20, approved by the owner on <date>", with the two diffs' `wc -l`).
+**THE GATE (spec §5, binding; review I-6):** the implementer edits copies, produces the diffs, hands their absolute paths back to the controller, and stops. The controller shows them to the owner. Only the owner's own message in chat is an approval — no agent's message (the implementer's, a reviewer's, the controller's) counts as one. Until the owner approves, the originals in `Downloads` are not touched, and nothing else on the branch proceeds (no final review, no APK, no phone pass). On a rejection or change request, the copies are edited and the diffs shown again; the originals were never changed, so nothing needs restoring. There is no repo commit for these files at any point; the approval is recorded in the PR description.
 
-- [ ] **Step 1: Back up both files and prove the copies**
+- [ ] **Step 1: Make the work copies**
+
+```bash
+W=$(mktemp -d -t design-b-XXXXXX)   # or the executing session's scratchpad directory
+cp -p /home/user/Downloads/index.html /home/user/Downloads/screen.md "$W/"
+sha256sum /home/user/Downloads/index.html "$W/index.html" /home/user/Downloads/screen.md "$W/screen.md"
+echo "$W"
+```
+
+Expected: each pair prints the same hash. Every later command in this task works in `$W`.
+
+- [ ] **Step 2: The check, with its positive control, BEFORE editing**
+
+The check is case-insensitive and computes its section ranges from the `id="sN"` anchors at run time (the edits insert phones, so fixed line numbers go stale):
+
+```bash
+cat > "$W/check.sh" <<'EOF'
+#!/usr/bin/env bash
+# usage: check.sh <index.html>  — prints every visible banned word inside the part B sections
+f="$1"
+awk '
+  /<section/ { on = 0 }                     # any section ends the previous range (some use id="screen-NN")
+  /<section[^>]* id="s[0-9]+"/ { match($0, /id="s[0-9]+"/); id = substr($0, RSTART + 4, RLENGTH - 5); on = (id == "s8" || id == "s11" || id == "s16" || id == "s17" || id == "s18" || id == "s19" || id == "s20" || id == "s21") }
+  on {
+    line = $0
+    gsub(/<[^>]*>/, " ", line)            # drop tags: class names, ids, data-mode, href are not visible text
+    if (tolower(line) ~ /(^|[^a-z0-9+\/-])(un)?shield(ed|ing|s)?([^a-z0-9-]|$)|(^|[^a-z0-9+\/-])(transparent|vaults?)([^a-z0-9-]|$)/) print FILENAME ":" NR ": " line
+  }
+' "$f"
+EOF
+chmod +x "$W/check.sh"
+"$W/check.sh" /home/user/Downloads/index.html | wc -l
+"$W/check.sh" /home/user/Downloads/index.html | grep -ci 'SHIELDED · vault balance'
+```
+
+Expected (positive control): the first count is well above 0 on the untouched original, and the second is ≥ 1 — the check sees the upper-case "SHIELDED · vault balance" that a case-sensitive grep missed. If either is 0, the check is broken: fix it before editing. (CSS rules inside `<style>` sit before the first `<section>`, so they are outside the ranges.)
+
+- [ ] **Step 3: Read before editing**
+
+Read, in `$W/index.html`, the sections `id="s8"`, `id="s11"`, `id="s16"`, `id="s17"`, `id="s18"`, `id="s19"`, `id="s20"`, `id="s21"` (find each with `grep -n 'id="s<N>"'`) — each one's phones (`.phone-wrap > .phone > .screen`), its `.state-label`s and its tables (B) DS class map, (C) States rendered, (D) Global rules, (E) Navigation exits, (F) Android-specific; and the CSS blocks `.s-dash`, `.s-shield`, `.s-zk`, `.s-stat`, `.s-import`. In `$W/screen.md`, §0 (Global rules) and the entries `8 · import`, `11 · dashboard`, `16 · shield-unshield`, `17 · shielded-explainer`, `18 · zk-proof`, `19`, `20`, `21`. List every state each one draws before changing any.
+
+- [ ] **Step 4: Stage 1 — word swaps in the existing phones and text only (review M-8: the owner reviews this diff alone)**
+
+In `$W/index.html` (existing classes and tokens only; no new colour, no other screen; CSS class names such as `.s-shield`, `data-mode="shielded"`, `--accent-shielded`, `.amount-card.shielded` are identifiers and are NOT renamed):
+
+- **§s11 dashboard:** `.mode-toggle` "Transparent" → "Public", "Shielded" → "Private" in every phone; the shielded phone's hero `.noc-overline` "SHIELDED · vault balance" → "PRIVATE BALANCE"; `.section-h` "SHIELDED ASSETS" → "PRIVATE ASSETS"; the rows' "· shielded" → "· private"; the `.presale`-styled card "Privacy is on / Sends from this view use ZK proofs" → "Private balance / Make private moves tokens in with a proof made on this device. Deposits are public on chain."; state labels "Loaded · transparent" / "Loaded · shielded" → "Loaded · public" / "Loaded · private".
+- **§s16:** `.top-bar .title` "Shield / Unshield" → "Private ⇄ Public" in every phone; the lede's "transparent and shielded vault" → "your public and private balances"; "Available" → "Public balance"; "Vault balance" → "Private balance"; "You'll shield" → "You'll make private"; "You'll receive" → "Destination receives"; sticky CTAs "Shield SOL" → "Make SOL private", "Unshield SOL" → "Make SOL public", "Shield 2.48 SOL"-style labels → "Make 2.48 SOL private"; the Make public `.banner.warning` keeps its title and its body becomes "The relayer pays for and submits this transaction, so no key of yours signs it. Amounts and timing are public.".
+- **§s17:** "Shielded intro" → "Private intro"; overline "SHIELDED" → "PRIVATE"; "Move into vault" → "Move into your private balance"; "Shielded mode moves …" → "Private mode moves …".
+- **§s18:** header "SHIELDED" → "PRIVATE" with the title "Making private…"; stages "Building witness / Proving / Verifying / Ready" → "Prepare / Make the proof / Check the proof / Ready" with measured times, never a percentage; hero labels "Building witness" → "Preparing", "Proving" → "Making the proof", "Verifying" → "Checking the proof". State 7 (hosted-prover sheet) is left as drawn.
+- **§s19 / §s20 (shielded variants):** "SHIELDED Review" / "SHIELDED Confirm" → "PRIVATE Review" / "PRIVATE Confirm"; "Shield 2.48 SOL" → "Make 2.48 SOL private"; "You are about to send privately" → "You are about to make this private"; "Shielded pool" → "Pool" / "the pool" (A11).
+- **§s21:** state 4 "success · shielded": `Shielded … Sent` → `Private … Make private`, `.amount-card.shielded .eyebrow` "SHIELDED" → "PRIVATE", title "Now private", and the caption "Your deposit is public on chain." under the amount; "View details" stays.
+
+In `$W/screen.md`: §0 — after "Mode awareness" add "Vocabulary (part B, 2026-11-20): user-visible copy says only Public / Private (Make private, Make public, Private balance, Public balance, Now public, Now private …); `data-mode="shielded"` and the `shielded` CSS names stay as identifiers." and "vsak Shielded screen" → "vsak Private screen"; `11`: "Mode toggle: Transparent ↔ Shielded" → "Mode toggle: Public ↔ Private"; `16`: the title → "Private ⇄ Public (Private)" (the key stays), "premikanje funds-ov med transparent in shielded vault" → "premikanje sredstev med javnim in zasebnim stanjem", "[Shield SOL] / [Unshield SOL]" → "[Make SOL private] / [Make SOL public]"; `17`: "Shielded intro" → "Private intro", "Move into vault" → "Move into your private balance"; `18`: the four stage names; `19`–`21`: the private variants' words.
+
+Then snapshot and diff stage 1:
+
+```bash
+mkdir -p "$W/stage1" && cp -p "$W/index.html" "$W/screen.md" "$W/stage1/"
+diff -u /home/user/Downloads/index.html "$W/index.html" > "$W/design-b.1-words.index.diff"; echo "exit=$?"
+diff -u /home/user/Downloads/screen.md "$W/screen.md" > "$W/design-b.1-words.screen.diff"; echo "exit=$?"
+```
+
+Expected: both exits 1 (the copies differ from the originals).
+
+- [ ] **Step 5: Stage 2 — the new phones and states (the second diff)**
+
+In `$W/index.html`, using the existing classes of each section:
+
+- **§s11:** in the "Loaded · private" phone: the `.change` "Anonymity set · 1,284" → a collapsed "Details ▾" row (a `<button>` styled like `.see-all`, `noc-body-sm`, `color:var(--fg-secondary)`); the `.sub-balance` row removed; `.quick` → "Make private" (`#i-shield-lock`), "Make public" (`#i-eye-on`), "Buy" (Send / Receive removed, as in the code until M2). New phone "Loaded · private · pending + Check again": "0.25 pending · not confirmed yet" (`color:var(--warning)`) and "Check again" (`color:var(--accent)`). Update (B) and (C).
+- **§s16:** in each `.fee-card` the Network fee / ZK proof fee `.fee-row`s move under a collapsed "Details ▾" row (Make public keeps a visible "Relayer fee" row). New phones: **6 · Make public · destination collapsed** ("To: A new account (recommended) · Change"); **7 · destination open** (the three options with their one-line descriptions, radio circles, the first selected); **8 · fresh unavailable · nothing chosen** ("To: Choose a destination · Change", the reason "A new account is not available yet: …" under it, CTA disabled — owner decision A1); **9 · main account chosen** ("To: My main account", the warning "This links your exit to your deposit: your main account made the deposit." in `color:var(--warning)` under the row); **10 · over the limit** (amount in `--danger`, `.helper.error` "You can make up to 1.99999 SOL public at once.", CTA disabled); **11 · Details open** (Network fee "Paid by the relayer", ZK proof fee "None · made on this device", "You can make up to … public from one note at a time; combining notes comes in a later version."). Update (B) with DetailsDisclosure, DestinationRow, AmountLimitHint mapped to the classes used, and (C) "States rendered (11 of 11)".
+- **§s18:** new phones **8 · Make public · stages** (header "PRIVATE · Making public…", rows "Check the pool / Relayer fee / Your approval / Make the proof" with measured metas) and **9 · native confirmation** (the dialog over the dimmed #18: "Confirm making public", "Destination (wallet address)" with the full mono address, "Token account", "Destination receives exactly 1.25 TEST (1250000000 base units)", "Relayer fee 0.00001 TEST, taken from your private balance", "Pool", Cancel / Approve; and the BiometricPrompt sheet "Approve making this public" / "Confirm it is you to authorize this one transfer to public", labelled "platform dialog · undrawn until now").
+- **§s21:** new phones **5 · Now public** (check ring, "Now public", "The destination received 1.25 TEST.", "Your change, 0.74999 TEST, stays private.", collapsed "Details ▾", "Copy signature" + "Done", header "PRIVATE · Make public", badge "CONFIRMED") and **6 · Now public · Details open** (`.meta-grid`: "Tx hash" mono with copy, "Change" "#42 in the pool"). Update (B)/(C).
+- **§s8 import:** four new phones in `.screen.s-import`: **account choice · one funded** ("We found your wallet", a card "Standard (Phantom/Solflare)", mono address, "1.5 SOL · 25 NOC", "Use a different account", Continue); **several funded** (two cards with "Funded" pills, the link); **none funded** ("No funds found yet. You can receive to this address." and account 0's card, the link); **balance check failed** ("Couldn't check balances right now. You can continue with the standard account and switch later.", "Try again", six cards "Balance unavailable"). Update (C) and (E) (import → choose account → import-success).
+
+In `$W/screen.md`: `8` — "Account choice (decision B-6)" with its four cases (Task 7's table); `11` — Private mode's actions, "PRIVATE BALANCE" with "Anonymity set" in Details, "PRIVATE ASSETS", the pending caption with Check again, the Private balance card; `16` — one balance line per tab, Details ▾, DestinationRow (including "To: Choose a destination" when the fresh account is unavailable), AmountLimitHint, the CTAs "Make {amount} {sym} private / public"; `18` — the title "Making private…" / "Making public…", "never a percentage", the native dialog; `21` — the Make public result (Now public, the change line, Copy signature, Details with Tx hash and Change).
+
+- [ ] **Step 6: Check and diff stage 2; hand over and STOP**
+
+```bash
+"$W/check.sh" "$W/index.html"; echo "check lines: $("$W/check.sh" "$W/index.html" | wc -l)"
+grep -niE '\b(un)?shield(ed|ing)?\b|\btransparent\b|\bvault' "$W/screen.md" | grep -vE 'data-mode|shield-unshield|shielded-explainer|`[^`]*shield[^`]*`' ; echo "screen.md residue above (should be none)"
+diff -u "$W/stage1/index.html" "$W/index.html" > "$W/design-b.2-phones.index.diff"; echo "exit=$?"
+diff -u "$W/stage1/screen.md" "$W/screen.md" > "$W/design-b.2-phones.screen.diff"; echo "exit=$?"
+wc -l "$W"/design-b.*.diff
+```
+
+Expected: `check lines: 0` (Step 2 proved the same check prints lines on the original); no `screen.md` residue (the screen keys `shield-unshield`, `shielded-explainer` and back-ticked identifiers are excluded on purpose); both `diff` exits 1. The implementer's report to the controller: the four diff paths (full absolute paths), a per-section summary of what changed in stage 1 and which phones stage 2 added, and the install command of Step 7. Then STOP. The controller shows the diffs to the owner and waits for the owner's own answer.
+
+- [ ] **Step 7: Only after the owner's approval in chat — back up, then install**
 
 ```bash
 cd /home/user/Downloads
 test ! -e index.html.bak-2026-11-20 && test ! -e screen.md.bak-2026-11-20   # never overwrite an earlier backup
-cp -p index.html index.html.bak-2026-11-20
-cp -p screen.md screen.md.bak-2026-11-20
+cp -p index.html index.html.bak-2026-11-20 && cp -p screen.md screen.md.bak-2026-11-20
 sha256sum index.html index.html.bak-2026-11-20 screen.md screen.md.bak-2026-11-20
+cp -p "$W/index.html" index.html
+cp -p "$W/screen.md" screen.md
+sha256sum index.html "$W/index.html" screen.md "$W/screen.md"
 ```
 
-Expected: the `test` line exits 0 (if a backup already exists, STOP and ask the owner); each pair prints the same hash.
+Expected: the `test` line exits 0 (if a backup already exists, STOP and ask the owner); the first `sha256sum` shows each original equal to its backup; the last shows each installed file equal to its approved copy. If the install itself goes wrong: `cp -p index.html.bak-2026-11-20 index.html && cp -p screen.md.bak-2026-11-20 screen.md`, and compare hashes again.
 
-- [ ] **Step 2: Read before editing**
+- [ ] **Step 8: Record**
 
-Read, in `index.html`, the sections `id="s8"` (≈ line 5593), `id="s11"` (≈ 6273), `id="s16"` (≈ 7650), `id="s17"` (≈ 8033), `id="s18"` (≈ 8187), `id="s19"` (≈ 8834), `id="s20"` (≈ 9220), `id="s21"` (≈ 9617) — each one's phones (`.phone-wrap > .phone > .screen`), its `.state-label`s and its tables (B) DS class map, (C) States rendered, (D) Global rules, (E) Navigation exits, (F) Android-specific; and the CSS blocks `.s-dash`, `.s-shield`, `.s-zk`, `.s-stat`, `.s-import`. In `screen.md`, §0 (Global rules) and the entries `8 · import`, `11 · dashboard`, `16 · shield-unshield`, `17 · shielded-explainer`, `18 · zk-proof`, `19`, `20`, `21`. List every state each one draws before changing any.
-
-- [ ] **Step 3: Edit `index.html` (existing classes and tokens only; no new colour, no other screen)**
-
-- **§s11 dashboard (5 phones):** `.mode-toggle` buttons "Transparent" → "Public", "Shielded" → "Private" in every phone. In the "Loaded · shielded" phone: the hero `.noc-overline` "SHIELDED · vault balance" → "PRIVATE BALANCE"; the `.change` line "Anonymity set · 1,284" → a collapsed "Details ▾" row (a `<button>` styled like `.see-all`, `noc-body-sm`, `color:var(--fg-secondary)`); the `.sub-balance` SOL/NOC row removed (the code shows none in Private mode); `.quick` → "Make private" (`#i-shield-lock`), "Make public" (`#i-eye-on`), "Buy" — Send and Receive removed (no private send / receive until M2, as the code); `.section-h` "SHIELDED ASSETS" → "PRIVATE ASSETS"; the rows' "· shielded" → "· private"; the `.presale`-styled card "Privacy is on / Sends from this view use ZK proofs" → "Private balance / Make private moves tokens in with a proof made on this device. Deposits are public on chain.". Add one phone after it, state label "Loaded · private · pending + Check again": a row with "0.25 pending · not confirmed yet" (`color:var(--warning)`) and a "Check again" link (`color:var(--accent)`). Update (B) and (C) for the two states.
-- **§s16 (5 phones → 10):** `.top-bar .title` "Shield / Unshield" → "Private ⇄ Public" in every phone; the lede's "transparent and shielded vault" → "your public and private balances"; "Available" → "Public balance"; "Vault balance" → "Private balance"; in each `.fee-card` keep the summary row visible ("You'll shield" → "You'll make private"; "You'll receive" → "Destination receives") and move the Network fee and ZK proof fee `.fee-row`s under a collapsed "Details ▾" row; on Make public keep a visible "Relayer fee" `.fee-row`; the sticky CTAs "Shield SOL" → "Make SOL private", "Unshield SOL" → "Make SOL public" (and "Shield 2.48 SOL"-style labels → "Make 2.48 SOL private"); state 4's helper → "Insufficient balance · max …" in `.helper.error`; the Make public `.banner.warning` keeps its title and its body becomes "The relayer pays for and submits this transaction, so no key of yours signs it. Amounts and timing are public.". New phones (state labels): **6 · Make public · destination collapsed** — an `.amount-card`-styled row "To: A new account (recommended)" with a "Change" link; **7 · destination open** — the three options ("A new account", "My main account" with a mono address, "Another address" / "A wallet address outside this wallet") as `.row`s with radio circles, the first selected; **8 · main account selected** — "To: My main account", the warning "This links your exit to your deposit: your main account made the deposit." in `color:var(--warning)` right under the row; **9 · over the limit** — the amount in `--danger`, `.helper.error` "You can make up to 1.99999 SOL public at once.", CTA disabled; **10 · Details open** — Network fee "Paid by the relayer", ZK proof fee "None · made on this device", and the line "You can make up to … public from one note at a time; combining notes comes in a later version.". Update (B) (the three new components: DetailsDisclosure, DestinationRow, AmountLimitHint, each mapped to the classes used) and (C) "States rendered (10 of 10)".
-- **§s17 explainer:** "Shielded intro" wording in the lede → "Private intro"; the overline "SHIELDED" → "PRIVATE"; step 1 "Move into vault" → "Move into your private balance"; "Shielded mode moves …" → "Private mode moves …".
-- **§s18 zk-proof (7 phones → 9):** the header's "SHIELDED" → "PRIVATE" plus the title "Making private…"; the stage names "Building witness / Proving / Verifying / Ready" → "Prepare / Make the proof / Check the proof / Ready", each with a measured time ("done · 4.2 s"), never a percentage; the hero labels "Building witness" → "Preparing", "Proving" → "Making the proof", "Verifying" → "Checking the proof". The hosted-prover sheet (state 7) is left as drawn (A0 has no hosted prover; the code says so — not a part B change). New phones: **8 · Make public · stages** — header "PRIVATE · Making public…", the rows "Check the pool / Relayer fee / Your approval / Make the proof" with their measured metas; **9 · native confirmation** — the dialog drawn over the dimmed #18: title "Confirm making public", "Destination (wallet address)" with the full mono address, "Token account", "Destination receives exactly 1.25 TEST (1250000000 base units)", "Relayer fee 0.00001 TEST, taken from your private balance", "Pool", buttons Cancel / Approve; and the BiometricPrompt sheet "Approve making this public" / "Confirm it is you to authorize this one transfer to public" (platform widgets: draw them with `.sheet`-style chrome, labelled "undrawn until now · platform dialog").
-- **§s19 / §s20 (the shielded variants, states 4–5 / 4):** "SHIELDED Review" / "SHIELDED Confirm" → "PRIVATE Review" / "PRIVATE Confirm"; any "Shield 2.48 SOL" headline or CTA → "Make 2.48 SOL private"; "You are about to send privately" → "You are about to make this private"; "Shielded pool" → "Private pool".
-- **§s21 tx-status (4 phones → 6):** state 4 "success · shielded": the title row `Shielded … Sent` → `Private … Make private`, the `.amount-card.shielded .eyebrow` "SHIELDED" → "PRIVATE", the title "Now private", and a caption "Your deposit is public on chain." under the amount; "View details" stays (the deposit's explorer). New phones: **5 · Now public** — the check ring (mint), "Now public", "The destination received 1.25 TEST.", "Your change, 0.74999 TEST, stays private.", a collapsed "Details ▾" row, CTAs "Copy signature" + "Done", header "PRIVATE · Make public", badge "CONFIRMED"; **6 · Now public · Details open** — the `.meta-grid` with "Tx hash" (mono, copy button) and "Change" "#42 in the pool". Update (B)/(C).
-- **§s8 import (4 phones → 8):** new phones after the existing four, in `.screen.s-import`: **account choice · one funded** — "We found your wallet", a card with "Standard (Phantom/Solflare)", a mono address, "1.5 SOL · 25 NOC", "Use a different account", Continue; **account choice · several funded** — two candidate cards with "Funded" pills, "Use a different account"; **account choice · none funded** — "No funds found yet. You can receive to this address." and account 0's card; **account choice · balance check failed** — the warning "Couldn't check balances right now. You can continue with the standard account and switch later." with "Try again", and the six candidate cards with "Balance unavailable". Update (C) and (E) (import → choose account → import-success).
-- **Everywhere in these sections:** no remaining visible "Shield", "Unshield", "Shielded", "Transparent" or "Vault" in phone content, state labels or tables; CSS class names (`.s-shield`, `data-mode="shielded"`, `--accent-shielded`, `.amount-card.shielded`) are NOT renamed (they are identifiers).
-
-- [ ] **Step 4: Edit `screen.md` (same scope)**
-
-- §0 Global rules: add a line after "Mode awareness": "Vocabulary (part B, 2026-11-20): user-visible copy says only Public / Private (Make private, Make public, Private balance, Public balance, Now public, Now private …); `data-mode="shielded"` and the `shielded` CSS names stay as identifiers." and change "vsak Shielded screen" → "vsak Private screen".
-- `8 · import`: add "Account choice (decision B-6)" with its four cases, as in Task 7's table.
-- `11 · dashboard`: "Mode toggle: Transparent ↔ Shielded" → "Mode toggle: Public ↔ Private"; Private mode's actions (Make private / Make public / Buy), "PRIVATE BALANCE" with "Anonymity set" in Details, "PRIVATE ASSETS", the pending caption with Check again, the Private balance card.
-- `16 · shield-unshield — Shield / Unshield (Private)` → `16 · shield-unshield — Private ⇄ Public (Private)` (the key stays); "premikanje funds-ov med transparent in shielded vault" → "premikanje sredstev med javnim in zasebnim stanjem"; the function list: one balance line per tab, Details ▾ for the technical rows, DestinationRow, AmountLimitHint, the CTAs "Make {amount} {sym} private / public"; "Sticky bottom bar: [Shield SOL] / [Unshield SOL]" → "[Make SOL private] / [Make SOL public]".
-- `17`: "Shielded intro" → "Private intro"; "Move into vault" → "Move into your private balance".
-- `18`: the four stage names (plain words), "never a percentage", the title "Making private…" / "Making public…", the native dialog (states 8–9 of §s18).
-- `19`–`21`: the private variants' words; #21's unshield result (Now public, the change line, Copy signature, Details with Tx hash and Change), and the deposit's "Your deposit is public on chain.".
-
-- [ ] **Step 5: Show the owner the diff — and STOP**
-
-```bash
-S=$(mktemp -d -t design-b-XXXXXX)   # or the executing session's scratchpad directory, if it has one
-diff -u /home/user/Downloads/index.html.bak-2026-11-20 /home/user/Downloads/index.html > "$S/design-b.index.diff"; echo "index diff exit=$?"
-diff -u /home/user/Downloads/screen.md.bak-2026-11-20 /home/user/Downloads/screen.md > "$S/design-b.screen.diff"; echo "screen diff exit=$?"
-wc -l "$S/design-b.index.diff" "$S/design-b.screen.diff"
-grep -nE '>[^<]*\b(Shield|Unshield|Shielded|Transparent|Vault)\b[^<]*<' /home/user/Downloads/index.html | awk -F: '($1>=5593 && $1<=5828) || ($1>=6273 && $1<=6623) || ($1>=7650 && $1<=11355)' | head
-```
-
-Expected: both `diff` exits are 1 (files differ); the last command prints no line inside the edited sections (a printed line is a word Step 3 missed — fix it and rerun). Give the owner the two diff paths (full absolute paths), a per-section summary of what changed and which new phones were drawn, and the restore command of Step 6. Then STOP and wait for the owner's answer in chat. Do not start the final review, the APK or the phone pass.
-
-- [ ] **Step 6: Only if the owner rejects — restore**
-
-```bash
-cd /home/user/Downloads && cp -p index.html.bak-2026-11-20 index.html && cp -p screen.md.bak-2026-11-20 screen.md && sha256sum index.html index.html.bak-2026-11-20 screen.md screen.md.bak-2026-11-20
-```
-
-Expected: each pair prints the same hash again.
-
-- [ ] **Step 7: After the owner approves**
-
-Record the approval in the PR description (date, the two diffs' line counts). Keep the backups (the owner deletes them). Then the branch proceeds: the final Fable review, the APK, the owner's phone pass of every changed screen (spec §6), which closes part B.
+The PR description gets: "design files updated 2026-11-20, approved by the owner on <the date of the owner's message>", the four diffs' `wc -l`, and the backup names. The backups stay (the owner deletes them). Then the branch proceeds: the final Fable review, the APK, the owner's phone pass (see "Closing").
 
 ---
+
+## Execution notes (review I-7)
+
+- **Per task:** one implementer (a fresh subagent, superpowers:subagent-driven-development) → a Fable task review of that task's diff against this plan and the spec → a fix loop by the implementer → a scoped Fable re-review of the fixes only → the next task. A task is not "done" until its re-review passes. Task 8's review happens on the diffs before they go to the owner.
+- **After Task 8's owner approval:** a final Fable review of the whole branch (`main…HEAD`, or the part A base while #124 is open), then its fix loop and re-review.
+- **Attribution:** every commit carries `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>` whatever model implemented the task — the session-mandated attribution (controller ruling, as on PRs #123 / #124). The PR body states which model implemented and which reviewed each task.
+- **Approvals:** only the owner's own chat message approves anything (Task 8's diffs, A1-type decisions). A subagent's or reviewer's message never does.
+
+## Closing (review M-7) — the owner's phone pass and what it must look at
+
+- The screens: #16 both tabs (one balance line; Details on each fee card; the destination row collapsed / open; the S11 / S9 case "To: Choose a destination" with its reason and the CTA disabled until a pick — owner decision A1; the over-the-limit hint), #18 both runs (the new titles and stage labels, A7), #21 both runs (Now public with Details; Now private with "Your deposit is public on chain." only when landed, A2), #19 / #20 ("Pool", A11), #10's recipient "Pool", the dashboard in both modes (the toggle, the Private balance card with Details, the actions, Private assets, the pending caption), #15, the import's four account-choice cases (decision B-6).
+- The native dialog: "Confirm making public", "… taken from your private balance", the BiometricPrompt "Approve making this public" / "Confirm it is you to authorize this one transfer to public", part A's layout unchanged; `A0ConfirmWindowTest` on the phone (Task 6's `am instrument` line).
+- Technical words still visible by default, for the owner to judge (review M-6; the spec bans five words, not these): the deposit #21 sub "your note is at position #N in the pool", "No private note can pay the relayer fee", "ZK proof fee" (inside Details), "Relayer fee", "Notes in the pool after this deposit" (inside Details).
+- `scripts/m1c-checkpoint/README.md` quotes the old words (A9).
+- Before merging: retarget the branch to `main` once #124 merges; never merge the two back to back without retargeting (PR #97).
+
+## Review 1 resolutions (Fable plan review 1, 2026-11-20)
+
+- **I-1 (A1):** owner decision — nothing preselected; "To: Choose a destination · Change" (`DESTINATION_NONE`); CTA disabled until a pick; M1c's S11 / S9 rows keep their assertions (they gain only the "open Change" step); spec §3.3 amended in the revision commit; the mutation holds it. The reviewer's "options start expanded" was not adopted: the owner specified the collapsed row.
+- **I-2:** the deposit's "Your deposit is public on chain." only for `done` + `unspent`; three new negative rows (running, pending, dropped); mutation 3 targets the signature condition.
+- **I-3:** `Navigator.tsx` ("Pool", Task 4), `errors.ts` and `geoFenceModule.ts` (Task 5) added to the scan's EXTRA (ratchet 1 / 4 / 2) and to the guard's scope; counts re-measured (82 files).
+- **I-4:** "Your private balance needs the on-device prover …" in both screens (the two `/needs …/` rows pass unedited); `ShieldTxFlow.test.tsx:282` → `/fail|Not made private/i`; `ShieldUnshieldScreen.test.tsx:235` asserts no pending figure, and a new Make public row asserts `unshield-vault-value` is "—" in every non-ready state; the stale caption fixtures (`DashboardScreen.test.tsx:225,227`, `ShieldUnshieldScreen.test.tsx:267,269`) follow the new caption.
+- **I-5 / A10:** owner decision — the sentence is deleted (Task 1 Step 4b, with a ReceiveScreen row and its positive control); `FORBIDDEN_NEW` gains `/stays? private on-?chain/i`.
+- **I-6:** Task 8 rewritten — copies in a work dir, a case-insensitive check with section ranges from the anchors and a positive control on the original, the implementer hands the diffs to the controller, only the owner's message approves, backups and install only after approval.
+- **I-7:** "Execution notes" (per-task Fable review, fix loop, scoped re-review, final whole-branch review) and the attribution ruling noted; the trailer is unchanged by controller ruling.
+- **M-1:** accepted for JSX text (never filtered as a machine token; fixture row added; counts unchanged). Declined for "Re-shield": the `-` look-behind is what keeps `accent-shielded` / `border-accent-transparent` out of the scan in class strings outside `className` (e.g. `Card.tsx`); no hyphenated banned word exists in the copy today, and the design-file check covers the design.
+- **M-2:** accepted — `/can(?:'|no)?t be traced/i`, `/hidden from everyone/i`, `/stays? private on-?chain/i` with fixture rows.
+- **M-3:** accepted — the Review Focus 2 row's title no longer claims the hint; the Review Focus 3 row asserts Details collapsed while the hint shows.
+- **M-4:** accepted as A11 ("Pool" on #20 and #10, "the pool" on #19), listed for the owner's phone pass (reversible).
+- **M-5:** accepted — the reason is hidden while the options are open; the component test counts it once.
+- **M-6:** accepted as a list in "Closing".
+- **M-7:** accepted — "Closing".
+- **M-8:** accepted — two diffs (word swaps, then new phones).
+- **M-9:** accepted — noted in A3 as M2 copy to rewrite.
 
 ## Self-review (done by the planner against the spec, 2026-11-20)
 
 **1. Spec coverage.**
 - §1 success criteria: one word pair → Tasks 1, 3–6 and the scan reaching zero in Task 5; one balance line per #16 tab → Task 3; no technical term by default → Details in Tasks 3–5 (A6 for the words the spec does not ban); the import never silently picks → Task 7; the guard as strict and green → every task (regexes untouched; scope widened in Tasks 1, 2, 4, 5, 7; the native positive control's strings in Task 6).
 - §2 table: every row → Task 1 constants, used in Tasks 3 (rows 2, 3, 4), 4 (rows 6, 7), 5 (rows 1, 4, 5, 8), 6 (row 9). Honesty "kept as is" → the Global Constraints line and the rows that assert each sentence verbatim (Tasks 3, 5). "Widened" → the guard's scope. "Forbidden" → `FORBIDDEN_NEW` over every user-visible string in scope (Task 1).
-- §3.1 module + two tests (guard row, banned-word scan with a positive control) → Task 1. §3.2–§3.4 → Task 2, wired in Tasks 3–5. §3.3 "main is preselected" → Task 3 (A1). §3.4 "the note explanation moves into #16's Details" → Task 3.
+- §3.1 module + two tests (guard row, banned-word scan with a positive control) → Task 1. §3.2–§3.4 → Task 2, wired in Tasks 3–5. §3.3 as amended (owner decision A1: nothing preselected when the fresh account is unavailable) → Task 3. §3.4 "the note explanation moves into #16's Details" → Task 3.
 - §4 dashboard → Task 5; #16 → Task 3; #18 → Task 4 (A7); #21 unshield → Task 4 (A8); deposit #19–#21 → Task 4 (A2); import → Task 7; native confirmation → Task 6 (+ the phone run in its notes).
-- §5 → Task 8 with the gate. §6 → every task's TDD steps, mutations and gates; "each changed row says why" → the `// part B` comments. §7 steps 1–6 → Tasks 1, 2, 3, 4+5+6, 7, 8.
+- §5 → Task 8 with the gate (copies first, the originals replaced only after the owner's approval). §6 → every task's TDD steps, mutations and gates; "each changed row says why" → the `// part B` comments. §7 steps 1–6 → Tasks 1, 2, 3, 4+5+6, 7, 8.
 
 **2. Placeholder scan.** No "TBD", no "TODO", no "similar to Task N"; every code step carries its code; every test step carries its test code. The only bracketed value is `<date>` in Task 8's PR record, which the owner's approval supplies.
 
 **3. Type consistency.** `DestinationChoice` (Task 2) = `UnshieldChoice` (Task 3, aliased); `overLimit(amount: bigint | null, max: bigint)` is called with `hasAmount ? units : null` (Make private) and `hasAmount && source !== null ? units : null` (Make public), the same expression the hint receives; `BalanceRow` (Task 3) is used with `testID="shield-balance"` / `"unshield-vault"`, and the tests read `-value`; `makePublicLimit(max: string, sym)` receives `displayAmount(max, …)`; `a0CheckCaption`'s signature is unchanged; `accountChoiceView`'s parameter order (`loading, detectFailed, showAll, candidates`) matches its call and its table test.
 
-**4. Review Focus.** Five lines, each with its test in the owning task: 1 → Task 3 (two rows: S11 and S9), 2 → Task 3 (one row per side), 3 → Task 3 (+ Task 2's component rows), 4 → Task 7 (two rows), 5 → Task 5.
+**4. Review Focus.** Five lines, each with its test in the owning task: 1 → Task 3 (M1c's S11 and S9 rows, assertions kept), 2 → Task 3 (one row per side, plus the hint in the Review Focus 3 row), 3 → Task 3 (+ Task 2's component rows), 4 → Task 7 (two rows), 5 → Task 5.
 
-**Verified by running, not by reading:** `copyScan.ts` as written compiled with `tsc --strict` and run over this branch (402323e) gives 79 files and exactly the ratchet's 18 counts; its fixture rows give the expected results; `forbiddenClaims` is 0 in every file in scope; `npm run lint:ci` is 144 warnings on the base.
+**Verified by running, not by reading:** `copyScan.ts` as written (revision 2) compiled with `tsc --strict` and run over this branch (402323e) plus its EXTRA files gives 82 files and exactly the ratchet's 21 counts; its fixture rows give the expected results; `forbiddenClaims` is 0 in every file in scope except ReceiveScreen's A10 sentence, which Task 1 deletes; `npm run lint:ci` is 144 warnings on the base.
 

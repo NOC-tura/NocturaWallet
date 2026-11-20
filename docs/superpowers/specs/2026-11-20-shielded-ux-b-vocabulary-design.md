@@ -72,7 +72,7 @@ All four live under `src/components/private/`, except the copy module.
    - collapsed: "To: {selected} · Change". The fresh account shows "(recommended)".
    - "Change" expands the three options with one-line descriptions.
    - When main or another address is selected, its warning shows directly below the row, always visible and never inside Details.
-   - When the fresh account is unavailable (a cli wallet, S9; no grant, S11): main is preselected and a one-line reason is shown.
+   - When the fresh account is unavailable (a cli wallet, S9; no grant, S11): nothing is preselected (M1c's S11 ruling stays), the collapsed row reads "To: Choose a destination · Change", a one-line reason is shown, and the CTA stays disabled until the user picks. *(Amended 2026-11-20 by owner decision after the plan's Fable review; it replaces "main is preselected".)*
    - It replaces the three big cards in `UnshieldSide.tsx`.
    - The selection logic and its refusal rules (own-address refusal, ruling 4's fresh preselection) stay as M1c built them.
 4. **`AmountLimitHint`**:
