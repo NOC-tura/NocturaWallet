@@ -66,7 +66,7 @@ describe('#16 shield side — the design', () => {
     expect(r.getByText('Private ⇄ Public')).toBeTruthy(); // part B: "Shield / Unshield" → "Private ⇄ Public"
     expect(r.getByText('Make private')).toBeTruthy();
     expect(r.getByText('Public balance')).toBeTruthy(); // part B: "Available" → "Public balance"
-    expect(r.getByTestId('shield-balance-value').props.children).toBe('2 TEST');
+    expect(r.getByTestId('shield-balance-value').props.children).toBe('2 TEST'); // part B: by text "2 TEST" → the BalanceRow's value id
     expect(r.queryByText('Private balance')).toBeNull(); // decision B-2: one balance line per tab
     expect(r.getByLabelText('Max')).toBeTruthy();
     expect(r.getByText("You'll make private")).toBeTruthy(); // part B: "You'll shield" → "You'll make private"
@@ -85,6 +85,7 @@ describe('#16 shield side — the design', () => {
     fireEvent.changeText(r.getByTestId('shield-amount-input'), '1.25');
     await waitFor(() => expect(mockPoolCount).toHaveBeenCalled());
     await act(async () => {});
+    expect(r.queryByTestId('pool-notes')).toBeNull(); // ambiguity A6: the pool size sits behind Details
     fireEvent.press(r.getByTestId('shield-details-toggle'));
     await waitFor(() => expect(r.getByTestId('pool-notes')).toBeTruthy());
     expect(r.getByText('0.000005 SOL')).toBeTruthy();
@@ -168,13 +169,28 @@ describe('#16 shield side — the design', () => {
     expect(onShield).toHaveBeenCalledTimes(2);
   });
 
-  it('Review Focus 2: the SOL-short warning and the honest deposit sentence stay visible with Details collapsed', () => {
+  it('Review Focus 2: the SOL-short warning and the honest deposit sentence stay visible with Details collapsed', async () => {
     mockBalances = {tokenBalances: {[A0.mint]: '2000000000'}, solBalance: '700959'};
     const r = screen();
+    await waitFor(() => expect(mockPoolCount).toHaveBeenCalled());
+    await act(async () => {});
     expect(r.getByText(/Your main account signs this deposit\. The amount, the time and your address are public on chain/)).toBeTruthy();
     fireEvent.changeText(r.getByTestId('shield-amount-input'), '1');
     expect(r.queryByTestId('shield-details-body')).toBeNull();
     expect(r.getByText(/Not enough SOL: this deposit needs about 0.00070096 SOL/)).toBeTruthy();
+  });
+
+  it('honesty (spec §2, controller ruling, fix round 1): the deposit sentence stays visible once an amount is typed, Details collapsed', async () => {
+    const r = screen();
+    await waitFor(() => expect(mockPoolCount).toHaveBeenCalled());
+    await act(async () => {});
+    fireEvent.changeText(r.getByTestId('shield-amount-input'), '1.25');
+    expect(r.queryByTestId('shield-details-body')).toBeNull();
+    expect(
+      r.getByText(
+        'Your main account signs this deposit. The amount, the time and your address are public on chain, and a later withdrawal to this wallet can be linked to it.',
+      ),
+    ).toBeTruthy();
   });
 });
 
@@ -222,6 +238,7 @@ describe('#16 — gated on the A0 startup step', () => {
     expect(row.props.className).toMatch(/(^|\s)gap-\d/);
     expect(within(row).queryByTestId('shielded-line-pending')).toBeNull(); // not inside the row
     expect(r.getByTestId('shielded-line-pending').props.children).toBe('0.001 TEST pending');
+    expect(r.queryByText(/TEST ·/)).toBeNull(); // the old glued form is gone
   });
 
   it('ready, nothing pending, no note, no refusal: no status line at all', () => {
@@ -236,7 +253,7 @@ describe('#16 — gated on the A0 startup step', () => {
     ['unsupported', {kind: 'unsupported'} as A0ShieldedView, /needs the on-device prover/],
     ['idle', {kind: 'idle'} as A0ShieldedView, /not loaded yet/],
     ['error', {kind: 'error', code: 'E_A0_TREE_LAYOUT', message: 'bad account'} as A0ShieldedView, /could not be restored · E_A0_TREE_LAYOUT/],
-  ])('%s: a stated state, no balance figure, the CTA disabled with a valid amount', (_n, view, text) => {
+  ])('%s: a stated state, no private figure, the CTA disabled with a valid amount', (_n, view, text) => {
     mockView = view;
     const r = screen();
     fireEvent.changeText(r.getByTestId('shield-amount-input'), '1');

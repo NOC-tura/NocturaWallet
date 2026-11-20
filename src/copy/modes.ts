@@ -70,6 +70,8 @@ export const CHANGE = 'Change';
 export const CHANGE_DESTINATION = 'Change destination';
 /** Nothing chosen yet (owner decision A1, 2026-11-20): no quote yet, or the fresh account is not offered (S9 / S11). */
 export const DESTINATION_NONE = 'Choose a destination';
+/** Why there is no new account when the wallet's key scheme could not be read (Task 3 fix round 1). */
+export const DESTINATION_FRESH_SCHEME_UNREADABLE = "A new account is not available: this wallet's account type could not be read.";
 
 /** "To: {selected}" — the collapsed destination row; "To: Choose a destination" while nothing is chosen. */
 export function destinationSummary(name: string | null): string {

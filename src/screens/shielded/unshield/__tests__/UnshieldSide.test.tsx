@@ -59,9 +59,12 @@ jest.mock('../../../../modules/shielded/a0/noteStore', () => ({
     return {nextDepositIndex: 2n, notes: mockNotes};
   },
 }));
-let mockScheme: TransparentScheme = {kind: 'slip10', account: 0};
+let mockScheme: TransparentScheme | null = {kind: 'slip10', account: 0};
 jest.mock('../../../../modules/keyDerivation/derivationScheme', () => ({
-  loadTransparentScheme: () => mockScheme,
+  loadTransparentScheme: () => {
+    if (mockScheme === null) throw new Error('scheme unreadable'); // fix round 1: an unreadable scheme
+    return mockScheme;
+  },
 }));
 
 /** The live devnet quote's terms (facts file: minFee 10000, gasGrantLamports "3000000"). */
@@ -173,7 +176,7 @@ describe('#16 unshield — the design (states 2 and 5) and the A0 lines', () => 
   it('idle: ONE balance line ("Private balance"), the relayed copy, the relayer fee visible, the rest and the one-note limit behind Details, CTA "Make TEST public" disabled', async () => {
     const r = await screen();
     expect(r.getByText('Private balance')).toBeTruthy(); // part B: "Vault balance" → "Private balance"
-    expect(text(r, 'unshield-vault-value')).toBe('2.5 TEST');
+    expect(text(r, 'unshield-vault-value')).toBe('2.5 TEST'); // part B: "unshield-vault" → its BalanceRow value "unshield-vault-value"
     expect(r.queryByText('Public balance')).toBeNull(); // decision B-2
     expect(text(r, 'unshield-relayed')).toBe(
       'The relayer pays for and submits this transaction, so no key of yours signs it. Amounts and timing are public.',
@@ -259,7 +262,7 @@ describe('#16 unshield — the design (states 2 and 5) and the A0 lines', () => 
 describe('#16 unshield — the destination row (part B, spec §3.3; M1c S3 / S9 / S11, ruling 4)', () => {
   it('a granting quote: collapsed "To: A new account (recommended) · Change"; the fresh account PRESELECTED with the §11 default and the grant in SOL', async () => {
     const r = await screen();
-    expect(summary(r)).toBe('To: A new account (recommended)');
+    expect(summary(r)).toBe('To: A new account (recommended)'); // part B: the selection read from the collapsed row
     expect(r.queryByTestId('unshield-dest-options')).toBeNull();
     openDest(r);
     expect(selected(r, 'unshield-dest-fresh')).toBe(true);
@@ -301,7 +304,7 @@ describe('#16 unshield — the destination row (part B, spec §3.3; M1c S3 / S9 
   it('S9 / Review Focus 1 (M1c\'s row, its assertions kept): a cli wallet → fresh disabled with the cli reason and not selected, nothing preselected, even when the quote grants', async () => {
     mockScheme = {kind: 'cli'};
     const r = await screen();
-    expect(summary(r)).toBe('To: Choose a destination');
+    expect(summary(r)).toBe('To: Choose a destination'); // part B: the collapsed row (owner decision A1)
     expect(text(r, 'unshield-dest-fresh-reason')).toBe(
       'This wallet uses the Solana CLI key scheme, which has a single account, so no new account can be created for this exit.',
     );
@@ -321,8 +324,8 @@ describe('#16 unshield — the destination row (part B, spec §3.3; M1c S3 / S9 
   it('"My main account" → the link warning (§11 verbatim) under the row and the main address in its option; the request carries {kind: "main"}', async () => {
     const r = await screen();
     expect(r.queryByTestId('unshield-warning-main')).toBeNull();
-    pick(r, 'main');
-    expect(summary(r)).toBe('To: My main account');
+    pick(r, 'main'); // part B: the options sit behind Change (pick = open + tap)
+    expect(summary(r)).toBe('To: My main account'); // part B: the selection read from the collapsed row
     expect(text(r, 'unshield-warning-main')).toBe('This links your exit to your deposit: your main account made the deposit.');
     openDest(r);
     expect(text(r, 'unshield-dest-main-sub')).toBe(`${MAIN.slice(0, 6)}…${MAIN.slice(-6)}`);
@@ -334,20 +337,20 @@ describe('#16 unshield — the destination row (part B, spec §3.3; M1c S3 / S9 
 
   it('UX-A 2: the "Another address" input shows the WHOLE address — multiline (2 lines), monospace; Enter submits instead of breaking the line', async () => {
     const r = await screen();
-    pick(r, 'external');
+    pick(r, 'external'); // part B: the options sit behind Change (pick = open + tap)
     const input = r.getByTestId('unshield-external-input');
-    expect(input.props.multiline).toBe(true);
+    expect(input.props.multiline).toBe(true); // wraps: a single-line input scrolls the start out of view
     expect(input.props.numberOfLines).toBe(2);
     expect(input.props.className).toMatch(/(^|\s)font-geist-mono(\s|$)/);
     expect(input.props.submitBehavior).toBe('blurAndSubmit');
     fireEvent.changeText(input, OTHER);
-    expect(r.getByTestId('unshield-external-input').props.value).toBe(OTHER);
+    expect(r.getByTestId('unshield-external-input').props.value).toBe(OTHER); // the full text, nothing cut
   });
 
   it('"Another address" → the payment warning (one word swapped) under the row, the input; a valid wallet address → {kind: "external", owner}', async () => {
     const r = await screen();
-    pick(r, 'external');
-    expect(summary(r)).toBe('To: Another address');
+    pick(r, 'external'); // part B: the options sit behind Change (pick = open + tap)
+    expect(summary(r)).toBe('To: Another address'); // part B: the selection read from the collapsed row
     expect(text(r, 'unshield-warning-external')).toBe('This is a payment from your private balance. The recipient sees the amount.'); // part B: "shielded balance" → "private balance"
     fireEvent.changeText(r.getByTestId('unshield-amount-input'), '1.000000001');
     expect(disabled(r, 'unshield-cta')).toBe(true); // no address yet
@@ -363,7 +366,7 @@ describe('#16 unshield — the destination row (part B, spec §3.3; M1c S3 / S9 
     ['the main account', MAIN, 'This is your main account: choose "My main account" instead.'],
   ])('"Another address" refuses %s: the helper, CTA disabled', async (_n, addr, helper) => {
     const r = await screen();
-    pick(r, 'external');
+    pick(r, 'external'); // part B: the options sit behind Change (pick = open + tap)
     fireEvent.changeText(r.getByTestId('unshield-amount-input'), '1');
     fireEvent.changeText(r.getByTestId('unshield-external-input'), addr);
     expect(text(r, 'unshield-external-problem')).toBe(helper);
@@ -380,11 +383,31 @@ describe('#16 unshield — the destination row (part B, spec §3.3; M1c S3 / S9 
     await act(async () => {
       fireEvent.press(r.getByTestId('unshield-quote-retry'));
     });
-    expect(summary(r)).toBe('To: A new account (recommended)');
-    pick(r, 'main');
+    expect(summary(r)).toBe('To: A new account (recommended)'); // part B: selected(fresh) → the collapsed row
+    pick(r, 'main'); // part B: the options sit behind Change (pick = open + tap)
     fireEvent.changeText(r.getByTestId('unshield-amount-input'), '1'); // re-renders
     fireEvent.changeText(r.getByTestId('unshield-amount-input'), '1.5');
-    expect(summary(r)).toBe('To: My main account');
+    expect(summary(r)).toBe('To: My main account'); // part B: selected(main) → the collapsed row
+  });
+});
+
+describe('#16 unshield — an unreadable key scheme (fix round 1, review Minor 6)', () => {
+  it('the collapsed row says why there is no new account (not a bare "Choose a destination"); nothing preselected; main still works', async () => {
+    mockScheme = null;
+    const r = await screen();
+    expect(summary(r)).toBe('To: Choose a destination');
+    expect(text(r, 'unshield-dest-fresh-reason')).toBe(
+      'A new account is not available: this wallet\'s account type could not be read.',
+    );
+    openDest(r);
+    expect(disabled(r, 'unshield-dest-fresh')).toBe(true);
+    for (const id of ['unshield-dest-fresh', 'unshield-dest-main', 'unshield-dest-external']) {
+      expect(selected(r, id)).toBe(false);
+    }
+    fireEvent.press(r.getByTestId('unshield-dest-main'));
+    fireEvent.changeText(r.getByTestId('unshield-amount-input'), '1');
+    fireEvent.press(r.getByTestId('unshield-cta'));
+    expect(onUnshield).toHaveBeenCalledWith({destination: {kind: 'main'}, amount: '1000000000'});
   });
 });
 

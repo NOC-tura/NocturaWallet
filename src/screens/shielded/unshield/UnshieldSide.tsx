@@ -3,7 +3,7 @@ import {View, Pressable, TextInput, ScrollView} from 'react-native';
 import {PublicKey} from '@solana/web3.js';
 import {AlertTriangle, RefreshCw, Shield} from 'lucide-react-native';
 import {Text} from '../../../components/ui';
-import {AmountLimitHint, DestinationRow, DetailsDisclosure, overLimit} from '../../../components/private';
+import {AmountLimitHint, DestinationRow, DetailsDisclosure, overLimit, type DestinationChoice} from '../../../components/private';
 import {cn} from '../../../utils/cn';
 import {parseTokenAmount, formatTokenAmount} from '../../../utils/parseTokenAmount';
 import {A0_TOKEN, a0ErrorText, displayAmount} from '../../../modules/shielded/a0/screenSupport';
@@ -18,7 +18,13 @@ import {getConnection} from '../../../modules/solana/connection';
 import {useWalletStore} from '../../../store/zustand/walletStore';
 import type {A0ShieldedView} from '../../../hooks/useA0Shielded';
 import {BalanceRow} from '../shieldedParts';
-import {PRIVATE_BALANCE, makePublicCta, makePublicCtaIdle, makePublicLimit} from '../../../copy/modes';
+import {
+  DESTINATION_FRESH_SCHEME_UNREADABLE,
+  PRIVATE_BALANCE,
+  makePublicCta,
+  makePublicCtaIdle,
+  makePublicLimit,
+} from '../../../copy/modes';
 import {
   A0_EXTERNAL_WARNING,
   A0_FRESH_UNAVAILABLE_COPY,
@@ -28,23 +34,24 @@ import {
   a0FreshDefaultCopy,
   a0OneNoteLimit,
 } from './unshieldCopy';
-import type {DestinationChoice} from '../../../components/private';
 
 /**
  * #16's "Make public" side — the A0 unshield (spec §6 steps 1–2, §11; M1c Task 8). Mirrors the
- * design's states 2 (Make public · idle: "Vault balance", the nested transparent MAX, the
- * "Privacy decreases on public withdraw" banner) and 5 (amount entered · fees · the withdraw
- * warning), plus what the A0 unshield adds, UNDRAWN and built from the design system (listed for
- * the owner's visual pass): the relayer quote's states (asking / refused + Retry), the
- * DESTINATION CHOICE (a new account — preselected when the relayer grants SOL, S11, controller
- * ruling 4 —, my main account, another address with its input) with §11's warnings, the
+ * design's states 2 (Make public · idle: the one balance line, the nested MAX, the "Privacy
+ * decreases on public withdraw" banner) and 5 (amount entered · fees · the withdraw warning), plus
+ * what the A0 unshield adds, UNDRAWN and built from the design system (listed for the owner's
+ * visual pass): the relayer quote's states (asking / refused + Retry), the destination, the
  * one-note limit line and the amount line.
  *
- * Shielded UX part B (spec 2026-11-20 §3–§4): one balance line ("Private balance", decision B-2);
- * `DestinationRow` replaces the three cards (decision B-5) — when the fresh account is not offered
- * (S9 cli, S11 no grant) NOTHING is preselected, as M1c ruled ("To: Choose a destination"; owner
- * decision 2026-11-20, plan A1), and a chosen destination's warning shows under the row; the network fee, the ZK proof fee and the one-note explanation behind
- * "Details ▾" (decision B-3); `AmountLimitHint` above the max (decision B-4).
+ * Shielded UX part B (spec 2026-11-20 §3–§4): ONE balance line, "Private balance" (decision B-2).
+ * The destination is one collapsed `DestinationRow` — "To: {choice} · Change", the three options
+ * (a new account, my main account, another address with its input) behind Change (decision B-5).
+ * The fresh account is preselected when the relayer grants SOL (S11, controller ruling 4); when it
+ * is not offered (S9 cli, S11 no grant, an unreadable key scheme) NOTHING is preselected, as M1c
+ * ruled ("To: Choose a destination" and the one-line reason; owner decision 2026-11-20, plan A1).
+ * §11's warnings for the chosen destination show under the row, never behind Change or Details.
+ * The network fee, the ZK proof fee and the one-note explanation sit behind "Details ▾"
+ * (decision B-3); `AmountLimitHint` replaces the max line (decision B-4).
  *
  * WHAT IT DECIDES: nothing about the unshield itself. The quote fetched here only feeds the
  * offer (`a0UnshieldDestinationOffer`), the fee rows and the most one note can pay
@@ -63,7 +70,7 @@ export type UnshieldChoice = DestinationChoice;
 
 export interface UnshieldSideProps {
   view: A0ShieldedView;
-  /** the shielded balance line (#16's, shared with the shield side) */
+  /** #16's private-side STATUS (startup states, a refusal, the pending sum, "Check again"), shared with the Make private tab */
   shieldedLine: React.ReactNode;
   /** CTA → the unshield run (#18 → #21), the amount in base units */
   onUnshield: (request: {destination: A0UnshieldDestination; amount: string}) => void;
@@ -216,6 +223,16 @@ export function UnshieldSide({view, shieldedLine, onUnshield, focusKey = 0}: Uns
 
   const sym = A0_TOKEN.symbol;
   const fee = q?.fee ?? null;
+  // why the fresh account is not offered: the offer's reason (S9 / S11), or — with a quote but no
+  // readable key scheme, where no offer can be computed — that the scheme could not be read (fix round 1)
+  const freshReason =
+    offer !== null
+      ? offer.fresh.available
+        ? null
+        : A0_FRESH_UNAVAILABLE_COPY[offer.fresh.reason]
+      : q !== null && scheme === null
+        ? DESTINATION_FRESH_SCHEME_UNREADABLE
+        : null;
 
   return (
     <>
@@ -325,16 +342,11 @@ export function UnshieldSide({view, shieldedLine, onUnshield, focusKey = 0}: Uns
           disabled={q === null}
           fresh={{
             available: offer !== null && offer.fresh.available,
-            sub:
-              offer === null
-                ? '—'
-                : offer.fresh.available
-                  ? a0FreshDefaultCopy(offer.fresh.grantLamports)
-                  : A0_FRESH_UNAVAILABLE_COPY[offer.fresh.reason],
+            sub: offer !== null && offer.fresh.available ? a0FreshDefaultCopy(offer.fresh.grantLamports) : (freshReason ?? '—'),
           }}
           mainSub={mainAddress ? shortAddress(mainAddress) : 'Your main account'}
           mainMono={mainAddress !== null}
-          freshReason={offer !== null && !offer.fresh.available ? A0_FRESH_UNAVAILABLE_COPY[offer.fresh.reason] : null}
+          freshReason={freshReason}
           warning={
             choice === 'main'
               ? {testID: 'unshield-warning-main', text: A0_MAIN_ACCOUNT_WARNING}

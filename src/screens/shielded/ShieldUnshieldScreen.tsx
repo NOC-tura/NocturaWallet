@@ -308,11 +308,10 @@ export function ShieldUnshieldScreen({onBack, onShield, onUnshield, initialDirec
               </View>
             ) : null}
 
-            {!hasAmount ? (
-              <Text variant="caption" className="text-fg-tertiary text-center px-2 mt-1">
-                Your main account signs this deposit. The amount, the time and your address are public on chain, and a later withdrawal to this wallet can be linked to it.
-              </Text>
-            ) : null}
+            {/* The honest deposit sentence (spec §2): ALWAYS visible, with or without an amount (Task 3 fix round 1) */}
+            <Text variant="caption" className="text-fg-tertiary text-center px-2 mt-1" testID="shield-deposit-public">
+              Your main account signs this deposit. The amount, the time and your address are public on chain, and a later withdrawal to this wallet can be linked to it.
+            </Text>
           </ScrollView>
 
           {/* Sticky CTA */}

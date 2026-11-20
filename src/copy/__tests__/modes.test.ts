@@ -39,6 +39,7 @@ describe('src/copy/modes.ts — the §2 table', () => {
     expect(modes.CHANGE).toBe('Change');
     expect(modes.CHANGE_DESTINATION).toBe('Change destination'); // Task 3 carry 1b: Change's accessibility label
     expect(modes.DESTINATION_NONE).toBe('Choose a destination'); // owner decision A1
+    expect(modes.DESTINATION_FRESH_SCHEME_UNREADABLE).toBe("A new account is not available: this wallet's account type could not be read."); // Task 3 fix round 1 (review Minor 6)
   });
 
   it('the CTAs: with an amount, and the disabled form without one', () => {
