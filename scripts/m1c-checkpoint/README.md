@@ -110,6 +110,7 @@ the harness is in neither release APK.
 ## 2. Install the devnet app, and Task 1's gate
 
 ```bash
+adb logcat -G 16M   # the phone's log ring: 256 KiB on the OnePlus rotated the startup lines out within the hour (2026-11-20); again after a reboot
 node scripts/m1c-checkpoint/m1c-checkpoint.mjs install --apks build/m1c-checkpoint/apks
 node scripts/m1c-checkpoint/m1c-checkpoint.mjs pinned-control --apks build/m1c-checkpoint/apks
 #    The record: build/m1c-checkpoint/{readouts.jsonl,pinned-control.json}
@@ -406,7 +407,8 @@ BiometricPrompt follows it (two prompts per unshield, above).
    the destination's §11 warning + the relayed sentence;
 6. "You'll receive" → "Destination receives"; the fee rows are A0's (Relayer fee in the token; Network fee — Paid by
    the relayer; ZK proof fee — None · made on this device); no USD lines;
-7. no ~90 s stuck redirect to #54; "View details" is the explorer, not #27;
+7. no ~90 s stuck redirect to #54; the unshield's #21 has "Copy signature" (the full signature, cleared after 30 s)
+   instead of "View details" and never opens the explorer (UX-A 6); the deposit's #21 "View details" is the explorer, not #27;
 8. the token is TEST on devnet, NOC elsewhere — on every surface, the native dialog included;
 9. "(Account N+1)" is dropped from the fresh-account default (the index is known only at the reservation).
 

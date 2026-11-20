@@ -8,6 +8,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.util.TypedValue
+import android.view.ContextThemeWrapper
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.LinearLayout
@@ -42,6 +43,12 @@ internal interface A0UnshieldNative {
  * non-system overlays hidden on API 31+, an approve control that filters obscured touches and
  * reports the gesture's obscured flags to the machine (FLAG_WINDOW_IS_PARTIALLY_OBSCURED is not
  * filtered by `filterTouchesWhenObscured`; the machine ignores it).
+ *
+ * Its LOOK (UX-A 5) is the app's: [R.style.A0ConfirmDialogTheme] — a dark rounded sheet — and the
+ * colours of `res/values/a0_confirm_colors.xml`, which are the app's design tokens
+ * (tailwind.config.js `theme.extend.colors`): a white title, grey labels, monospace values whole
+ * and wrapped, Approve a filled accent pill with dark text, Cancel an outlined pill. Only the
+ * look: the text, the window flags and the touch handling are as before.
  */
 internal class A0ConfirmDialog private constructor(val dialog: AlertDialog, val approve: Button) {
     companion object {
@@ -63,41 +70,61 @@ internal class A0ConfirmDialog private constructor(val dialog: AlertDialog, val 
                 symbol = A0ConfirmText.tokenSymbol(BuildConfig.A0_NETWORK),
             )
             val dp = { v: Int -> TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v.toFloat(), res.displayMetrics).toInt() }
-            val column = LinearLayout(activity).apply {
+            // the views are inflated in the dialog's theme, so nothing falls back to the activity's DayNight look
+            val ui = ContextThemeWrapper(activity, R.style.A0ConfirmDialogTheme)
+            val primary = ContextCompat.getColor(ui, R.color.a0_confirm_text_primary)
+            val secondary = ContextCompat.getColor(ui, R.color.a0_confirm_text_secondary)
+            val medium = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+            val column = LinearLayout(ui).apply {
                 orientation = LinearLayout.VERTICAL
-                setPadding(dp(24), dp(8), dp(24), dp(8))
+                setPadding(dp(24), dp(8), dp(24), dp(20))
             }
-            fun line(s: String, sp: Float, bold: Boolean = false, mono: Boolean = false, top: Int = 0) =
-                TextView(activity).apply {
+            fun line(s: String, sp: Float, color: Int, face: Typeface, top: Int = 0) =
+                TextView(ui).apply {
                     this.text = s
                     setTextSize(TypedValue.COMPLEX_UNIT_SP, sp)
-                    typeface = when {
-                        mono -> Typeface.MONOSPACE
-                        bold -> Typeface.DEFAULT_BOLD
-                        else -> Typeface.DEFAULT
-                    }
+                    setTextColor(color)
+                    typeface = face
                     // whole, wrapped: no maxLines, no ellipsis (the owner is never truncated)
                     ellipsize = null
                     maxLines = Int.MAX_VALUE
                     setPadding(0, dp(top), 0, 0)
                     column.addView(this)
                 }
-            line(text.destinationLabel, 14f, bold = true)
-            line(text.owner, 16f, mono = true, top = 4)
-            line(text.tokenAccountLabel, 12f, bold = true, top = 12)
-            line(text.ata, 12f, mono = true, top = 2)
-            line(text.amountLine, 15f, top = 16)
-            line(text.feeLine, 14f, top = 8)
-            line(text.poolLabel, 12f, bold = true, top = 12)
-            line(text.pool, 12f, mono = true, top = 2)
+            fun label(s: String, top: Int = 0) = line(s, 12f, secondary, medium, top)
+            fun value(s: String, sp: Float, top: Int) = line(s, sp, primary, Typeface.MONOSPACE, top)
+            label(text.destinationLabel)
+            value(text.owner, 16f, top = 4)
+            label(text.tokenAccountLabel, top = 14)
+            value(text.ata, 13f, top = 4)
+            line(text.amountLine, 15f, primary, medium, top = 18)
+            line(text.feeLine, 14f, primary, Typeface.DEFAULT, top = 8)
+            label(text.poolLabel, top = 14)
+            value(text.pool, 13f, top = 4)
 
-            val buttons = LinearLayout(activity).apply {
+            val buttons = LinearLayout(ui).apply {
                 orientation = LinearLayout.HORIZONTAL
-                setPadding(0, dp(16), 0, 0)
+                setPadding(0, dp(24), 0, 0)
             }
-            val cancel = Button(activity).apply { setText(R.string.a0_confirm_cancel) }
-            val approve = Button(activity).apply {
+            fun Button.pill(background: Int) {
+                setBackgroundResource(background)
+                stateListAnimator = null // flat: no platform elevation shadow under the pill
+                isAllCaps = false
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+                typeface = medium
+                minHeight = dp(56) // the design's --touch-target-rec
+                minimumHeight = dp(56)
+            }
+            val cancel = Button(ui).apply {
+                setText(R.string.a0_confirm_cancel)
+                pill(R.drawable.a0_confirm_cancel_bg)
+                setTextColor(primary)
+            }
+            val approve = Button(ui).apply {
                 setText(R.string.a0_confirm_approve)
+                pill(R.drawable.a0_confirm_approve_bg)
+                // dark on the accent; fg-disabled once it is disabled for the biometric prompt
+                setTextColor(ContextCompat.getColorStateList(ui, R.color.a0_confirm_approve_text))
                 // I10: a touch delivered while another window covers this one is dropped by the framework...
                 filterTouchesWhenObscured = true
             }
@@ -114,12 +141,15 @@ internal class A0ConfirmDialog private constructor(val dialog: AlertDialog, val 
             }
             cancel.setOnClickListener { onCancel() }
             buttons.addView(cancel, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-            buttons.addView(approve, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            buttons.addView(
+                approve,
+                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = dp(12) },
+            )
             column.addView(buttons)
 
-            val dialog = AlertDialog.Builder(activity)
+            val dialog = AlertDialog.Builder(activity, R.style.A0ConfirmDialogTheme)
                 .setTitle(R.string.a0_confirm_title)
-                .setView(ScrollView(activity).apply { addView(column) })
+                .setView(ScrollView(ui).apply { addView(column) })
                 .setCancelable(true)
                 .create()
             dialog.setCanceledOnTouchOutside(false)

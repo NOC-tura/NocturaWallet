@@ -1,8 +1,8 @@
 import React, {useCallback, useEffect, useRef, useState} from 'react';
-import {View, Pressable, ScrollView, Alert, BackHandler, Linking} from 'react-native';
+import {View, Pressable, ScrollView, Alert, BackHandler} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import Clipboard from '@react-native-clipboard/clipboard';
-import {AlertTriangle, Check, FileText, ShieldCheck, ArrowLeft} from 'lucide-react-native';
+import {AlertTriangle, Check, Copy, ShieldCheck, ArrowLeft} from 'lucide-react-native';
 import {Text} from '../../../components/ui';
 import {cn} from '../../../utils/cn';
 import {formatTokenAmount} from '../../../utils/parseTokenAmount';
@@ -16,11 +16,9 @@ import type {
   A0UnshieldStage,
 } from '../../../modules/shielded/a0/unshieldFlow';
 import {A0_TOKEN, SOL_DECIMALS, a0ErrorText, displayAmount} from '../../../modules/shielded/a0/screenSupport';
-import {A0} from '../../../modules/shielded/a0/constants';
 import {keychainManager} from '../../../modules/keychain/keychainModule';
 import {mnemonicToSeed} from '../../../modules/keyDerivation/mnemonicUtils';
 import {getConnection} from '../../../modules/solana/connection';
-import {explorerTxUrl} from '../../../constants/chain';
 import {useA0Shielded} from '../../../hooks/useA0Shielded';
 import {a0CheckCaption, a0UnshieldDecisionFor} from '../../../modules/shielded/a0/unshieldCheck';
 import type {A0UnshieldCheck} from '../../../modules/shielded/a0/unshieldCheck';
@@ -78,8 +76,18 @@ import type {StageRowStatus, StatusTone} from '../shieldedParts';
  * Verifying → Ready" (the flow's public-input compare is inside its proof stage and has no time
  * of its own); back is LOCKED for the whole run, #18 included (the flow cannot be cancelled once
  * the call started — closing the dialog is the cancel); no "Local prover slow?" / hosted prover
- * (A0 has none); "View details" is the explorer, not #27; no ~90 s stuck-tx redirect to #54.
+ * (A0 has none); no ~90 s stuck-tx redirect to #54; and the design's [View details] (→ #27) is
+ * "Copy signature" (owner-approved 2026-11-20, UX-A 6): it copies the FULL signature (cleared from
+ * the clipboard after 30 s, never on background) and says "Copied". NOTHING on this screen opens
+ * the public explorer — loading the unshield's tx in it from this device would tell the
+ * explorer's RPC which exit is ours. The deposit's #21 (ShieldStatusScreen) keeps its explorer
+ * link: a deposit is signed by the main account and public by design.
  */
+
+/** how long "Copied" replaces "Copy signature" */
+const COPIED_FEEDBACK_MS = 2_000;
+/** the clipboard is cleared this long after a copy (the project's 30 s rule) */
+const CLIPBOARD_CLEAR_MS = 30_000;
 
 const ACCENT = '#5BE3C2';
 const DANGER = '#FF5C6A';
@@ -141,6 +149,15 @@ export function UnshieldRunScreen({request, onDone, onBack}: UnshieldRunScreenPr
   const start = useRef<Partial<Record<A0UnshieldStage, number>>>({});
   const done = useRef<Partial<Record<A0UnshieldStage, number>>>({});
   const started = useRef(false);
+  const [copied, setCopied] = useState(false);
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      // only the "Copied" feedback stops with the screen; a pending clipboard clear still runs
+      if (copiedTimer.current) clearTimeout(copiedTimer.current);
+    },
+    [],
+  );
   const {checkAgain} = useA0Shielded();
   // re-review N-1: this run's note (named by the flow at its pending write) and the first decision
   // a "Check again" made about THAT note — latched: a later check that no longer lists it (it is
@@ -360,10 +377,13 @@ export function UnshieldRunScreen({request, onDone, onBack}: UnshieldRunScreenPr
     if (!signature) return;
     try {
       Clipboard.setString(signature);
-      setTimeout(() => Clipboard.setString(''), 30_000);
+      setTimeout(() => Clipboard.setString(''), CLIPBOARD_CLEAR_MS);
     } catch {
-      // clipboard unavailable — no-op
+      return; // clipboard unavailable: nothing was copied, so no "Copied"
     }
+    setCopied(true);
+    if (copiedTimer.current) clearTimeout(copiedTimer.current);
+    copiedTimer.current = setTimeout(() => setCopied(false), COPIED_FEEDBACK_MS);
   };
 
   return (
@@ -464,16 +484,18 @@ export function UnshieldRunScreen({request, onDone, onBack}: UnshieldRunScreenPr
           <View className="flex-row gap-2">
             {signature ? (
               <Pressable
-                testID="unshield-status-details"
-                onPress={() => {
-                  Linking.openURL(explorerTxUrl(signature, 'solanaexplorer', A0.cluster)).catch(() => {});
-                }}
+                testID="unshield-status-copy"
+                onPress={copySig}
                 accessibilityRole="button"
-                accessibilityLabel="View details"
+                accessibilityLabel="Copy signature"
                 className="flex-1 min-h-touch-rec rounded-pill items-center justify-center flex-row gap-2 bg-bg-surface-1">
-                <FileText size={16} color="#E7E9EE" strokeWidth={1.75} />
-                <Text variant="body-lg" className="font-geist-semibold text-fg-primary">
-                  View details
+                {copied ? (
+                  <Check size={16} color={ACCENT} strokeWidth={2} />
+                ) : (
+                  <Copy size={16} color="#E7E9EE" strokeWidth={1.75} />
+                )}
+                <Text variant="body-lg" className={cn('font-geist-semibold', copied ? 'text-accent-shielded' : 'text-fg-primary')}>
+                  {copied ? 'Copied' : 'Copy signature'}
                 </Text>
               </Pressable>
             ) : null}

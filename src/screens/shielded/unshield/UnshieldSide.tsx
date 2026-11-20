@@ -257,7 +257,9 @@ export function UnshieldSide({view, shieldedLine, onUnshield, focusKey = 0}: Uns
               {vault === null ? '—' : `${displayAmount(vault, A0_TOKEN.decimals)} ${sym}`}
             </Text>
           </View>
-          <View className="flex-row items-baseline justify-center gap-2 mb-3">
+          {/* UX-A 3 (the design's .amount-line: baseline, gap 8, centred): the input is sized to its
+              content — no min width — so the symbol sits right after the figure */}
+          <View className="flex-row items-baseline justify-center gap-2 mb-3" testID="unshield-amount-row">
             <TextInput
               value={amount}
               onChangeText={setAmount}
@@ -266,12 +268,9 @@ export function UnshieldSide({view, shieldedLine, onUnshield, focusKey = 0}: Uns
               keyboardType="decimal-pad"
               accessibilityLabel="Amount"
               testID="unshield-amount-input"
-              className={cn(
-                'font-geist text-balance-xl text-center min-w-[120px]',
-                overMax ? 'text-danger' : 'text-fg-primary',
-              )}
+              className={cn('font-geist text-balance-xl shrink p-0', overMax ? 'text-danger' : 'text-fg-primary')}
             />
-            <Text variant="h2" className={cn(overMax ? 'text-danger' : 'text-fg-secondary')}>
+            <Text variant="h2" className={cn(overMax ? 'text-danger' : 'text-fg-secondary')} testID="unshield-amount-symbol">
               {sym}
             </Text>
           </View>
@@ -356,6 +355,8 @@ export function UnshieldSide({view, shieldedLine, onUnshield, focusKey = 0}: Uns
           />
           {choice === 'external' ? (
             <View className="mt-2">
+              {/* UX-A 2: the WHOLE address is visible — two wrapped monospace lines (a single-line input
+                  scrolls its start out of view); Enter submits, it never puts a line break in it */}
               <TextInput
                 value={external}
                 onChangeText={setExternal}
@@ -363,6 +364,11 @@ export function UnshieldSide({view, shieldedLine, onUnshield, focusKey = 0}: Uns
                 placeholderTextColor="#6E727A"
                 autoCapitalize="none"
                 autoCorrect={false}
+                multiline
+                numberOfLines={2}
+                submitBehavior="blurAndSubmit"
+                returnKeyType="done"
+                textAlignVertical="top"
                 accessibilityLabel="Recipient address"
                 testID="unshield-external-input"
                 className={cn(

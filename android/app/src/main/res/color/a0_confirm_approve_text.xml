@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Approve's text (UX-A 5): bg-base on the accent, fg-disabled while disabled (the design's .btn[disabled]). -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_enabled="false" android:color="@color/a0_confirm_text_disabled" />
+    <item android:color="@color/a0_confirm_on_accent" />
+</selector>
