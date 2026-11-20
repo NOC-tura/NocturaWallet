@@ -100,3 +100,8 @@ export function makePrivateCtaIdle(sym: string): string {
 export function makePublicLimit(max: string, sym: string): string {
   return `You can make up to ${max} ${sym} public at once.`;
 }
+
+/** The import's account choice (decision B-6, spec §4 "Import, smart account choice"; part B Task 7). */
+export const ACCOUNT_FOUND = 'We found your wallet';
+export const ACCOUNT_NONE_FUNDED = 'No funds found yet. You can receive to this address.';
+export const ACCOUNT_DIFFERENT = 'Use a different account';

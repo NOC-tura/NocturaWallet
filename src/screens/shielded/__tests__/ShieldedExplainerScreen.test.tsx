@@ -5,6 +5,7 @@ import {ShieldedExplainerScreen} from '../ShieldedExplainerScreen';
 import {mmkvPublic} from '../../../store/mmkv/instances';
 import {MMKV_KEYS} from '../../../constants/mmkvKeys';
 import {useShieldedStore} from '../../../store/zustand/shieldedStore';
+import {BANNED_WORDS} from '../../../copy/__testing__/copyScan';
 
 const mockReplace = jest.fn();
 const mockGoBack = jest.fn();
@@ -38,7 +39,7 @@ describe('ShieldedExplainerScreen', () => {
   it('#15 overline is the module\'s PRIVATE_MARK, not an old word (Task 6 carry)', () => {
     const {getByText, queryByText} = render(<ShieldedExplainerScreen navigation={navigation} route={route} />);
     expect(getByText('Private')).toBeTruthy();
-    expect(queryByText(/Shielded|Transparent/i)).toBeNull();
+    expect(queryByText(BANNED_WORDS)).toBeNull(); // Task 7 carry: every banned word (the shared scan's pattern), not two of them
   });
 
   it('renders Continue and Learn more CTAs', () => {

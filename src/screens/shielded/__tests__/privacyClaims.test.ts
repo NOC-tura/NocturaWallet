@@ -21,10 +21,9 @@ const UNSUPPORTED = [
 const ROOT = path.resolve(__dirname, '../../../..');
 
 /**
- * M1c Task 8 (spec §11 "The guard … its scope grows to every file carrying M1 copy"): every
- * `.ts` / `.tsx` under `src/screens/shielded/` at ANY depth (the new `unshield/` directory: #16's
- * unshield side, the destination choice and its warnings, the unshield run #18 → #21, the copy
- * module), outside `__tests__`; plus the M1 copy that lives outside it (the "Check again" link).
+ * Every `.ts` / `.tsx` at ANY depth under `src/screens/` and `src/components/`, outside `__tests__`
+ * (part B Task 6 widened it from M1c's `src/screens/shielded/` + the "Check again" link), plus the
+ * EXTRA_COPY files below whose strings reach a screen as they are. Each file is read once.
  */
 function walk(dir: string): string[] {
   return fs.readdirSync(dir, {withFileTypes: true}).flatMap(e => {
@@ -65,7 +64,8 @@ const ALL_SCREENS = path.join(ROOT, 'src/screens');
 const ALL_COMPONENTS = path.join(ROOT, 'src/components');
 
 function screenSources(): Array<{file: string; text: string}> {
-  return [...walk(ALL_SCREENS), ...walk(ALL_COMPONENTS), ...EXTRA_COPY].map(p => ({
+  // part B Task 7 carry: an EXTRA_COPY file already under screens/components is read once, not twice
+  return [...new Set([...walk(ALL_SCREENS), ...walk(ALL_COMPONENTS), ...EXTRA_COPY])].map(p => ({
     file: path.relative(ROOT, p),
     text: fs.readFileSync(p, 'utf8'),
   }));
@@ -122,8 +122,12 @@ describe('shielded screens make no unsupported privacy claim', () => {
         // part B Task 6: the widened scope reaches screens outside the shielded directory
         'src/screens/settings/WipeWalletScreen.tsx',
         'src/screens/staking/StakingScreen.tsx',
+        // part B Task 7: the import's account choice is new copy
+        'src/screens/onboarding/SelectAccountScreen.tsx',
       ]),
     );
+    // part B Task 7 carry: each file is read once (EXTRA_COPY overlaps the walked directories)
+    expect(new Set(files).size).toBe(files.length);
     // the scope is wide, not just the shielded directory
     expect(files.length).toBeGreaterThan(40);
     // the dashboard is read as text: its shielded caption is in what the guard sees

@@ -55,6 +55,12 @@ describe('src/copy/modes.ts — the §2 table', () => {
     expect(modes.destinationSummary(null)).toBe('To: Choose a destination'); // owner decision A1: nothing preselected
   });
 
+  it("the import's account choice (decision B-6, part B Task 7)", () => {
+    expect(modes.ACCOUNT_FOUND).toBe('We found your wallet');
+    expect(modes.ACCOUNT_NONE_FUNDED).toBe('No funds found yet. You can receive to this address.');
+    expect(modes.ACCOUNT_DIFFERENT).toBe('Use a different account');
+  });
+
   it('the Private balance card keeps the honest sentence (spec §2 "Kept as is")', () => {
     expect(modes.PRIVATE_CARD_BODY).toBe('Make private moves tokens in with a proof made on this device. Deposits are public on chain.');
   });

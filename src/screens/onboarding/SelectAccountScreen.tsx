@@ -19,11 +19,22 @@ import {zeroize} from '../../modules/session/zeroize';
 import {formatAddress} from '../../utils/formatAddress';
 import {formatTokenAmount} from '../../utils/parseTokenAmount';
 import {cn} from '../../utils/cn';
+import {ACCOUNT_DIFFERENT, ACCOUNT_FOUND, ACCOUNT_NONE_FUNDED} from '../../copy/modes';
 
 /**
  * Import account picker. After the seed is validated, derive candidate
  * addresses (SLIP-0010 accounts 0-4 + the solana-keygen "cli" scheme), query
- * on-chain SOL + NOC balances, and let the user select the funded account.
+ * on-chain SOL + NOC balances, and let the user confirm the account to use.
+ *
+ * Shielded UX part B, decision B-6 (spec 2026-11-20 §4) — the smart choice:
+ *   - exactly one funded → "We found your wallet", its address and balance,
+ *     Continue, and "Use a different account" (the full list);
+ *   - more than one funded → the funded ones only, plus the same link;
+ *   - none funded (balances resolved) → standard account 0, "No funds found
+ *     yet. You can receive to this address.", and the link;
+ *   - the balance RPC failed → the warning + Retry and the full list.
+ * It never picks silently: the account Continue uses is on screen before the
+ * tap. The detection itself (`detectFundedAccounts`) is unchanged.
  *
  * Shown ONLY in the import flow. The create flow never visits this screen, so
  * new wallets keep the default standard scheme (SLIP-0010 account 0).
@@ -37,9 +48,29 @@ interface SelectAccountScreenProps {
   onBack?: () => void;
 }
 
+export type AccountChoiceView = 'loading' | 'one' | 'funded' | 'none' | 'all';
+
+/** decision B-6: which view the account choice shows. Pure. */
+export function accountChoiceView(
+  loading: boolean,
+  detectFailed: boolean,
+  showAll: boolean,
+  candidates: readonly AccountCandidate[],
+): AccountChoiceView {
+  if (loading) return 'loading';
+  if (detectFailed || showAll) return 'all';
+  const funded = candidates.filter(c => c.funded).length;
+  return funded === 1 ? 'one' : funded > 1 ? 'funded' : 'none';
+}
+
 const securityManager = new ScreenSecurityManager();
 const SOL_DECIMALS = 9;
 const NOC_DECIMALS = 9;
+
+function balanceText(c: AccountCandidate): string {
+  const noc = c.nocAmount > 0n ? ` · ${formatTokenAmount(c.nocAmount, NOC_DECIMALS)} NOC` : '';
+  return `${formatTokenAmount(c.lamports, SOL_DECIMALS)} SOL${noc}`;
+}
 
 export function SelectAccountScreen({
   mnemonic,
@@ -49,6 +80,7 @@ export function SelectAccountScreen({
   const [loading, setLoading] = useState(true);
   const [candidates, setCandidates] = useState<AccountCandidate[]>([]);
   const [detectFailed, setDetectFailed] = useState(false);
+  const [showAll, setShowAll] = useState(false);
   const [selectedKey, setSelectedKey] = useState<string>(
     schemeToString(DEFAULT_TRANSPARENT_SCHEME),
   );
@@ -69,6 +101,7 @@ export function SelectAccountScreen({
     }
     setLoading(true);
     setDetectFailed(false);
+    setShowAll(false); // Review Focus 4: a Retry starts from the smart view again
     let seed: Uint8Array | undefined;
     try {
       seed = await mnemonicToSeed(mnemonic);
@@ -107,6 +140,25 @@ export function SelectAccountScreen({
     onSelect(selectedSchemeRef.current);
   }, [onSelect]);
 
+  const view = accountChoiceView(loading, detectFailed, showAll, candidates);
+  const funded = candidates.filter(c => c.funded);
+  const standard =
+    candidates.find(c => schemeToString(c.scheme) === schemeToString(DEFAULT_TRANSPARENT_SCHEME)) ?? null;
+  const listed = view === 'funded' ? funded : candidates;
+  const different = (
+    <Pressable
+      onPress={() => setShowAll(true)}
+      accessibilityRole="button"
+      accessibilityLabel={ACCOUNT_DIFFERENT}
+      testID="select-account-different"
+      hitSlop={8}
+      className="min-h-touch-min justify-center">
+      <Text variant="body-sm" className="text-accent-transparent font-geist-semibold">
+        {ACCOUNT_DIFFERENT}
+      </Text>
+    </Pressable>
+  );
+
   return (
     <SafeAreaView
       edges={['top', 'bottom', 'left', 'right']}
@@ -132,99 +184,82 @@ export function SelectAccountScreen({
       <ScrollView
         contentContainerClassName="flex-grow pb-4"
         showsVerticalScrollIndicator={false}>
-        <View className="px-5 mb-4">
-          <Text variant="body" className="text-fg-secondary">
-            We checked this recovery phrase for on-chain balances. Pick the
-            account you want to use.
-          </Text>
-        </View>
-
-        {loading ? (
+        {view === 'loading' ? (
           <View className="px-5 py-10 items-center gap-3">
             <ActivityIndicator size="small" color="#B084FC" />
             <Text variant="body-sm" className="text-fg-tertiary">
               Looking for your accounts…
             </Text>
           </View>
-        ) : (
-          <View className="px-5 gap-2">
-            {detectFailed ? (
-              <View className="mb-2 p-4 rounded-md bg-bg-surface-2 border-l-2 border-l-warning gap-3">
-                <Text variant="body-sm" className="text-fg-primary">
-                  Couldn't check balances right now. You can continue with the
-                  standard account and switch later.
-                </Text>
-                <Button
-                  label="Try again"
-                  variant="secondary"
-                  onPress={() => void runDetection()}
-                  testID="select-account-retry"
-                />
-              </View>
-            ) : null}
-
-            {candidates.map(c => {
-              const key = schemeToString(c.scheme);
-              const selected = key === selectedKey;
-              return (
-                <Pressable
-                  key={key}
-                  onPress={() => handlePick(c.scheme)}
-                  accessibilityRole="button"
-                  testID={`account-candidate-${key}`}>
-                  <Card padding="p-4">
-                    <View className="flex-row items-center gap-3">
-                      <View
-                        className={cn(
-                          'w-10 h-10 rounded-full items-center justify-center',
-                          selected ? 'bg-[rgba(176,132,252,0.18)]' : 'bg-bg-surface-2',
-                        )}>
-                        {selected ? (
-                          <Check size={20} color="#B084FC" strokeWidth={2.25} />
-                        ) : (
-                          <Wallet size={18} color="#A8ACB5" strokeWidth={1.75} />
-                        )}
-                      </View>
-                      <View className="flex-1">
-                        <View className="flex-row items-center gap-2">
-                          <Text variant="body" className="text-fg-primary">
-                            {schemeLabel(c.scheme)}
-                          </Text>
-                          {c.funded ? (
-                            <View className="px-2 py-0.5 rounded-pill bg-[rgba(63,214,139,0.16)]">
-                              <Text variant="caption" className="text-success">
-                                Funded
-                              </Text>
-                            </View>
-                          ) : null}
-                        </View>
-                        <Text
-                          variant="caption"
-                          mono
-                          className="text-fg-tertiary mt-0.5">
-                          {formatAddress(c.address)}
-                        </Text>
-                        {!detectFailed ? (
-                          <Text
-                            variant="caption"
-                            className="text-fg-secondary mt-1">
-                            {formatTokenAmount(c.lamports, SOL_DECIMALS)} SOL
-                            {c.nocAmount > 0n
-                              ? ` · ${formatTokenAmount(c.nocAmount, NOC_DECIMALS)} NOC`
-                              : ''}
-                          </Text>
-                        ) : (
-                          <Text variant="caption" className="text-fg-tertiary mt-1">
-                            Balance unavailable
-                          </Text>
-                        )}
-                      </View>
-                    </View>
-                  </Card>
-                </Pressable>
-              );
-            })}
+        ) : view === 'one' ? (
+          <View className="px-5 gap-3" testID="select-account-found">
+            <Text variant="h2">{ACCOUNT_FOUND}</Text>
+            <Card padding="p-4">
+              <Text variant="body" className="text-fg-primary">
+                {schemeLabel(funded[0]!.scheme)}
+              </Text>
+              <Text variant="caption" mono className="text-fg-tertiary mt-0.5" testID="select-account-found-address">
+                {formatAddress(funded[0]!.address)}
+              </Text>
+              <Text variant="caption" className="text-fg-secondary mt-1" testID="select-account-found-balance">
+                {balanceText(funded[0]!)}
+              </Text>
+            </Card>
+            {different}
           </View>
+        ) : view === 'none' ? (
+          <View className="px-5 gap-3" testID="select-account-none">
+            <Text variant="body" className="text-fg-primary">
+              {ACCOUNT_NONE_FUNDED}
+            </Text>
+            {standard ? (
+              <Card padding="p-4">
+                <Text variant="body" className="text-fg-primary">
+                  {schemeLabel(standard.scheme)}
+                </Text>
+                <Text variant="caption" mono className="text-fg-tertiary mt-0.5" testID="select-account-none-address">
+                  {formatAddress(standard.address)}
+                </Text>
+              </Card>
+            ) : null}
+            {different}
+          </View>
+        ) : (
+          <>
+            <View className="px-5 mb-4">
+              <Text variant="body" className="text-fg-secondary">
+                We checked this recovery phrase for on-chain balances. Pick the
+                account you want to use.
+              </Text>
+            </View>
+            <View className="px-5 gap-2">
+              {detectFailed ? (
+                <View className="mb-2 p-4 rounded-md bg-bg-surface-2 border-l-2 border-l-warning gap-3">
+                  <Text variant="body-sm" className="text-fg-primary">
+                    Couldn't check balances right now. You can continue with the
+                    standard account and switch later.
+                  </Text>
+                  <Button
+                    label="Try again"
+                    variant="secondary"
+                    onPress={() => void runDetection()}
+                    testID="select-account-retry"
+                  />
+                </View>
+              ) : null}
+
+              {listed.map(c => (
+                <CandidateCard
+                  key={schemeToString(c.scheme)}
+                  candidate={c}
+                  selected={schemeToString(c.scheme) === selectedKey}
+                  balanceKnown={!detectFailed}
+                  onPick={handlePick}
+                />
+              ))}
+              {view === 'funded' ? different : null}
+            </View>
+          </>
         )}
 
         <View className="flex-1" />
@@ -241,5 +276,67 @@ export function SelectAccountScreen({
         />
       </View>
     </SafeAreaView>
+  );
+}
+
+function CandidateCard({
+  candidate: c,
+  selected,
+  balanceKnown,
+  onPick,
+}: {
+  candidate: AccountCandidate;
+  selected: boolean;
+  balanceKnown: boolean;
+  onPick: (scheme: TransparentScheme) => void;
+}) {
+  const key = schemeToString(c.scheme);
+  return (
+    <Pressable
+      onPress={() => onPick(c.scheme)}
+      accessibilityRole="button"
+      testID={`account-candidate-${key}`}>
+      <Card padding="p-4">
+        <View className="flex-row items-center gap-3">
+          <View
+            className={cn(
+              'w-10 h-10 rounded-full items-center justify-center',
+              selected ? 'bg-[rgba(176,132,252,0.18)]' : 'bg-bg-surface-2',
+            )}>
+            {selected ? (
+              <Check size={20} color="#B084FC" strokeWidth={2.25} />
+            ) : (
+              <Wallet size={18} color="#A8ACB5" strokeWidth={1.75} />
+            )}
+          </View>
+          <View className="flex-1">
+            <View className="flex-row items-center gap-2">
+              <Text variant="body" className="text-fg-primary">
+                {schemeLabel(c.scheme)}
+              </Text>
+              {c.funded ? (
+                <View className="px-2 py-0.5 rounded-pill bg-[rgba(63,214,139,0.16)]">
+                  <Text variant="caption" className="text-success">
+                    Funded
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+            <Text variant="caption" mono className="text-fg-tertiary mt-0.5">
+              {formatAddress(c.address)}
+            </Text>
+            {balanceKnown ? (
+              <Text variant="caption" className="text-fg-secondary mt-1">
+                {balanceText(c)}
+              </Text>
+            ) : (
+              <Text variant="caption" className="text-fg-tertiary mt-1">
+                Balance unavailable
+              </Text>
+            )}
+          </View>
+        </View>
+      </Card>
+    </Pressable>
   );
 }
