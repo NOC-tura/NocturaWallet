@@ -42,6 +42,10 @@ const EXTRA_COPY = [
   path.join(ROOT, 'src/screens/dashboard/DashboardScreen.tsx'),
   // Shielded UX part B (spec §2 "Widened"): the one vocabulary module.
   path.join(ROOT, 'src/copy/modes.ts'),
+  // part B: copy a screen shows as it is (the "Check again" captions, the unavailable message, #10's recipient)
+  path.join(ROOT, 'src/modules/shielded/a0/unshieldCheck.ts'),
+  path.join(ROOT, 'src/hooks/useA0Shielded.ts'),
+  path.join(ROOT, 'src/app/Navigator.tsx'),
 ];
 
 /** Shielded UX part B (spec §2 "Widened"): the shared components of the private side. */
@@ -98,6 +102,9 @@ describe('shielded screens make no unsupported privacy claim', () => {
         'src/components/private/DestinationRow.tsx',
         'src/screens/dashboard/DashboardScreen.tsx',
         'src/copy/modes.ts',
+        'src/modules/shielded/a0/unshieldCheck.ts',
+        'src/hooks/useA0Shielded.ts',
+        'src/app/Navigator.tsx',
       ]),
     );
     // the dashboard is read as text: its shielded caption is in what the guard sees

@@ -131,7 +131,7 @@ describe('the run — one unshieldA0 call per mount', () => {
     expect(mockUnshield).not.toHaveBeenCalled();
     expect(title(r)).toBe('Not sent');
     // final review M-4: the code + a fixed sentence (the raw message is not shown where a code exists)
-    expect(sub(r)).toBe('E_KEYCHAIN_CANCELLED · The unshield stopped on this device. Nothing was sent.');
+    expect(sub(r)).toBe('E_KEYCHAIN_CANCELLED · The transfer to public stopped on this device. Nothing was sent.'); // part B: "The unshield stopped" → "The transfer to public stopped"
   });
 });
 
@@ -140,7 +140,7 @@ describe('#18 for the unshield — the real stages, measured times, never a perc
     const {r, ctl} = await run();
     expect(mockSecure.on).toBe(1);
     await step(ctl, 'sync');
-    expect(r.getByTestId('unshield-hero').props.children).toBe('Syncing the pool');
+    expect(r.getByTestId('unshield-hero').props.children).toBe('Checking the pool'); // part B: "Syncing the pool" → "Checking the pool"
     await step(ctl, 'quote', 1_200);
     expect(meta(r, 'sync')).toBe('done · 1.2 s');
     expect(meta(r, 'quote')).toBe('asking the relayer for its fee · 0.0 s');
@@ -150,7 +150,7 @@ describe('#18 for the unshield — the real stages, measured times, never a perc
     expect(r.getByTestId('unshield-hero').props.children).toBe('Approve in the dialog');
     await step(ctl, 'proof', 7_400);
     expect(meta(r, 'approval')).toBe('done · 7.4 s');
-    expect(meta(r, 'proof')).toBe('running the Groth16 prover on this device · 0.0 s');
+    expect(meta(r, 'proof')).toBe('making the proof on this device · 0.0 s'); // part B: "running the Groth16 prover" → "making the proof"
     expect(r.queryByText(/%/)).toBeNull();
   });
 
@@ -205,11 +205,37 @@ describe('#18 for the unshield — the real stages, measured times, never a perc
     const {r, ctl, onDone} = await run();
     await step(ctl, 'proof');
     fireEvent.press(r.getByTestId('back-button'));
-    expect(alert).toHaveBeenCalledWith('Unshield in progress', expect.stringMatching(/Leaving does not stop it/));
+    expect(alert).toHaveBeenCalledWith('Making public…', expect.stringMatching(/Leaving does not stop it/)); // part B: "Unshield in progress" → "Making public…"
     expect(onDone).not.toHaveBeenCalled();
     await act(async () => ctl.resolve({status: 'not-sent', outcome: 'invalid_request'}));
     fireEvent.press(r.getByTestId('unshield-status-done'));
     expect(onDone).toHaveBeenCalled();
+  });
+});
+
+describe('part B: the headers say "PRIVATE · Make public" and the run titles use the new words', () => {
+  it('#18: "Private" and "Making public…"; the hero caption is the amount, no old word', async () => {
+    const {r, ctl} = await run();
+    await step(ctl, 'sync');
+    expect(r.getByTestId('unshield-proof-title').props.children).toBe('Making public…');
+    expect(r.getByText('Private')).toBeTruthy();
+    expect(r.getByText('1.25 TEST')).toBeTruthy();
+    expect(r.queryByText(/Unshield|SHIELDED/)).toBeNull();
+  });
+
+  it('#21: "Private · Making public…" while it runs, "Private · Make public" after', async () => {
+    const {r, ctl} = await run();
+    await step(ctl, 'sync');
+    await step(ctl, 'quote', 10);
+    await step(ctl, 'approval', 10);
+    await step(ctl, 'proof', 10);
+    await step(ctl, 'submit', 10);
+    expect(r.getByTestId('unshield-status-header').props.children).toBe('Making public…');
+    await act(async () =>
+      ctl.resolve({status: 'spent', signature: SIG, changeLeafIndex: 1, changeAmount: 1n, grantLamports: null, destinationWithoutSol: false}),
+    );
+    expect(r.getByTestId('unshield-status-header').props.children).toBe('Make public');
+    expect(r.queryByText(/Unshield/)).toBeNull();
   });
 });
 
@@ -274,12 +300,15 @@ describe('#21 for the unshield — every outcome said as what it is', () => {
     await act(async () =>
       ctl.resolve({status: 'spent', signature: SIG, changeLeafIndex: 42, changeAmount: 749_990_000n, grantLamports: 3_000_000n, destinationWithoutSol: false}),
     );
-    expect(title(r)).toBe('Unshielded');
-    expect(sub(r)).toBe('Landed on Solana devnet and verified · the destination received 1.25 TEST.');
+    expect(title(r)).toBe('Now public'); // part B: "Unshielded" → "Now public"
+    expect(sub(r)).toBe('The destination received 1.25 TEST.'); // part B: "Landed on Solana devnet and verified · the destination received" → "The destination received" (A8)
     expect(r.getByText('CONFIRMED')).toBeTruthy();
     expect(r.getByTestId('unshield-line-grant').props.children).toBe('The relayer also sent the new account 0.003 SOL for its own fees.');
-    expect(r.getByTestId('unshield-line-change').props.children).toBe('Your change, 0.74999 TEST, stays shielded.');
+    expect(r.getByTestId('unshield-line-change').props.children).toBe('Your change, 0.74999 TEST, stays private.'); // part B: "stays shielded" → "stays private"
     expect(r.queryByTestId('unshield-line-no-sol')).toBeNull();
+    expect(r.queryByText('#42 in the pool')).toBeNull(); // part B (spec §4): behind Details
+    expect(r.queryByText('4Hq7Mb…5e6f')).toBeNull();
+    fireEvent.press(r.getByTestId('unshield-details-toggle'));
     expect(r.getByText('#42 in the pool')).toBeTruthy();
     expect(r.getByText('4Hq7Mb…5e6f')).toBeTruthy();
     expect(r.queryByTestId('unshield-check-again')).toBeNull();
@@ -409,17 +438,18 @@ describe('#21 for the unshield — every outcome said as what it is', () => {
   it('pending without a signature (an unreadable answer) → no tx hash row, still "Check again"', async () => {
     const {r, ctl} = await run();
     await act(async () => ctl.resolve({status: 'pending', signature: null, reason: 'unknown'}));
-    expect(r.queryByText('Tx hash')).toBeNull();
+    expect(r.queryByTestId('unshield-details')).toBeNull(); // part B: no signature → no Details (was: no "Tx hash" row)
     expect(r.getByTestId('unshield-check-again')).toBeTruthy();
   });
 
-  it('not-sent → "Not sent" with the relayer outcome; "Back to unshield" goes back with the form', async () => {
+  it('not-sent → "Not sent" with the relayer outcome; "Back to Make public" goes back with the form', async () => {
     const {r, ctl, onBack} = await run();
     await act(async () => ctl.resolve({status: 'not-sent', outcome: 'budget_exceeded'}));
     expect(title(r)).toBe('Not sent');
-    expect(sub(r)).toBe('The relayer did not send it (budget_exceeded). Nothing left your shielded balance.');
+    expect(sub(r)).toBe('The relayer did not send it (budget_exceeded). Nothing left your private balance.'); // part B: "shielded balance" → "private balance"
     expect(r.queryByTestId('unshield-check-again')).toBeNull();
     fireEvent.press(r.getByTestId('unshield-status-back'));
+    expect(r.getByText('Back to Make public')).toBeTruthy(); // part B: "Back to unshield" → "Back to Make public"
     expect(onBack).toHaveBeenCalledTimes(1);
   });
 
@@ -434,7 +464,7 @@ describe('#21 for the unshield — every outcome said as what it is', () => {
   it('E_A0_UNSHIELD_BUSY (a second unshield in this process) → "Not sent" with its code', async () => {
     const {r, ctl} = await run();
     await act(async () => ctl.reject(Object.assign(new Error('E_A0_UNSHIELD_BUSY: another unshield is in flight'), {code: 'E_A0_UNSHIELD_BUSY'})));
-    expect(sub(r)).toBe('E_A0_UNSHIELD_BUSY · Another unshield is still running on this device. Nothing was sent.');
+    expect(sub(r)).toBe('E_A0_UNSHIELD_BUSY · Another transfer to public is still running on this device. Nothing was sent.'); // part B: "Another unshield" → "Another transfer to public"
   });
 
   it('a throw AFTER the submit stage (a note-store refusal) → "Not confirmed yet" with its code, never "Nothing was sent"', async () => {
@@ -497,7 +527,7 @@ describe('#21 for the unshield — every outcome said as what it is', () => {
     await step(ctl, 'proof');
     await act(async () => ctl.reject(Object.assign(new Error('E_A0_SUBMIT_PUBLIC_INPUTS: mismatch'), {code: 'E_A0_SUBMIT_PUBLIC_INPUTS'})));
     expect(title(r)).toBe('Not sent');
-    expect(sub(r)).toBe('E_A0_SUBMIT_PUBLIC_INPUTS · The unshield stopped on this device. Nothing was sent.');
+    expect(sub(r)).toBe('E_A0_SUBMIT_PUBLIC_INPUTS · The transfer to public stopped on this device. Nothing was sent.'); // part B: "The unshield stopped" → "The transfer to public stopped"
   });
 
   it.each([
@@ -575,7 +605,7 @@ describe('#21 for the unshield — every outcome said as what it is', () => {
     const {r, ctl} = await run();
     await act(async () => ctl.reject(Object.assign(new Error(`E_A0_SYNC_RPC: request to ${SECRET} failed`), {code: 'E_A0_SYNC_RPC'})));
     expect(JSON.stringify(r.toJSON())).not.toContain('SENTINEL123');
-    expect(sub(r)).toBe('E_A0_SYNC_RPC · The unshield stopped on this device. Nothing was sent.');
+    expect(sub(r)).toBe('E_A0_SYNC_RPC · The transfer to public stopped on this device. Nothing was sent.'); // part B: "The unshield stopped" → "The transfer to public stopped"
     const second = await run();
     await act(async () => second.ctl.reject(new Error('Network request failed')));
     expect(sub(second.r)).toBe('Network request failed. Nothing was sent.');
@@ -620,23 +650,23 @@ describe('final review I-1 + re-review N-1 / N-2 / N-3 / N-4: what "Check again"
 
   it('this note settled (verified) → "Unshielded", CONFIRMED; no PENDING, no "Check again"; the caption stays, without the link', async () => {
     const {r} = await pendingRun();
-    check(r, rep({settled: [settledOf(MINE)]}), {kind: 'settled', verified: true}, 'Confirmed · unshielded.');
-    expect(title(r)).toBe('Unshielded');
+    check(r, rep({settled: [settledOf(MINE)]}), {kind: 'settled', verified: true}, 'Confirmed · now public.'); // part B: "Confirmed · unshielded." → "Confirmed · now public."
+    expect(title(r)).toBe('Now public'); // part B: "Unshielded" → "Now public"
     expect(sub(r)).toBe('Checked again: it landed on Solana devnet and was verified · the destination received 1.25 TEST.');
     expect(r.getByText('CONFIRMED')).toBeTruthy();
     expect(r.queryByText('PENDING')).toBeNull();
     expect(r.queryByTestId('unshield-check-again')).toBeNull();
-    expect(caption(r)).toBe('Confirmed · unshielded.');
+    expect(caption(r)).toBe('Confirmed · now public.'); // part B: "Confirmed · unshielded." → "Confirmed · now public."
   });
 
   it('this note reverted → "Not sent" with the note back; no PENDING, no "Check again"', async () => {
     const {r} = await pendingRun();
-    check(r, rep({reverted: [{rho: MINE}]}), {kind: 'reverted'}, 'Not sent · your note is back in your shielded balance.');
+    check(r, rep({reverted: [{rho: MINE}]}), {kind: 'reverted'}, 'Not sent · your note is back in your private balance.'); // part B: "shielded balance" → "private balance"
     expect(title(r)).toBe('Not sent');
-    expect(sub(r)).toBe('Checked again: it did not land in time, so it can no longer land. Your note is back in your shielded balance.');
+    expect(sub(r)).toBe('Checked again: it did not land in time, so it can no longer land. Your note is back in your private balance.'); // part B: "shielded balance" → "private balance"
     expect(r.queryByText('PENDING')).toBeNull();
     expect(r.queryByTestId('unshield-check-again')).toBeNull();
-    expect(caption(r)).toBe('Not sent · your note is back in your shielded balance.');
+    expect(caption(r)).toBe('Not sent · your note is back in your private balance.'); // part B: "shielded balance" → "private balance"
   });
 
   it('a verifier refusal of this note → LOUD from the CODE, UNVERIFIED; no PENDING', async () => {
@@ -651,19 +681,19 @@ describe('final review I-1 + re-review N-1 / N-2 / N-3 / N-4: what "Check again"
   it('N-1 (a), CP2\'s shape: tap 1 settles THIS note (the older still pending), tap 2 reverts the older → this #21 stays "Unshielded", never "Not sent"', async () => {
     const {r} = await pendingRun();
     check(r, rep({settled: [settledOf(MINE)], stillPending: [{rho: OLDER, reason: 'in-window'}]}), {kind: 'pending'}, 'Still not confirmed · checked just now.');
-    expect(title(r)).toBe('Unshielded');
-    check(r, rep({reverted: [{rho: OLDER}]}), {kind: 'reverted'}, 'Not sent · your note is back in your shielded balance.');
-    expect(title(r)).toBe('Unshielded');
+    expect(title(r)).toBe('Now public'); // part B: "Unshielded" → "Now public"
+    check(r, rep({reverted: [{rho: OLDER}]}), {kind: 'reverted'}, 'Not sent · your note is back in your private balance.'); // part B: "shielded balance" → "private balance"
+    expect(title(r)).toBe('Now public'); // part B: "Unshielded" → "Now public"
     expect(r.queryByText(/Not sent/)).toBeNull();
-    expect(caption(r)).toBe('Confirmed · unshielded.');
+    expect(caption(r)).toBe('Confirmed · now public.'); // part B: "Confirmed · unshielded." → "Confirmed · now public."
   });
 
   it('N-1 (b), the mirror: the OLDER settles while this one reverts → this #21 says "Not sent", never "Unshielded"', async () => {
     const {r} = await pendingRun();
-    check(r, rep({settled: [settledOf(OLDER)], reverted: [{rho: MINE}]}), {kind: 'settled', verified: true}, 'Confirmed · unshielded.');
+    check(r, rep({settled: [settledOf(OLDER)], reverted: [{rho: MINE}]}), {kind: 'settled', verified: true}, 'Confirmed · now public.'); // part B: "Confirmed · unshielded." → "Confirmed · now public."
     expect(title(r)).toBe('Not sent');
-    expect(r.queryByText(/Unshielded|CONFIRMED/)).toBeNull();
-    expect(caption(r)).toBe('Not sent · your note is back in your shielded balance.');
+    expect(r.queryByText(/Now public|CONFIRMED/)).toBeNull(); // part B: the negative row follows the new word
+    expect(caption(r)).toBe('Not sent · your note is back in your private balance.'); // part B: "shielded balance" → "private balance"
   });
 
   it('N-1 (c): a decision about an unrelated note (settled, reverted or refused) leaves this #21 pending, "Check again" kept', async () => {
@@ -673,7 +703,7 @@ describe('final review I-1 + re-review N-1 / N-2 / N-3 / N-4: what "Check again"
       [rep({reverted: [{rho: OLDER}]}), {kind: 'reverted'}],
       [rep({settled: [settledOf(OLDER, false, 'E_A0_VERIFY_FEE')]}), {kind: 'unverified', code: 'E_A0_VERIFY_FEE'}],
     ] as const) {
-      check(r, report, agg, 'Confirmed · unshielded.');
+      check(r, report, agg, 'Confirmed · now public.'); // part B: "Confirmed · unshielded." → "Confirmed · now public."
       expect(title(r)).toBe('Not confirmed yet');
       expect(r.getByText('PENDING')).toBeTruthy();
       expect(r.getByTestId('unshield-check-again')).toBeTruthy();
@@ -694,8 +724,8 @@ describe('final review I-1 + re-review N-1 / N-2 / N-3 / N-4: what "Check again"
     await step(ctl, 'submit');
     await act(async () => ctl.pending(MINE));
     await act(async () => ctl.reject(Object.assign(new Error('E_A0_STORE_LOCKED: not open'), {code: 'E_A0_STORE_LOCKED'})));
-    check(r, rep({settled: [settledOf(MINE)]}), {kind: 'settled', verified: true}, 'Confirmed · unshielded.');
-    expect(title(r)).toBe('Unshielded');
+    check(r, rep({settled: [settledOf(MINE)]}), {kind: 'settled', verified: true}, 'Confirmed · now public.'); // part B: "Confirmed · unshielded." → "Confirmed · now public."
+    expect(title(r)).toBe('Now public'); // part B: "Unshielded" → "Now public"
   });
 
   it('N-3: a landed-unverified (note pending) first outcome keeps its loud line after this note is settled', async () => {
@@ -705,15 +735,15 @@ describe('final review I-1 + re-review N-1 / N-2 / N-3 / N-4: what "Check again"
     await act(async () =>
       ctl.resolve({status: 'landed-unverified', signature: SIG, code: 'E_A0_VERIFY_NULLIFIER', note: 'pending', changeRecorded: false, linked: false}),
     );
-    check(r, rep({settled: [settledOf(MINE)]}), {kind: 'settled', verified: true}, 'Confirmed · unshielded.');
-    expect(title(r)).toBe('Unshielded');
+    check(r, rep({settled: [settledOf(MINE)]}), {kind: 'settled', verified: true}, 'Confirmed · now public.'); // part B: "Confirmed · unshielded." → "Confirmed · now public."
+    expect(title(r)).toBe('Now public'); // part B: "Unshielded" → "Now public"
     expect(r.getByText(/Landed, but failed verification: E_A0_VERIFY_NULLIFIER · its spend is not this note's/)).toBeTruthy();
   });
 
   it('N-4: this note settled by recovery\'s rules (no approved terms stored) never says "verified"', async () => {
     const {r} = await pendingRun();
-    check(r, rep({settled: [settledOf(MINE, false, null)]}), {kind: 'settled', verified: false}, 'Settled from the chain · unshielded.');
-    expect(title(r)).toBe('Unshielded');
+    check(r, rep({settled: [settledOf(MINE, false, null)]}), {kind: 'settled', verified: false}, 'Settled from the chain · now public.'); // part B: "· unshielded." → "· now public."
+    expect(title(r)).toBe('Now public'); // part B: "Unshielded" → "Now public"
     expect(sub(r)).not.toMatch(/verified/);
     expect(sub(r)).toBe('Checked again: it landed on Solana devnet · settled from the chain\'s record; this device held no approved terms to check it against.');
     expect(r.queryByText('CONFIRMED')).toBeNull();
@@ -725,7 +755,7 @@ describe('final review I-1 + re-review N-1 / N-2 / N-3 / N-4: what "Check again"
       ctl.resolve({status: 'spent', signature: SIG, changeLeafIndex: 21, changeAmount: 5n, grantLamports: null, destinationWithoutSol: false}),
     );
     check(r, rep({reverted: [{rho: MINE}]}), {kind: 'reverted'}, 'x');
-    expect(title(r)).toBe('Unshielded');
+    expect(title(r)).toBe('Now public'); // part B: "Unshielded" → "Now public"
     expect(r.getByText('CONFIRMED')).toBeTruthy();
   });
 });

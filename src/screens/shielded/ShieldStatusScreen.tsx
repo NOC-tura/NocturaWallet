@@ -24,6 +24,7 @@ import type {ShieldIntent} from '../../types/shield';
 import {A0} from '../../modules/shielded/a0/constants';
 import {explorerTxUrl} from '../../constants/chain';
 import {MetaRow, StatusRing, shortSignature} from './shieldedParts';
+import {MAKE_PRIVATE, MAKING_PRIVATE, NOW_PRIVATE, PRIVATE_MARK} from '../../copy/modes';
 
 /**
  * #21 tx-status for the A0 deposit — mirror /home/user/Downloads/index.html §s21: the loading state
@@ -35,13 +36,14 @@ import {MetaRow, StatusRing, shortSignature} from './shieldedParts';
  * calls `submitA0Deposit` with a second keychain read (Task 4). Its `onStage` drives the copy
  * (signing → recorded → submitted → confirming → settling) — the signature is shown from `recorded`
  * on. The outcomes, said as what they are:
- *   - unspent  → "Shielded", the note's position (leaf index) in the pool, the new shielded balance;
+ *   - unspent  → "Now private", the note's position (leaf index) in the pool, the new private balance,
+ *                and "Your deposit is public on chain." (part B, spec §4 / plan A2: said only once it landed);
  *   - pending  → "Not confirmed yet": the note is kept and settled at the next start — NEVER
  *                "failed" (Task 4: the startup reconciliation is the authority on a pending note);
  *                a pending outcome with `foreignSignature` (M1b final review I-2: another deposit
  *                at our rho after OUR confirmed send) says so, with the other deposit's signature
  *                (M1c Task 8, the copy M1b parked);
- *   - dropped  → "Not shielded": another deposit holds this note's number; no tokens moved;
+ *   - dropped  → "Not made private": another deposit holds this note's number; no tokens moved;
  *   - a refusal before the send (keychain cancelled, signer mismatch, store refusal) → "Not sent",
  *     its code; nothing was broadcast;
  *   - a note-store refusal AFTER the pending write (the only throw left there, Task 4 a072242) →
@@ -129,7 +131,7 @@ export function ShieldStatusScreen({intent, onDone}: ShieldStatusScreenProps) {
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       if (running) {
-        Alert.alert('Shield in progress', 'Leaving does not stop it. The result is recorded on this device either way.');
+        Alert.alert(MAKING_PRIVATE, 'Leaving does not stop it. The result is recorded on this device either way.');
         return true;
       }
       onDone();
@@ -157,10 +159,10 @@ export function ShieldStatusScreen({intent, onDone}: ShieldStatusScreenProps) {
       <View className="flex-row items-center px-4 py-3 gap-2">
         <ShieldCheck size={12} color="#5BE3C2" strokeWidth={2} />
         <Text variant="overline" className="text-accent-shielded">
-          Shielded
+          {PRIVATE_MARK}
         </Text>
         <Text variant="h2" className="flex-1">
-          {running ? 'Shielding…' : 'Shield'}
+          {running ? MAKING_PRIVATE : MAKE_PRIVATE}
         </Text>
         {view.badge ? (
           <Text variant="overline" className={view.tone === 'ok' ? 'text-accent-shielded' : 'text-warning'}>
@@ -188,14 +190,19 @@ export function ShieldStatusScreen({intent, onDone}: ShieldStatusScreenProps) {
 
         <View className="w-full rounded-2xl p-5 items-center gap-2 border border-[rgba(91,227,194,0.45)] bg-bg-surface-1">
           <Text variant="overline" className="text-accent-shielded">
-            Shielded
+            {PRIVATE_MARK}
           </Text>
           <Text variant="balance-lg" numeral className="text-fg-primary">
             {amount}
           </Text>
           {balance !== null ? (
             <Text variant="caption" className="text-fg-tertiary" testID="shield-status-balance">
-              {`Shielded balance now ${displayAmount(balance, intent.decimals)} ${intent.tokenSymbol}`}
+              {`Private balance now ${displayAmount(balance, intent.decimals)} ${intent.tokenSymbol}`}
+            </Text>
+          ) : null}
+          {phase.kind === 'done' && phase.outcome.status === 'unspent' ? (
+            <Text variant="caption" className="text-fg-tertiary text-center" testID="shield-status-public">
+              Your deposit is public on chain.
             </Text>
           ) : null}
         </View>
@@ -257,11 +264,11 @@ type Tone = 'busy' | 'ok' | 'warn' | 'bad';
 function viewOf(phase: Phase): {title: string; sub: string; tone: Tone; badge: string | null} {
   switch (phase.kind) {
     case 'running':
-      return {title: 'Shielding…', sub: STAGE_TEXT[phase.stage], tone: 'busy', badge: null};
+      return {title: MAKING_PRIVATE, sub: STAGE_TEXT[phase.stage], tone: 'busy', badge: null};
     case 'missing':
       return {
         title: 'Nothing to send',
-        sub: 'This deposit is no longer prepared (it was already sent, or replaced). Start the shield again.',
+        sub: 'This deposit is no longer prepared (it was already sent, or replaced). Start again from Make private.',
         tone: 'warn',
         badge: null,
       };
@@ -293,7 +300,7 @@ function viewOf(phase: Phase): {title: string; sub: string; tone: Tone; badge: s
       const o = phase.outcome;
       if (o.status === 'unspent') {
         return {
-          title: 'Shielded',
+          title: NOW_PRIVATE,
           sub: `Confirmed on Solana devnet · your note is at position #${o.leafIndex} in the pool.`,
           tone: 'ok',
           badge: 'CONFIRMED',
@@ -301,7 +308,7 @@ function viewOf(phase: Phase): {title: string; sub: string; tone: Tone; badge: s
       }
       if (o.status === 'dropped') {
         return {
-          title: 'Not shielded',
+          title: 'Not made private',
           sub: 'Another deposit already used this note’s number, so yours did not land. No tokens moved; the network fee may have been charged.',
           tone: 'bad',
           badge: null,

@@ -82,8 +82,8 @@ describe('#19 ShieldSimulate', () => {
     mockSimulate.mockResolvedValue({simulation: {success: true, unitsConsumed: 142287}, checks: CHECKS});
     const onContinue = jest.fn();
     const r = render(<ShieldSimulateScreen intent={intentFor(id)} onContinue={onContinue} onCancel={jest.fn()} />);
-    expect(r.getByText('Simulating shield deposit')).toBeTruthy();
-    await waitFor(() => expect(r.getByText('Shield simulation passed · 142,287 CU')).toBeTruthy());
+    expect(r.getByText('Simulating the deposit')).toBeTruthy(); // part B: "Simulating shield deposit" → "Simulating the deposit"
+    await waitFor(() => expect(r.getByText('Simulation passed · 142,287 CU')).toBeTruthy()); // part B: "Shield simulation passed" → "Simulation passed"
     expect(mockSimulate).toHaveBeenCalledWith({rpc: 'fake'}, PREPARED);
     expect(r.getByText('3 of 4')).toBeTruthy();
     expect(r.getByTestId('shield-sim-amount').props.children).toBe('2.5 TEST');
@@ -114,7 +114,7 @@ describe('#19 ShieldSimulate', () => {
     await act(async () => {
       fireEvent.press(r.getByTestId('shield-sim-retry'));
     });
-    await waitFor(() => expect(r.getByText('Shield simulation passed')).toBeTruthy());
+    await waitFor(() => expect(r.getByText('Simulation passed')).toBeTruthy()); // part B: "Shield simulation passed" → "Simulation passed"
     expect(mockSimulate).toHaveBeenCalledTimes(2);
   });
 
@@ -142,12 +142,12 @@ describe('#20 ShieldConfirm', () => {
     const r = render(
       <ShieldConfirmScreen intent={intentFor(id)} requestAuth={requestAuth} onAuthorized={onAuthorized} onCancel={jest.fn()} />,
     );
-    expect(r.getByTestId('shield-confirm-headline').props.children).toBe('Shield 2.5 TEST');
-    expect(r.getByText('You are about to shield')).toBeTruthy();
+    expect(r.getByTestId('shield-confirm-headline').props.children).toBe('Make 2.5 TEST private'); // part B: "Shield 2.5 TEST" → "Make 2.5 TEST private"
+    expect(r.getByText('You are about to make this private')).toBeTruthy(); // part B: "You are about to shield" → "You are about to make this private"
     expect(r.getByText('4 of 4')).toBeTruthy();
     expect(r.getByText('Solana devnet')).toBeTruthy();
     expect(r.getByText('Your main account')).toBeTruthy();
-    expect(r.getByText(/^Shielded pool · 8VMe…/)).toBeTruthy();
+    expect(r.getByText(/^Pool · 8VMe…/)).toBeTruthy(); // part B: "Shielded pool" → "Pool" (A11)
     expect(r.getByText('The amount, the time and your main account are public in this deposit.')).toBeTruthy();
     await act(async () => {
       fireEvent.press(r.getByTestId('shield-confirm-send'));
@@ -218,14 +218,17 @@ describe('#21 ShieldStatus', () => {
     await act(async () => ctl.stage('recorded', SIG));
     expect(r.getByText('5kAj9N…b81e')).toBeTruthy(); // the signature from `recorded` on
     await act(async () => ctl.stage('confirming', SIG));
+    expect(r.queryByTestId('shield-status-public')).toBeNull(); // running: not landed yet
     expect(sub(r)).toBe('Submitted to Solana devnet · waiting for confirmation.');
     expect(r.getByText("Don't close · waiting for confirmation")).toBeTruthy();
     await act(async () => ctl.resolve({status: 'unspent', signature: SIG, leafIndex: 17, root: 'ee'.repeat(32)}));
-    expect(title(r)).toBe('Shielded');
+    expect(title(r)).toBe('Now private'); // part B: "Shielded" → "Now private"
     expect(sub(r)).toBe('Confirmed on Solana devnet · your note is at position #17 in the pool.');
     expect(r.getByText('CONFIRMED')).toBeTruthy();
     expect(r.getByText('#17 in the pool')).toBeTruthy();
-    expect(r.getByTestId('shield-status-balance').props.children).toBe('Shielded balance now 4 TEST');
+    expect(r.getByTestId('shield-status-balance').props.children).toBe('Private balance now 4 TEST'); // part B: "Shielded balance" → "Private balance"
+    expect(r.getByTestId('shield-status-public').props.children).toBe('Your deposit is public on chain.'); // part B (spec §4, A2)
+    expect(r.getByTestId('shield-status-details')).toBeTruthy(); // the explorer stays (a deposit is public by design)
   });
 
   it('View details opens the deposit on the devnet explorer (?cluster=devnet — S13)', async () => {
@@ -265,7 +268,7 @@ describe('#21 ShieldStatus', () => {
     expect(r.queryByText(/fail/i)).toBeNull();
   });
 
-  it('M1b I-2 (the parked #21 copy): pending not-in-sync WITH a foreign signature → says another deposit holds the number, still pending, never "failed" or "Not shielded"', async () => {
+  it('M1b I-2 (the parked #21 copy): pending not-in-sync WITH a foreign signature → says another deposit holds the number, still pending, never "failed" or "Not made private"', async () => {
     const id = holdPreparedA0Deposit(PREPARED);
     const ctl = controlledSubmit();
     const r = render(<ShieldStatusScreen intent={intentFor(id)} onDone={jest.fn()} />);
@@ -279,16 +282,18 @@ describe('#21 ShieldStatus', () => {
       "Solana devnet reported this deposit confirmed, but the pool's history shows another deposit (FFFFFF…abcd) at this note's number. Nothing is decided from that: your deposit stays pending on this device and is settled from the chain the next time the wallet starts, or when you tap Check again.",
     );
     expect(r.getByText('PENDING')).toBeTruthy();
-    expect(r.queryByText(/fail|Not shielded/i)).toBeNull();
+    expect(r.queryByText(/fail|Not made private/i)).toBeNull(); // part B (review I-4): the negative row follows the new word
+    expect(r.queryByTestId('shield-status-public')).toBeNull(); // pending: not landed
   });
 
-  it('dropped (a foreign deposit holds our rho) → "Not shielded", no tokens moved', async () => {
+  it('dropped (a foreign deposit holds our rho) → "Not made private", no tokens moved', async () => {
     const id = holdPreparedA0Deposit(PREPARED);
     const ctl = controlledSubmit();
     const r = render(<ShieldStatusScreen intent={intentFor(id)} onDone={jest.fn()} />);
     await waitFor(() => expect(mockSubmit).toHaveBeenCalled());
     await act(async () => ctl.resolve({status: 'dropped', signature: SIG, reason: 'foreign', foreignSignature: 'F'.repeat(64)}));
-    expect(title(r)).toBe('Not shielded');
+    expect(title(r)).toBe('Not made private'); // part B: "Not shielded" → "Not made private"
+    expect(r.queryByTestId('shield-status-public')).toBeNull(); // "yours did not land": the line would be false
     expect(sub(r)).toMatch(/No tokens moved/);
   });
 
@@ -303,6 +308,7 @@ describe('#21 ShieldStatus', () => {
     );
     expect(title(r)).toBe('Not sent');
     expect(sub(r)).toBe('E_A0_DEPOSIT_SIGNER · not the depositor. Nothing was broadcast.');
+    expect(r.queryByTestId('shield-status-public')).toBeNull(); // nothing was broadcast: the line is not said
   });
 
   it('a throw AFTER the pending write (a note-store refusal in the settle loop) → kept as pending, never "Nothing was broadcast"', async () => {

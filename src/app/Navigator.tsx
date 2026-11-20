@@ -516,7 +516,7 @@ function ShieldConfirmScreenNav({navigation, route}: NativeStackScreenProps<Root
         navigation.navigate('UnlockSend', {
           amount: formatTokenAmount(BigInt(intent.amount), intent.decimals),
           ticker: intent.tokenSymbol,
-          recipient: 'Shielded pool',
+          recipient: 'Pool',
           networkFee: `${formatTokenAmount(A0_DEPOSIT_FEE_LAMPORTS + A0_RHO_MARKER_RENT_LAMPORTS, 9)} SOL`,
         });
         return auth;

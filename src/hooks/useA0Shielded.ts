@@ -120,7 +120,7 @@ function checkErrorNote(code: string | null, message: string): string {
  */
 export function checkA0PendingAgain(): Promise<A0CheckAgainResult> {
   if (!isShieldedEnabled() || !isProverSupported()) {
-    return Promise.resolve({status: 'error', code: null, message: 'Shielding is not available on this device.'});
+    return Promise.resolve({status: 'error', code: null, message: 'Private balances are not available on this device.'});
   }
   if (a0StartupState().phase === 'running') {
     return Promise.resolve({status: 'busy'});

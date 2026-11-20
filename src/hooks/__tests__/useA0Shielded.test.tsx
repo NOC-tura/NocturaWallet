@@ -308,7 +308,7 @@ describe('final review I-1: a reconciliation\'s result reaches the screens', () 
     mockReconcileUnshields.mockResolvedValue(report({settled: [{...ok, verified: false}]}));
     const r = render(<Probe />);
     await tap(r);
-    expect(r.getByTestId('note').props.children).toBe('Settled from the chain · unshielded.');
+    expect(r.getByTestId('note').props.children).toBe('Settled from the chain · now public.'); // part B: "· unshielded." → "· now public."
   });
 
   it('N-1: the last check\'s unshield report is exposed for a per-note reading (null before any check)', async () => {
@@ -341,8 +341,8 @@ describe('final review I-1: a reconciliation\'s result reaches the screens', () 
     });
 
   it.each<[string, Partial<A0UnshieldReconcileReport>, string, string]>([
-    ['settled + verified', {settled: [ok]}, 'Confirmed · unshielded.', '{"kind":"settled","verified":true}'],
-    ['reverted', {reverted: [{rho: 'r'}], released: ['slip10:1']}, 'Not sent · your note is back in your shielded balance.', '{"kind":"reverted"}'],
+    ['settled + verified', {settled: [ok]}, 'Confirmed · now public.', '{"kind":"settled","verified":true}'], // part B: "· unshielded." → "· now public."
+    ['reverted', {reverted: [{rho: 'r'}], released: ['slip10:1']}, 'Not sent · your note is back in your private balance.', '{"kind":"reverted"}'], // part B: "shielded balance" → "private balance"
     ['still pending', {stillPending: [{rho: 'r', reason: 'in-window'}]}, 'Still not confirmed · checked just now.', '{"kind":"pending"}'],
     ['a verifier refusal', {settled: [refused]}, 'Checked just now · it landed, but failed verification.', '{"kind":"unverified","code":"E_A0_VERIFY_SEED_SIGNER"}'],
   ])('"Check again" that finds %s says so (the note and the typed result)', async (_l, over, text, typed) => {

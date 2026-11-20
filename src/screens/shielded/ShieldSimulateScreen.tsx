@@ -18,6 +18,7 @@ import {
 import {getConnection} from '../../modules/solana/connection';
 import type {TransferCheck} from '../../modules/solana/simulationChecks';
 import type {ShieldIntent} from '../../types/shield';
+import {PRIVATE_MARK} from '../../copy/modes';
 
 /**
  * #19 tx-simulate for the A0 deposit — mirror /home/user/Downloads/index.html §s19, its SHIELDED
@@ -109,7 +110,7 @@ export function ShieldSimulateScreen({intent, onContinue, onCancel}: ShieldSimul
         <View className="flex-row items-center gap-2 flex-1 ml-1">
           <ShieldCheck size={12} color="#5BE3C2" strokeWidth={2} />
           <Text variant="overline" className="text-accent-shielded">
-            Shielded
+            {PRIVATE_MARK}
           </Text>
           <Text variant="h2">Review</Text>
         </View>
@@ -129,7 +130,7 @@ export function ShieldSimulateScreen({intent, onContinue, onCancel}: ShieldSimul
               →
             </Text>
             <Text variant="body-sm" mono className="text-accent-shielded">
-              shielded pool
+              the pool
             </Text>
           </View>
           <Text variant="caption" mono className="text-fg-tertiary mt-1">
@@ -162,7 +163,7 @@ export function ShieldSimulateScreen({intent, onContinue, onCancel}: ShieldSimul
         {sim.kind === 'missing' ? (
           <View className="rounded-lg p-4 bg-bg-surface-2 border-l-2 border-l-warning" testID="shield-sim-missing">
             <Text variant="body-sm" className="text-fg-secondary">
-              This deposit is no longer prepared. Go back and start the shield again.
+              This deposit is no longer prepared. Go back and start again.
             </Text>
           </View>
         ) : null}
@@ -182,7 +183,7 @@ export function ShieldSimulateScreen({intent, onContinue, onCancel}: ShieldSimul
               <Text variant="overline" className="mb-3">
                 Balance delta · this deposit
               </Text>
-              <DeltaRow label="Shielding" value={`− ${amount}`} />
+              <DeltaRow label="Making private" value={`− ${amount}`} />
               <DeltaRow label="ZK proof fee" value="None · on this device" zk />
               <DeltaRow label="Network fee" value={`− ${formatTokenAmount(A0_DEPOSIT_FEE_LAMPORTS, SOL_DECIMALS)} SOL`} />
               <DeltaRow
@@ -224,7 +225,7 @@ function Eyebrow({sim}: {sim: SimState}) {
       <View className="flex-row items-center gap-1 mb-2">
         <ActivityIndicator size="small" color="#5BE3C2" style={{transform: [{scale: 0.7}]}} />
         <Text variant="caption" className="text-accent-shielded">
-          Simulating shield deposit
+          Simulating the deposit
         </Text>
       </View>
     );
@@ -234,7 +235,7 @@ function Eyebrow({sim}: {sim: SimState}) {
       <View className="flex-row items-center gap-1 mb-2">
         <Check size={12} color="#3FD68B" strokeWidth={2.5} />
         <Text variant="caption" className="text-success">
-          {sim.units !== null ? `Shield simulation passed · ${sim.units.toLocaleString('en-US')} CU` : 'Shield simulation passed'}
+          {sim.units !== null ? `Simulation passed · ${sim.units.toLocaleString('en-US')} CU` : 'Simulation passed'}
         </Text>
       </View>
     );
