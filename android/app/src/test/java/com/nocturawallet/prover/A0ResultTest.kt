@@ -93,4 +93,101 @@ class A0ResultTest {
             prover.toDouble() * prover > one.toDouble() * eight,
         )
     }
+
+    // ---- M1c Task 6, ruling m-7: sessionChanged(): keysOpen fires whenever Rust was reached, keysClose only on ok
+
+    private fun fakePromise(log: MutableList<String>): com.facebook.react.bridge.Promise =
+        java.lang.reflect.Proxy.newProxyInstance(
+            com.facebook.react.bridge.Promise::class.java.classLoader,
+            arrayOf(com.facebook.react.bridge.Promise::class.java),
+        ) { _, method, args ->
+            log += if (method.name == "reject") "reject:${args?.get(0)}" else method.name
+            null
+        } as com.facebook.react.bridge.Promise
+
+    @Test
+    fun onOkRunsAfterAnOkAnswerAndBeforeTheResolve() {
+        val log = mutableListOf<String>()
+        A0Promise.settle(fakePromise(log), onOk = { log += "onOk" }, ensureLoaded = {}) { """{"ok":"h1"}""" }
+        assertEquals(listOf("onOk", "resolve"), log)
+    }
+
+    @Test
+    fun onOkNeverRunsWhenRustRefusedOrTheCallFailed() {
+        val answers = listOf<() -> String?>(
+            { """{"error":"E_A0_ARG","message":"seed"}""" },
+            { null },
+            { "not json" },
+            { throw A0ArgException("seed") },
+            { throw IllegalStateException("boom") },
+        )
+        for (answer in answers) {
+            val log = mutableListOf<String>()
+            A0Promise.settle(fakePromise(log), onOk = { log += "onOk" }, ensureLoaded = {}) { answer() }
+            assertEquals(1, log.size)
+            assertTrue(log.toString(), log[0].startsWith("reject:"))
+        }
+        // the library failing to load is a refusal too
+        val log = mutableListOf<String>()
+        A0Promise.settle(fakePromise(log), onOk = { log += "onOk" }, ensureLoaded = { throw UnsatisfiedLinkError() }) { """{"ok":"x"}""" }
+        assertEquals(listOf("reject:${A0Result.UNAVAILABLE}"), log)
+    }
+
+    @Test
+    fun keysOpenFiresWheneverRustWasReachedOkOrRefusedAndBeforeTheSettle() {
+        val answers = listOf<() -> String?>(
+            { """{"ok":"h1"}""" },
+            { """{"error":"E_A0_SEED","message":"seed"}""" }, // refused AFTER end_session() in Rust
+            { null },
+            { "not json" },
+            { throw IllegalStateException("boom") },
+        )
+        for (answer in answers) {
+            val log = mutableListOf<String>()
+            A0Promise.settle(fakePromise(log), onReached = { log += "reached" }, ensureLoaded = {}) { answer() }
+            assertEquals(log.toString(), 2, log.size)
+            assertEquals("reached", log[0])
+        }
+    }
+
+    @Test
+    fun keysOpenDoesNotFireWhenRustWasNotReached() {
+        val log = mutableListOf<String>()
+        A0Promise.settle(fakePromise(log), onReached = { log += "reached" }, ensureLoaded = {}) { throw A0ArgException("seed") }
+        assertEquals(listOf("reject:${A0Result.ARG}"), log)
+        val log2 = mutableListOf<String>()
+        A0Promise.settle(fakePromise(log2), onReached = { log2 += "reached" }, ensureLoaded = { throw UnsatisfiedLinkError() }) { """{"ok":"x"}""" }
+        assertEquals(listOf("reject:${A0Result.UNAVAILABLE}"), log2)
+    }
+
+    @Test
+    fun keysCloseFiresOnlyOnOkAndBeforeTheResolve() {
+        val log = mutableListOf<String>()
+        A0Promise.settle(fakePromise(log), onOk = { log += "onOk" }, ensureLoaded = {}) { """{"ok":null}""" }
+        assertEquals(listOf("onOk", "resolve"), log)
+        val log2 = mutableListOf<String>()
+        A0Promise.settle(fakePromise(log2), onOk = { log2 += "onOk" }, ensureLoaded = {}) { """{"error":"E_A0_UNKNOWN_HANDLE","message":"x"}""" }
+        assertEquals(listOf("reject:E_A0_UNKNOWN_HANDLE"), log2)
+    }
+
+    @Test
+    fun aCallbackThatThrowsNeverStopsThePromiseSettling() {
+        val log = mutableListOf<String>()
+        A0Promise.settle(fakePromise(log), onReached = { throw IllegalStateException("x") }, onOk = { throw IllegalStateException("y") }, ensureLoaded = {}) { """{"ok":"h"}""" }
+        assertEquals(listOf("resolve"), log)
+        val log2 = mutableListOf<String>()
+        A0Promise.settle(fakePromise(log2), onReached = { throw IllegalStateException("x") }, ensureLoaded = {}) { """{"error":"E_A0_SEED","message":"m"}""" }
+        assertEquals(listOf("reject:E_A0_SEED"), log2)
+    }
+
+    @Test
+    fun theModuleWiresKeysOpenToOnReachedAndKeysCloseToOnOk() {
+        val src = java.io.File("src/main/java/com/nocturawallet/prover/NocturaProverModule.kt").readText()
+        val calls = Regex("""(onReached|onOk) = \{ A0Confirmations\.controller\.sessionChanged\(\) \}""").findAll(src).map { it.groupValues[1] }.toList()
+        assertEquals(listOf("onReached", "onOk"), calls) // keysOpen first, keysClose second
+        assertEquals(2, Regex("""A0Confirmations\.controller\.sessionChanged\(\)""").findAll(src).count()) // never a pre-call
+        val open = src.indexOf("fun keysOpen"); val close = src.indexOf("fun keysClose")
+        assertTrue(src.indexOf("onReached =") in open until close)
+        assertTrue(src.indexOf("onOk =") > close)
+    }
 }

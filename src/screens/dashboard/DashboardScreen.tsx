@@ -54,6 +54,8 @@ import {unlockSecureStorage} from '../../modules/session/secureStorageSession';
 import {useA0Shielded} from '../../hooks/useA0Shielded';
 import type {A0CheckAgain, A0ShieldedView} from '../../hooks/useA0Shielded';
 import {CheckAgainLink} from '../../components/CheckAgainLink';
+import {a0RefusalLoudText} from '../shielded/unshield/unshieldCopy';
+import type {A0VerifyRefusal} from '../../modules/shielded/a0/landedVerifier';
 import {readA0PoolNoteCount} from '../../modules/shielded/a0/poolSize';
 import {A0_TOKEN, displayAmount} from '../../modules/shielded/a0/screenSupport';
 import {getConnection} from '../../modules/solana/connection';
@@ -273,7 +275,7 @@ export function DashboardScreen({
   // Shown ONLY once the startup restore/reconcile finished (`a0StartupState()` 'ready', Task 4);
   // before that the view is a state (restoring / error / unsupported), never a 0. Re-read on focus
   // so the balance updates after returning from a shield.
-  const {view: a0View, refresh: refreshA0, checkAgain: a0CheckAgain} = useA0Shielded();
+  const {view: a0View, refresh: refreshA0, checkAgain: a0CheckAgain, refusal: a0Refusal} = useA0Shielded();
   useFocusEffect(useCallback(() => { refreshA0(); }, [])); // eslint-disable-line react-hooks/exhaustive-deps
 
   // If the user views the shielded vault but the encrypted note store isn't open
@@ -379,7 +381,7 @@ export function DashboardScreen({
         }}
         ListEmptyComponent={
           isShielded ? (
-            <ShieldedAssetsSection view={a0View} hidden={hideBalances} checkAgain={a0CheckAgain} />
+            <ShieldedAssetsSection view={a0View} hidden={hideBalances} checkAgain={a0CheckAgain} refusal={a0Refusal ?? null} />
           ) : (
             <View className="px-5 py-8">
               <Text variant="body-sm" className="text-fg-tertiary text-center">
@@ -916,9 +918,35 @@ interface ShieldedAssetsSectionProps {
   view: A0ShieldedView;
   hidden: boolean;
   checkAgain: A0CheckAgain;
+  /** final review I-1: a verifier refusal of a landed unshield found this session — LOUD, by its code (undrawn) */
+  refusal: A0VerifyRefusal | null;
 }
 
-function ShieldedAssetsSection({view, hidden, checkAgain}: ShieldedAssetsSectionProps) {
+function ShieldedAssetsSection({view, hidden, checkAgain, refusal}: ShieldedAssetsSectionProps) {
+  const loud = refusal ? (
+    <View className="mx-5 mt-3 rounded-md bg-[rgba(255,92,106,0.08)] border border-danger p-4" testID="dashboard-shielded-refusal">
+      <Text variant="body-sm" className="text-danger font-geist-semibold">
+        {a0RefusalLoudText(refusal)}
+      </Text>
+    </View>
+  ) : null;
+  return view.kind === 'ready' ? (
+    <>
+      {loud}
+      <ShieldedAssetsBody view={view} hidden={hidden} checkAgain={checkAgain} />
+      {view.pending === 0n && checkAgain.note ? (
+        // re-review N-2: the last pending item was decided — the check's caption stays, without the link
+        <Text variant="caption" className="text-fg-tertiary px-5 pb-3" testID="dashboard-check-caption">
+          {checkAgain.note}
+        </Text>
+      ) : null}
+    </>
+  ) : (
+    <ShieldedAssetsBody view={view} hidden={hidden} checkAgain={checkAgain} />
+  );
+}
+
+function ShieldedAssetsBody({view, hidden, checkAgain}: Omit<ShieldedAssetsSectionProps, 'refusal'>) {
   if (view.kind !== 'ready') {
     const text =
       view.kind === 'running'

@@ -1,8 +1,9 @@
 /**
  * Route-level gating of the shielded screens (spec §12 "Hidden until its plan lands"; M1b screens
- * task). Between M1b and M1c, #16's unshield side and the shielded transfer are HIDDEN — not a
- * hidden button: no route is registered for them, so neither `navigate(name)` nor a deep link can
- * reach them. This suite renders the REAL RootNavigator (only the splash is stubbed) and reads the
+ * task). The shielded transfer is HIDDEN — not a hidden button: no route is registered for it, so
+ * neither `navigate(name)` nor a deep link can reach it. M1c Task 8 adds the unshield run
+ * (`UnshieldRun`), registered in the shielded build only and reachable by NO deep link. This
+ * suite renders the REAL RootNavigator (only the splash is stubbed) and reads the
  * registered route names, and resolves the real deep-link config with React Navigation's own
  * `getStateFromPath`.
  */
@@ -13,6 +14,18 @@ import {RootNavigator} from '../Navigator';
 import type {LinkingOptions} from '@react-navigation/native';
 
 jest.mock('../../screens/SplashScreen', () => ({SplashScreen: () => null}));
+// the relayer quote (#16's unshield side asks it when that side opens): counted, answered by the real client
+const mockQuoteCalls: unknown[] = [];
+jest.mock('../../modules/shielded/a0/relayerClient', () => {
+  const actual = jest.requireActual('../../modules/shielded/a0/relayerClient');
+  return {
+    ...actual,
+    fetchA0RelayerQuote: (...a: unknown[]) => {
+      mockQuoteCalls.push(a);
+      return actual.fetchA0RelayerQuote(...a);
+    },
+  };
+});
 
 type Flags = {shielded: boolean};
 let mockFlags: Flags = {shielded: false};
@@ -29,9 +42,17 @@ jest.mock('../../screens/transparent/ReceiveScreen', () => ({
   },
 }));
 
-/** The shield flow M1b registers in the devnet build. */
-const SHIELD_FLOW = ['ShieldedExplainer', 'ShieldUnshieldModal', 'ZkProofModal', 'ShieldSimulate', 'ShieldConfirm', 'ShieldStatus'];
-/** Hidden until M1c (and the v1 screens they replaced). */
+/** The shield flow M1b registers in the devnet build, and M1c's unshield run (Task 8). */
+const SHIELD_FLOW = [
+  'ShieldedExplainer',
+  'ShieldUnshieldModal',
+  'ZkProofModal',
+  'ShieldSimulate',
+  'ShieldConfirm',
+  'ShieldStatus',
+  'UnshieldRun',
+];
+/** Still hidden: the shielded transfer (M1c does not land it) and the v1 screens they replaced. */
 const HIDDEN = ['ShieldedTransfer', 'ShieldedBalance', 'Deposit', 'Withdraw'];
 
 /** The deep-link config is built at import: load it under `f` in a fresh registry. */
@@ -45,19 +66,23 @@ function loadLinks(f: Flags): typeof import('../deepLinkConfig') {
 }
 
 /** RootNavigator reads the flags while rendering: render it under `f`. */
-function routeNames(f: Flags): {names: string[]; ref: ReturnType<typeof createNavigationContainerRef>} {
+function routeNames(f: Flags): {
+  names: string[];
+  ref: ReturnType<typeof createNavigationContainerRef>;
+  r: ReturnType<typeof render>;
+} {
   mockFlags = f;
   const ref = createNavigationContainerRef();
-  render(
+  const r = render(
     <NavigationContainer ref={ref}>
       <RootNavigator />
     </NavigationContainer>,
   );
-  return {names: (ref.getRootState()?.routeNames ?? []) as string[], ref};
+  return {names: (ref.getRootState()?.routeNames ?? []) as string[], ref, r};
 }
 
 describe('shielded routes (route-level gating)', () => {
-  it('devnet build (shielded on): the shield flow is registered; the unshield side and the transfer are not', () => {
+  it('devnet build (shielded on): the shield flow and the unshield run are registered; the transfer is not', () => {
     const {names} = routeNames({shielded: true});
     expect(names).toEqual(expect.arrayContaining(SHIELD_FLOW));
     for (const h of HIDDEN) {
@@ -90,6 +115,107 @@ describe('shielded routes (route-level gating)', () => {
   });
 });
 
+describe('#16 both sides (M1c Task 8)', () => {
+  it('{direction: "public"} opens the unshield side; {direction: "private"} (and none) the shield side', async () => {
+    const {ref, r} = routeNames({shielded: true});
+    await act(async () => {
+      (ref.navigate as (n: string, p?: object) => void)('ShieldUnshieldModal', {direction: 'public'});
+    });
+    expect(r.queryByTestId('unshield-cta')).not.toBeNull();
+    expect(r.queryByTestId('shield-cta')).toBeNull();
+    await act(async () => {
+      ref.goBack();
+    });
+    await act(async () => {
+      (ref.navigate as (n: string, p?: object) => void)('ShieldUnshieldModal', {direction: 'private'});
+    });
+    expect(r.queryByTestId('shield-cta')).not.toBeNull();
+    expect(r.queryByTestId('unshield-cta')).toBeNull();
+  });
+});
+
+describe('fix round 1 I-1: no deep link opens the unshield side', () => {
+  it('the real config: deposit?direction=public resolves to #16 with direction "private" (noctura:// and https)', () => {
+    const links = loadLinks({shielded: true});
+    const config = (links.deepLinkConfig as LinkingOptions<object>).config;
+    for (const path of ['deposit?direction=public', 'deposit?direction=PUBLIC']) {
+      const state = getStateFromPath(path, config) as {routes: {name: string; path?: string; params?: Record<string, unknown>}[]};
+      expect(state.routes[0]!.name).toBe('ShieldUnshieldModal');
+      expect(state.routes[0]!.params?.direction).toBe('private');
+      expect(state.routes[0]!.path).toBe(path); // the route carries the link it came from
+    }
+    // a repeated key arrives as an ARRAY, which `parse` does not see: the screen side must not trust
+    // a linked route's params at all (the next row renders it)
+    const twice = getStateFromPath('deposit?direction=public&direction=public', config) as {routes: {path?: string}[]};
+    expect(twice.routes[0]!.path).toBe('deposit?direction=public&direction=public');
+  });
+
+  it.each([
+    'noctura://deposit?direction=public',
+    'https://noc-tura.io/deposit?direction=public',
+    'noctura://deposit?direction=public&direction=public',
+  ])('%s, opened through the REAL linking: the shield side ("Make private"), no relayer quote', async URL_PUBLIC => {
+    const links = loadLinks({shielded: true});
+    mockQuoteCalls.length = 0;
+    const ref = createNavigationContainerRef();
+    const linking = {
+      ...(links.deepLinkConfig as LinkingOptions<object>),
+      getInitialURL: async () => URL_PUBLIC,
+      subscribe: () => () => undefined,
+    };
+    const r = render(
+      <NavigationContainer ref={ref} linking={linking}>
+        <RootNavigator />
+      </NavigationContainer>,
+    );
+    await act(async () => {});
+    await act(async () => {});
+    expect((ref.getCurrentRoute() as {name?: string} | undefined)?.name).toBe('ShieldUnshieldModal'); // non-vacuous: the link landed on #16
+    expect(r.getByLabelText('Make private').props.accessibilityState).toMatchObject({selected: true});
+    expect(r.getByLabelText('Make public').props.accessibilityState).toMatchObject({selected: false});
+    expect(r.queryByTestId('shield-cta')).not.toBeNull();
+    expect(r.queryByTestId('unshield-cta')).toBeNull();
+    expect(mockQuoteCalls).toHaveLength(0);
+  });
+
+  it('the Navigator alone holds it: the same link through the real config with its `parse` REMOVED still opens "Make private"', async () => {
+    const links = loadLinks({shielded: true});
+    const base = links.deepLinkConfig as LinkingOptions<object>;
+    const screens = {...(base.config as {screens: Record<string, unknown>}).screens, ShieldUnshieldModal: 'deposit'};
+    mockQuoteCalls.length = 0;
+    const ref = createNavigationContainerRef();
+    const linking = {
+      ...base,
+      config: {...base.config, screens} as LinkingOptions<object>['config'],
+      getInitialURL: async () => 'noctura://deposit?direction=public',
+      subscribe: () => () => undefined,
+    };
+    // control on the stripped config: the link DOES carry direction "public" into the params
+    expect((getStateFromPath('deposit?direction=public', linking.config) as {routes: {params?: {direction?: string}}[]}).routes[0]!.params?.direction).toBe('public');
+    const r = render(
+      <NavigationContainer ref={ref} linking={linking}>
+        <RootNavigator />
+      </NavigationContainer>,
+    );
+    await act(async () => {});
+    await act(async () => {});
+    expect((ref.getCurrentRoute() as {name?: string} | undefined)?.name).toBe('ShieldUnshieldModal');
+    expect(r.getByLabelText('Make private').props.accessibilityState).toMatchObject({selected: true});
+    expect(r.queryByTestId('unshield-cta')).toBeNull();
+    expect(mockQuoteCalls).toHaveLength(0);
+  });
+
+  it('positive control: in-app navigation with {direction: "public"} does open the unshield side and asks the quote', async () => {
+    mockQuoteCalls.length = 0;
+    const {ref, r} = routeNames({shielded: true});
+    await act(async () => {
+      (ref.navigate as (n: string, p?: object) => void)('ShieldUnshieldModal', {direction: 'public'});
+    });
+    expect(r.queryByTestId('unshield-cta')).not.toBeNull();
+    expect(mockQuoteCalls.length).toBeGreaterThan(0);
+  });
+});
+
 describe('shielded deep links', () => {
   const resolve = (f: Flags, path: string): string[] => {
     const links = loadLinks(f);
@@ -106,7 +232,7 @@ describe('shielded deep links', () => {
 
   it('devnet: noctura://deposit opens #16 (the shield side); withdraw / transfer reach no shielded screen', () => {
     expect(resolve({shielded: true}, 'deposit')).toEqual(['ShieldUnshieldModal']);
-    for (const p of ['withdraw', 'transfer', 'unshield']) {
+    for (const p of ['withdraw', 'transfer', 'unshield', 'UnshieldRun', 'unshield-run']) {
       const names = resolve({shielded: true}, p);
       for (const r of [...SHIELD_FLOW, ...HIDDEN]) {
         expect(names).not.toContain(r);
@@ -120,7 +246,7 @@ describe('shielded deep links', () => {
     for (const h of HIDDEN) {
       expect(screens[h]).toBeUndefined();
     }
-    expect(screens.ShieldUnshieldModal).toBe('deposit');
+    expect(screens.ShieldUnshieldModal).toMatchObject({path: 'deposit'});
   });
 
   it('production: deposit is not a shielded link', () => {

@@ -1,0 +1,204 @@
+{
+  "schema": "noctura.zk.change-commitment-golden/1",
+  "_notAnInput": "COMPUTE every step from the spec and COMPARE; do not read these into a builder.",
+  "_byteOrder": "32-byte BIG-ENDIAN hex, unprefixed — what the verifier reads.",
+  "_mintHash": "mintHash = big-endian(mint pubkey bytes) mod p, as the program derives it on chain.",
+  "equations": {
+    "changeAmount": "inputAmount - withdrawAmount - fee",
+    "nullifier_in": "Poseidon3(TAG_NULL=0x11, nk, rho_in)",
+    "rho_change": "Poseidon3(TAG_RHO=0x13, nullifier_in, 0)",
+    "addrField_self": "Poseidon3(TAG_ADDR=0x12, nk, change_d)",
+    "changeCommitment": "Poseidon5(TAG_CM=0x10, addrField_self, changeAmount, mintHash, rho_change)"
+  },
+  "vectors": [
+    {
+      "label": "golden_vectors_withdraw_change",
+      "note": "EXACTLY the publicInputVectors.withdraw_change case of zk/keys/golden-vectors.json, decomposed",
+      "in": {
+        "nk": {
+          "dec": "11111111111111111111",
+          "hexBE32": "0000000000000000000000000000000000000000000000009a3298afb5ac71c7"
+        },
+        "d_in": {
+          "dec": "123456789",
+          "hexBE32": "00000000000000000000000000000000000000000000000000000000075bcd15"
+        },
+        "change_d": {
+          "dec": "987654321",
+          "hexBE32": "000000000000000000000000000000000000000000000000000000003ade68b1"
+        },
+        "rho_in": {
+          "dec": "606060",
+          "hexBE32": "0000000000000000000000000000000000000000000000000000000000093f6c"
+        },
+        "inputAmount": "1000",
+        "withdrawAmount": "700",
+        "fee": "0",
+        "mintHash": {
+          "dec": "555555555",
+          "hexBE32": "00000000000000000000000000000000000000000000000000000000211d1ae3"
+        },
+        "recipientField": {
+          "dec": "424242",
+          "hexBE32": "0000000000000000000000000000000000000000000000000000000000067932"
+        }
+      },
+      "steps": {
+        "changeAmount": "300",
+        "nullifier_in": {
+          "dec": "847659508468183968581499747419711796613625445405826683657885953076716734712",
+          "hexBE32": "01dfc21e9fff4177532bb70c418975b6fd7a15054eecc9d332a3e99a67e188f8"
+        },
+        "rho_change": {
+          "dec": "8974781204699522311005477164683195195866145320954796205597211250719613058988",
+          "hexBE32": "13d78bd0749896fe9001fab8c7aa6aeb86fcdb170d3f6c5a9cb04ac4d368ffac"
+        },
+        "addrField_self": {
+          "dec": "18194678916605536851956632908236500423107600233748991417697762736059683053143",
+          "hexBE32": "2839d2c578f9b22ae5d812617562fe0f2b70e1dfe8ee99dba01d678677ae1e57"
+        }
+      },
+      "changeCommitment": {
+        "dec": "8267144516438739864980456780032898696299736959374531873770876368920246736767",
+        "hexBE32": "124709b8e3d4a7e02a90e03f14236aa1ceba868bede91063f313bfdb14e7d77f"
+      },
+      "context": {
+        "inputCommitment": {
+          "dec": "10694984030822933937253859324544057077297630985264507709808676870356868430762",
+          "hexBE32": "17a5257d7c7f955ba3c0351782cce8d4bc2fab23ec1f99968fcf86741be27baa"
+        },
+        "merkleRootLeafAtIndex0": {
+          "dec": "18278552566264393289621285323109335879032305290707252263973890002582674287466",
+          "hexBE32": "28694b4c0b6529d2856e5f6cc5713b7164b00a9cfd31cc1528ab17a2ceef2b6a"
+        }
+      },
+      "validatedBy": "withdraw_change witness accepted (constraints checked) + Groth16 proof from keys/v2 verifying against keys/v2/withdraw_change_vk.json with publicSignals[5] == changeCommitment; 3 wrong commitments rejected"
+    },
+    {
+      "label": "a0_devnet_mint_relayed",
+      "note": "the A0 devnet mint ERkpCFGaoWmeZPhKTUHumrqHTP1QmyHVhMJUnxbRPKCs and the relayer's uniform fee (minFee.withdraw_change = 10000)",
+      "in": {
+        "nk": {
+          "dec": "11111111111111111111",
+          "hexBE32": "0000000000000000000000000000000000000000000000009a3298afb5ac71c7"
+        },
+        "d_in": {
+          "dec": "123456789",
+          "hexBE32": "00000000000000000000000000000000000000000000000000000000075bcd15"
+        },
+        "change_d": {
+          "dec": "987654321",
+          "hexBE32": "000000000000000000000000000000000000000000000000000000003ade68b1"
+        },
+        "rho_in": {
+          "dec": "424242424242",
+          "hexBE32": "00000000000000000000000000000000000000000000000000000062c6d1a9b2"
+        },
+        "inputAmount": "1000000",
+        "withdrawAmount": "400000",
+        "fee": "10000",
+        "mintHash": {
+          "dec": "2682398932710728289451863586583737043718296808864885766580558010318135811236",
+          "hexBE32": "05ee2f1a32b56046bcfab53bb4ac502bdc7689c4e2a8446db77130db7fccdca4"
+        },
+        "recipientField": {
+          "dec": "424242",
+          "hexBE32": "0000000000000000000000000000000000000000000000000000000000067932"
+        }
+      },
+      "steps": {
+        "changeAmount": "590000",
+        "nullifier_in": {
+          "dec": "8867478023231099256956116683128229803210468532020358118573221106693687094095",
+          "hexBE32": "139ad0903fa088ac8ebb08ed3078ea891ed8847a6338fb0f22a0c5765d422b4f"
+        },
+        "rho_change": {
+          "dec": "5678925084590748301809347452539588148903181866950947905093748613829809889261",
+          "hexBE32": "0c8e285e87d37e525ba56dc5efdc75991eae609ea0312e1b502a1511adb75fed"
+        },
+        "addrField_self": {
+          "dec": "18194678916605536851956632908236500423107600233748991417697762736059683053143",
+          "hexBE32": "2839d2c578f9b22ae5d812617562fe0f2b70e1dfe8ee99dba01d678677ae1e57"
+        }
+      },
+      "changeCommitment": {
+        "dec": "16837191568300338274541018408872446159181077482824474849397403236151890246821",
+        "hexBE32": "253983414121ac3092a1f7ae009069b457520d687d4e45cdb25e27dc0ab77ca5"
+      },
+      "context": {
+        "inputCommitment": {
+          "dec": "14714992330879725986317780168265622681870610222651522218593681305619273389708",
+          "hexBE32": "208863f89c344eba56b448cd1d97127fb019642214931995565825c3f128968c"
+        },
+        "merkleRootLeafAtIndex0": {
+          "dec": "16104970763269353265286281071365638459064394750782484771614824310694604154194",
+          "hexBE32": "239b17261e1ae3c905506ae2b8a7f2288ec99ab2129d2463d40498832227a552"
+        }
+      },
+      "validatedBy": "withdraw_change witness accepted (constraints checked) + Groth16 proof from keys/v2 verifying against keys/v2/withdraw_change_vk.json with publicSignals[5] == changeCommitment; 3 wrong commitments rejected"
+    },
+    {
+      "label": "zero_change",
+      "note": "withdraw everything but the fee: the change note has amount 0 and is STILL inserted as a leaf",
+      "in": {
+        "nk": {
+          "dec": "11111111111111111111",
+          "hexBE32": "0000000000000000000000000000000000000000000000009a3298afb5ac71c7"
+        },
+        "d_in": {
+          "dec": "123456789",
+          "hexBE32": "00000000000000000000000000000000000000000000000000000000075bcd15"
+        },
+        "change_d": {
+          "dec": "987654321",
+          "hexBE32": "000000000000000000000000000000000000000000000000000000003ade68b1"
+        },
+        "rho_in": {
+          "dec": "909090",
+          "hexBE32": "00000000000000000000000000000000000000000000000000000000000ddf22"
+        },
+        "inputAmount": "1000000",
+        "withdrawAmount": "990000",
+        "fee": "10000",
+        "mintHash": {
+          "dec": "2682398932710728289451863586583737043718296808864885766580558010318135811236",
+          "hexBE32": "05ee2f1a32b56046bcfab53bb4ac502bdc7689c4e2a8446db77130db7fccdca4"
+        },
+        "recipientField": {
+          "dec": "424242",
+          "hexBE32": "0000000000000000000000000000000000000000000000000000000000067932"
+        }
+      },
+      "steps": {
+        "changeAmount": "0",
+        "nullifier_in": {
+          "dec": "8719896649803978003222184277993427988034068967259869426221397338144063479192",
+          "hexBE32": "1347495ede3cd215ed85d96bfb591a120dec8a9ecf17421d088ea62dc931dd98"
+        },
+        "rho_change": {
+          "dec": "15043185947364027941532397025912252597567465810732833296538838589543816796605",
+          "hexBE32": "2142243a6b41c5dbda613eda81df9deba6b1214d92ef36156f223fbf31b699bd"
+        },
+        "addrField_self": {
+          "dec": "18194678916605536851956632908236500423107600233748991417697762736059683053143",
+          "hexBE32": "2839d2c578f9b22ae5d812617562fe0f2b70e1dfe8ee99dba01d678677ae1e57"
+        }
+      },
+      "changeCommitment": {
+        "dec": "5175411326254641935975760214870569303743565435258183787141219842140580663629",
+        "hexBE32": "0b712dd33c9f9f0ce9ac44d0bb8a690ff071e746d00bd81100705bce56ecd14d"
+      },
+      "context": {
+        "inputCommitment": {
+          "dec": "19290753575364360413496449999685970802995740345450045230215045122541526522555",
+          "hexBE32": "2aa62dfa21a15dd0e8b32484f18dfc886574112bc7e3af8b6c1a59fb58c91abb"
+        },
+        "merkleRootLeafAtIndex0": {
+          "dec": "7168296437267542635692261719412824587681680245748113998711646451387918549114",
+          "hexBE32": "0fd91cac59c336e6215bba2b2c9218e5c93b4bc92c9cbe42b1fe0a1db8ed807a"
+        }
+      },
+      "validatedBy": "withdraw_change witness accepted (constraints checked) + Groth16 proof from keys/v2 verifying against keys/v2/withdraw_change_vk.json with publicSignals[5] == changeCommitment; 3 wrong commitments rejected"
+    }
+  ]
+}

@@ -31,8 +31,11 @@ export const DEVNET_PACKAGE = 'com.nocturawallet.devnet';
 export const PRODUCTION_PACKAGE = 'com.nocturawallet';
 /** spec R13: more than 5,000 tree transactions or more than 60 s makes an indexer pre-mainnet. */
 export const R13_TRIGGER = { treeTransactions: 5000, durationMs: 60000 };
-/** spec §7: the restore's deposit-counter walk stops after this many consecutive misses (recorded with M1b.5, R1-m4). */
-export const A0_GAP_LIMIT = 20;
+/**
+ * spec §7: the restore's deposit-counter walk stops after this many consecutive misses (recorded
+ * with M1b.5, R1-m4). S15 (lands with M1c): 100, was 20 — the app's `A0_DEPOSIT_GAP_LIMIT`.
+ */
+export const A0_GAP_LIMIT = 100;
 export const READOUT_TAG = 'NOCTURA-A0-READOUT';
 export const READOUT_SCHEMA = 'noctura.a0.readout/1';
 
@@ -61,9 +64,10 @@ const u64le = b => Buffer.from(b).readBigUInt64LE(0);
  * `NOCTURA-A0-READOUT <id> <i>/<n> <chunk>`; one id's chunks, all present, re-joined in order,
  * are one JSON object. Returns `{readouts, incomplete, invalid}` in first-seen order; a chunk
  * seen twice (two dumps of one buffer) counts once, a chunk seen twice with OTHER text makes
- * the id invalid (never guessed).
+ * the id invalid (never guessed). `refuse` is the schema check (default: M1b's events; the M1c desk
+ * passes its own, which adds the `pinned-control` event and delegates the rest here).
  */
-export function readoutsFromLog(text) {
+export function readoutsFromLog(text, refuse = readoutRefusal) {
   const ids = new Map();
   const re = new RegExp(`${READOUT_TAG} (\\S+) (\\d+)/(\\d+) (.*?)\\s*$`);
   for (const line of String(text).split('\n')) {
@@ -102,7 +106,7 @@ export function readoutsFromLog(text) {
       invalid.push({ id, why: `not JSON: ${err.message}` });
       continue;
     }
-    const why = readoutRefusal(r, id);
+    const why = refuse(r, id);
     if (why) {
       invalid.push({ id, why });
       continue;
@@ -259,9 +263,9 @@ export const BUILD_CONFIG_FIELDS = ['APPLICATION_ID', 'BUILD_TYPE', 'DEBUG', 'NE
 /**
  * The app's own BuildConfig static fields from `dexdump -f` output of one classes*.dex
  * (react-native-config writes the env file's keys there; `build_config_package`
- * com.nocturawallet). Only BUILD_CONFIG_FIELDS; a dex without the class → null.
+ * com.nocturawallet). Only `fields` (default BUILD_CONFIG_FIELDS); a dex without the class → null.
  */
-export function buildConfigFromDexdump(text) {
+export function buildConfigFromDexdump(text, fields = BUILD_CONFIG_FIELDS) {
   const start = text.indexOf("Class descriptor  : 'Lcom/nocturawallet/BuildConfig;'");
   if (start < 0) {
     return null;
@@ -275,7 +279,7 @@ export function buildConfigFromDexdump(text) {
   for (const field of block.split(/^\s+#\d+\s+: \(in /m).slice(1)) {
     const name = /^\s+name\s+: '([A-Za-z0-9_]+)'\s*$/m.exec(field)?.[1];
     const value = /^\s+value\s+: (.*)$/m.exec(field)?.[1]?.trim();
-    if (name && value !== undefined && BUILD_CONFIG_FIELDS.includes(name)) {
+    if (name && value !== undefined && fields.includes(name)) {
       out[name] = /^".*"$/.test(value) ? value.slice(1, -1) : value;
     }
   }
@@ -429,7 +433,7 @@ export function judge({ readouts, wipe, kill, main, chain, launches = [], apkLin
       const still = nextStart.reconcile.stillPending.length;
       killPass = dropped === 1 && still === 0 && nextStart.notes?.pending === 0;
       killDetail = still
-        ? `not landed and still undecided (${nextStart.reconcile.stillPending.map(p => p.reason).join(',')}): wait ~2 min, restart the devnet app, collect, verify again`
+        ? `not landed and still undecided (${nextStart.reconcile.stillPending.map(p => p.reason).join(',')}): wait ~4 min (the blockhash expiry + the 300-block margin), restart the devnet app, collect, verify again`
         : `not landed on devnet; next start dropped ${dropped} expired pending deposit(s) — nothing left the account`;
     } else {
       killDetail = `the killed deposit FAILED on chain (${JSON.stringify(ktx.err)}); next start must have dropped it`;

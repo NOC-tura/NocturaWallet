@@ -1,7 +1,7 @@
 import React, {useCallback, useEffect, useRef, useState} from 'react';
 import {View, Pressable, TextInput, ScrollView} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
-import {ArrowLeft, ShieldCheck, AlertTriangle, Shield, RefreshCw} from 'lucide-react-native';
+import {ArrowLeft, ShieldCheck, AlertTriangle, Shield, RefreshCw, Eye} from 'lucide-react-native';
 import {Text} from '../../components/ui';
 import {useWalletStore} from '../../store/zustand/walletStore';
 import {cn} from '../../utils/cn';
@@ -18,14 +18,21 @@ import {getConnection} from '../../modules/solana/connection';
 import {useA0Shielded, retryA0Startup} from '../../hooks/useA0Shielded';
 import type {A0CheckAgain, A0ShieldedView} from '../../hooks/useA0Shielded';
 import {CheckAgainLink} from '../../components/CheckAgainLink';
+import {UnshieldSide} from './unshield/UnshieldSide';
+import {a0RefusalLoudText} from './unshield/unshieldCopy';
+import type {A0VerifyRefusal} from '../../modules/shielded/a0/landedVerifier';
+import type {A0UnshieldDestination} from '../../modules/shielded/a0/unshieldFlow';
 
 /**
- * #16 Shield / Unshield — mirror /home/user/Downloads/index.html §s16 (+ screen.md #16), the
- * SHIELD SIDE on the A0 pool (spec §5 step 1, §11).
+ * #16 Shield / Unshield — mirror /home/user/Downloads/index.html §s16 (+ screen.md #16): both
+ * sides on the A0 pool (spec §5 step 1, §6 steps 1–2, §11).
  *
- * HIDDEN UNTIL M1c (spec §12 "Hidden until its plan lands"): the "Make public" tab and the whole
- * unshield side. They are not rendered, the screen has no public mode, and the route takes no
- * direction (Navigator) — a deep link or a stale `{direction: 'public'}` lands on this shield side.
+ * THE UNSHIELD SIDE (M1c Task 8; spec §12's "hidden until its plan lands" ends for it): the "Make
+ * public" tab and `./unshield/UnshieldSide.tsx` (the destination choice, the warnings, the relayer
+ * quote). The route exists only in the shielded (devnet) build and no deep link opens this side:
+ * `noctura://deposit` opens "Make private" whatever its query says (`deepLinkConfig` pins
+ * `direction`; the Navigator honours `initialDirection: 'public'` only on a route in-app navigation
+ * created — fix round 1, I-1). The direction tabs flip the sub-region and push no route (the design).
  *
  * Built from the design's states 1 (idle), 3 (amount entered + fees) and 4 (insufficient), plus the
  * states the A0 flow adds (undrawn, for the owner's visual pass): the shielded balance line and its
@@ -46,7 +53,15 @@ interface ShieldUnshieldScreenProps {
   onBack: () => void;
   /** CTA → #18 with the amount in base units */
   onShield: (amountBaseUnits: string) => void;
+  /** the unshield CTA → the unshield run (#18 → #21), the amount in base units */
+  onUnshield?: (request: {destination: A0UnshieldDestination; amount: string}) => void;
+  /** which side opens (default "Make private") */
+  initialDirection?: 'private' | 'public';
+  /** changes each time the screen regains focus (the unshield CTA's tap-disable ends there) */
+  focusKey?: number;
 }
+
+type Direction = 'private' | 'public';
 
 const SOL_NEEDED = A0_DEPOSIT_FEE_LAMPORTS + A0_RHO_MARKER_RENT_LAMPORTS;
 
@@ -70,9 +85,10 @@ function parseAmount(text: string): Parsed {
   }
 }
 
-export function ShieldUnshieldScreen({onBack, onShield}: ShieldUnshieldScreenProps) {
+export function ShieldUnshieldScreen({onBack, onShield, onUnshield, initialDirection, focusKey}: ShieldUnshieldScreenProps) {
   const {tokenBalances, solBalance} = useWalletStore();
-  const {view, checkAgain} = useA0Shielded();
+  const [direction, setDirection] = useState<Direction>(initialDirection === 'public' ? 'public' : 'private');
+  const {view, checkAgain, refusal} = useA0Shielded();
   const [amount, setAmount] = useState('');
   const [poolNotes, setPoolNotes] = useState<number | null>(null);
   const [retrying, setRetrying] = useState(false);
@@ -120,7 +136,8 @@ export function ShieldUnshieldScreen({onBack, onShield}: ShieldUnshieldScreenPro
     setRetrying(true);
     setRetryError(null);
     const s = await retryA0Startup();
-    if (s.phase === 'error') setRetryError(s.code ? `${s.code}: ${s.message}` : s.message);
+    // final review M-4: the code and a fixed sentence; the raw message only without a code
+    if (s.phase === 'error') setRetryError(s.code ? `${s.code} · Retry again in a moment.` : s.message);
     setRetrying(false);
   }, [retrying]);
 
@@ -145,179 +162,217 @@ export function ShieldUnshieldScreen({onBack, onShield}: ShieldUnshieldScreenPro
         </Text>
       </View>
 
-      {/* Direction tabs — the shield side only until M1c (spec §12) */}
+      {/* Direction tabs (the design): they flip the sub-region, no route is pushed */}
       <View className="px-5 mb-4">
         <View className="flex-row bg-bg-surface-2 rounded-pill p-1">
-          <View
-            accessibilityRole="tab"
-            accessibilityState={{selected: true}}
-            className="flex-1 flex-row items-center justify-center gap-2 py-2 rounded-pill bg-accent-shielded">
-            <ShieldCheck size={16} color="#0A0A0A" strokeWidth={1.75} />
-            <Text variant="body-sm" className="font-geist-semibold text-bg-base">
-              Make private
-            </Text>
-          </View>
+          <DirTab label="Make private" Icon={ShieldCheck} active={direction === 'private'} onPress={() => setDirection('private')} />
+          <DirTab label="Make public" Icon={Eye} active={direction === 'public'} onPress={() => setDirection('public')} />
         </View>
       </View>
 
-      <ScrollView
-        className="flex-1"
-        contentContainerClassName="px-5 pb-6"
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}>
-        <ShieldedLine view={view} retrying={retrying} retryError={retryError} onRetry={handleRetry} checkAgain={checkAgain} />
+      {direction === 'public' ? (
+        <UnshieldSide
+          view={view}
+          focusKey={focusKey}
+          onUnshield={r => onUnshield?.(r)}
+          shieldedLine={
+            <ShieldedLine view={view} retrying={retrying} retryError={retryError} onRetry={handleRetry} checkAgain={checkAgain} refusal={refusal} />
+          }
+        />
+      ) : (
+        <>
+          <ScrollView
+            className="flex-1"
+            contentContainerClassName="px-5 pb-6"
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}>
+            <ShieldedLine view={view} retrying={retrying} retryError={retryError} onRetry={handleRetry} checkAgain={checkAgain} refusal={refusal} />
 
-        {/* Amount card */}
-        <View
-          className={cn(
-            'rounded-lg bg-bg-surface-1 border p-5 mb-4',
-            insufficient ? 'border-danger' : 'border-bg-surface-3',
-          )}>
-          <View className="flex-row items-center justify-between mb-3">
-            <Text variant="body-sm" className="text-fg-secondary">
-              Available
-            </Text>
-            <Text variant="body-sm" numeral className="font-geist-semibold text-fg-primary">
-              {`${displayAmount(available, A0_TOKEN.decimals)} ${sym}`}
-            </Text>
-          </View>
-          <View className="flex-row items-baseline justify-center gap-2 mb-3">
-            <TextInput
-              value={amount}
-              onChangeText={setAmount}
-              placeholder="0.00"
-              placeholderTextColor="#6E727A"
-              keyboardType="decimal-pad"
-              accessibilityLabel="Amount"
-              testID="shield-amount-input"
+            {/* Amount card */}
+            <View
               className={cn(
-                'font-geist text-balance-xl text-center min-w-[80px]',
-                insufficient ? 'text-danger' : 'text-fg-primary',
-              )}
-              style={{minWidth: 120}}
-            />
-            <Text variant="h2" className={cn(insufficient ? 'text-danger' : 'text-fg-secondary')}>
-              {sym}
-            </Text>
-          </View>
-          <View className="items-center">
-            {insufficient ? (
-              <View className="flex-row items-center gap-2">
-                <AlertTriangle size={12} color="#FF5C6A" strokeWidth={2} />
-                <Text variant="caption" className="text-danger">
-                  {`Insufficient balance · max ${displayAmount(available, A0_TOKEN.decimals)} ${sym}`}
+                'rounded-lg bg-bg-surface-1 border p-5 mb-4',
+                insufficient ? 'border-danger' : 'border-bg-surface-3',
+              )}>
+              <View className="flex-row items-center justify-between mb-3">
+                <Text variant="body-sm" className="text-fg-secondary">
+                  Available
+                </Text>
+                <Text variant="body-sm" numeral className="font-geist-semibold text-fg-primary">
+                  {`${displayAmount(available, A0_TOKEN.decimals)} ${sym}`}
                 </Text>
               </View>
-            ) : parsed.kind === 'invalid' ? (
-              <Text variant="caption" className="text-danger">
-                {`Enter an amount of ${sym} (up to ${A0_TOKEN.decimals} decimals)`}
-              </Text>
-            ) : hasAmount ? null : (
-              <Pressable
-                onPress={handleMax}
-                accessibilityRole="button"
-                accessibilityLabel="Max"
-                disabled={available <= 0n}
-                className={cn(
-                  'px-3 py-1.5 rounded-pill',
-                  available > 0n ? 'bg-[rgba(91,227,194,0.16)] active:opacity-80' : 'bg-bg-surface-3',
-                )}>
-                <Text
-                  variant="overline"
-                  className={available > 0n ? 'text-accent-shielded' : 'text-fg-disabled'}>
-                  MAX
+              <View className="flex-row items-baseline justify-center gap-2 mb-3">
+                <TextInput
+                  value={amount}
+                  onChangeText={setAmount}
+                  placeholder="0.00"
+                  placeholderTextColor="#6E727A"
+                  keyboardType="decimal-pad"
+                  accessibilityLabel="Amount"
+                  testID="shield-amount-input"
+                  className={cn(
+                    'font-geist text-balance-xl text-center min-w-[80px]',
+                    insufficient ? 'text-danger' : 'text-fg-primary',
+                  )}
+                  style={{minWidth: 120}}
+                />
+                <Text variant="h2" className={cn(insufficient ? 'text-danger' : 'text-fg-secondary')}>
+                  {sym}
                 </Text>
-              </Pressable>
-            )}
-          </View>
-        </View>
-
-        {/* Fees card */}
-        <View
-          className={cn(
-            'rounded-lg bg-bg-surface-1 border border-bg-surface-3 p-4 mb-4',
-            insufficient && 'opacity-50',
-          )}>
-          <Text variant="overline" className="mb-3">
-            Fees
-          </Text>
-          <FeeRow
-            label="Network fee"
-            value={hasAmount ? `${formatTokenAmount(A0_DEPOSIT_FEE_LAMPORTS, SOL_DECIMALS)} SOL` : '—'}
-          />
-          <FeeRow label="ZK proof fee" value={hasAmount ? 'None · made on this device' : '—'} zk />
-          <FeeRow
-            label="Deposit record rent"
-            value={hasAmount ? `≈ ${formatTokenAmount(A0_RHO_MARKER_RENT_LAMPORTS, SOL_DECIMALS)} SOL` : '—'}
-          />
-          <View className="h-px bg-bg-surface-3 my-3" />
-          <View className="flex-row items-center justify-between">
-            <Text variant="body-sm" className="text-fg-secondary">
-              You'll shield
-            </Text>
-            <Text variant="balance-md" numeral className="text-fg-primary" testID="shield-net">
-              {`${hasAmount && !insufficient ? displayAmount(units, A0_TOKEN.decimals) : '—'} ${sym}`}
-            </Text>
-          </View>
-        </View>
-
-        {solShort ? (
-          <View className="rounded-md bg-bg-surface-2 border-l-2 border-l-warning p-4 mb-4 flex-row gap-3">
-            <AlertTriangle size={16} color="#F2B53B" strokeWidth={1.75} />
-            <Text variant="caption" className="flex-1 text-fg-secondary">
-              {`Not enough SOL: this deposit needs about ${formatTokenAmount(SOL_NEEDED, SOL_DECIMALS)} SOL for the network fee and the deposit record.`}
-            </Text>
-          </View>
-        ) : null}
-
-        {/* The pool's size (Make private + amount) — a number, never a yes/no (spec I4) */}
-        {hasAmount && !insufficient && poolNotes !== null ? (
-          <View className="rounded-lg bg-bg-surface-1 border border-bg-surface-3 p-4 mb-4">
-            <View className="flex-row items-center justify-between">
-              <Text variant="body-sm" className="text-fg-secondary">
-                Notes in the pool after this deposit
-              </Text>
-              <Text variant="body-sm" numeral className="text-accent-shielded font-geist-semibold" testID="pool-notes">
-                {groupInteger(String(poolNotes + 1))}
-              </Text>
+              </View>
+              <View className="items-center">
+                {insufficient ? (
+                  <View className="flex-row items-center gap-2">
+                    <AlertTriangle size={12} color="#FF5C6A" strokeWidth={2} />
+                    <Text variant="caption" className="text-danger">
+                      {`Insufficient balance · max ${displayAmount(available, A0_TOKEN.decimals)} ${sym}`}
+                    </Text>
+                  </View>
+                ) : parsed.kind === 'invalid' ? (
+                  <Text variant="caption" className="text-danger">
+                    {`Enter an amount of ${sym} (up to ${A0_TOKEN.decimals} decimals)`}
+                  </Text>
+                ) : hasAmount ? null : (
+                  <Pressable
+                    onPress={handleMax}
+                    accessibilityRole="button"
+                    accessibilityLabel="Max"
+                    disabled={available <= 0n}
+                    className={cn(
+                      'px-3 py-1.5 rounded-pill',
+                      available > 0n ? 'bg-[rgba(91,227,194,0.16)] active:opacity-80' : 'bg-bg-surface-3',
+                    )}>
+                    <Text
+                      variant="overline"
+                      className={available > 0n ? 'text-accent-shielded' : 'text-fg-disabled'}>
+                      MAX
+                    </Text>
+                  </Pressable>
+                )}
+              </View>
             </View>
+
+            {/* Fees card */}
+            <View
+              className={cn(
+                'rounded-lg bg-bg-surface-1 border border-bg-surface-3 p-4 mb-4',
+                insufficient && 'opacity-50',
+              )}>
+              <Text variant="overline" className="mb-3">
+                Fees
+              </Text>
+              <FeeRow
+                label="Network fee"
+                value={hasAmount ? `${formatTokenAmount(A0_DEPOSIT_FEE_LAMPORTS, SOL_DECIMALS)} SOL` : '—'}
+              />
+              <FeeRow label="ZK proof fee" value={hasAmount ? 'None · made on this device' : '—'} zk />
+              <FeeRow
+                label="Deposit record rent"
+                value={hasAmount ? `≈ ${formatTokenAmount(A0_RHO_MARKER_RENT_LAMPORTS, SOL_DECIMALS)} SOL` : '—'}
+              />
+              <View className="h-px bg-bg-surface-3 my-3" />
+              <View className="flex-row items-center justify-between">
+                <Text variant="body-sm" className="text-fg-secondary">
+                  You'll shield
+                </Text>
+                <Text variant="balance-md" numeral className="text-fg-primary" testID="shield-net">
+                  {`${hasAmount && !insufficient ? displayAmount(units, A0_TOKEN.decimals) : '—'} ${sym}`}
+                </Text>
+              </View>
+            </View>
+
+            {solShort ? (
+              <View className="rounded-md bg-bg-surface-2 border-l-2 border-l-warning p-4 mb-4 flex-row gap-3">
+                <AlertTriangle size={16} color="#F2B53B" strokeWidth={1.75} />
+                <Text variant="caption" className="flex-1 text-fg-secondary">
+                  {`Not enough SOL: this deposit needs about ${formatTokenAmount(SOL_NEEDED, SOL_DECIMALS)} SOL for the network fee and the deposit record.`}
+                </Text>
+              </View>
+            ) : null}
+
+            {/* The pool's size (Make private + amount) — a number, never a yes/no (spec I4) */}
+            {hasAmount && !insufficient && poolNotes !== null ? (
+              <View className="rounded-lg bg-bg-surface-1 border border-bg-surface-3 p-4 mb-4">
+                <View className="flex-row items-center justify-between">
+                  <Text variant="body-sm" className="text-fg-secondary">
+                    Notes in the pool after this deposit
+                  </Text>
+                  <Text variant="body-sm" numeral className="text-accent-shielded font-geist-semibold" testID="pool-notes">
+                    {groupInteger(String(poolNotes + 1))}
+                  </Text>
+                </View>
+              </View>
+            ) : null}
+
+            {!hasAmount ? (
+              <Text variant="caption" className="text-fg-tertiary text-center px-2 mt-1">
+                Your main account signs this deposit. The amount, the time and your address are public on chain, and a later withdrawal to this wallet can be linked to it.
+              </Text>
+            ) : null}
+          </ScrollView>
+
+          {/* Sticky CTA */}
+          <View className="px-6 pb-8 pt-2 border-t border-bg-surface-2 bg-bg-base">
+            <Pressable
+              onPress={handleSubmit}
+              disabled={!canSubmit}
+              accessibilityRole="button"
+              accessibilityState={{disabled: !canSubmit}}
+              testID="shield-cta"
+              accessibilityLabel={`Shield ${sym}`}
+              className={cn(
+                'min-h-touch-rec rounded-pill items-center justify-center flex-row gap-2',
+                canSubmit ? 'bg-accent-shielded active:opacity-90' : 'bg-bg-surface-3',
+              )}>
+              <Shield
+                size={18}
+                color={canSubmit ? '#0A0A0A' : '#6E727A'}
+                strokeWidth={2}
+                fill={canSubmit ? '#0A0A0A' : 'transparent'}
+              />
+              <Text
+                variant="body-lg"
+                className={cn('font-geist-semibold', canSubmit ? 'text-bg-base' : 'text-fg-disabled')}>
+                {canSubmit ? `Shield ${displayAmount(units, A0_TOKEN.decimals)} ${sym}` : `Shield ${sym}`}
+              </Text>
+            </Pressable>
           </View>
-        ) : null}
+        </>
+      )}
 
-        {!hasAmount ? (
-          <Text variant="caption" className="text-fg-tertiary text-center px-2 mt-1">
-            Your main account signs this deposit. The amount, the time and your address are public on chain, and a later withdrawal to this wallet can be linked to it.
-          </Text>
-        ) : null}
-      </ScrollView>
-
-      {/* Sticky CTA */}
-      <View className="px-6 pb-8 pt-2 border-t border-bg-surface-2 bg-bg-base">
-        <Pressable
-          onPress={handleSubmit}
-          disabled={!canSubmit}
-          accessibilityRole="button"
-          accessibilityState={{disabled: !canSubmit}}
-          testID="shield-cta"
-          accessibilityLabel={`Shield ${sym}`}
-          className={cn(
-            'min-h-touch-rec rounded-pill items-center justify-center flex-row gap-2',
-            canSubmit ? 'bg-accent-shielded active:opacity-90' : 'bg-bg-surface-3',
-          )}>
-          <Shield
-            size={18}
-            color={canSubmit ? '#0A0A0A' : '#6E727A'}
-            strokeWidth={2}
-            fill={canSubmit ? '#0A0A0A' : 'transparent'}
-          />
-          <Text
-            variant="body-lg"
-            className={cn('font-geist-semibold', canSubmit ? 'text-bg-base' : 'text-fg-disabled')}>
-            {canSubmit ? `Shield ${displayAmount(units, A0_TOKEN.decimals)} ${sym}` : `Shield ${sym}`}
-          </Text>
-        </Pressable>
-      </View>
     </SafeAreaView>
+  );
+}
+
+// ── Direction tab (the design's two-tab pill) ─────────────────────────────────
+
+function DirTab({
+  label,
+  Icon,
+  active,
+  onPress,
+}: {
+  label: string;
+  Icon: typeof ShieldCheck;
+  active: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="tab"
+      accessibilityLabel={label}
+      accessibilityState={{selected: active}}
+      className={cn(
+        'flex-1 flex-row items-center justify-center gap-2 py-2 rounded-pill min-h-touch-min',
+        active && 'bg-accent-shielded',
+      )}>
+      <Icon size={16} color={active ? '#0A0A0A' : '#A8ACB5'} strokeWidth={1.75} />
+      <Text variant="body-sm" className={cn('font-geist-semibold', active ? 'text-bg-base' : 'text-fg-secondary')}>
+        {label}
+      </Text>
+    </Pressable>
   );
 }
 
@@ -329,17 +384,25 @@ function ShieldedLine({
   retryError,
   onRetry,
   checkAgain,
+  refusal,
 }: {
   view: A0ShieldedView;
   retrying: boolean;
   retryError: string | null;
   onRetry: () => void;
   checkAgain: A0CheckAgain;
+  /** final review I-1: a verifier refusal of a landed unshield found this session (undrawn) */
+  refusal?: A0VerifyRefusal | null;
 }) {
   const sym = A0_TOKEN.symbol;
   if (view.kind === 'ready') {
     return (
       <View className="px-1 mb-3">
+        {refusal ? (
+          <Banner tone="danger" testID="shielded-refusal">
+            {a0RefusalLoudText(refusal)}
+          </Banner>
+        ) : null}
         <View className="flex-row items-center justify-between" testID="shielded-line">
           <Text variant="body-sm" className="text-fg-secondary">
             Shielded balance
@@ -356,6 +419,11 @@ function ShieldedLine({
             </Text>
             <CheckAgainLink checkAgain={checkAgain} testID="shielded-check-again" />
           </View>
+        ) : checkAgain.note ? (
+          // re-review N-2: the last pending item was decided — the check's caption stays, without the link
+          <Text variant="caption" className="text-fg-tertiary mt-1" testID="shielded-check-caption">
+            {checkAgain.note}
+          </Text>
         ) : null}
       </View>
     );
@@ -381,7 +449,7 @@ function ShieldedLine({
   return (
     <Banner tone={view.kind === 'error' ? 'danger' : 'warn'} testID="shielded-line">
       {head}
-      {view.kind === 'error' ? `\n${view.message}` : ''}
+      {view.kind === 'error' && view.code === null ? `\n${view.message}` : ''}
       {retryError ? `\n${retryError}` : ''}
       {'\n'}
       <Text

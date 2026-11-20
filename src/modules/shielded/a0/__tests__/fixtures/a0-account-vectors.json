@@ -1,0 +1,70 @@
+{
+  "description": "Transparent account addresses per TransparentScheme (spec §10): slip10:n = SLIP-0010 ed25519 m/44'/501'/n'/0', cli = ed25519 of seed[0..32]. Written by scripts/a0-vectors/gen-account-vectors.mjs from Node crypto (PBKDF2, HMAC-SHA512, OpenSSL Ed25519) and its own base58; it imports neither core/keys/transparent.ts nor micro-key-producer nor @noble. Anchored to HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk (slip10:0 of the first mnemonic, the extension's test vector) and to the seeds of a0-key-vectors.json. Rerun: node scripts/a0-vectors/gen-account-vectors.mjs [--check].",
+  "anchor": {
+    "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+    "scheme": "slip10:0",
+    "address": "HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk"
+  },
+  "seeds": [
+    {
+      "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+      "seed": "5eb00bbddcf069084889a8ab9155568165f5c453ccb85e70811aaed6f6da5fc19a5ac40b389cd370d086206dec8aa6c43daea6690f20ad3d8d48b2d2ce9e38e4",
+      "accounts": [
+        {
+          "scheme": "cli",
+          "address": "EHqmfkN89RJ7Y33CXM6uCzhVeuywHoJXZZLszBHHZy7o"
+        },
+        {
+          "scheme": "slip10:0",
+          "address": "HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk"
+        },
+        {
+          "scheme": "slip10:1",
+          "address": "Hh8QwFUA6MtVu1qAoq12ucvFHNwCcVTV7hpWjeY1Hztb"
+        },
+        {
+          "scheme": "slip10:2",
+          "address": "7WktogJEd2wQ9eH2oWusmcoFTgeYi6rS632UviTBJ2jm"
+        },
+        {
+          "scheme": "slip10:3",
+          "address": "3YqEpfo3c818GhvbQ1UmVY1nJxw16vtu4JB9peJXT94k"
+        },
+        {
+          "scheme": "slip10:2147483647",
+          "address": "4js3iYAPReCCbyjcQi6hnmfy6gM4idGBRpTLtTJbkFRc"
+        }
+      ]
+    },
+    {
+      "mnemonic": "zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong",
+      "seed": "b6a6d8921942dd9806607ebc2750416b289adea669198769f2e15ed926c3aa92bf88ece232317b4ea463e84b0fcd3b53577812ee449ccc448eb45e6f544e25b6",
+      "accounts": [
+        {
+          "scheme": "cli",
+          "address": "EtJcedSL6vnFZNPiisiDRNFdisXtXFv7j9qi9wi8KmDd"
+        },
+        {
+          "scheme": "slip10:0",
+          "address": "E48cosDiQZK1iDSsyUzhvW4WxJeoKuDk5qgcdkmANV4N"
+        },
+        {
+          "scheme": "slip10:1",
+          "address": "ETjNGPNMYV9cdSWfabNMdMYtFxPziaiavoLuzvJo12qg"
+        },
+        {
+          "scheme": "slip10:2",
+          "address": "3EwCPNjUS1xKNbHcbMmo6wAtMA9ZVzwkiLVQ5H3ZvntC"
+        },
+        {
+          "scheme": "slip10:3",
+          "address": "wpsZdXo6gFeQUXKFCBvbFKLbYtyrko1M1KHFwCtDRj1"
+        },
+        {
+          "scheme": "slip10:2147483647",
+          "address": "Ha8fCMBTxv63hnKbDKT5C118CQmMhTbB9xnMD1q3q8q7"
+        }
+      ]
+    }
+  ]
+}

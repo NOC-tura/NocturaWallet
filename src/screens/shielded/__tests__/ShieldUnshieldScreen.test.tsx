@@ -2,7 +2,8 @@
  * #16 shield side on the A0 pool: the amount (BigInt, from the main account's balance of the pool's
  * mint), the fee rows the design shows (with the ZK proof row) as what an A0 deposit costs, the
  * gating on the A0 startup step (the CTA only when the restore finished; every other state is a
- * state with a way out — Retry — never a spinner forever), and the hidden unshield side.
+ * state with a way out — Retry — never a spinner forever), and the direction tabs (M1c: the
+ * unshield side is a tab; its own rows are in unshield/__tests__/UnshieldSide.test.tsx).
  */
 import React from 'react';
 import {render, fireEvent, act, waitFor} from '@testing-library/react-native';
@@ -12,9 +13,10 @@ import {A0} from '../../../modules/shielded/a0/constants';
 
 let mockView: A0ShieldedView = {kind: 'ready', unspent: 500_000_000n, pending: 0n, notes: 1};
 const mockRetry = jest.fn();
+let mockRefusal: string | null = null;
 const mockCheck = {disabled: false, checking: false, note: null as string | null, run: jest.fn()};
 jest.mock('../../../hooks/useA0Shielded', () => ({
-  useA0Shielded: () => ({view: mockView, refresh: jest.fn(), checkAgain: mockCheck}),
+  useA0Shielded: () => ({view: mockView, refresh: jest.fn(), checkAgain: mockCheck, refusal: mockRefusal}),
   retryA0Startup: () => mockRetry(),
 }));
 
@@ -37,6 +39,7 @@ const onBack = jest.fn();
 let clock = 1_000_000;
 
 beforeEach(() => {
+  mockRefusal = null;
   mockView = {kind: 'ready', unspent: 500_000_000n, pending: 0n, notes: 1};
   mockBalances = {tokenBalances: {[A0.mint]: '2000000000'}, solBalance: '1000000000'}; // 2 TEST, 1 SOL
   mockPoolCount.mockResolvedValue({status: 'ok', count: 17});
@@ -56,7 +59,7 @@ const screen = () => render(<ShieldUnshieldScreen onBack={onBack} onShield={onSh
 const ctaDisabled = (r: ReturnType<typeof screen>) => r.getByTestId('shield-cta').props.accessibilityState?.disabled;
 
 describe('#16 shield side — the design', () => {
-  it('idle: title, the one "Make private" tab, Available from the pool mint, MAX, the fee rows with the ZK proof row, the disabled CTA', async () => {
+  it('idle: title, the "Make private" tab, Available from the pool mint, MAX, the fee rows with the ZK proof row, the disabled CTA', async () => {
     const r = screen();
     await waitFor(() => expect(mockPoolCount).toHaveBeenCalled());
     expect(r.getByText('Shield / Unshield')).toBeTruthy();
@@ -202,8 +205,42 @@ describe('#16 — gated on the A0 startup step', () => {
       fireEvent.press(r.getByTestId('shielded-retry'));
     });
     expect(mockRetry).toHaveBeenCalledTimes(1);
-    expect(r.getByText(/E_A0_SYNC_RPC: timeout again/)).toBeTruthy();
+    // final review M-4 (rewritten): the code, never the message beside it
+    expect(r.getByText(/E_A0_SYNC_RPC · Retry again in a moment\./)).toBeTruthy();
+    expect(r.queryByText(/timeout/)).toBeNull();
     expect(r.getByText('Retry')).toBeTruthy(); // the way out stays
+  });
+
+  it('M-4: the restore error shows its code, not its message; with no code, the message', () => {
+    mockView = {kind: 'error', code: 'E_A0_SYNC_RPC', message: 'https://rpc/?api-key=SENTINEL789'};
+    const r = screen();
+    expect(r.getByText(/could not be restored · E_A0_SYNC_RPC/)).toBeTruthy();
+    expect(JSON.stringify(r.toJSON())).not.toContain('SENTINEL789');
+    r.unmount();
+    mockView = {kind: 'error', code: null, message: 'Network request failed'};
+    expect(screen().getByText(/Network request failed/)).toBeTruthy();
+  });
+
+  it('re-review N-2: the last pending item decided → the caption stays (without "Check again"); none without a note', () => {
+    mockView = {kind: 'ready', unspent: 500_000_000n, pending: 0n, notes: 1};
+    Object.assign(mockCheck, {note: 'Not sent · your note is back in your shielded balance.'});
+    const r = screen();
+    expect(r.getByTestId('shielded-check-caption').props.children).toBe('Not sent · your note is back in your shielded balance.');
+    expect(r.queryByTestId('shielded-check-again')).toBeNull();
+    r.unmount();
+    Object.assign(mockCheck, {note: null});
+    expect(screen().queryByTestId('shielded-check-caption')).toBeNull();
+  });
+
+  it('final review I-1: a verifier refusal the startup step or "Check again" found is LOUD here, by its code (undrawn)', () => {
+    mockView = {kind: 'ready', unspent: 0n, pending: 0n, notes: 0};
+    mockRefusal = 'E_A0_VERIFY_SEED_SIGNER';
+    const r = screen();
+    expect(r.getByTestId('shielded-refusal')).toBeTruthy();
+    expect(r.getByText('Landed, but failed verification: E_A0_VERIFY_SEED_SIGNER · a key of this wallet signed it')).toBeTruthy();
+    r.unmount();
+    mockRefusal = null;
+    expect(screen().queryByTestId('shielded-refusal')).toBeNull();
   });
 
   it('idle → Retry is offered too', async () => {
@@ -217,19 +254,19 @@ describe('#16 — gated on the A0 startup step', () => {
   });
 });
 
-describe('#16 — the unshield side is hidden until M1c', () => {
-  it('no "Make public" tab, no vault-balance side, no Unshield CTA', () => {
+describe('#16 — M1c: the unshield side is a tab (its rows: unshield/__tests__/UnshieldSide.test.tsx)', () => {
+  it('opens on the shield side by default; the "Make public" tab exists and is not selected', () => {
     const r = screen();
-    expect(r.queryByText('Make public')).toBeNull();
-    expect(r.queryByText('Vault balance')).toBeNull();
-    expect(r.queryByText(/^Unshield/)).toBeNull(); // the title "Shield / Unshield" is the design's
-    expect(r.queryByText(/Privacy decreases on public withdraw/)).toBeNull();
+    expect(r.getByLabelText('Make private').props.accessibilityState?.selected).toBe(true);
+    expect(r.getByLabelText('Make public').props.accessibilityState?.selected).toBe(false);
+    expect(r.getByTestId('shield-cta')).toBeTruthy();
+    expect(r.queryByTestId('unshield-cta')).toBeNull();
   });
 
-  it('a stale {direction: "public"} prop has no effect (the screen has no public mode)', () => {
-    const props = {onBack, onShield, initialDirection: 'public'} as unknown as React.ComponentProps<typeof ShieldUnshieldScreen>;
+  it('an unknown initialDirection opens the shield side (only "public" opens the unshield side)', () => {
+    const props = {onBack, onShield, initialDirection: 'withdraw'} as unknown as React.ComponentProps<typeof ShieldUnshieldScreen>;
     const r = render(<ShieldUnshieldScreen {...props} />);
-    expect(r.queryByText('Make public')).toBeNull();
-    expect(r.getByText('Make private')).toBeTruthy();
+    expect(r.getByLabelText('Make private').props.accessibilityState?.selected).toBe(true);
+    expect(r.queryByTestId('unshield-cta')).toBeNull();
   });
 });

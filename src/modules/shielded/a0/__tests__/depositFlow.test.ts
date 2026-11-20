@@ -27,7 +27,7 @@ import {PublicKey} from '@solana/web3.js';
 import {clearAllStores, initSecureMmkv, mmkvSecure} from '../../../../store/mmkv/instances';
 import {KEY_VECTORS, OTHER_SEED, TEST_SEED, offlineDepositProver, offlineKeys, seedBytes} from '../__testing__/offlineA0';
 import type {FakeProverNative} from '../__testing__/offlineA0';
-import {appendDeposit, rhoPda} from '../__testing__/ownHistory';
+import {appendDeposit, appendWithdraw, rhoPda} from '../__testing__/ownHistory';
 import {chainFrom} from '../__testing__/recordedRpc';
 import type {RecordedFixture} from '../__testing__/recordedRpc';
 import {DEVNET_GENESIS, LIVE_BLOCKHASH, fundTokenAccount, liveDevnet} from '../__testing__/liveDevnet';
@@ -465,6 +465,22 @@ describe('submit refusals and outcomes that leave the note pending', () => {
     expect(loadA0NoteStore()).toEqual({nextDepositIndex: 1n, notes: []});
   });
 
+  it('a preflight refusal by FeGSS… itself (6011, the 2026-11-17 upgrade) → send-failed, its detail in the wallet’s words', async () => {
+    const p = await prepare();
+    // the runtime's text for the deposit (instruction 1, after the CU limit) raising 0x177b
+    net.sendError = 'Transaction simulation failed: Error processing Instruction 1: custom program error: 0x177b';
+    const out = await submit(p);
+    expect(out).toMatchObject({status: 'pending', reason: 'send-failed'});
+    expect((out as {detail?: string}).detail).toMatch(/^6011 CpiNotAllowed: The pool accepts this instruction only at the top level/);
+  });
+
+  it('a refusal at another instruction index is not attributed to the pool (the raw text stays)', async () => {
+    const p = await prepare();
+    net.sendError = 'Transaction simulation failed: Error processing Instruction 0: custom program error: 0x177b';
+    const out = await submit(p);
+    expect((out as {detail?: string}).detail).toMatch(/Instruction 0: custom program error: 0x177b/);
+  });
+
   it('a foreign deposit lands our rho between prepare and submit: our tx fails at init → pending; reconciled as foreign, dropped', async () => {
     const p = await prepare();
     net.landForeign({amount: 9n, rho: p.rho, commitment: other.commitment(9n, p.rho)});
@@ -484,19 +500,23 @@ describe('submit refusals and outcomes that leave the note pending', () => {
     const p = await prepare();
     // the RPC accepts our tx and reports it confirmed without an error, while the history it then
     // serves shows somebody else's deposit at our rho — a contradiction (the marker is `init`)
+    let foreignSig = '';
     net.onSend = () => 'drop';
     const out = await submitA0Deposit(net.connection, p, seedBytes(TEST_SEED), {
       sync: {useCache: false},
       settleAttempts: 1,
       onStage: s => {
         if (s === 'submitted') {
-          net.landForeign({amount: 9n, rho: p.rho, commitment: other.commitment(9n, p.rho)});
+          foreignSig = net.landForeign({amount: 9n, rho: p.rho, commitment: other.commitment(9n, p.rho)});
           net.statuses.set(net.sent[0]!.signature, {err: null, confirmationStatus: 'confirmed'});
         }
       },
     });
     expect(out).toMatchObject({status: 'pending', reason: 'not-in-sync', signature: net.sent[0]!.signature});
     expect(out.status === 'pending' && out.detail).toMatch(/another deposit \(\w+\) at this rho after our confirmed send/);
+    // M1c Task 8: the foreign signature is carried structurally, for #21's parked copy
+    expect(out.status === 'pending' && out.foreignSignature).toBe(foreignSig);
+    expect(foreignSig).not.toBe(net.sent[0]!.signature);
     expect(loadA0NoteStore()).toEqual({
       nextDepositIndex: 1n,
       notes: [expect.objectContaining({rho: p.rho, commitment: p.commitment, status: 'pending'})],
@@ -541,6 +561,8 @@ describe('submit refusals and outcomes that leave the note pending', () => {
       },
     });
     expect(out).toMatchObject({status: 'pending', reason: 'not-in-sync'});
+    // control for Task 8's marker: a plain lag carries no foreign signature
+    expect(out.status === 'pending' && 'foreignSignature' in out).toBe(false);
     expect(loadA0NoteStore().notes[0]!.status).toBe('pending');
   });
 });
@@ -552,10 +574,10 @@ describe('R1-I2: the pre-check\'s GAP and LIMIT refusals', () => {
     net.accounts.set(rhoPda(rho), {owner: PROGRAM, finalized: true});
   };
 
-  it('(a) the store counter is 21 past the last own hit, its PDA present and its deposit SYNCED → E_A0_DEPOSIT_PRECHECK_GAP; the store byte-identical, keys closed', async () => {
+  it('(a) the store counter is 101 past the last own hit, its PDA present and its deposit SYNCED → E_A0_DEPOSIT_PRECHECK_GAP; the store byte-identical, keys closed', async () => {
     ownDeposit(0n, 700n);
-    ownDeposit(21n, 800n); // in the synced history (else UNSYNCED fires first), past the gap limit of 20
-    setA0NextDepositIndex(21n);
+    ownDeposit(101n, 800n); // in the synced history (else UNSYNCED fires first), past the gap limit of 100 (S15)
+    setA0NextDepositIndex(101n);
     const before = raw();
     await expect(prepare()).rejects.toMatchObject({code: 'E_A0_DEPOSIT_PRECHECK_GAP'});
     expect(raw()).toBe(before);
@@ -565,12 +587,36 @@ describe('R1-I2: the pre-check\'s GAP and LIMIT refusals', () => {
     expect(net.sent).toHaveLength(0);
   });
 
-  it('(a) control: 20 past (inside the gap limit) → recovery reaches it, both imported, the deposit proceeds at 21', async () => {
+  it('(a) control: 100 past (inside the gap limit) → recovery reaches it, both imported, the deposit proceeds at 101', async () => {
     ownDeposit(0n, 700n);
-    ownDeposit(20n, 800n);
-    setA0NextDepositIndex(20n);
-    await expect(prepare()).resolves.toMatchObject({depositIndex: 21n, importedNotes: 2});
-    expect(loadA0NoteStore().notes.map(n => n.depositIndex)).toEqual([0n, 20n]);
+    ownDeposit(100n, 800n);
+    setA0NextDepositIndex(100n);
+    await expect(prepare()).resolves.toMatchObject({depositIndex: 101n, importedNotes: 2});
+    expect(loadA0NoteStore().notes.map(n => n.depositIndex)).toEqual([0n, 100n]);
+  });
+
+  it('(a) S15: 21 past the last own hit — the M1b refusal — is now inside the limit: imported, the deposit proceeds at 22', async () => {
+    ownDeposit(0n, 700n);
+    ownDeposit(21n, 800n);
+    setA0NextDepositIndex(21n);
+    await expect(prepare()).resolves.toMatchObject({depositIndex: 22n, importedNotes: 2});
+  });
+
+  it('(c) a store behind the chain: the pre-check imports what a restore would — the spent deposit WITH its spentTx and its change note', async () => {
+    ownDeposit(0n, 2_000_000n);
+    const rho0 = own.rho(0n);
+    const nullifier = own.nullifier(rho0);
+    const changeRho = own.rhoChange(nullifier);
+    const fee = 10_000n;
+    const sent = 400_000n;
+    const changeAmount = 2_000_000n - sent - fee;
+    const w = appendWithdraw(net.chain, {nullifier, changeCommitment: own.commitment(changeAmount, changeRho), amount: sent, fee});
+    setA0NextDepositIndex(0n);
+    await expect(prepare()).resolves.toMatchObject({depositIndex: 1n, importedNotes: 2});
+    const notes = loadA0NoteStore().notes;
+    expect(notes).toHaveLength(2);
+    expect(notes[0]).toMatchObject({depositIndex: 0n, amount: 2_000_000n, status: 'spent', spentTx: w.signature});
+    expect(notes[1]).toMatchObject({rho: changeRho, amount: changeAmount, status: 'unspent', leafIndex: w.leafIndex});
   });
 
   /** `n` consecutive pool-owned PDAs from counter 0 whose deposits appear one per check (another

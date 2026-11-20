@@ -4,6 +4,7 @@ import {AppProviders} from './AppProviders';
 import {RootNavigator} from './Navigator';
 import {useSessionGuard} from '../hooks/useSessionGuard';
 import {useReferralDeepLink} from '../hooks/useReferralDeepLink';
+import {useA0PinnedControlLink} from '../hooks/useA0PinnedControlLink';
 import {navigationRef} from './navigationRef';
 
 function AppContent() {
@@ -18,6 +19,7 @@ function AppContent() {
 
   useSessionGuard(handleSessionExpired);
   useReferralDeepLink();
+  useA0PinnedControlLink();
 
   return (
     <>

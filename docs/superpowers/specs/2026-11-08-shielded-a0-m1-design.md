@@ -1,6 +1,7 @@
 # Shielded on A0 · Milestone 1 — shield and a private unshield on the deployed A0 pool (Android, devnet)
 
-**Status:** rev 3.3, 2026-11-16 — the M1b plan's execution (text only, no owner decision changed). Rev 3.2
+**Status:** rev 3.4, 2026-11-19 — the M1c plan's execution (text only, no owner decision changed). Rev 3.3
+(2026-11-16) was the M1b plan's execution. Rev 3.2
 (2026-11-09) was the M1a plan's execution. Rev 3.1
 (2026-11-08) was the program side's acceptance of P1/P2. Rev 3 (03c866e) was Fable review 2 + owner
 S10–S12, rulings R12–R13. Rev 2 (00e58fe) was Fable review 1 +
@@ -11,8 +12,260 @@ sections). Review 1 (`.superpowers/sdd/shielded-a0-m1-spec-review-1.md`) found 4
 issues; review 2 (`…-spec-review-2.md`) found 1 Critical, 8 Important and 10 Minor. Decisions and rulings:
 `.superpowers/sdd/shielded-a0-m1-decisions.md`. The program-side proposal text (P1, P2) is
 `.superpowers/sdd/shielded-a0-m1-ico-proposal.md`. The four plans of §16 each get their own Fable review; M1a is
-executed (rev 3.2) and M1b is executed (rev 3.3); M1b's on-phone checkpoint (the owner's,
-`scripts/m1b-checkpoint/README.md`) is next, then M1c's plan.
+executed (rev 3.2), M1b is executed (rev 3.3) and M1c is executed on the desk (rev 3.4); M1c's two on-phone
+checkpoints (the owner's, `scripts/m1c-checkpoint/README.md`) are next, then M1d's plan.
+
+### Rev 3.4, 2026-11-19 — the M1c plan's execution: the departures of its nine tasks, the plan review's rulings and the controller's rulings during execution; text only, no owner decision changed
+
+Collected from the plan's per-task "Spec rev 3.4 lines" (`docs/superpowers/plans/2026-11-18-shielded-a0-m1c-confirmation-unshield.md`),
+the rulings of the Fable plan reviews (R1-C1, R1-I1, R2-I1, R2-N1 … R2-N3, R3-N4, m-1 … m-10; the plan's front matter)
+and the controller's rulings during execution (`.superpowers/sdd/2026-11-18-shielded-a0-m1c-confirmation-unshield/progress.md`).
+Where a plan line and a later ruling differ, the ruling's text is the one below. Two passages are edited in place
+(marked *Rev 3.4*): the deposit gap limit (§7, §15 "Owner") and §16's M1c checkpoints; every other line names the
+passage it qualifies. S15 (the deposit gap limit 100, owner 2026-11-17) is the one owner decision M1c carried; it was
+made before this execution and is recorded, not made, here.
+
+*Task 1 — the `pinnedFetch` on-device control:*
+
+- **§6.0:** the on-device control is the devnet build's `noctura://a0-pinned-control` link, read by a root hook. It
+  sends three probes through the relayer transport, one readout line each (`{run, probe, url, status, outcome, threw,
+  lostStatus, pinFailure, quote}`): the malformed submit `{"kind":"noctura-m1c-pinned-control"}`, the quote, and the
+  same submit through a pre-fix-mapping variant that must throw with the status lost (the negative control). The desk
+  judges M1c.P0–P3 against the devnet APK's `API_BASE` and the pinned relayer fee payer, judging ONLY the run it
+  triggered. PASSED on the owner's phone 2026-11-19.
+- **§6.0 / §1 "Relayer":** the transport calls the native module directly with a null-safe callback (the library's
+  wrapper throws a `TypeError` on a message-less failure); every relayer request has a JS deadline (quote 25 s, submit
+  135 s). A deadline or transport error on submit is "unknown", never "not forwarded".
+- **§1 "Relayer":** the coordinator's rate limiter answers 429 with a plain-text body (no `outcome`).
+- **§14:** `react-native-ssl-pinning`'s native callbacks are a recorded fixture (both library files pinned by sha256).
+
+*Task 2 — the account registry and the fresh rule:*
+
+- **§10 "Registry":** entries are `{scheme, role, address}` (`fresh-exit` may carry `linked`), the record `{schema: 1,
+  accounts}` under `v1_accounts` in the encrypted instance. The address is derived from the seed when written, shown
+  without the seed, re-derived wherever it decides anything (a mismatch refuses). A missing instance or an undecodable
+  record is an error, never an empty list; an absent record is created with its main only by a call that holds the
+  seed. Every writer is bound to the instance captured at its entry (`E_A0_STORE_CHANGED`). The stored main must equal
+  `WALLET_TRANSPARENT_DERIVATION`; `fresh-pending` → `fresh-exit` and the removal of `fresh-pending` are the only role
+  changes.
+- **§6.1 / §10 "the history check":** `getSignaturesForAddress(address, {limit: 1})` at `confirmed`. An index with history
+  is skipped and not recorded; one reservation skips at most 20 such indices, then refuses (no fresh account offered);
+  reservations run one at a time.
+- **§2 "The RPC provider" (privacy, for the owner):** one reservation can therefore make **up to 20 history requests
+  naming up to 20 addresses of this seed in one burst** — not one request as §2's "the fresh-account history check"
+  reads. Each request is public data; the burst tells the RPC provider those addresses are probed together.
+- **§6.8 "no signer of the tx is any key of this seed":** the key set is every registry entry plus, always, the seed's
+  `cli` key and `slip10:0` (de-duplicated). **Not in the set (Task 4 M8):** the associated token accounts of those
+  keys, and the `slip10` keys above the registry. A seed key's ATA appearing in a relayed tx is not refused by this
+  rule (the destination's own ATA is the expected one; the other rules — the shape, the accounts — bound the rest).
+- **§7 "Accounts" (ruling 7):** the account-discovery gap stays 20; S15's 100 is the deposit gap only.
+- **§14:** "multi-account derivation equal to the extension's for `slip10:0..3`" is met against vectors from an
+  independent SLIP-0010 implementation, anchored to the extension's published `slip10:0` of "abandon … about".
+
+*Task 3 — the relayer client:*
+
+- **§1 "Program":** since 2026-11-17 the deployed binary is `b0054981…` (upgrade `25h52FQX…`, slot 523346473); the IDL
+  fixture is the program side's byte copy `3ac8fda7…`, which adds 6011 `CpiNotAllowed` and 6012 `UnexpectedAccounts`;
+  the wallet maps all thirteen codes, attributed to FeGSS… only. Two relayed withdraws landed after the upgrade
+  (`5F8Ks5qa…`, `5sKiWZTv…`) are rebuilt byte for byte.
+- **§1 "Relayer":** the fee payer `3jvhiz…FaGe` is pinned in the A0 constants; a quote naming another refuses.
+  `fee_destination = 9643JX…` and `wchange_vk = 9FMF…` are constants, derived in a test.
+- **§6.4:** the grant floor is the cluster's `getMinimumBalanceForRentExemption(0)` at quote time + 5,000 (650,240
+  measured → 655,240); the rent request is made only for a quote with a grant. A quote with an unlisted key, or
+  `validForSeconds` outside 1…60, refuses.
+- **§6.6:** before a payload exists the wallet refuses an off-curve owner and a token account that is not
+  `ATA(owner, mint)` (JS's own derivation).
+- **§6.7:** the re-quote compares the fee, the fee payer and the grant (or its absence); a quote is re-fetched when its
+  age reaches `validForSeconds`.
+- **§6.8 — the answer's disposition, as built (R1-C1 as amended, R2-N1, R3-N4; fail closed):** an outcome is believed
+  only when the body's outcome and the HTTP status agree and `txSignature` is present as the contract allows. An
+  unreadable answer (no parseable JSON) is **not forwarded only at a 4xx other than 409** (a 429 included); at a 409 and
+  at every other status (a 5xx gateway page after the relayer forwarded, a 200 with a garbled body) it is `unknown`,
+  reconciled by the sync. A parseable forward-capable outcome (`confirmed` / `unconfirmed` / `relay_failed` /
+  `already_spent`) without a signature at a mismatched status is `unknown` too. Every SPECIFIC refusal code is not
+  forwarded. The GENERIC signature-less `relay_failed` (a stale root IS this answer) is `unknown` unless R3-N4 below
+  proves the tx can never land. `alreadySpentIndexes` other than `[0]` reads as undetermined. A deadline, a transport
+  error and a pin failure on submit are `unknown`.
+- **§14 JS:** "instruction data and account metas byte for byte" is met against the recorded landed txs; R6 is a source
+  guard (`noSelfRelay.test.ts`).
+
+*Task 4 — the post-landing verifier:*
+
+- **§6.8 "verifies on chain":** `verifyLandedUnshield`, a pure function over the synced record (decoded fields, not the
+  instruction's bytes).
+- **§6.8 create-ATA:** since P2 is live (37ad673) exactly one create-ATA-idempotent `(feePayer, ata, owner, mint)` is
+  REQUIRED; a relayed tx without it refuses.
+- **§6.8 shape (added):** the top-level programs are only ComputeBudget, the ATA program, System and FeGSS…; exactly one
+  FeGSS… instruction; every top-level System instruction a transfer, every ATA instruction a create-idempotent; the
+  signers exactly `[the pinned relayer]`, a seed signer refused first; the vault's token delta exactly −(amount + fee).
+- **§6.8 the spend:** `matchSpent` is asked about the tx's Withdraw nullifiers alone and must answer `[0]`; the Withdraw
+  event must equal the instruction's nullifier. **§6.8 "no SOL":** reported only for a `fresh-pending` destination
+  without a grant whose owner held 0 lamports.
+- **The verifier's refusal detail names seed keys beside the signature:** it is shown nowhere and never written to a
+  log or a readout line — the code only (Tasks 7–9).
+
+*Task 5 — change notes, exit accounts and S15:*
+
+- **§7 "Deposits" / §15 "Owner" (S15, edited in place):** the deposit gap limit is **100** (was 20), in recovery and in
+  the deposit pre-check's GAP refusal; the hazard reads "100 consecutive expired or front-run deposits hide every later
+  own deposit". R1-m4 is decided (S15).
+- **§7 "Change notes", as built:** the attribution runs in sync order, one local `matchSpent(handle, [n], spentRhos)`
+  per synced nullifier not yet attributed, until every spent note is attributed; a round that attributes nothing
+  refuses (`E_A0_RECOVERY_NATIVE`). A spend of ours whose change is not imported — a change leaf that is not ours, a
+  `Withdraw` event without its instruction, a spend above the input — is counted (`unmatchedChangeLeaves`, three cases
+  in one count), not imported, not thrown. A zero change is a note (amount 0). Two withdrawals with one nullifier refuse
+  (`E_A0_RECOVERY_DUPLICATE_NULLIFIER`) once a note of ours is spent; a second `LeafInserted` of our change commitment
+  in one tx refuses the restore (`E_A0_RECOVERY_LEAF`). The deposit pre-check's import also recovers change notes.
+- **§7 "Accounts", as built:** the destinations are those of every withdrawal that spent a note of ours; the walk stops
+  once every destination matched; a match on the main changes no role (and is counted in the restore's `exitAccounts`,
+  which is therefore not a count of fresh accounts); `cli`: no walk. The registry is written before the notes.
+- **§8:** a recovered `spent` note that names its `spentTx` replaces a stored `spent` note; one without does not.
+- **§3 / §15:** the program side's golden change-commitment vectors (2146368) confirm the equation; the §15 dependency
+  "a golden `changeCommitment` row with its inputs" is met.
+
+*Task 6 — the native confirmation:*
+
+- **§4 step 4:** the authenticator matrix on androidx.biometric 1.1.0 — API 30+ `BIOMETRIC_STRONG | DEVICE_CREDENTIAL`;
+  24–29 `BIOMETRIC_STRONG` only; `BIOMETRIC_WEAK` never; no usable authenticator → refusal. JS's ATA comparison is
+  `confirmA0Unshield` (web3.js `findProgramAddressSync`); the approved owner is compared too.
+- **§4 step 5 / I10:** the refusal codes `E_A0_CONFIRM_BUSY`, `_NO_ACTIVITY`, `_NO_AUTHENTICATOR`, `_CANCELLED`,
+  `_TIMEOUT`, `_BIOMETRIC`, `_INTERRUPTED`, `_SESSION`, `_UI`, plus JS's `_RESULT` and `_MISMATCH`; the 60 s cover the
+  dialog and the prompt; a touch delivered while obscured includes `FLAG_WINDOW_IS_PARTIALLY_OBSCURED`; the activity is
+  re-checked RESUMED before the dialog shows; a `keysClose` / second `keysOpen` fails a waiting confirmation
+  (`_SESSION`). `keysOpen` signals a session change whenever Rust was reached (m-7 as refined).
+- **§14 Boundary:** the React module exposes 8 methods (M1b's 7 + `confirmUnshield`). **§14:** the Kotlin JVM tests now
+  run in CI (`android-jvm.yml`, the eight pure classes); `A0JniTest` stays a desk run. **§11:** the privacy-claims guard
+  reads `a0_confirm_strings.xml`.
+
+*Task 7 — the unshield flow and its reconciliation:*
+
+- **§8 "Fields":** a pending unshield carries `pendingSince` and `unshield` — the approved terms `{owner, amount, fee,
+  feePayer, gasGrantLamports, destination, scheme?}` (never a nullifier); writers `markA0PendingUnshield`,
+  `refreshA0PendingSince`, `revertA0PendingUnshield`, `settleA0Unshield`, each bound to the instance captured at entry.
+- **§6 step 1 — the destination (m-5 and the controller's ruling):** "Another address" refuses every key of the seed set
+  and `slip10:0 … 20` of this seed (21 local derivations). For `slip10:1 … 20` outside the registry the copy says it is
+  **"an account of this wallet not offered as a destination"**; **a typed address that IS one of the wallet's roles
+  (the main, a fresh account) is refused naming its role** — never silently taken as that role (that would bypass the
+  main-account warning or reuse an exit). The refusal is shown on the run screen's #21 layout (Task 8 ruling).
+- **§6 step 7:** the re-quote is checked after the proof, before the submit; changed terms end the round and ask a NEW
+  confirmation; at most 3 confirmations per unshield.
+- **§6 steps 7–8 — the one chain-time anchor (R2-N2, m-1, m-2):** `pendingSince` is the last chain time read before the
+  request leaves (`getSlot` + `getBlockTime`, slot−1 … −4 when a slot has none); a discarded probe before the prompts
+  refuses a dead clock early but is never the anchor; after a hold the clock is re-read and a LATER value replaces it,
+  a null or failing re-read keeps it and never fails the unshield.
+- **§6 step 8 — R3-N4:** after a generic signature-less `relay_failed` the flow re-syncs ONCE and reverts at once (a new
+  path, a NEW confirmation) only when the sync is complete, the proof's root has left `rootHistory` and no synced tx
+  carries our nullifier; otherwise the unshield stays pending. **Its UX cost:** an honest generic failure that R3-N4
+  cannot prove dead shows "Not confirmed yet", holding the note and the `fresh-pending` reservation **up to 300 s of
+  chain time**, until the next start or "Check again".
+- **§6 step 8 `confirmed`:** the first sync + up to 10 retries 3 s apart. A tx `matchSpent` attributes to the note spends
+  it whatever the verifier says; a refusal is `landed-unverified` (read out with its code, never retried); a fresh
+  reservation becomes `fresh-exit` (+ `linked` for a seed-key signer). A stranger's dusting of a reserved account
+  promotes it to `fresh-exit` (harmless; the account is ours, m-8).
+- **§6 step 8 `unconfirmed`:** no block time → still pending; `> pendingSince + 300` reverts; reservations no pending
+  unshield names are released unless the synced history names them.
+- **§5 step 7 / §6 step 8:** the startup step gains step 3 (pending unshields); "Check again" reconciles them too and
+  reads the keychain once when one exists. **§6:** one unshield runs per process (`E_A0_UNSHIELD_BUSY`).
+
+*Task 8 — the unshield screens:*
+
+- **§11 #16:** the unshield side is #16's "Make public" tab; the run is ONE screen (`UnshieldRun`) drawing #18 before the
+  submit and #21 from it; **no #19 / #20 for the unshield** — the native dialog is the confirmation. #18's four rows are
+  sync, quote, approval, proof. The `submit` stage starts AT the pending write (Task 9, Task 8 review M-2): a throw
+  anywhere after it reads "Not confirmed yet" (or "Not in this wallet"), never "Not sent".
+- **§11 copy:** the fresh-account default drops "(Account N+1)"; "NOC" reads as the pool token's symbol (TEST on
+  devnet, in the native dialog too, from `BuildConfig.A0_NETWORK`); the withdraw banner's body is replaced by the
+  destination's warning + the relayed sentence; every pending reason reads "Not confirmed yet", never failure copy.
+- **§11 (S11):** the fresh option disabled is proven in Jest against a grant-less quote; with P1 live it is preselected
+  on devnet. **§11 "The guard":** every `.ts` / `.tsx` under `src/screens/shielded/` at any depth, `CheckAgainLink.tsx`
+  and every Android string resource.
+- **§12 — no deep link opens the unshield side:** the `UnshieldRun` route has no deep link, and #16's link pins
+  `direction` to `private` (`deepLinkConfig`) while the Navigator honours `direction: 'public'` only on a route made by
+  in-app navigation (not from a link) — two independent guards.
+- **§5 step 6:** the foreign-after-confirmed `pending` outcome carries the foreign deposit's signature, and #21 says it.
+
+*Task 9 — the on-phone checkpoints' desk, the readout context and the submit hold:*
+
+- **§16 M1c, both checkpoints (edited in place):** one phone session, order Another → Main → Fresh (ruling 4); the desk
+  is `scripts/m1c-checkpoint/m1c-checkpoint.mjs` (M1a's `install.mjs` unchanged, M1b's one `pm clear` or the owner's
+  recorded manual wipe), the owner's checklist its `README.md`. "From each signature, every §6.8 condition" = the desk's
+  OWN wire decoder (`chain.mjs`) on `getTransaction(…, base64)` for **every signature any readout names** (each
+  `unshield-outcome` of any status and each `unshield-reconcile` settled one, the latter joined to its submitting line
+  by the (ATA, amount, fee) of its decoded tx; a settled signature with no such line FAILS); the relayer fee payer's
+  own signature list from the first submit − 2 min is read too, and a relayed withdraw to a submitted (ATA, amount, fee)
+  that no readout names FAILS (R1-I1 / R2-I1 / R3). A signature-less line accounts for nothing; the desk accounts by
+  signature, never by `reason`. The phone's own leaf / grant comparisons are "n/a" where no readout carries them.
+  The app's verdict on a landing is its outcome AND every settled[] entry of that signature (a `pending` outcome
+  hides no later refusal). The one exception to "every named signature is judged": a `pending` outcome's signature
+  that never landed is listed, not judged — only on positive evidence (its tx FAILED on chain, or the fee payer's
+  listing was read and lacks it). A null `getTransaction` is "not read", never evidence: a named or listed signature
+  whose read is null FAILS ("run verify again"). The app's settled[] verdict is consulted before any "never landed"
+  classification; "failed on chain" needs an `err` that was read (a missing `meta` is "not read"); and the listing
+  is evidence of absence only when it is complete — it holds every named signature this run read as landed.
+- **§16 M1c "no signer is a key of this seed":** the signers are exactly `[3jvhiz…FaGe]`, no signer is in the seed set
+  the devnet readout reports, and the only seed key in the tx is the destination owner (ruling 5). **The seed set
+  (R2-N3):** read out ONCE per app start on `startup-accounts` (`seedKeys` = registry ∪ `cli` ∪ `slip10:0`, derived by
+  the startup step from its own seed copy before the copies are zero-filled, with the devnet readout gate open only),
+  joined with the registry the `unshield-submitting` line carries (that line has no seed set: no linkage beyond the
+  start's). A bug report taken before `adb logcat -c` carries the linkage (README).
+- **checkpointReadout (§16):** `unshield-submitting` carries the quote's fee payer and grant, the wallet's kind, the
+  registry `{address, role, linked}` and `heldMs`; `startup-accounts` follows every ready start (registry, seed keys,
+  the restore's M1c counters, each named for what it counts); `submit-hold` reads out `armed` / `taken` / `expired`.
+  Public values only; never an index, a scheme string, a rho, a nullifier or the verifier's detail.
+- **§16 M1c second checkpoint — the one-shot submit hold (devnet gate only):** "a second unshield started while the
+  first was pending" is produced by the link `noctura://a0-hold-next-submit`, which arms a 30 s hold of the NEXT
+  unshield after its pending write, entering the flow only through `unshieldA0`'s `holdMs` (the run screen's call); the
+  arm **lapses after 10 minutes** (m-4, read out `expired`); closed in production at both ends. The desk kills the app
+  inside the hold. "Picked the next index" is judged as a new fresh account reserved while the first was still
+  `fresh-pending` (the readout carries no index); the held unshield is then reverted (chain time > submit + 300 s) and
+  its account has no history.
+- **§16 M1c first checkpoint:** with P1 live, the "Another address" holds SOL and gets no grant; "the fresh-account
+  option is visible, disabled, with its reason" is proven in Jest only.
+- **§16 M1c "Wipe and restore":** `pm clear com.nocturawallet.devnet` where the phone allows it; on a phone that refuses
+  it (SecurityException CLEAR_APP_USER_DATA, the owner's OnePlus) the owner wipes by hand (`wipe --manual clear-data |
+  in-app | reinstall`, recorded `manual: <how>`); judged by the first start after it (`restoredBecause: no-record`), the
+  restored unspent notes equal to those before the wipe and containing the change leaves of every judged landing, the
+  fresh accounts of every judged fresh landing `fresh-exit` (m-10).
+- **§16 / R1′ / R1-I6:** the checkpoint asserts the deployed binary once — the programData's ELF (cut by its own
+  header; the padding is zero) has sha256 `b0054981…`; `wchange_vk` (PDA `["wchange_vk", pool]`, 1,048 bytes, `written`
+  960) equals `withdraw_change_vk.json` in the program's encoding. Measured PASS at slot 523482591.
+- **§16 M1c:** the phone's API level is recorded and names the authenticator row it proved; `A0ConfirmWindowTest` runs
+  from the desk (`phone --instrument`).
+- **§16 M1b (as built, M1c fix):** a still-undecided killed deposit's line says "wait ~4 min (the blockhash expiry +
+  the 300-block margin)".
+
+*The final review's fix wave (M1c final review, the controller's rulings):*
+
+- **§6 steps 7–8 — the window's transport bound (I-2):** the 300 s window holds because the request body reaches the
+  relayer before the JS deadline (135 s) whenever the submit is answered, and the relayer's blockhash is fetched once
+  it holds the body. The JS deadline does not cancel the native request (OkHttp's connect and write timeouts are 120 s
+  each), so **a submit that ends `unknown` by the deadline or a transport error re-anchors `pendingSince` to the chain
+  time read after it** (a later value only; a null or failing re-read keeps the anchor, as after a hold). An `unknown`
+  is still never "not sent".
+- **§7 merge / §5 step 2 (I-3):** a stored pending unshield (`pendingSince`) is kept by a restore's or a deposit
+  pre-check's merge **even when the chain shows its spend**; the reconciliation settles it through the post-landing
+  verifier, accepting a change note the merge stored. Until then the note reads as pending and its change as unspent.
+- **§6 step 8 refused (M-6):** a landed tx of the note whose change does not match the stored intent's amounts (an
+  earlier attempt of the same note) records its change by recovery's rule — the tx's own withdrawal, Rust's
+  commitment, exactly one leaf.
+- **§11 #21 / #16 / #11 (I-1):** a reconciliation's result reaches the screens. "Check again" says what it decided
+  (settled, reverted, still pending, or a refusal); #21 replaces "Not confirmed yet" / PENDING with "Unshielded",
+  "Not sent" or "Landed, but failed verification" once settled, reverted or refused. A verifier refusal found by the
+  startup step or a "Check again" is shown LOUD on #16's shielded-balance line and on the dashboard's shielded assets
+  for the rest of that wallet's session — by its code and a fixed sentence only. (Undrawn; README's visual pass.)
+  *Re-review N-1 / N-2:* #21 reads the decision about ITS OWN note only (the flow names the note's rho to the run
+  screen at the pending write, `onPending`; the first decision is kept); another pending unshield's result never
+  changes it. A decided caption stays (without "Check again") after the last pending item is decided. A settle by
+  recovery's rules (no stored terms) is never called "verified".
+- **§6 step 8 / carry 4 (M-3):** the returned outcome no longer carries the verifier's `detail` — the type holds "shown
+  nowhere"; the code and a fixed sentence are what #21 says.
+- **§11 error copy (M-4, the secure default):** where an error has a code, #16 and #21 show the code and a fixed sentence,
+  never the raw message (it may carry the RPC URL and its API key; #21 is not FLAG_SECURE); a raw message only when
+  there is no code. The own-account refusal names its role from a field of the error (`ownAccount`), no longer by
+  matching the message (M-7); the account's index is not shown.
+- **§16 M1c.V (M-1):** the fee payer listing is evidence of absence only when it also holds at least one landing of
+  the run; and M1c.V FAILS when a judged landing's blockTime is before the fee payer window's start ("the phone's clock
+  is ahead of devnet by more than the 2-minute margin — the fee payer window does not cover this run").
 
 ### Rev 3.3, 2026-11-16 — the M1b plan's execution: the departures of its seven tasks, the plan review's rulings and the task reports; text only, no owner decision changed
 
@@ -1015,7 +1268,9 @@ makes no RPC request specific to one of our notes (I3; m7 does not arise).
      the highest hit, own or not, + 1. The restore records that `highestHit` (R1-m4). **Hazard, for the owner:** a
      counter is never handed back, so 20 consecutive expired or front-run deposits hide every later own deposit from a
      restore. The gap limit stays 20 as in the plan the owner approved; whether to raise it or count only landed
-     deposits is open for the owner, R1-m4.)*
+     deposits is open for the owner, R1-m4.)* *(Rev 3.4, S15 — owner 2026-11-17: the gap limit is **100**, here and in
+     the deposit pre-check's GAP refusal; the hazard reads "100 consecutive expired or front-run deposits hide every
+     later own deposit". R1-m4 is decided. The account-discovery gap below stays 20.)*
   2. For each hit, read the creating tx (already synced): amount from the instruction, leaf index and commitment from
      `LeafInserted`, and check `commitment(amount, rho)` equals it.
   3. Spent-status for every own note at once: `matchSpent(handle, allSyncedWithdrawNullifiers, ownRhos)` (R12); JS
@@ -1473,7 +1728,7 @@ Each line is tagged with the plan that delivers it (§16).
   M1a and M1b can be built and tested on the phone without the relayer. M1c's first checkpoint needs the live relayer
   on the frozen contract; its second (the fresh account) and M1d's checkpoint need P1.
 - **Owner:** none open after S1–S12 *(rev 3.3: one question raised by M1b, R1-m4 — the deposit gap limit of 20 with a
-  never-reused counter, §7: the gap limit stays 20 as in the plan the owner approved; whether to raise it or count only landed deposits is open for the owner)*. The rulings R1, R3–R13 are listed for the owner to overturn. One point for the
+  never-reused counter, §7: the gap limit stays 20 as in the plan the owner approved; whether to raise it or count only landed deposits is open for the owner)* *(rev 3.4: decided — S15, the deposit gap limit is 100)*. The rulings R1, R3–R13 are listed for the owner to overturn. One point for the
   owner to know (not to decide in M1): S10's per-key gate is not an economic bound on mainnet (§15 P1, §13).
 
 ## 16. The four plans (S8)
@@ -1556,6 +1811,12 @@ same commit and launches it on the phone. Every requirement of §§3–12 belong
   condition, that the owner's pre-balance was 0, that exactly one grant of `gasGrantLamports` from the relayer's fee
   payer reached it, and that the fresh account holds the token amount. A second unshield started while the first was
   pending picked the next index (`fresh-pending`). Wipe and restore: the change note and the fresh account come back.
+  *(Rev 3.4, both M1c checkpoints as built — see the rev 3.4 notes, Task 9: one phone session, Another → Main → Fresh;
+  "every §6.8 condition from each signature" is the desk's own decoder on EVERY signature a readout names, plus the
+  relayer fee payer's own list so that no landing goes unaccounted; "no signer is a key of this seed" against the seed
+  set read out once per start; with P1 live the "Another address" holds SOL (no grant) and the disabled fresh option is
+  a Jest row; the second unshield is produced with the devnet build's one-shot submit hold and a desk kill inside it;
+  the wipe is `pm clear` or the owner's recorded manual wipe.)*
 - **M1d:** switch to the fresh account and send from it to a devnet address outside this seed, paying only from the
   granted SOL. The desk script asserts the fresh account's history is exactly {the relayed unshield, this send} and
   that no transaction connects it to another account of the seed. The linking warning appears when a send from it to

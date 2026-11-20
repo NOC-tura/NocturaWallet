@@ -152,21 +152,52 @@ internal object A0Prover {
 
 /** Settles a JS promise from a native call: resolve the `ok` value, or reject with the stable code. */
 internal object A0Promise {
-    fun settle(promise: Promise, call: () -> String?) {
+    /**
+     * [onReached] runs when the call got into Rust (the library loaded and the arguments were
+     * accepted), whatever Rust answered; [onOk] runs only when Rust answered `ok`. Both run BEFORE
+     * the promise settles, and each is guarded: a callback that throws never stops the settle.
+     * keysOpen uses [onReached] (Rust's `keys_open` ends the live session before it can refuse the
+     * seed, so even a refused keysOpen has ended it); keysClose uses [onOk] (Rust checks the handle
+     * first, so a refused close changed nothing). A call that never reached Rust (an argument that
+     * does not parse, a library that does not load) fires neither. [ensureLoaded] is a JVM-test seam.
+     */
+    fun settle(
+        promise: Promise,
+        onReached: () -> Unit = {},
+        onOk: () -> Unit = {},
+        ensureLoaded: () -> Unit = { NocturaNativeLib.ensureLoaded() },
+        call: () -> String?,
+    ) {
+        var reached = false
         val result = try {
-            NocturaNativeLib.ensureLoaded()
+            ensureLoaded()
+            reached = true
             A0Result.parse(call())
         } catch (e: A0ArgException) {
+            reached = false
             A0Result.Err(A0Result.ARG, e.message ?: "argument is malformed")
         } catch (e: UnsatisfiedLinkError) {
+            reached = false
             A0Result.Err(A0Result.UNAVAILABLE, "the native library is unavailable")
         } catch (e: Throwable) {
             // No message passed on: nothing an exception here carries is meant for JS.
             A0Result.Err(A0Result.INTERNAL, "internal error")
         }
+        if (reached) guarded(onReached)
         when (result) {
-            is A0Result.Ok -> promise.resolve(toReact(result.value))
+            is A0Result.Ok -> {
+                guarded(onOk)
+                promise.resolve(toReact(result.value))
+            }
             is A0Result.Err -> promise.reject(result.code, result.message)
+        }
+    }
+
+    private fun guarded(f: () -> Unit) {
+        try {
+            f()
+        } catch (e: Throwable) {
+            // the settle must happen; a failing observer is not the caller's answer
         }
     }
 

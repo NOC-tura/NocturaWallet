@@ -3,6 +3,7 @@
 // under Metro/Babel's commonjs interop, so `SSLPinning.fetch` threw on-device and
 // every pinned call silently fell back. (The test mock's old default export hid this.)
 import * as SSLPinning from 'react-native-ssl-pinning';
+import {NativeModules} from 'react-native';
 
 /**
  * SPKI public-key pins for api.noc-tura.io (SHA-256 of the SubjectPublicKeyInfo,
@@ -64,7 +65,7 @@ export const SSL_PINS: string[] = [
   'sha256/aAsfaKi1QNcO7yRHo8bUJ9ABhJIcSnHZZm766XwBmHM=',
 ];
 
-interface PinnedFetchOptions {
+export interface PinnedFetchOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
   headers?: Record<string, string>;
   body?: string;
@@ -77,7 +78,7 @@ interface PinnedFetchOptions {
   timeoutMs?: number;
 }
 
-interface PinnedFetchResponse {
+export interface PinnedFetchResponse {
   status: number;
   headers: Record<string, string>;
   json: () => Promise<unknown>;
@@ -175,9 +176,184 @@ function assertPinningCanApply(url: string): void {
   }
 }
 
+/** How a rejection of the pinning library is turned into a response (or not: `null`). */
+type RejectionMapping = (error: unknown) => PinnedFetchResponse | null;
+
+/** The native module's own callback-based `fetch`, as `RNSslPinningModule.fetch` declares it. */
+interface RNSslPinningNativeModule {
+  fetch: (url: string, options: Record<string, unknown>, callback: (...args: unknown[]) => void) => void;
+}
+
+/**
+ * TEST-ONLY: stands in for `NativeModules.RNSslPinning`, so `pinnedFetchDirect` (below) can be
+ * exercised with the exact argument lists `scripts/a0-fixtures/record-ssl-pinning-callbacks.mjs`
+ * recorded from the library's own Android source, without touching the global `react-native` mock
+ * every other suite in the app relies on staying the stock preset. On `globalThis` (not a plain
+ * module-local variable) for the same reason `realSslPinning.ts`'s fake native state is: a suite
+ * that re-requires this module under another config via `jest.isolateModules` gets a FRESH copy of
+ * it, and the override must still be the one the test set on the copy it imported statically.
+ */
+const NATIVE_OVERRIDE_KEY = '__nocturaRNSslPinningNativeOverride';
+function nativeOverrideState(): {native: RNSslPinningNativeModule | undefined} {
+  const g = globalThis as unknown as Record<string, {native: RNSslPinningNativeModule | undefined} | undefined>;
+  if (!g[NATIVE_OVERRIDE_KEY]) {
+    g[NATIVE_OVERRIDE_KEY] = {native: undefined};
+  }
+  return g[NATIVE_OVERRIDE_KEY]!;
+}
+export function __setRNSslPinningNativeForTests(native: RNSslPinningNativeModule | undefined): void {
+  nativeOverrideState().native = native;
+}
+function rnSslPinningNative(): RNSslPinningNativeModule {
+  const native = nativeOverrideState().native ?? (NativeModules as {RNSslPinning?: RNSslPinningNativeModule}).RNSslPinning;
+  if (!native) {
+    throw new Error('the native fetch module is not registered on this device');
+  }
+  return native;
+}
+
+/** `{status, bodyString, headers}` (the WritableMap `RNSslPinningModule.fetch` builds) → a response; null if not that shape. */
+function responseFromNativeMap(map: unknown): PinnedFetchResponse | null {
+  if (!map || typeof map !== 'object') {
+    return null;
+  }
+  const m = map as {status?: unknown; bodyString?: unknown; headers?: unknown};
+  if (typeof m.status !== 'number') {
+    return null;
+  }
+  const body = typeof m.bodyString === 'string' ? m.bodyString : '';
+  return {
+    status: m.status,
+    headers: (m.headers as Record<string, string>) ?? {},
+    json: async () => JSON.parse(body),
+    text: async () => body,
+  };
+}
+
+/**
+ * Calls `NativeModules.RNSslPinning.fetch` directly — never through the npm package's `index.js` —
+ * with a callback that SETTLES EVERY SHAPE the native source can invoke it with (recorded in
+ * `rn-ssl-pinning-callbacks.json`, from `RNSslPinningModule.java`):
+ *   - `(response, null)`        a non-2xx: resolved with its status, never a throw;
+ *   - `(null, response)`       a 2xx: resolved;
+ *   - `(message)`              a transport / TLS failure WITH a message: rejected with it;
+ *   - `(null)` / `(undefined)` an `IOException` with NO message (`e.getMessage()` returns null) —
+ *                               the ONE-argument invoke the npm wrapper's `index.js` turns into a
+ *                               TypeError thrown INSIDE the native callback (M1c Task 1 review I1:
+ *                               on bridgeless RN 0.84 that is most likely a process death, not a
+ *                               catchable rejection — no JS deadline survives a crash). This
+ *                               callback never reads a property of a value it has not checked
+ *                               first, so it always settles: rejected as a plain transport error.
+ */
+function nativeFetch(url: string, options: Record<string, unknown>): Promise<PinnedFetchResponse> {
+  return new Promise((resolve, reject) => {
+    rnSslPinningNative().fetch(url, options, (...args: unknown[]) => {
+      const [err, res] = args;
+      if (err !== null && err !== undefined) {
+        if (typeof err === 'object') {
+          const mapped = responseFromNativeMap(err);
+          if (mapped) {
+            resolve(mapped);
+            return;
+          }
+        }
+        reject(err instanceof Error ? err : new Error(String(err)));
+        return;
+      }
+      if (args.length >= 2) {
+        const mapped = responseFromNativeMap(res);
+        if (mapped) {
+          resolve(mapped);
+          return;
+        }
+      }
+      // err is null/undefined AND either no second argument was invoked, or it was not a usable
+      // response map: the message-less failure above. Reject — never throw, never hang.
+      reject(new Error('the native module answered with no message'));
+    });
+  });
+}
+
+/**
+ * The A0 relayer's fetch (spec M1c Task 1 review I1). Same contract as `pinnedFetch` — the same
+ * pins, the same option shape, resolves `{status, ...}` for every HTTP answer including non-2xx,
+ * throws only `SSLPinningError` (E004) or a plain transport `Error` — but reached by calling the
+ * native module directly instead of going through `react-native-ssl-pinning`'s `index.js`, so a
+ * message-less `IOException` can never throw inside a native→JS callback (a likely process death
+ * on a bridgeless release build; see `nativeFetch` above). `relayerTransport.ts`'s default and
+ * `pinnedControl.ts`'s "fixed" probes (submit, quote) use this. The devnet control's NEGATIVE
+ * control stays on the npm wrapper on purpose (`pinnedFetchPreFixForDevnetControl`, reachable only
+ * as before) — it exists to demonstrate the OLD, status-losing behaviour, which is a different bug
+ * from this one.
+ */
+export async function pinnedFetchDirect(
+  url: string,
+  options: PinnedFetchOptions = {},
+): Promise<PinnedFetchResponse> {
+  assertPinningCanApply(url);
+  const {method = 'GET', headers = {}, body, timeoutMs = 10_000} = options;
+  const mergedHeaders: Record<string, string> = {...headers};
+  if (body && !mergedHeaders['Content-Type']) {
+    mergedHeaders['Content-Type'] = 'application/json';
+  }
+  // the npm wrapper lower-cases header names unless `caseSensitiveHeaders` is set (we never set
+  // it) — matched here so the server sees the identical request either way.
+  const nativeHeaders: Record<string, string> = {};
+  for (const [k, v] of Object.entries(mergedHeaders)) {
+    nativeHeaders[k.toLowerCase()] = v;
+  }
+  try {
+    return await nativeFetch(url, {
+      method,
+      headers: nativeHeaders,
+      body,
+      pkPinning: true,
+      sslPinning: {certs: SSL_PINS},
+      timeoutInterval: timeoutMs,
+    });
+  } catch (error) {
+    const cause = error instanceof Error ? error : new Error(String(error));
+    const message = cause.message.toLowerCase();
+    if (
+      message.includes('ssl') ||
+      message.includes('pin') ||
+      message.includes('certificate') ||
+      message.includes('trust')
+    ) {
+      throw new SSLPinningError('SSL certificate pinning failed', cause);
+    }
+    throw cause;
+  }
+}
+
 export async function pinnedFetch(
   url: string,
   options: PinnedFetchOptions = {},
+): Promise<PinnedFetchResponse> {
+  return pinnedFetchMapped(url, options, toRejectedResponse);
+}
+
+/**
+ * DEVNET CONTROL ONLY — the NEGATIVE control of the M1c on-device check (spec 2026-11-08
+ * shielded A0 M1 §6.0, `src/modules/shielded/a0/pinnedControl.ts`). The same request as
+ * `pinnedFetch`, with the rejection mapped the PRE-FIX way: nothing is recognised as a response,
+ * so a non-2xx surfaces as `new Error(String(rejection))` = "[object Object]", the status lost —
+ * exactly what every caller saw before `toRejectedResponse`. On the phone it must THROW for the
+ * malformed submit that `pinnedFetch` resolves as HTTP 400; if it does not, the positive line
+ * proves nothing (the library would not be rejecting at all). A source guard
+ * (`pinnedControl.test.ts`) allows no other caller.
+ */
+export async function pinnedFetchPreFixForDevnetControl(
+  url: string,
+  options: PinnedFetchOptions = {},
+): Promise<PinnedFetchResponse> {
+  return pinnedFetchMapped(url, options, () => null);
+}
+
+async function pinnedFetchMapped(
+  url: string,
+  options: PinnedFetchOptions,
+  mapRejection: RejectionMapping,
 ): Promise<PinnedFetchResponse> {
   assertPinningCanApply(url);
 
@@ -211,7 +387,7 @@ export async function pinnedFetch(
     // invokes the callback with the response as the ERROR argument whenever
     // `!okHttpResponse.isSuccessful()` (RNSslPinningModule.java:238-241), and
     // the JS wrapper then does `deferred.reject(data)` with a plain object
-    // (index.js:43). Converting that to `new Error(String(error))` stringified
+    // (index.js:44). Converting that to `new Error(String(error))` stringified
     // it to "[object Object]" and DESTROYED the status code — which made
     // relayerSubmit's entire 409/429/502/503 machine unreachable on device,
     // including the "already landed vs input-spent-elsewhere" disambiguation.
@@ -220,7 +396,7 @@ export async function pinnedFetch(
     //
     // A rejected RESPONSE is not an error condition for this wrapper — hand it
     // back like any other response and let the caller branch on the status.
-    const asResponse = toRejectedResponse(error);
+    const asResponse = mapRejection(error);
     if (asResponse) return asResponse;
 
     const cause = error instanceof Error ? error : new Error(String(error));

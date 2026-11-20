@@ -11,9 +11,15 @@
  *     rewritten (§1 layout: disc | amount u64 LE | commitment | rho | u32 256 | proof — the proof
  *     bytes are the landed one's; the sync does not verify proofs), its rho-marker account set to
  *     PDA(["rho", rho]), and its `LeafInserted` set to the new leaf;
- *   - an unshield = a clone of the relayed `3UfCx5TD…` with the `nullifier` and
- *     `change_commitment` arguments rewritten, its `LeafInserted` (the change leaf) and its
- *     `Withdraw` nullifier set accordingly;
+ *   - an unshield = a clone of the relayed `3UfCx5TD…` with the `nullifier`, `change_commitment`
+ *     (and, when given, `amount` / `fee`) arguments rewritten, its `LeafInserted` (the change leaf)
+ *     and its `Withdraw` nullifier set accordingly;
+ * and the TOKEN BALANCES moved by the clone's own amounts (M1c Task 4, the M1b ledger carry: the
+ * clones used to keep their template's balances, so a vault or destination delta read from an
+ * appended tx was the template's amount, not the appended one): a deposit moves `amount` from the
+ * depositor's token account to the vault; an unshield moves `amount` from the vault to the
+ * destination and `fee` from the vault to the fee destination. A pre-balance too small to pay is
+ * raised to exactly what is paid (the account then ends at 0);
  * and after each one the tree ACCOUNT is advanced the way the program advances it (the account's
  * own zeros and filled subtrees, the leaf inserted with poseidon-lite's Poseidon2 — not the sync's
  * code —, the ring head moved before the root is written, nextLeafIndex + 1). The tree sync
@@ -107,6 +113,56 @@ function poolIx(tx: RecordedTx): {programIdIndex: number; accounts: number[]; da
   return ixs[0]!;
 }
 
+interface TokenBalance {
+  accountIndex: number;
+  mint: string;
+  owner?: string;
+  programId?: string;
+  uiTokenAmount: {amount: string; decimals: number; uiAmount: number | null; uiAmountString: string};
+}
+
+function uiTokenAmount(amount: bigint, decimals: number): TokenBalance['uiTokenAmount'] {
+  const unit = 10n ** BigInt(decimals);
+  const frac = (amount % unit).toString().padStart(decimals, '0').replace(/0+$/, '');
+  const s = `${amount / unit}${frac ? `.${frac}` : ''}`;
+  return {amount: amount.toString(), decimals, uiAmount: amount === 0n ? null : Number(s), uiAmountString: s};
+}
+
+/**
+ * Move tokens in a cloned tx's balances: for each `{index, delta}` the account's post amount
+ * becomes its pre amount (0 when the tx lists none) + `delta` — the tx's NET movement, so a second
+ * call for the same account replaces the first; a pre amount that cannot pay
+ * `-delta` is raised to exactly `-delta`. Entries keep the template's mint, owner and program.
+ */
+function moveTokens(tx: RecordedTx, moves: {index: number; delta: bigint}[]): void {
+  const meta = tx.meta as unknown as {preTokenBalances: TokenBalance[]; postTokenBalances: TokenBalance[]};
+  for (const {index, delta} of moves) {
+    const pre = meta.preTokenBalances.find(t => t.accountIndex === index);
+    let post = meta.postTokenBalances.find(t => t.accountIndex === index);
+    const template = post ?? pre;
+    if (!template) {
+      throw new Error(`ownHistory: account ${index} has no token balance in the template`);
+    }
+    let preAmount = pre ? BigInt(pre.uiTokenAmount.amount) : 0n;
+    if (preAmount + delta < 0n) {
+      if (!pre) {
+        throw new Error(`ownHistory: account ${index} pays ${-delta} and holds nothing`);
+      }
+      preAmount = -delta;
+      pre.uiTokenAmount = uiTokenAmount(preAmount, pre.uiTokenAmount.decimals);
+    }
+    if (!post) {
+      post = JSON.parse(JSON.stringify(template)) as TokenBalance;
+      meta.postTokenBalances.push(post);
+    }
+    post.uiTokenAmount = uiTokenAmount(preAmount + delta, template.uiTokenAmount.decimals);
+  }
+}
+
+/** The amounts a clone carries now, read back from its instruction data. */
+const u64At = (data: Uint8Array, at: number): bigint =>
+  new DataView(data.buffer, data.byteOffset, data.byteLength).getBigUint64(at, true);
+
 function setLeafBlob(tx: RecordedTx, commitment: string, leafIndex: number, root: string): void {
   const lines = blobsOf(tx).filter(x => toHex(x.bytes.subarray(0, 8)) === LEAF_INSERTED);
   if (lines.length !== 1) {
@@ -143,6 +199,11 @@ export function appendDeposit(
   ix.data = base58.encode(data);
   // the rho marker is the instruction's account 5 (DepositCtx order)
   tx.transaction.message.accountKeys[ix.accounts[5]!] = rhoPda(d.rho);
+  // DepositCtx: vault = account 2, depositor_token_account = account 4
+  moveTokens(tx, [
+    {index: ix.accounts[4]!, delta: -d.amount},
+    {index: ix.accounts[2]!, delta: d.amount},
+  ]);
   const {leafIndex, root} = insertLeaf(chain, d.commitment);
   setLeafBlob(tx, d.commitment, leafIndex, root);
   return {signature: sig, leafIndex, root};
@@ -172,24 +233,100 @@ export function appendDepositPair(
     data,
     blobs: [leafBlob(LEAF_INSERTED, second.commitment, leafIndex, root)],
   });
+  // the tx's net movement is both deposits (moveTokens always counts from the pre-balance)
+  moveTokens(tx, [
+    {index: ix.accounts[4]!, delta: -(first.amount + second.amount)},
+    {index: ix.accounts[2]!, delta: first.amount + second.amount},
+  ]);
   return {signature: a.signature, leafIndices: [a.leafIndex, leafIndex]};
 }
 
-/** Append a relayed unshield spending `nullifier` (a clone of 3UfCx5TD…) with change leaf `changeCommitment`. */
+/**
+ * The recorded relayed withdraws an unshield can be cloned from (M1c Task 7): `3UfCx5TD…` (P0:
+ * create-ATA, no grant, owner at 0 lamports), `47k56NfB…` (P1 + P2: create-ATA + the 3,000,000
+ * grant to a 0-lamport owner) and `3oHktG2X…` (P2: create-ATA no-op, an owner holding SOL).
+ */
+export type WithdrawTemplate = '3UfCx5TD' | '47k56NfB' | '3oHktG2X';
+
+/**
+ * Append a relayed unshield spending `nullifier` (a clone of 3UfCx5TD…, or of `template`) with change leaf
+ * `changeCommitment`, moving `amount` (default: the template's 400,000) to the destination and `fee`
+ * (default: the template's 10,000) to the fee destination, both out of the vault. `to` (M1c Task 5)
+ * lands it to another owner: the template's destination token account (key 5, also the
+ * create-ATA's `ata`) and owner (key 13, the create-ATA's `owner`) are replaced, and the
+ * destination's token-balance entries name the new owner. The caller gives `ata` = ATA(owner, mint)
+ * computed its own way.
+ */
 export function appendWithdraw(
   chain: RecordedChain,
-  w: {nullifier: string; changeCommitment: string},
+  w: {
+    nullifier: string;
+    changeCommitment: string;
+    amount?: bigint;
+    fee?: bigint;
+    to?: {owner: string; ata: string};
+    /** M1c Task 7: the recorded withdraw to clone (default 3UfCx5TD…) */
+    template?: WithdrawTemplate;
+    /** M1c Task 7: the landed tx's chain time (default: the template's) */
+    blockTime?: number;
+    /** M1c Task 7: the instruction's merkle_root argument and proof bytes (default: the template's) */
+    merkleRoot?: string;
+    proofBytes?: string;
+  },
 ): AppendedDeposit {
   const {sig, slot} = nextId();
-  const tx = cloneAsNewest(chain, txOf(chain, '3UfCx5TD').tx, sig, slot);
+  const tx = cloneAsNewest(chain, txOf(chain, w.template ?? '3UfCx5TD').tx, sig, slot);
+  if (w.blockTime !== undefined) {
+    tx.blockTime = w.blockTime;
+    chain.signatures[0]!.blockTime = w.blockTime;
+  }
   const ix = poolIx(tx);
+  if (w.to) {
+    const keys = tx.transaction.message.accountKeys;
+    const create = tx.transaction.message.instructions.find(
+      i => keys[i.programIdIndex] === 'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL',
+    );
+    // create-ATA-idempotent accounts: payer, ata, owner, mint, system, token
+    if (!create || create.accounts[1] !== ix.accounts[3]) {
+      throw new Error('ownHistory: the withdraw template\'s create-ATA does not create its destination');
+    }
+    keys[ix.accounts[3]!] = w.to.ata;
+    keys[create.accounts[2]!] = w.to.owner;
+    const meta = tx.meta as unknown as {preTokenBalances: TokenBalance[]; postTokenBalances: TokenBalance[]};
+    for (const t of [...meta.preTokenBalances, ...meta.postTokenBalances]) {
+      if (t.accountIndex === ix.accounts[3]) {
+        t.owner = w.to.owner;
+      }
+    }
+  }
   const data = base58.decode(ix.data);
   if (data.length !== 380 || toHex(data.subarray(0, 8)) !== WITHDRAW_DISC) {
     throw new Error('ownHistory: the withdraw template is not a 380-byte withdraw_with_change');
   }
   data.set(fromHex(w.nullifier), 40);
   data.set(fromHex(w.changeCommitment), 80);
+  if (w.merkleRoot !== undefined) {
+    data.set(fromHex(w.merkleRoot), 8);
+  }
+  if (w.proofBytes !== undefined) {
+    data.set(fromHex(w.proofBytes), 124); // after disc | root | nullifier | amount | change | fee | u32 256
+  }
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  if (w.amount !== undefined) {
+    view.setBigUint64(72, w.amount, true);
+  }
+  if (w.fee !== undefined) {
+    view.setBigUint64(112, w.fee, true);
+  }
   ix.data = base58.encode(data);
+  // withdraw_with_change: vault = account 2, destination = 3, fee destination = 6
+  const amount = u64At(data, 72);
+  const fee = u64At(data, 112);
+  moveTokens(tx, [
+    {index: ix.accounts[2]!, delta: -(amount + fee)},
+    {index: ix.accounts[3]!, delta: amount},
+    {index: ix.accounts[6]!, delta: fee},
+  ]);
   const {leafIndex, root} = insertLeaf(chain, w.changeCommitment);
   setLeafBlob(tx, w.changeCommitment, leafIndex, root);
   const wd = blobsOf(tx).filter(x => toHex(x.bytes.subarray(0, 8)) === WITHDRAW);
@@ -198,4 +335,42 @@ export function appendWithdraw(
   }
   setBlob(tx, wd[0]!.line, Uint8Array.from([...fromHex(WITHDRAW), ...fromHex(w.nullifier)]));
   return {signature: sig, leafIndex, root};
+}
+
+/**
+ * Append ONE transaction carrying two relayed unshields (M1c Task 5): `first` as in `appendWithdraw`,
+ * then `second` as a second top-level `withdraw_with_change` (same accounts) with its own frame,
+ * LeafInserted and Withdraw event — so the second spend's change leaf is NOT the transaction's
+ * first LeafInserted.
+ */
+export function appendWithdrawPair(
+  chain: RecordedChain,
+  first: {nullifier: string; changeCommitment: string; amount?: bigint; fee?: bigint},
+  second: {nullifier: string; changeCommitment: string; amount: bigint; fee: bigint},
+): {signature: string; leafIndices: [number, number]} {
+  const a = appendWithdraw(chain, first);
+  const tx = chain.transactions[a.signature]!;
+  const ix = poolIx(tx);
+  const data = base58.decode(ix.data);
+  const firstAmount = u64At(data, 72);
+  const firstFee = u64At(data, 112);
+  data.set(fromHex(second.nullifier), 40);
+  data.set(fromHex(second.changeCommitment), 80);
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  view.setBigUint64(72, second.amount, true);
+  view.setBigUint64(112, second.fee, true);
+  const {leafIndex, root} = insertLeaf(chain, second.changeCommitment);
+  appendTopLevelIx(tx, {
+    program: PROGRAM,
+    accounts: ix.accounts.map(k => tx.transaction.message.accountKeys[k]!),
+    data,
+    blobs: [leafBlob(LEAF_INSERTED, second.changeCommitment, leafIndex, root), Uint8Array.from([...fromHex(WITHDRAW), ...fromHex(second.nullifier)])],
+  });
+  // the tx's net movement is both unshields
+  moveTokens(tx, [
+    {index: ix.accounts[2]!, delta: -(firstAmount + firstFee + second.amount + second.fee)},
+    {index: ix.accounts[3]!, delta: firstAmount + second.amount},
+    {index: ix.accounts[6]!, delta: firstFee + second.fee},
+  ]);
+  return {signature: a.signature, leafIndices: [a.leafIndex, leafIndex]};
 }

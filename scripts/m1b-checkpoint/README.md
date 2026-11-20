@@ -261,15 +261,14 @@ CHECKPOINT PASSED
       `R13 TRIGGER REACHED … PRE-MAINNET` is printed, the coordinator tree indexer becomes a pre-mainnet item (§13):
       record that too. `M1b.5` passes either way (it is a measurement); it fails only when the phone's numbers are
       not consistent with the chain's list.
-- [ ] **The gap limit (R1-m4):** `M1b.5`'s detail also carries `<K> counters tried, highest counter hit <H> (gap limit
-      20)` — copy it too. The restore walks the deposit counters 0, 1, 2, … and stops after **20 consecutive counters
-      with no deposit on chain**; a counter is never handed back, so a deposit that expired (never landed) or was
-      front-run still uses one up. **20 consecutive expired or front-run deposits therefore hide every later deposit
-      of this wallet from a restore from the phrase** (the funds are on chain, the app does not find them). The gap
-      limit stays 20 as in the plan you approved; whether to raise it or count only landed deposits is open for you
-      (R1-m4, asked at the M1b finish). For a devnet wallet that made only this checkpoint's two
-      deposits, expect `highest counter hit 1` and `22 counters tried` (`0` / `21` if the killed deposit never
-      landed).
+- [ ] **The gap limit (R1-m4, S15):** `M1b.5`'s detail also carries `<K> counters tried, highest counter hit <H> (gap
+      limit 100)` — copy it too. The restore walks the deposit counters 0, 1, 2, … and stops after **100 consecutive
+      counters with no deposit on chain**; a counter is never handed back, so a deposit that expired (never landed) or
+      was front-run still uses one up. **100 consecutive expired or front-run deposits therefore hide every later
+      deposit of this wallet from a restore from the phrase** (the funds are on chain, the app does not find them).
+      You decided it (S15, "gap limit 100"): the limit is 100 (was 20) from M1c on. For a devnet wallet that made
+      only this checkpoint's two deposits, expect `highest counter hit 1` and `102 counters tried` (`0` / `101` if
+      the killed deposit never landed).
 - [ ] **Then clear the phone's log** (R1-m6): `adb logcat -c`. The readout lines stay in the phone's log buffer
       until it rotates, and together they are this devnet wallet's note set (public values each, but a full list of
       its deposits, commitments and leaf indices). A bug report (`adb bugreport`, or one taken from the phone's
@@ -304,7 +303,7 @@ CHECKPOINT PASSED
 | M1b.3 | no wipe, another package, or the next start found a record (the wipe did not clear the encrypted store) | `wipe.json`, the first `startup` readout after it |
 | M1b.4 | a landed deposit did not come back, or came back at another leaf / amount | the `startup` readout's `notes` |
 | M1b.5 | the phone's count is not within the chain's list (more than listed, or fewer than listed a minute before its run) | `chain.json` → `tree` |
-| M1b.6 | no kill, too late, not reconciled, or still pending (then: wait 2 min, restart the app, `collect`, `verify`) | `kill.json`, the `startup` readout after it |
+| M1b.6 | no kill, too late, not reconciled, or still pending (then: wait ~4 min — the blockhash expiry + the 300-block margin —, restart the app, `collect`, `verify`) | `kill.json`, the `startup` readout after it |
 | M1b.7 | the I-3 test failed or ran at another commit | `i3-jest.json` |
 | M1b.A1–A3 | the APKs are not the devnet / production builds of this commit | `apks/CONFIG.json`, `apks/COMMIT` |
 | M1b.8–10 | a launch failed, crashed, or the production app wrote a readout line (**the gate leaked** — stop) | `launches.json`, `crash-*.txt` |

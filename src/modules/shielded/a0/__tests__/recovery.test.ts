@@ -77,8 +77,8 @@ describe('the recorded devnet history (the program side\'s deposits) — the neg
     const res = await restore(chain);
     expect(res.notes).toEqual([]);
     expect(res.nextDepositIndex).toBe(0n);
-    expect(A0_DEPOSIT_GAP_LIMIT).toBe(20);
-    expect(callsOf('depositRho').map(c => c.args[1])).toEqual([...Array(20).keys()].map(String));
+    expect(A0_DEPOSIT_GAP_LIMIT).toBe(100); // S15 (was 20)
+    expect(callsOf('depositRho').map(c => c.args[1])).toEqual([...Array(100).keys()].map(String));
     expect(callsOf('commitment')).toHaveLength(0);
     expect(callsOf('matchSpent')).toHaveLength(0);
     expect(res.stats.treeTransactions).toBe(15);
@@ -99,26 +99,32 @@ describe('own deposits appended to the recorded history — the positive cases',
     const d0 = ownDeposit(chain, 0n, 1_000_000_000n);
     appendDeposit(chain, {amount: 7n, rho: other.rho(0n), commitment: other.commitment(7n, other.rho(0n))});
     const d1 = ownDeposit(chain, 1n, 250_000_000n);
-    appendWithdraw(chain, {nullifier: own.nullifier(d1.rho), changeCommitment: strangerField(1)});
+    const w1 = appendWithdraw(chain, {nullifier: own.nullifier(d1.rho), changeCommitment: strangerField(1)});
     const d2 = ownDeposit(chain, 2n, 42n);
     const res = await restore(chain);
     expect(res.notes).toEqual([
       {commitment: d0.commitment, amount: 1_000_000_000n, rho: d0.rho, depositIndex: 0n, leafIndex: 17, status: 'unspent'},
-      {commitment: d1.commitment, amount: 250_000_000n, rho: d1.rho, depositIndex: 1n, leafIndex: 19, status: 'spent'},
+      {commitment: d1.commitment, amount: 250_000_000n, rho: d1.rho, depositIndex: 1n, leafIndex: 19, status: 'spent', spentTx: w1.signature},
       {commitment: d2.commitment, amount: 42n, rho: d2.rho, depositIndex: 2n, leafIndex: 21, status: 'unspent'},
     ]);
     expect([d0.leafIndex, d1.leafIndex, d2.leafIndex]).toEqual([17, 19, 21]);
     expect(res.nextDepositIndex).toBe(3n);
-    // ONE matchSpent: every synced Withdraw nullifier, every own rho
+    // ONE matchSpent for the spent-status: every synced Withdraw nullifier, every own rho …
     const ms = callsOf('matchSpent');
-    expect(ms).toHaveLength(1);
     expect(ms[0]!.args[1]).toEqual([...recordedNullifiers(fresh()), own.nullifier(d1.rho)]);
     expect(ms[0]!.args[2]).toEqual([d0.rho, d1.rho, d2.rho]);
+    // … then the attribution (M1c): one matchSpent([n], [the spent rho]) per synced nullifier, in
+    // sync order, until the spent note is attributed (its own nullifier is the last one)
+    expect(ms.slice(1).map(c => c.args.slice(1))).toEqual(
+      [...recordedNullifiers(fresh()), own.nullifier(d1.rho)].map(n => [[n], [d1.rho]]),
+    );
     // the commitment check went through Rust's commitment() for each hit
     expect(callsOf('commitment').map(c => c.args.slice(1))).toEqual([
       ['1000000000', d0.rho],
       ['250000000', d1.rho],
       ['42', d2.rho],
+      // the change check of d1's spend (250,000,000 − 400,000 − 10,000): not ours (a stranger's leaf)
+      ['249590000', own.rhoChange(own.nullifier(d1.rho))],
     ]);
     // and the store holds them, with no nullifier anywhere
     expect(loadA0NoteStore()).toEqual({nextDepositIndex: 3n, notes: res.notes});
@@ -126,7 +132,7 @@ describe('own deposits appended to the recorded history — the positive cases',
     for (const r of [d0.rho, d1.rho, d2.rho]) {
       expect(text).not.toContain(own.nullifier(r));
     }
-    expect(res.stats).toMatchObject({ownNotes: 3, spentNotes: 1, foreignRhoHits: 0, depositIndicesTried: 23});
+    expect(res.stats).toMatchObject({ownNotes: 3, spentNotes: 1, foreignRhoHits: 0, depositIndicesTried: 103, changeNotes: 0, unmatchedChangeLeaves: 1});
   });
 
   it('deposits that landed out of counter order are all found, returned by counter', async () => {
@@ -193,38 +199,45 @@ describe('own deposits appended to the recorded history — the positive cases',
   });
 });
 
-describe('the gap limit (20 consecutive misses)', () => {
-  it('19 misses then a hit → found (and the walk goes on 20 past it)', async () => {
+describe('the gap limit (S15: 100 consecutive misses, was 20)', () => {
+  it('99 misses then a hit → found (and the walk goes on 100 past it)', async () => {
     const chain = fresh();
     ownDeposit(chain, 0n, 1n);
-    ownDeposit(chain, 20n, 2n);
+    ownDeposit(chain, 100n, 2n);
     const res = await restore(chain);
-    expect(res.notes.map(n => n.depositIndex)).toEqual([0n, 20n]);
-    expect(res.nextDepositIndex).toBe(21n);
-    expect(res.stats.depositIndicesTried).toBe(41);
+    expect(res.notes.map(n => n.depositIndex)).toEqual([0n, 100n]);
+    expect(res.nextDepositIndex).toBe(101n);
+    expect(res.stats.depositIndicesTried).toBe(201);
   });
 
-  it('20 misses → stop: a deposit 21 past the last hit is not looked for', async () => {
+  it('100 misses → stop: a deposit 101 past the last hit is not looked for', async () => {
     const chain = fresh();
     ownDeposit(chain, 0n, 1n);
-    ownDeposit(chain, 21n, 2n);
+    ownDeposit(chain, 101n, 2n);
     const res = await restore(chain);
     expect(res.notes.map(n => n.depositIndex)).toEqual([0n]);
     expect(res.nextDepositIndex).toBe(1n);
-    expect(res.stats.depositIndicesTried).toBe(21);
-    expect(callsOf('depositRho').map(c => c.args[1])).not.toContain('21');
+    expect(res.stats.depositIndicesTried).toBe(101);
+    expect(callsOf('depositRho').map(c => c.args[1])).not.toContain('101');
   });
 
-  it('from the start: a first deposit at 19 is found, at 20 it is not', async () => {
-    const at19 = fresh();
-    ownDeposit(at19, 19n, 1n);
-    expect((await restore(at19)).notes.map(n => n.depositIndex)).toEqual([19n]);
+  it('from the start: a first deposit at 99 is found, at 100 it is not', async () => {
+    const at99 = fresh();
+    ownDeposit(at99, 99n, 1n);
+    expect((await restore(at99)).notes.map(n => n.depositIndex)).toEqual([99n]);
     fake.reset();
-    const at20 = fresh();
-    ownDeposit(at20, 20n, 1n);
-    const res = await restore(at20);
+    const at100 = fresh();
+    ownDeposit(at100, 100n, 1n);
+    const res = await restore(at100);
     expect(res.notes).toEqual([]);
     expect(res.nextDepositIndex).toBe(0n);
+  });
+
+  it('the old limit no longer stops it: a deposit 21 past the last hit (beyond the M1b limit of 20) is found', async () => {
+    const chain = fresh();
+    ownDeposit(chain, 0n, 1n);
+    ownDeposit(chain, 21n, 2n);
+    expect((await restore(chain)).notes.map(n => n.depositIndex)).toEqual([0n, 21n]);
   });
 });
 
@@ -315,9 +328,9 @@ describe('R13: the restore\'s cost is measured and kept', () => {
   });
 
   it('R1-m4: highestHit — the highest counter found, own OR foreign — is returned and recorded; none → null', async () => {
-    // The hazard it exposes (R1-m4, the owner's call): with the gap limit kept at 20 and a counter
-    // never handed back, 20 consecutive expired or front-run counters hide every later own
-    // deposit from a restore. highestHit lets the checkpoint see how far the walk got.
+    // The hazard it exposes (R1-m4; S15 raised the limit to 100): with a counter never handed back,
+    // 100 consecutive expired or front-run counters hide every later own deposit from a restore.
+    // highestHit lets the checkpoint see how far the walk got.
     const none = await restore(fresh());
     expect(none.stats.highestHit).toBeNull();
     expect(loadA0LastRestoreStats()!.highestHit).toBeNull();
@@ -330,7 +343,7 @@ describe('R13: the restore\'s cost is measured and kept', () => {
     appendDeposit(chain, {amount: 9n, rho: r4, commitment: other.commitment(9n, r4)}); // foreign hit at 4
     const res = await restore(chain);
     expect(res.notes.map(n => n.depositIndex)).toEqual([0n]);
-    expect(res.stats).toMatchObject({ownNotes: 1, foreignRhoHits: 1, highestHit: 4, depositIndicesTried: 25});
+    expect(res.stats).toMatchObject({ownNotes: 1, foreignRhoHits: 1, highestHit: 4, depositIndicesTried: 105});
     expect(res.nextDepositIndex).toBe(5n);
     expect(loadA0LastRestoreStats()).toEqual(res.stats);
     expect(loadA0LastRestoreStats()!.highestHit).toBe(4);

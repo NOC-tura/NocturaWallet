@@ -106,6 +106,43 @@ class A0JniTest {
     }
 
     /**
+     * M1c Task 6: the confirmation controller's binding ([A0Confirmations.rust], which the React
+     * module's Kotlin-only parseUnshield / authorizeUnshield delegate to) reaches the real JNI; its
+     * parse answer is exactly what the dialog reads ([A0ParsedUnshield.from]); an authorization it
+     * records works once, and a second keysOpen kills it (§4: "keysClose or a second keysOpen
+     * invalidates a live authId").
+     */
+    @Test
+    fun theConfirmationsBindingIsTheJnisAndItsParseIsWhatTheDialogShows() {
+        val a = withdraw().getJSONObject("authorization")
+        val r = A0Confirmations.rust.parse(a.getString("owner"), a.getString("amount"), a.getString("fee"))
+        check(r is A0Result.Ok) { "expected ok, got $r" }
+        val p = A0ParsedUnshield.from(r.value)!!
+        assertEquals(a.getString("owner"), p.owner)
+        assertEquals(a.getString("ata"), p.ata)
+        assertEquals(a.getString("amount"), p.amount)
+        assertEquals(a.getString("fee"), p.fee)
+        assertEquals("0.0004", p.humanAmount)
+        assertEquals("0.00001", p.humanFee)
+        val pool = JSONObject(File(fixtures, "a0-ata-vectors.json").readText()).getJSONObject("constants").getString("pool")
+        assertEquals(pool, p.pool)
+        // a malformed request is Rust's refusal, carried as such (negative control)
+        val bad = A0Confirmations.rust.parse(a.getString("owner"), "01", a.getString("fee"))
+        check(bad is A0Result.Err && bad.code.startsWith("E_A0_")) { "expected a refusal, got $bad" }
+
+        val h = open()
+        val id = A0Confirmations.rust.authorize(h, p.owner, p.amount, p.fee)
+        check(id is A0Result.Ok && (id.value as String).matches(Regex("[0-9a-f]{32}"))) { "$id" }
+        // a second keysOpen replaces the session and kills the live authorization
+        val h2 = open()
+        assertEquals("E_A0_AUTH_ABSENT", code(prove(h2, id.value as String)))
+        // positive control: an authorization under the new session is live (reaches the absent key file)
+        val id2 = A0Confirmations.rust.authorize(h2, p.owner, p.amount, p.fee) as A0Result.Ok
+        assertEquals("E_A0_KEY_FILE_READ", code(prove(h2, id2.value as String)))
+        NocturaA0Native.keysClose(h2)
+    }
+
+    /**
      * Review I1 (Task 4, fix round 1): 5,000 + 5,000 values through the real JNI in one call — the
      * values come through (the own notes' indices, none of the fillers). The local-reference
      * books are kept by the Rust test `tests_android_refs` over a fake JNIEnv: HotSpot has no

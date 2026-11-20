@@ -8,9 +8,11 @@
  *     `scripts/a0-fixtures/fetch-devnet-tx.mjs` (devnet genesis checked, slot and time recorded).
  *     Its signature is verified here over the message bytes, so the bytes are the ones the chain
  *     accepted;
- *   - `fixtures/shielded_pool.idl.json` — the program side's IDL (`target/idl/shielded_pool.json`,
- *     sha256 pinned below = spec §1's `cfd37078…`), decoded here by a tiny borsh reader driven by
- *     the IDL's own arg types — not by our builder;
+ *   - `fixtures/shielded-pool-a0-idl.json` — the program side's IDL of the DEPLOYED binary, a byte
+ *     copy of their `docs/zk-contract/shielded-pool-a0-idl.json` at f3f8eff (sha256 pinned below,
+ *     `3ac8fda7…`; the 2026-11-17 upgrade b0054981… appended errors 6011 / 6012 to the previous
+ *     `cfd37078…` and changed nothing else), decoded here by a tiny borsh reader driven by the
+ *     IDL's own arg types — not by our builder;
  *   - the program side's `landed.deposit` public inputs (devnet-a0-deployed-contract.json), copied
  *     below as comparison targets.
  *
@@ -87,15 +89,18 @@ interface Idl {
 
 const FIX = join(__dirname, 'fixtures');
 const LANDED_RAW = readFileSync(join(FIX, 'landed-deposit-3DR6F7oW.json'));
-const IDL_RAW = readFileSync(join(FIX, 'shielded_pool.idl.json'));
+const IDL_RAW = readFileSync(join(FIX, 'shielded-pool-a0-idl.json'));
 const landed = JSON.parse(LANDED_RAW.toString('utf8')) as TxFixture;
 const idl = JSON.parse(IDL_RAW.toString('utf8')) as Idl;
 
 const SIGNATURE =
   '3DR6F7oWXS4D5RSsDJAQMbYtQM4EW5Kp2qkJRVSHH72x2GPB4N4G93JkNK9uGGK9CpFeGuy7vtBVeaDHiVQ7b8sm';
 const DEVNET_GENESIS = 'EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG';
-/** spec §1 / the ICO state file: sha256 of the program side's target/idl/shielded_pool.json. */
-const IDL_SHA256 = 'cfd370784ef3e982e86aadd55b848edff46599472a1be8585dfe6c0b05c829a0';
+/**
+ * The ICO state file ("2026-11-17 — FeGSS upgraded"): sha256 of the program side's
+ * docs/zk-contract/shielded-pool-a0-idl.json (f3f8eff), the IDL of the deployed binary b0054981….
+ */
+const IDL_SHA256 = '3ac8fda743b84b066844072a70da62807c8a427b77853c8dac3a5115bd4fd92c';
 /**
  * The program side's devnet-a0-deployed-contract.json `landed.deposit` (their 19e3891, read
  * 2026-11-15): the public inputs [commitment, amount, mintHash, rho] of this very deposit, as
@@ -260,7 +265,7 @@ describe('the fixtures are what they claim to be', () => {
     expect(ed25519.verify(sig, tampered, payer)).toBe(false);
   });
 
-  it('the committed IDL is byte for byte the one spec §1 pins, and it is the IDL of FeGSS…', () => {
+  it('the committed IDL is byte for byte the program side’s 3ac8fda7… (f3f8eff), and it is the IDL of FeGSS…', () => {
     expect(createHash('sha256').update(IDL_RAW).digest('hex')).toBe(IDL_SHA256);
     expect(idl.address).toBe(A0.programId);
   });

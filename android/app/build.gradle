@@ -156,6 +156,11 @@ android {
         // splash screen ("ReactConfig: Could not find BuildConfig class" in logcat, 2026-11-15).
         // Pin the lookup to the namespace; for the production build it is the same package.
         resValue "string", "build_config_package", "com.nocturawallet"
+        // The native unshield dialog names the pool's token by THIS build's network (M1c Task 8):
+        // devnet → "TEST" (the devnet pool's test mint, as the JS screens name it), otherwise "NOC".
+        // An explicit field of our own, always defined (react-native-config's per-variable fields
+        // exist only for keys present in the env file), so Kotlin never takes the symbol from JS.
+        buildConfigField "String", "A0_NETWORK", "\"${project.env.get("NETWORK") ?: ""}\""
 
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
@@ -243,6 +248,11 @@ dependencies {
     } else {
         implementation jscFlavor
     }
+
+    // The native unshield confirmation's BiometricPrompt (spec shielded A0 M1 §4 step 4). 1.1.0 is the
+    // latest stable release and the version react-native-keychain already packages (as a bare @aar);
+    // the authenticator matrix in A0Confirm.kt was measured on this exact AAR (Task 6 Notes).
+    implementation("androidx.biometric:biometric:1.1.0")
 
     // JVM unit tests of the prover module (src/test/): the A0 boundary, the seed zero-fill and
     // the JNI over the host library. org.json: android.jar's copy is a stub off the device.

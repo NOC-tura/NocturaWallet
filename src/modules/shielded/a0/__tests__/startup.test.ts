@@ -24,6 +24,7 @@ import type {RecordedChain, RecordedFixture} from '../__testing__/recordedRpc';
 import {liveDevnet} from '../__testing__/liveDevnet';
 import {addA0PendingDeposit, a0UnspentBalance, hasA0NoteRecord, loadA0NoteStore} from '../noteStore';
 import * as recovery from '../recovery';
+import * as accountRegistry from '../accountRegistry';
 import {resetA0ReadoutForTests, setA0ReadoutDefaultsForTests} from '../checkpointReadout';
 import {
   a0StartupState,
@@ -77,7 +78,13 @@ describe('runA0Startup', () => {
     const net = liveDevnet(chainWithOwnDeposit());
     const seed = seedBytes(TEST_SEED);
     const res = await runA0Startup(net.connection, seed, SYNC);
-    expect(res).toEqual({restoredBecause: null, restore: null, reconcile: {confirmed: [], dropped: [], stillPending: [], skipped: 0}});
+    expect(res).toEqual({
+      restoredBecause: null,
+      restore: null,
+      reconcile: {confirmed: [], dropped: [], stillPending: [], skipped: 0},
+      unshields: {settled: [], reverted: [], stillPending: [], skipped: 0, released: [], promoted: []},
+      seedKeys: null, // the readout gate is closed under Jest's production config (R2-N3: nothing derived)
+    });
     expect(fake.calls).toEqual([]);
     expect(net.requests).toEqual([]);
     expect(zeroed(seed)).toBe(true);
@@ -278,6 +285,54 @@ describe('a wipe and an import in one process (R1-C1, R2-N1)', () => {
     expect(a0UnspentBalance()).toBe(4_000_000n);
   });
 });
+/** The test seed's slip10:0 and cli keys, from the OFFLINE account vectors (gen-account-vectors.mjs). */
+const VECTORS = (
+  JSON.parse(readFileSync(join(__dirname, 'fixtures/a0-account-vectors.json'), 'utf8')) as {
+    seeds: {seed: string; accounts: {scheme: string; address: string}[]}[];
+  }
+).seeds.find(v => v.seed === Buffer.from(seedBytes(TEST_SEED)).toString('hex'))!.accounts;
+const TEST_MAIN = VECTORS.find(a => a.scheme === 'slip10:0')!.address;
+const TEST_CLI = VECTORS.find(a => a.scheme === 'cli')!.address;
+
+describe('R2-N3: the seed\'s public keys for the M1c checkpoint, derived by the startup step (gate open only)', () => {
+  afterEach(() => {
+    resetA0ReadoutForTests();
+    jest.restoreAllMocks();
+  });
+
+  it('gate open: the result carries the seed set (registry ∪ cli ∪ slip10:0) — derived BEFORE the seed copies are zero-filled', async () => {
+    setA0ReadoutDefaultsForTests({enabled: true, sink: () => undefined});
+    const seed = seedBytes(TEST_SEED);
+    const res = await runA0Startup(liveDevnet(chainWithOwnDeposit()).connection, seed, SYNC);
+    expect(res.seedKeys).toEqual({keys: [TEST_MAIN, TEST_CLI], error: null});
+    expect(zeroed(seed)).toBe(true); // and the seed is consumed as before
+  });
+
+  it('gate closed (production): nothing derived — null, and the derivation is never called', async () => {
+    setA0ReadoutDefaultsForTests({enabled: false});
+    const spy = jest.spyOn(accountRegistry, 'a0SeedPublicKeys');
+    const res = await runA0Startup(liveDevnet(chainWithOwnDeposit()).connection, seedBytes(TEST_SEED), SYNC);
+    expect(res.seedKeys).toBeNull();
+    expect(spy).not.toHaveBeenCalled();
+    // control: the same start with the gate open calls it once
+    setA0ReadoutDefaultsForTests({enabled: true, sink: () => undefined});
+    clearAllStores();
+    initSecureMmkv('test-key');
+    await runA0Startup(liveDevnet(chainWithOwnDeposit()).connection, seedBytes(TEST_SEED), SYNC);
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it('a derivation that throws: its code only, and the startup is still ready (a readout never fails the step)', async () => {
+    setA0ReadoutDefaultsForTests({enabled: true, sink: () => undefined});
+    jest.spyOn(accountRegistry, 'a0SeedPublicKeys').mockImplementation(() => {
+      throw Object.assign(new Error(`sentinel ${TEST_CLI}`), {code: 'E_A0_ACCOUNTS_CORRUPT'});
+    });
+    const res = await runA0Startup(liveDevnet(chainWithOwnDeposit()).connection, seedBytes(TEST_SEED), SYNC);
+    expect(res.seedKeys).toEqual({keys: null, error: 'E_A0_ACCOUNTS_CORRUPT'});
+    expect(res.restoredBecause).toBe('no-record');
+  });
+});
+
 describe('the M1b checkpoint readout of the startup step (wipe + restore, what the desk reads)', () => {
   afterEach(() => resetA0ReadoutForTests());
 
@@ -297,7 +352,23 @@ describe('the M1b checkpoint readout of the startup step (wipe + restore, what t
       texts.set(m[1]!, (texts.get(m[1]!) ?? '') + m[2]!);
     }
     const payloads = [...texts.values()].map(t => JSON.parse(t));
-    expect(payloads.map(p => [p.event, p.phase])).toEqual([['startup', 'ready']]);
+    // M1c Task 9: the registry line follows the startup line (its own event; M1b's line unchanged)
+    expect(payloads.map(p => [p.event, p.phase])).toEqual([['startup', 'ready'], ['startup-accounts', undefined]]);
+    expect(payloads[1]).toEqual({
+      schema: 'noctura.a0.readout/1',
+      event: 'startup-accounts',
+      session: payloads[0].session,
+      seq: payloads[0].seq + 1,
+      at: payloads[1].at,
+      restoredBecause: 'no-record',
+      restore: {changeNotes: 0, unmatchedChangeLeaves: 0, attributionCalls: r.attributionCalls, accountIndicesTried: r.accountIndicesTried, exitAccounts: 0},
+      // the test seed's slip10:0 — the OFFLINE account vectors' anchor (gen-account-vectors.mjs)
+      accounts: [{address: 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk', role: 'main', linked: false}],
+      accountsError: null,
+      // R2-N3: the seed set (registry ∪ cli ∪ slip10:0), once per start — the vectors' cli key
+      seedKeys: [TEST_MAIN, TEST_CLI],
+      seedKeysError: null,
+    });
     const rho = own.rho(0n);
     expect(payloads[0]).toMatchObject({
       restoredBecause: 'no-record',
@@ -314,7 +385,7 @@ describe('the M1b checkpoint readout of the startup step (wipe + restore, what t
     clearAllStores(); // no encrypted instance
     const state = await ensureA0Startup(liveDevnet(chainWithOwnDeposit()).connection, seedBytes(TEST_SEED), SYNC);
     expect(state).toMatchObject({phase: 'error', code: 'E_A0_STORE_LOCKED'});
-    expect(lines).toHaveLength(1);
+    expect(lines).toHaveLength(1); // an error has no registry line
     expect(JSON.parse(lines[0]!.split(' ').slice(3).join(' '))).toMatchObject({event: 'startup', phase: 'error', code: 'E_A0_STORE_LOCKED'});
   });
 });

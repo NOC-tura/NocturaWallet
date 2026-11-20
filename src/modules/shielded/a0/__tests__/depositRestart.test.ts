@@ -270,7 +270,8 @@ describe('the M1b checkpoint readout across the kill (what the desk sees on the 
     const state = await ensureA0Startup(next.connection, seedBytes(TEST_SEED), {sync: {useCache: false}});
     expect(state.phase).toBe('ready');
     const after = readouts(lines).slice(1);
-    expect(after.map(r => r.event)).toEqual(['startup']);
+    // M1c Task 9: the registry line follows every ready startup (its own event; the startup line unchanged)
+    expect(after.map(r => r.event)).toEqual(['startup', 'startup-accounts']);
     expect(after[0]).toMatchObject({
       phase: 'ready',
       restoredBecause: null,

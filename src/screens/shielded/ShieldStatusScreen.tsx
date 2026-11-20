@@ -1,8 +1,8 @@
 import React, {useEffect, useRef, useState} from 'react';
-import {View, Pressable, ActivityIndicator, Linking, ScrollView, BackHandler, Alert} from 'react-native';
+import {View, Pressable, Linking, ScrollView, BackHandler, Alert} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import Clipboard from '@react-native-clipboard/clipboard';
-import {Check, X, Clock, Copy, ShieldCheck, Lock, FileText} from 'lucide-react-native';
+import {Check, ShieldCheck, FileText} from 'lucide-react-native';
 import {Text, Button} from '../../components/ui';
 import {cn} from '../../utils/cn';
 import {formatTokenAmount} from '../../utils/parseTokenAmount';
@@ -23,6 +23,7 @@ import {getConnection} from '../../modules/solana/connection';
 import type {ShieldIntent} from '../../types/shield';
 import {A0} from '../../modules/shielded/a0/constants';
 import {explorerTxUrl} from '../../constants/chain';
+import {MetaRow, StatusRing, shortSignature} from './shieldedParts';
 
 /**
  * #21 tx-status for the A0 deposit — mirror /home/user/Downloads/index.html §s21: the loading state
@@ -37,6 +38,9 @@ import {explorerTxUrl} from '../../constants/chain';
  *   - unspent  → "Shielded", the note's position (leaf index) in the pool, the new shielded balance;
  *   - pending  → "Not confirmed yet": the note is kept and settled at the next start — NEVER
  *                "failed" (Task 4: the startup reconciliation is the authority on a pending note);
+ *                a pending outcome with `foreignSignature` (M1b final review I-2: another deposit
+ *                at our rho after OUR confirmed send) says so, with the other deposit's signature
+ *                (M1c Task 8, the copy M1b parked);
  *   - dropped  → "Not shielded": another deposit holds this note's number; no tokens moved;
  *   - a refusal before the send (keychain cancelled, signer mismatch, store refusal) → "Not sent",
  *     its code; nothing was broadcast;
@@ -136,7 +140,7 @@ export function ShieldStatusScreen({intent, onDone}: ShieldStatusScreenProps) {
 
   const amount = `${displayAmount(BigInt(intent.amount), intent.decimals)} ${intent.tokenSymbol}`;
   const view = viewOf(phase);
-  const shortSig = signature && signature.length > 16 ? `${signature.slice(0, 6)}…${signature.slice(-4)}` : signature;
+  const shortSig = signature ? shortSignature(signature) : signature;
 
   const copySig = () => {
     if (!signature) return;
@@ -167,7 +171,7 @@ export function ShieldStatusScreen({intent, onDone}: ShieldStatusScreenProps) {
 
       <ScrollView contentContainerClassName="flex-grow items-center px-5 pb-8">
         <View className="items-center justify-center py-8 gap-5 w-full">
-          <Ring tone={view.tone} />
+          <StatusRing tone={view.tone} okIcon="lock" />
           <Text
             variant="h1"
             testID="shield-status-title"
@@ -303,6 +307,17 @@ function viewOf(phase: Phase): {title: string; sub: string; tone: Tone; badge: s
           badge: null,
         };
       }
+      if (o.foreignSignature) {
+        // M1b final review I-2, its #21 copy parked for M1c: our send was reported confirmed, yet the
+        // pool's history shows ANOTHER deposit at this note's number — a contradiction (the number's
+        // marker can be created once), so nothing is decided here: the note stays pending.
+        return {
+          title: 'Not confirmed yet',
+          sub: `Solana devnet reported this deposit confirmed, but the pool's history shows another deposit (${shortSignature(o.foreignSignature)}) at this note's number. Nothing is decided from that: your deposit stays pending on this device and is settled from the chain the next time the wallet starts, or when you tap Check again.`,
+          tone: 'warn',
+          badge: 'PENDING',
+        };
+      }
       const why =
         o.reason === 'send-failed'
           ? 'The network did not accept the transaction.'
@@ -317,56 +332,4 @@ function viewOf(phase: Phase): {title: string; sub: string; tone: Tone; badge: s
       };
     }
   }
-}
-
-function Ring({tone}: {tone: Tone}) {
-  if (tone === 'ok') {
-    return (
-      <View className="w-32 h-32 rounded-full items-center justify-center border-2 border-accent-shielded bg-[rgba(91,227,194,0.10)]">
-        <Lock size={52} color="#5BE3C2" strokeWidth={1.75} />
-      </View>
-    );
-  }
-  if (tone === 'bad') {
-    return (
-      <View className="w-32 h-32 rounded-full items-center justify-center border-2 border-danger bg-[rgba(248,113,113,0.10)]">
-        <X size={56} color="#F87171" strokeWidth={2} />
-      </View>
-    );
-  }
-  if (tone === 'warn') {
-    return (
-      <View
-        className="w-32 h-32 rounded-full items-center justify-center bg-[rgba(242,181,59,0.08)]"
-        style={{borderWidth: 1.5, borderColor: '#F2B53B', borderStyle: 'dashed'}}>
-        <Clock size={52} color="#F2B53B" strokeWidth={1.75} />
-      </View>
-    );
-  }
-  return (
-    <View className="w-32 h-32 rounded-full items-center justify-center border border-[rgba(91,227,194,0.35)]">
-      <ActivityIndicator size="large" color="#5BE3C2" />
-    </View>
-  );
-}
-
-function MetaRow({label, value, onCopy}: {label: string; value: string; onCopy?: () => void}) {
-  return (
-    <View className="flex-row items-center gap-3 py-3 border-t border-bg-surface-3">
-      <Text variant="overline" className="text-fg-tertiary w-[76px]">
-        {label}
-      </Text>
-      <Text variant="body-sm" className="flex-1 font-geist-mono text-fg-secondary" numberOfLines={2}>
-        {value}
-      </Text>
-      {onCopy ? (
-        <Pressable
-          onPress={onCopy}
-          className="w-8 h-8 rounded-sm items-center justify-center bg-bg-surface-2"
-          accessibilityLabel={`Copy ${label}`}>
-          <Copy size={14} color="#A8ACB5" strokeWidth={1.75} />
-        </Pressable>
-      ) : null}
-    </View>
-  );
 }

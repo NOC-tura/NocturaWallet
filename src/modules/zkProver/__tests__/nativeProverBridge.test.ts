@@ -8,6 +8,7 @@ jest.mock('react-native', () => ({
       matchSpent: jest.fn(),
       commitment: jest.fn(),
       prove: jest.fn(),
+      confirmUnshield: jest.fn(),
     },
   },
 }));
@@ -15,6 +16,7 @@ jest.mock('react-native', () => ({
 import {NativeModules} from 'react-native';
 import {
   a0Commitment,
+  a0ConfirmUnshield,
   a0DepositRho,
   a0KeysClose,
   a0KeysOpen,
@@ -113,4 +115,46 @@ it('a negative amount or index never reaches native', async () => {
   await expect(a0Commitment(H, -1n, RHO)).rejects.toThrow(RangeError);
   expect(mockNative.depositRho).not.toHaveBeenCalled();
   expect(mockNative.commitment).not.toHaveBeenCalled();
+});
+
+describe('a0ConfirmUnshield — the native confirmation (spec §4)', () => {
+  const OWNER = 'GoBAmZzHvD6F4KHLNmBFh2wZAGE1dwwufeTbifSHEYfd';
+  const ATA = '9hZSf8jMxBdqcvnYzj6EkQ2gPoZCoX2GcF8f1dgkyLsn';
+  const AUTH = '0123456789abcdef0123456789abcdef';
+
+  it('passes the handle, the owner and the amounts as decimal strings, and returns the approval', async () => {
+    mockNative.confirmUnshield.mockResolvedValue({authId: AUTH, owner: OWNER, ata: ATA});
+    await expect(a0ConfirmUnshield(H, OWNER, 18446744073709551615n, 10000n)).resolves.toEqual({
+      authId: AUTH,
+      owner: OWNER,
+      ata: ATA,
+    });
+    expect(mockNative.confirmUnshield).toHaveBeenCalledWith('7', OWNER, '18446744073709551615', '10000');
+  });
+
+  it.each([
+    ['not an object', 'x'],
+    ['null', null],
+    ['an array', [AUTH, OWNER, ATA]],
+    ['a key missing', {authId: AUTH, owner: OWNER}],
+    ['a key more', {authId: AUTH, owner: OWNER, ata: ATA, amount: '5'}],
+    ['an uppercase authId', {authId: AUTH.toUpperCase(), owner: OWNER, ata: ATA}],
+    ['a 15-byte authId', {authId: AUTH.slice(2), owner: OWNER, ata: ATA}],
+    ['a non-base58 owner', {authId: AUTH, owner: `${OWNER.slice(0, 43)}0`, ata: ATA}],
+    ['a numeric token account', {authId: AUTH, owner: OWNER, ata: 5}],
+  ])('refuses a malformed answer: %s', async (_what, answer) => {
+    mockNative.confirmUnshield.mockResolvedValue(answer);
+    await expect(a0ConfirmUnshield(H, OWNER, 1n, 0n)).rejects.toMatchObject({code: 'E_A0_CONFIRM_RESULT'});
+  });
+
+  it('passes a native refusal through with its code', async () => {
+    mockNative.confirmUnshield.mockRejectedValue(Object.assign(new Error('busy'), {code: 'E_A0_CONFIRM_BUSY'}));
+    await expect(a0ConfirmUnshield(H, OWNER, 1n, 0n)).rejects.toMatchObject({code: 'E_A0_CONFIRM_BUSY'});
+  });
+
+  it('a negative amount or fee never reaches native', async () => {
+    await expect(a0ConfirmUnshield(H, OWNER, -1n, 0n)).rejects.toThrow(RangeError);
+    await expect(a0ConfirmUnshield(H, OWNER, 1n, -1n)).rejects.toThrow(RangeError);
+    expect(mockNative.confirmUnshield).not.toHaveBeenCalled();
+  });
 });

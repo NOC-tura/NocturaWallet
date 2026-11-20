@@ -61,6 +61,7 @@ import {mmkvSecure} from '../../../store/mmkv/instances';
 import {A0, A0_CU} from './constants';
 import {a0RhoMarkerPda, buildA0DepositIx} from './depositIx';
 import {FIELD_MODULUS, toBe32Hex} from './fieldEquations';
+import {a0ProgramErrorOf, a0ProgramErrorText} from './programErrors';
 import {ensureA0KeyFiles, A0_NPUBLIC} from './keyAssets';
 import {
   A0NoteStoreError,
@@ -72,7 +73,7 @@ import {
   mergeA0RecoveredNotes,
 } from './noteStore';
 import type {A0Note, A0StoreBinding} from './noteStore';
-import {recoverA0Deposits} from './recovery';
+import {recoverA0ChangeNotes, recoverA0Deposits} from './recovery';
 import {syncA0Tree} from './treeSync';
 import type {A0SyncOptions, A0VerifiedTree} from './treeSync';
 import {
@@ -237,9 +238,12 @@ async function precheck(
         `counter ${depositIndex} is past recovery's gap limit (recovered next = ${rec.nextDepositIndex})`,
       );
     }
+    // the same state a restore would produce: spent deposits name their spending tx and the change
+    // notes come back (local matching on the synced tree: no request beyond the sync's)
+    const change = await recoverA0ChangeNotes(handle, tree, rec.notes);
     const before = new Set(loadA0NoteStore(bound).notes.map(n => n.rho));
-    mergeA0RecoveredNotes(rec.notes, rec.nextDepositIndex, bound);
-    importedNotes += rec.notes.filter(n => !before.has(n.rho)).length;
+    mergeA0RecoveredNotes(change.notes, rec.nextDepositIndex, bound);
+    importedNotes += change.notes.filter(n => !before.has(n.rho)).length;
     foreignRhoHits = rec.foreignRhoHits;
   }
 }
@@ -410,7 +414,19 @@ function settle(tree: A0VerifiedTree, note: Pick<A0Note, 'rho' | 'commitment' | 
 export type A0DepositOutcome =
   | {status: 'unspent'; signature: string; leafIndex: number; root: string}
   /** the note stays `pending`; the startup reconciliation decides it (§5 step 7) */
-  | {status: 'pending'; signature: string; reason: 'send-failed' | 'not-confirmed' | 'not-in-sync'; detail?: string}
+  | {
+      status: 'pending';
+      signature: string;
+      reason: 'send-failed' | 'not-confirmed' | 'not-in-sync';
+      detail?: string;
+      /**
+       * M1c Task 8 (the M1b final review's parked #21 copy): set only on `not-in-sync` when the
+       * settle sync shows ANOTHER deposit at our rho after our confirmed send (I-2) — #21 says that
+       * case as what it is instead of "the history does not list it yet". Not read out (the
+       * readout picks its fields; its schema is unchanged).
+       */
+      foreignSignature?: string;
+    }
   /**
    * our tx did not land: a foreign deposit holds our rho; the pending note was dropped (counter
    * kept). Since the final review's I-2 `submitA0Deposit` itself never returns it (a foreign hit
@@ -429,6 +445,9 @@ export interface A0SubmitOptions {
   /** the encrypted instance to stay on (default: the one open at entry) — R3-N5 */
   bound?: A0StoreBinding;
 }
+
+/** The deposit's index in `[setComputeUnitLimit, deposit]` (`buildA0DepositTransaction`). */
+const A0_DEPOSIT_IX_INDEX = 1;
 
 /** The settle loop's pending pauses (R1-m7: a test's teardown clears them; RN's setTimeout
  *  returns a number, so there is no `unref`). */
@@ -525,7 +544,11 @@ async function submitOnce(
     // (its fee would be paid on chain even when it fails).
     await connection.sendRawTransaction(tx.serialize(), {skipPreflight: false, preflightCommitment: 'confirmed'});
   } catch (e) {
-    return {status: 'pending', signature, reason: 'send-failed', detail: e instanceof Error ? e.message : String(e)};
+    // A refusal by FeGSS… itself (the deposit is instruction 1, after the CU limit) is shown in
+    // the wallet's words (programErrors.ts — incl. 6011 / 6012 of the 2026-11-17 upgrade).
+    const program = a0ProgramErrorOf(e, A0_DEPOSIT_IX_INDEX);
+    const detail = program ? a0ProgramErrorText(program) : e instanceof Error ? e.message : String(e);
+    return {status: 'pending', signature, reason: 'send-failed', detail};
   }
   options.onStage?.('submitted', signature);
 
@@ -570,6 +593,7 @@ async function submitOnce(
           signature,
           reason: 'not-in-sync',
           detail: `the synced history shows another deposit (${s.signature}) at this rho after our confirmed send`,
+          foreignSignature: s.signature,
         };
       }
     }
