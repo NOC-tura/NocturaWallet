@@ -35,6 +35,12 @@ describe('ShieldedExplainerScreen', () => {
     expect(getByText('Screenshots disabled across this flow.')).toBeTruthy();
   });
 
+  it('#15 overline is the module\'s PRIVATE_MARK, not an old word (Task 6 carry)', () => {
+    const {getByText, queryByText} = render(<ShieldedExplainerScreen navigation={navigation} route={route} />);
+    expect(getByText('Private')).toBeTruthy();
+    expect(queryByText(/Shielded|Transparent/i)).toBeNull();
+  });
+
   it('renders Continue and Learn more CTAs', () => {
     const {getByText} = render(<ShieldedExplainerScreen navigation={navigation} route={route} />);
     expect(getByText('Continue')).toBeTruthy();

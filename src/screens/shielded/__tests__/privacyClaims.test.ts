@@ -18,7 +18,6 @@ const UNSUPPORTED = [
   /Plonk/i,
 ];
 
-const SCREENS = path.resolve(__dirname, '..');
 const ROOT = path.resolve(__dirname, '../../../..');
 
 /**
@@ -57,11 +56,16 @@ const EXTRA_COPY = [
   path.join(ROOT, 'src/modules/geoFence/geoFenceModule.ts'),
 ];
 
-/** Shielded UX part B (spec §2 "Widened"): the shared components of the private side. */
-const PRIVATE_COMPONENTS = path.join(ROOT, 'src/components/private');
+/**
+ * Shielded UX part B Task 6 (controller carry): the scope is ALL of `src/screens/**` and
+ * `src/components/**` outside `__tests__` (it was `screens/shielded` + `components/private`), so a
+ * claim added to any screen or shared component is read. The regexes above are unchanged.
+ */
+const ALL_SCREENS = path.join(ROOT, 'src/screens');
+const ALL_COMPONENTS = path.join(ROOT, 'src/components');
 
 function screenSources(): Array<{file: string; text: string}> {
-  return [...walk(SCREENS), ...walk(PRIVATE_COMPONENTS), ...EXTRA_COPY].map(p => ({
+  return [...walk(ALL_SCREENS), ...walk(ALL_COMPONENTS), ...EXTRA_COPY].map(p => ({
     file: path.relative(ROOT, p),
     text: fs.readFileSync(p, 'utf8'),
   }));
@@ -115,8 +119,13 @@ describe('shielded screens make no unsupported privacy claim', () => {
         'src/hooks/useA0Shielded.ts',
         'src/app/Navigator.tsx',
         'src/screens/transparent/ReceiveScreen.tsx',
+        // part B Task 6: the widened scope reaches screens outside the shielded directory
+        'src/screens/settings/WipeWalletScreen.tsx',
+        'src/screens/staking/StakingScreen.tsx',
       ]),
     );
+    // the scope is wide, not just the shielded directory
+    expect(files.length).toBeGreaterThan(40);
     // the dashboard is read as text: its shielded caption is in what the guard sees
     const dash = screenSources().find(s => s.file === 'src/screens/dashboard/DashboardScreen.tsx')!;
     expect(dash.text).toContain('pending · not confirmed yet');
@@ -168,10 +177,10 @@ describe('shielded screens make no unsupported privacy claim', () => {
     const xml = fs.readFileSync(NATIVE_STRINGS, 'utf8');
     // positive control: this is the dialog's resource, not an empty file
     expect(xml).toContain('name="a0_confirm_amount_line"');
-    expect(xml).toContain('taken from your shielded balance');
+    expect(xml).toContain('taken from your private balance'); // part B: the wording, not the guard, changed
     expect(unsupportedClaims(xml)).toEqual([]);
     // negative control: a planted claim in the same resource is flagged
-    const planted = xml.replace('Confirm unshield', 'Confirm your unlinkable unshield');
+    const planted = xml.replace('Confirm making public', 'Confirm your unlinkable exit');
     expect(planted).not.toBe(xml);
     expect(unsupportedClaims(planted)).toEqual(['unlinkable']);
   });

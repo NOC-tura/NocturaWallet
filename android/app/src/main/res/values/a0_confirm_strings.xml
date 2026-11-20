@@ -7,16 +7,17 @@
   %1$s / %2$s / %3$s are filled by A0ConfirmText.render (Locale.ROOT). The token's symbol (the
   amount line's %3$s, the fee line's %2$s) is Kotlin's own, chosen from BuildConfig.A0_NETWORK
   (devnet → TEST, otherwise NOC; M1c Task 8) — never a value from JS.
+  Shielded UX part B (spec 2026-11-20 §2 row 9): the user-facing words are "making public" / "private balance"; src/copy/__tests__/nativeStrings.test.ts holds them equal to src/copy/modes.ts.
 -->
 <resources>
-    <string name="a0_confirm_title">Confirm unshield</string>
+    <string name="a0_confirm_title">Confirm making public</string>
     <string name="a0_confirm_destination_label">Destination (wallet address)</string>
     <string name="a0_confirm_token_account_label">Token account</string>
     <string name="a0_confirm_amount_line">Destination receives exactly %1$s %3$s (%2$s base units)</string>
-    <string name="a0_confirm_fee_line">Relayer fee %1$s %2$s, taken from your shielded balance</string>
+    <string name="a0_confirm_fee_line">Relayer fee %1$s %2$s, taken from your private balance</string>
     <string name="a0_confirm_pool_label">Pool</string>
     <string name="a0_confirm_approve">Approve</string>
     <string name="a0_confirm_cancel">Cancel</string>
-    <string name="a0_prompt_title">Approve this unshield</string>
-    <string name="a0_prompt_subtitle">Confirm it is you to authorize this one unshield</string>
+    <string name="a0_prompt_title">Approve making this public</string>
+    <string name="a0_prompt_subtitle">Confirm it is you to authorize this one transfer to public</string>
 </resources>

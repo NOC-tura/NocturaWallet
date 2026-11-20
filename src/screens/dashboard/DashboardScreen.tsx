@@ -77,19 +77,19 @@ import {
  *
  * Sections:
  *   - Top row · avatar (initial) + bell + scan
- *   - Mode toggle · Transparent / Shielded segmented pill
+ *   - Mode toggle · Public / Private segmented pill
  *   - Balance hero · overline, eye toggle, balance + cents, change line, sub-balance
- *   - Quick actions · Send · Receive · Swap|Shield · Buy (4-button grid)
+ *   - Quick actions · Send · Receive · Swap|Make private · Buy (4-button grid)
  *   - Tokens section · header + token rows
- *   - Banner · presale (transparent) or "Privacy is on" (shielded)
+ *   - Banner · presale (Public) or the Private balance card (Private)
  *
  * Mode-aware:
- *   - Transparent: violet accents, "Total balance" eyebrow, Swap action, presale banner
- *   - Shielded: mint accents, "SHIELDED · vault balance" eyebrow, Shield action,
- *     privacy banner, "· shielded" tag on rows
- *   - Shielded, DEPARTURE (owner-approved 2026-11-20, UX-A 7): a "Make public" action (the eye of
- *     #16's tab) right after Shield, opening #16 on its unshield side. The design's shielded
- *     dashboard has Send / Receive / Shield / Buy; it is shown only when `onMakePublic` is passed,
+ *   - Public: violet accents, "Total balance" eyebrow, Swap action, presale banner
+ *   - Private: mint accents, "Private balance" eyebrow, Make private action,
+ *     Private balance card, "· private" tag on rows
+ *   - Private, DEPARTURE (owner-approved 2026-11-20, UX-A 7): a "Make public" action (the eye of
+ *     #16's tab) right after Make private, opening #16 on its unshield side. The design's private
+ *     dashboard has Send / Receive / Make private / Buy; it is shown only when `onMakePublic` is passed,
  *     which the Navigator does only in the build that registers the unshield route.
  *
  * Privacy hide-ladder (per design D · "Hide-balance privacy completeness"):

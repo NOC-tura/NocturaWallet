@@ -51,6 +51,15 @@ jest.mock('../../screens/dashboard/DashboardScreen', () => ({
   },
 }));
 
+// #19 → #20, stubbed: records the requestAuth the route hands #20 (Task 6 carry: #10's recipient in a deposit)
+const mockConfirmProps: Array<{requestAuth: (i: unknown) => Promise<boolean>}> = [];
+jest.mock('../../screens/shielded/ShieldConfirmScreen', () => ({
+  ShieldConfirmScreen: (p: {requestAuth: (i: unknown) => Promise<boolean>}) => {
+    mockConfirmProps.push(p);
+    return null;
+  },
+}));
+
 /** The shield flow M1b registers in the devnet build, and M1c's unshield run (Task 8). */
 const SHIELD_FLOW = [
   'ShieldedExplainer',
@@ -308,5 +317,25 @@ describe('#13 Receive: transparent only until M2 (spec §12 I9)', () => {
     for (const p of mockReceiveProps) {
       expect(p.shielded).toBeUndefined();
     }
+  });
+});
+
+describe('Shielded UX part B Task 6 carry: #10 names the pool by its plain word during a deposit', () => {
+  it('ShieldConfirm\'s requestAuth opens UnlockSend with recipient "Pool" (and the SOL network fee)', async () => {
+    mockConfirmProps.length = 0;
+    const {ref} = routeNames({shielded: true});
+    const intent = {kind: 'shield', preparedId: 'p1', amount: '1000000000', tokenSymbol: 'TEST', decimals: 9, depositor: 'D'};
+    await act(async () => {
+      (ref.navigate as (n: string, p?: object) => void)('ShieldConfirm', {intent});
+    });
+    expect(mockConfirmProps.length).toBeGreaterThan(0);
+    // the pending auth promise never settles here; only the navigation it triggers is read
+    mockConfirmProps[mockConfirmProps.length - 1]!.requestAuth(intent).catch(() => {});
+    await act(async () => {});
+    const route = ref.getCurrentRoute() as {name?: string; params?: {recipient?: string; ticker?: string; networkFee?: string}} | undefined;
+    expect(route?.name).toBe('UnlockSend');
+    expect(route?.params?.recipient).toBe('Pool');
+    expect(route?.params?.ticker).toBe('TEST');
+    expect(route?.params?.networkFee).toMatch(/ SOL$/);
   });
 });

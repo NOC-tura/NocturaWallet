@@ -11,7 +11,6 @@ import * as fs from 'fs';
 import * as path from 'path';
 import {UnshieldRunScreen} from '../UnshieldRunScreen';
 import type {UnshieldRunRequest} from '../UnshieldRunScreen';
-import {A0_STOPPED_ON_DEVICE, A0_UNSHIELD_REFUSAL_COPY, A0_VERIFY_REFUSAL_COPY} from '../unshieldCopy';
 import type {A0UnshieldOutcome, A0UnshieldStage, A0UnshieldRequest} from '../../../../modules/shielded/a0/unshieldFlow';
 
 type Unshield = (
@@ -766,12 +765,37 @@ describe('final review I-1 + re-review N-1 / N-2 / N-3 / N-4: what "Check again"
   });
 });
 
-describe('Task 5 carry 3: the refusal sentences Task 4 reworded, each held by a row', () => {
-  it('the verifier and flow refusals in the new words', () => {
-    expect(A0_VERIFY_REFUSAL_COPY.E_A0_VERIFY_PROGRAMS).toBe('it calls a program outside the relayed exit');
-    expect(A0_UNSHIELD_REFUSAL_COPY.E_A0_UNSHIELD_BUSY).toBe('Another transfer to public is still running on this device.');
-    expect(A0_UNSHIELD_REFUSAL_COPY.E_A0_UNSHIELD_NOT_READY).toBe('Your private balance is not restored yet.');
-    expect(A0_UNSHIELD_REFUSAL_COPY.E_A0_UNSHIELD_NO_NOTE).toBe('No private note can pay the relayer fee.');
-    expect(A0_STOPPED_ON_DEVICE).toBe('The transfer to public stopped on this device.');
+describe('Task 6 carry: the reworded refusal sentences and the plain stage rows, read from the RENDERED screen', () => {
+  const REFUSALS: Array<[string, string]> = [
+    ['E_A0_UNSHIELD_BUSY', 'Another transfer to public is still running on this device.'],
+    ['E_A0_UNSHIELD_NOT_READY', 'Your private balance is not restored yet.'],
+    ['E_A0_UNSHIELD_NO_NOTE', 'No private note can pay the relayer fee.'],
+    ['E_A0_SOMETHING_ELSE', 'The transfer to public stopped on this device.'],
+  ];
+  it.each(REFUSALS)('%s → "Not sent" and its fixed sentence on #21', async (code, sentence) => {
+    const {r, ctl} = await run();
+    await act(async () => ctl.reject(Object.assign(new Error(`${code}: x`), {code})));
+    expect(title(r)).toBe('Not sent');
+    expect(sub(r)).toBe(`${code} · ${sentence} Nothing was sent.`);
+  });
+
+  it('a verifier refusal (a foreign program) → the loud line in the new words', async () => {
+    const {r, ctl} = await run();
+    await act(async () =>
+      ctl.resolve({status: 'landed-unverified', signature: SIG, code: 'E_A0_VERIFY_PROGRAMS', note: 'spent', changeRecorded: true, linked: false} as A0UnshieldOutcome),
+    );
+    expect(r.getByText('Landed, but failed verification: E_A0_VERIFY_PROGRAMS · it calls a program outside the relayed exit')).toBeTruthy();
+  });
+
+  it('#18: the four rows carry their plain titles, and the active "Check the pool" row says what it does', async () => {
+    const {r, ctl} = await run();
+    await step(ctl, 'sync');
+    expect(r.getByText('Check the pool')).toBeTruthy();
+    expect(r.getByText('Relayer fee')).toBeTruthy();
+    expect(r.getByText('Your approval')).toBeTruthy();
+    expect(r.getByText('Make the proof')).toBeTruthy();
+    expect(String(meta(r, 'sync'))).toMatch(/^checking the pool on the chain · /);
+    await step(ctl, 'quote', 10);
+    expect(String(meta(r, 'sync'))).toMatch(/^done · /); // the row's second sub: finished, with its measured time
   });
 });
