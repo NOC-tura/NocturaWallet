@@ -19,7 +19,12 @@ import {zeroize} from '../../modules/session/zeroize';
 import {formatAddress} from '../../utils/formatAddress';
 import {formatTokenAmount} from '../../utils/parseTokenAmount';
 import {cn} from '../../utils/cn';
-import {ACCOUNT_DIFFERENT, ACCOUNT_FOUND, ACCOUNT_NONE_FUNDED} from '../../copy/modes';
+import {
+  ACCOUNT_BALANCES_UNCHECKED,
+  ACCOUNT_DIFFERENT,
+  ACCOUNT_FOUND,
+  ACCOUNT_NONE_FUNDED,
+} from '../../copy/modes';
 
 /**
  * Import account picker. After the seed is validated, derive candidate
@@ -32,9 +37,14 @@ import {ACCOUNT_DIFFERENT, ACCOUNT_FOUND, ACCOUNT_NONE_FUNDED} from '../../copy/
  *   - more than one funded → the funded ones only, plus the same link;
  *   - none funded (balances resolved) → standard account 0, "No funds found
  *     yet. You can receive to this address.", and the link;
- *   - the balance RPC failed → the warning + Retry and the full list.
+ *   - a balance could not be read (the SOL RPC failed, a NOC lookup failed,
+ *     detection threw, or no mnemonic) → the warning + Retry and the full
+ *     list, with NOTHING selected: Continue stays disabled until the person
+ *     taps an account (fix round 1, review I-1; spec §4 "never silently
+ *     auto-picks").
  * It never picks silently: the account Continue uses is on screen before the
- * tap. The detection itself (`detectFundedAccounts`) is unchanged.
+ * tap. The detection gained one flag (`nocResolved`, fix round 1, review I-2);
+ * nothing else in it changed.
  *
  * Shown ONLY in the import flow. The create flow never visits this screen, so
  * new wallets keep the default standard scheme (SLIP-0010 account 0).
@@ -81,10 +91,9 @@ export function SelectAccountScreen({
   const [candidates, setCandidates] = useState<AccountCandidate[]>([]);
   const [detectFailed, setDetectFailed] = useState(false);
   const [showAll, setShowAll] = useState(false);
-  const [selectedKey, setSelectedKey] = useState<string>(
-    schemeToString(DEFAULT_TRANSPARENT_SCHEME),
-  );
-  const selectedSchemeRef = useRef<TransparentScheme>(DEFAULT_TRANSPARENT_SCHEME);
+  // null = nothing chosen: Continue is disabled (review I-1). Written only together with the ref.
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const selectedSchemeRef = useRef<TransparentScheme | null>(null);
 
   useEffect(() => {
     void securityManager.enableSecureScreen();
@@ -94,6 +103,11 @@ export function SelectAccountScreen({
   }, []);
 
   const runDetection = useCallback(async () => {
+    // A new run (Retry, or a changed mnemonic) starts from nothing: no stale
+    // candidates and no stale pick (review M-7).
+    setCandidates(prev => (prev.length === 0 ? prev : []));
+    selectedSchemeRef.current = null;
+    setSelectedKey(null);
     if (!mnemonic) {
       setDetectFailed(true);
       setLoading(false);
@@ -107,15 +121,20 @@ export function SelectAccountScreen({
       seed = await mnemonicToSeed(mnemonic);
       const found = await detectFundedAccounts(seed);
       setCandidates(found.candidates);
-      // A failed balance RPC still returns the (locally-derived) addresses; flag
-      // it so the user sees the warning + retry rather than a silent wrong pick.
-      setDetectFailed(!found.balancesResolved);
-      // Pre-select the first funded candidate, else standard account 0.
-      const preferred =
-        found.candidates.find(c => c.funded)?.scheme ??
-        DEFAULT_TRANSPARENT_SCHEME;
-      selectedSchemeRef.current = preferred;
-      setSelectedKey(schemeToString(preferred));
+      // A failed balance RPC (SOL, or any NOC lookup) still returns the
+      // (locally-derived) addresses; flag it so the user sees the warning +
+      // retry and chooses, rather than a silent wrong pick.
+      const resolved = found.balancesResolved && found.nocResolved;
+      setDetectFailed(!resolved);
+      if (resolved) {
+        // Pre-select the first funded candidate, else standard account 0 —
+        // shown on screen by the smart view before Continue is tapped.
+        const preferred =
+          found.candidates.find(c => c.funded)?.scheme ??
+          DEFAULT_TRANSPARENT_SCHEME;
+        selectedSchemeRef.current = preferred;
+        setSelectedKey(schemeToString(preferred));
+      }
     } catch {
       setDetectFailed(true);
     } finally {
@@ -137,7 +156,9 @@ export function SelectAccountScreen({
   }, []);
 
   const handleContinue = useCallback(() => {
-    onSelect(selectedSchemeRef.current);
+    const scheme = selectedSchemeRef.current;
+    if (scheme === null) return; // nothing chosen (the button is disabled too)
+    onSelect(scheme);
   }, [onSelect]);
 
   const view = accountChoiceView(loading, detectFailed, showAll, candidates);
@@ -176,7 +197,7 @@ export function SelectAccountScreen({
         ) : (
           <View className="w-12 h-12" />
         )}
-        <Text variant="h2" className="ml-1 flex-1">
+        <Text variant="h2" accessibilityRole="header" className="ml-1 flex-1">
           Choose account
         </Text>
       </View>
@@ -193,7 +214,7 @@ export function SelectAccountScreen({
           </View>
         ) : view === 'one' ? (
           <View className="px-5 gap-3" testID="select-account-found">
-            <Text variant="h2">{ACCOUNT_FOUND}</Text>
+            <Text variant="h3">{ACCOUNT_FOUND}</Text>
             <Card padding="p-4">
               <Text variant="body" className="text-fg-primary">
                 {schemeLabel(funded[0]!.scheme)}
@@ -217,8 +238,9 @@ export function SelectAccountScreen({
                 <Text variant="body" className="text-fg-primary">
                   {schemeLabel(standard.scheme)}
                 </Text>
+                {/* the full address: the person is asked to receive to it (review M-4) */}
                 <Text variant="caption" mono className="text-fg-tertiary mt-0.5" testID="select-account-none-address">
-                  {formatAddress(standard.address)}
+                  {standard.address}
                 </Text>
               </Card>
             ) : null}
@@ -236,8 +258,7 @@ export function SelectAccountScreen({
               {detectFailed ? (
                 <View className="mb-2 p-4 rounded-md bg-bg-surface-2 border-l-2 border-l-warning gap-3">
                   <Text variant="body-sm" className="text-fg-primary">
-                    Couldn't check balances right now. You can continue with the
-                    standard account and switch later.
+                    {ACCOUNT_BALANCES_UNCHECKED}
                   </Text>
                   <Button
                     label="Try again"
@@ -271,7 +292,7 @@ export function SelectAccountScreen({
           label="Continue"
           variant="primary"
           onPress={handleContinue}
-          disabled={loading}
+          disabled={loading || selectedKey === null}
           testID="select-account-continue"
         />
       </View>
@@ -294,7 +315,8 @@ function CandidateCard({
   return (
     <Pressable
       onPress={() => onPick(c.scheme)}
-      accessibilityRole="button"
+      accessibilityRole="radio"
+      accessibilityState={{selected}}
       testID={`account-candidate-${key}`}>
       <Card padding="p-4">
         <View className="flex-row items-center gap-3">

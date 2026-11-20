@@ -105,3 +105,5 @@ export function makePublicLimit(max: string, sym: string): string {
 export const ACCOUNT_FOUND = 'We found your wallet';
 export const ACCOUNT_NONE_FUNDED = 'No funds found yet. You can receive to this address.';
 export const ACCOUNT_DIFFERENT = 'Use a different account';
+/** The import's warning when a balance (SOL or NOC) could not be read: the person chooses, nothing is preselected (Task 7 fix round 1, review I-1). */
+export const ACCOUNT_BALANCES_UNCHECKED = "Couldn't check balances right now. Pick the account you want to use, or try again.";

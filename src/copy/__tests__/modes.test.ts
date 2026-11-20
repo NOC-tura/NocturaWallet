@@ -59,6 +59,8 @@ describe('src/copy/modes.ts — the §2 table', () => {
     expect(modes.ACCOUNT_FOUND).toBe('We found your wallet');
     expect(modes.ACCOUNT_NONE_FUNDED).toBe('No funds found yet. You can receive to this address.');
     expect(modes.ACCOUNT_DIFFERENT).toBe('Use a different account');
+    // fix round 1 (review I-1): no "switch later" promise — the app has no later switch
+    expect(modes.ACCOUNT_BALANCES_UNCHECKED).toBe("Couldn't check balances right now. Pick the account you want to use, or try again.");
   });
 
   it('the Private balance card keeps the honest sentence (spec §2 "Kept as is")', () => {
