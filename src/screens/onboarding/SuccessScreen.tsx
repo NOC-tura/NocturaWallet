@@ -255,7 +255,7 @@ export function SuccessScreen({mnemonic, scheme, onComplete}: SuccessScreenProps
             </Text>
             <View className="gap-2">
               <NextStepRow text="Fund the wallet with SOL or NOC" />
-              <NextStepRow text="Try a shielded send (privacy by design)" />
+              <NextStepRow text="Try making a token private" />
               <NextStepRow text="Export an encrypted backup from Settings" />
             </View>
           </Card>

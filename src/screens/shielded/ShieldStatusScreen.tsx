@@ -161,6 +161,9 @@ export function ShieldStatusScreen({intent, onDone}: ShieldStatusScreenProps) {
         <Text variant="overline" className="text-accent-shielded">
           {PRIVATE_MARK}
         </Text>
+        <Text variant="overline" className="text-fg-tertiary" testID="shield-status-header-sep">
+          ·
+        </Text>
         <Text variant="h2" className="flex-1">
           {running ? MAKING_PRIVATE : MAKE_PRIVATE}
         </Text>

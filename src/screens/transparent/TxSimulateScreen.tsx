@@ -389,7 +389,7 @@ export function TxSimulateScreen({intent, onContinue, onCancel}: TxSimulateScree
           <ActivityIndicator size="small" color={intent.mode === 'shielded' ? '#5BE3C2' : '#B084FC'} style={{transform: [{scale: 0.7}]}} />
           <Text variant="caption" className={accentText}>
             {intent.mode === 'shielded'
-              ? 'Simulating shielded transfer'
+              ? 'Simulating the private transfer'
               : `Simulating on ${CHAIN.short} RPC`}
           </Text>
         </View>
@@ -400,7 +400,7 @@ export function TxSimulateScreen({intent, onContinue, onCancel}: TxSimulateScree
         <View className="flex-row items-center gap-1 mb-2">
           <Check size={12} color="#3FD68B" strokeWidth={2.5} />
           <Text variant="caption" className="text-success">
-            {intent.mode === 'shielded' ? 'Shielded simulation passed' : 'Simulation passed'}
+            {intent.mode === 'shielded' ? 'Private simulation passed' : 'Simulation passed'}
           </Text>
         </View>
       );
@@ -423,7 +423,7 @@ export function TxSimulateScreen({intent, onContinue, onCancel}: TxSimulateScree
     intent.mode === 'shielded' ? (
       <View className="flex-row items-center gap-2 flex-1 ml-1">
         <Text variant="overline" className="text-accent-shielded">
-          Shielded
+          Private
         </Text>
         <Text variant="h2">Review</Text>
       </View>

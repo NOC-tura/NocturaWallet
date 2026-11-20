@@ -24,7 +24,7 @@ import type {ShieldIntent} from '../../types/shield';
  *
  * Adapted to what a deposit is (D27 copy; part B words): "You are about to make this private"; From = your main account
  * (checksum first-6 / last-6 highlighted, screen.md's convention) — it signs and pays; To = the
- * shielded pool (its address, devnet); Network = Solana devnet; fees = network fee, deposit record
+ * pool ("Pool · 8VMe…", its address, devnet); Network = Solana devnet; fees = network fee, deposit record
  * rent, ZK proof none. The design's "Anonymity · Pool of N notes" row is #16's measured number and is
  * not repeated here; "PRIVATE" / "SHIELDED" pills are not drawn on a public deposit.
  *
@@ -46,8 +46,8 @@ export function ShieldConfirmScreen({intent, requestAuth, onAuthorized, onCancel
   const [busy, setBusy] = useState(false);
   const lastTapRef = useRef(0);
   const held = preparedA0Deposit(intent.preparedId) !== null;
-  const amount = `${displayAmount(BigInt(intent.amount), intent.decimals)} ${intent.tokenSymbol}`;
   const figure = displayAmount(BigInt(intent.amount), intent.decimals);
+  const amount = `${figure} ${intent.tokenSymbol}`;
   const headline = makePrivateCta(figure, intent.tokenSymbol);
 
   const handleShield = useCallback(async () => {

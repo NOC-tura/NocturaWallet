@@ -46,6 +46,15 @@ const EXTRA_COPY = [
   path.join(ROOT, 'src/modules/shielded/a0/unshieldCheck.ts'),
   path.join(ROOT, 'src/hooks/useA0Shielded.ts'),
   path.join(ROOT, 'src/app/Navigator.tsx'),
+  // part B: every file that changed copy
+  path.join(ROOT, 'src/screens/transparent/ReceiveScreen.tsx'),
+  path.join(ROOT, 'src/screens/transparent/SendScreen.tsx'),
+  path.join(ROOT, 'src/screens/transparent/TransactionHistoryScreen.tsx'),
+  path.join(ROOT, 'src/screens/transparent/TxSimulateScreen.tsx'),
+  path.join(ROOT, 'src/screens/onboarding/SuccessScreen.tsx'),
+  path.join(ROOT, 'src/screens/portfolio/PortfolioScreen.tsx'),
+  path.join(ROOT, 'src/constants/errors.ts'),
+  path.join(ROOT, 'src/modules/geoFence/geoFenceModule.ts'),
 ];
 
 /** Shielded UX part B (spec §2 "Widened"): the shared components of the private side. */
@@ -105,6 +114,7 @@ describe('shielded screens make no unsupported privacy claim', () => {
         'src/modules/shielded/a0/unshieldCheck.ts',
         'src/hooks/useA0Shielded.ts',
         'src/app/Navigator.tsx',
+        'src/screens/transparent/ReceiveScreen.tsx',
       ]),
     );
     // the dashboard is read as text: its shielded caption is in what the guard sees

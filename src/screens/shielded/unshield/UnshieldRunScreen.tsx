@@ -59,7 +59,7 @@ import type {StageRowStatus, StatusTone} from '../shieldedParts';
  *     reconciliation decides from the chain; never "failed") — EVERY pending reason, a
  *     signature-less `relay_failed` / `unknown` included (carry 2); only the outcome `not-sent`
  *     says not sent;
- *   - not-sent → "Not sent": the relayer's outcome, nothing left the shielded balance;
+ *   - not-sent → "Not sent": the relayer's outcome, nothing left the private balance;
  *   - a throw → its code (`a0ErrorText`). A throw once the round reached `submit` (or the re-sync
  *     that follows a submit, before the flow's revert is proven by a NEW approval) is "Not
  *     confirmed yet" + "Check again", whatever its code (carry 9; E_A0_STORE_CHANGED is "Not in

@@ -72,7 +72,7 @@ beforeEach(() => {
 afterEach(() => jest.restoreAllMocks());
 
 const CHECKS = [
-  {status: 'ok', title: 'Known programs only', meta: 'ComputeBudget · FeGSS… shielded pool'},
+  {status: 'ok', title: 'Known programs only', meta: '2 instruction(s), all known programs'},
   {status: 'ok', title: 'No token approvals granted', meta: 'no Approve instruction'},
 ];
 
@@ -92,6 +92,8 @@ describe('#19 ShieldSimulate', () => {
     expect(r.getByText('Known programs only')).toBeTruthy();
     expect(r.getByText('No token approvals granted')).toBeTruthy();
     expect(r.getByText('− 2.5 TEST')).toBeTruthy();
+    expect(r.getByText('the pool')).toBeTruthy(); // Task 5 carry 3: Task 4's "→ the pool" (A11)
+    expect(r.getByText('Making private')).toBeTruthy(); // Task 5 carry 3: the delta row's label
     expect(r.getByText('− 0.000005 SOL')).toBeTruthy();
     expect(r.getByText('− ≈ 0.00069596 SOL')).toBeTruthy();
     fireEvent.press(r.getByTestId('shield-sim-continue'));
@@ -128,6 +130,7 @@ describe('#19 ShieldSimulate', () => {
   it('a stale / forged intent (no held deposit): nothing simulated, nothing to continue', () => {
     const r = render(<ShieldSimulateScreen intent={intentFor('a0-deposit-forged')} onContinue={jest.fn()} onCancel={jest.fn()} />);
     expect(r.getByTestId('shield-sim-missing')).toBeTruthy();
+    expect(r.getByText('This deposit is no longer prepared. Go back and start again.')).toBeTruthy(); // Task 5 carry 3
     expect(mockSimulate).not.toHaveBeenCalled();
     expect(r.queryByTestId('shield-sim-continue')).toBeNull();
   });
@@ -178,6 +181,7 @@ describe('#20 ShieldConfirm', () => {
       <ShieldConfirmScreen intent={intentFor('a0-deposit-gone')} requestAuth={requestAuth} onAuthorized={jest.fn()} onCancel={jest.fn()} />,
     );
     expect(r.getByTestId('shield-confirm-missing')).toBeTruthy();
+    expect(r.getByText('This deposit is no longer prepared. Go back and start again.')).toBeTruthy(); // Task 5 carry 3
     await act(async () => {
       fireEvent.press(r.getByTestId('shield-confirm-send'));
     });
@@ -204,7 +208,7 @@ describe('#21 ShieldStatus', () => {
   const title = (r: ReturnType<typeof render>) => r.getByTestId('shield-status-title').props.children;
   const sub = (r: ReturnType<typeof render>) => r.getByTestId('shield-status-sub').props.children;
 
-  it('takes the held deposit ONCE, submits it with a second keychain read; the stages; unspent → Shielded, the position, the new balance', async () => {
+  it('takes the held deposit ONCE, submits it with a second keychain read; the stages; unspent → Now private, the position, the new balance', async () => {
     const id = holdPreparedA0Deposit(PREPARED);
     const ctl = controlledSubmit();
     const r = render(<ShieldStatusScreen intent={intentFor(id)} onDone={jest.fn()} />);
@@ -229,6 +233,7 @@ describe('#21 ShieldStatus', () => {
     expect(r.getByTestId('shield-status-balance').props.children).toBe('Private balance now 4 TEST'); // part B: "Shielded balance" → "Private balance"
     expect(r.getByTestId('shield-status-public').props.children).toBe('Your deposit is public on chain.'); // part B (spec §4, A2)
     expect(r.getByTestId('shield-status-details')).toBeTruthy(); // the explorer stays (a deposit is public by design)
+    expect(r.getByTestId('shield-status-header-sep').props.children).toBe('·'); // Task 5 carry 1: "PRIVATE · Make private", as the unshield #21
   });
 
   it('View details opens the deposit on the devnet explorer (?cluster=devnet — S13)', async () => {
@@ -250,6 +255,7 @@ describe('#21 ShieldStatus', () => {
     const r2 = render(<ShieldStatusScreen intent={intentFor(id)} onDone={jest.fn()} />);
     await waitFor(() => expect(mockSubmit).toHaveBeenCalledTimes(1));
     expect(title(r2)).toBe('Nothing to send');
+    expect(sub(r2)).toBe('This deposit is no longer prepared (it was already sent, or replaced). Start again from Make private.'); // Task 5 carry 3
   });
 
   it.each([
@@ -266,6 +272,7 @@ describe('#21 ShieldStatus', () => {
     expect(sub(r)).toBe(`${why} Your deposit is kept on this device and will be settled the next time the wallet starts, or when you tap Check again.`);
     expect(r.getByText('PENDING')).toBeTruthy();
     expect(r.queryByText(/fail/i)).toBeNull();
+    expect(r.queryByTestId('shield-status-public')).toBeNull(); // Task 5 carry 4: pending, not landed
   });
 
   it('M1b I-2 (the parked #21 copy): pending not-in-sync WITH a foreign signature → says another deposit holds the number, still pending, never "failed" or "Not made private"', async () => {
@@ -327,6 +334,7 @@ describe('#21 ShieldStatus', () => {
     );
     expect(r.getByText('PENDING')).toBeTruthy();
     expect(r.queryByText(/Nothing was broadcast/)).toBeNull();
+    expect(r.queryByTestId('shield-status-public')).toBeNull(); // Task 5 carry 4: its result is not recorded
   });
 
   it('E_A0_STORE_CHANGED after the pending write (wipe + import while in flight) → "Not in this wallet": never "kept on this device", never "Nothing was broadcast"', async () => {
@@ -345,6 +353,7 @@ describe('#21 ShieldStatus', () => {
     );
     expect(r.queryByText(/kept on this device|Nothing was broadcast/)).toBeNull();
     expect(r.queryByText('PENDING')).toBeNull();
+    expect(r.queryByTestId('shield-status-public')).toBeNull(); // Task 5 carry 4: not this wallet's deposit to describe
   });
 
   it('a cancelled keychain read → "Not sent", the submit never called', async () => {

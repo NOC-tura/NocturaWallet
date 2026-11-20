@@ -10,6 +10,7 @@ import {MMKV_KEYS} from '../../constants/mmkvKeys';
 import {useShieldedStore} from '../../store/zustand/shieldedStore';
 import {ScreenSecurityManager} from '../../modules/screenSecurity/screenSecurityModule';
 import type {RootStackParamList} from '../../types/navigation';
+import {PRIVATE_MARK} from '../../copy/modes';
 
 const PRIVACY_URL = 'https://noc-tura.io/privacy';
 const ACCENT = '#5BE3C2';
@@ -57,7 +58,7 @@ export function ShieldedExplainerScreen({navigation}: Props) {
         </Pressable>
         <View className="flex-row items-center gap-2">
           <ShieldCheck size={12} color={ACCENT} strokeWidth={2} />
-          <Text variant="overline" className="text-accent-shielded">SHIELDED</Text>
+          <Text variant="overline" className="text-accent-shielded">{PRIVATE_MARK}</Text>
         </View>
         <Text variant="overline" className="text-fg-tertiary">1 / 1</Text>
       </View>
@@ -70,18 +71,18 @@ export function ShieldedExplainerScreen({navigation}: Props) {
           Private SOL, three steps.
         </Text>
         <Text variant="body" className="text-fg-secondary mb-8 max-w-sm">
-          Shielded mode moves SOL into a ZK pool. Inside the pool, recipients and amounts are not shown on-chain. Deposits and withdrawals are public and can be linked to your address.
+          Private mode moves SOL into a ZK pool. Inside the pool, recipients and amounts are not shown on-chain. Deposits and withdrawals are public and can be linked to your address.
         </Text>
 
         <ExplainerStep
           n={1}
-          title="Move into the vault"
+          title="Move into your private balance"
           body="Deposit SOL from your public address. The deposit is visible on-chain, and so is a withdrawal back to a public address."
         />
         <ExplainerStep
           n={2}
           title="Generate a ZK proof"
-          body="For every shielded action, your phone produces a zero-knowledge proof (Groth16) locally. The proof shows you own the funds without revealing which note you're spending."
+          body="For every private action, your phone produces a zero-knowledge proof (Groth16) locally. The proof shows you own the funds without revealing which note you're spending."
         />
         <ExplainerStep
           n={3}

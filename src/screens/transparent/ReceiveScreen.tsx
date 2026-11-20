@@ -38,7 +38,7 @@ const NOC_LOGO = require('../../assets/tokens/noc-logo.png');
  *
  * Deferred:
  *   - Rotating/encrypted payment-code blob (design mock shows `noctura+shielded:eyJh…`,
- *     an unlinkable per-request blob). For now the shielded payment code is the
+ *     a fresh per-request blob). For now the shielded payment code is the
  *     STATIC noc1… view-key address — functional, but a static identifier.
  *   - Solana Pay URI label param (`?label=Noctura&message=…`)
  *   - Fiat estimate next to amount (needs price oracle)
@@ -152,7 +152,7 @@ export function ReceiveScreen({address, shielded = false, onBack}: ReceiveScreen
         title: isPayRequest
           ? 'Noctura payment request'
           : shielded
-            ? 'My Noctura shielded payment code'
+            ? 'My Noctura private payment code'
             : 'My Solana address',
       });
     } catch {
@@ -192,11 +192,11 @@ export function ReceiveScreen({address, shielded = false, onBack}: ReceiveScreen
             <AlertTriangle size={36} color="#FF5C6A" strokeWidth={1.75} />
           </View>
           <Text variant="h2" className="text-center mb-2">
-            {shielded ? 'No shielded address' : 'No wallet address'}
+            {shielded ? 'No private address' : 'No wallet address'}
           </Text>
           <Text variant="body" className="text-center text-fg-secondary max-w-sm">
             {shielded
-              ? "Your shielded address isn't ready yet. Open the Shielded tab to unlock private mode, then try again."
+              ? "Your private address isn't ready yet. Open the Private tab to unlock private mode, then try again."
               : "Your wallet hasn't finished loading. Try restarting the app, or re-import your recovery phrase from Welcome."}
           </Text>
         </View>
@@ -245,11 +245,11 @@ export function ReceiveScreen({address, shielded = false, onBack}: ReceiveScreen
         <Text variant="overline" className="mb-3">
           {shielded
             ? isPayRequest
-              ? 'Shielded · payment request'
-              : 'Shielded · payment code'
+              ? 'Private · payment request'
+              : 'Private · payment code'
             : isPayRequest
-              ? 'Transparent · pay request'
-              : 'Transparent · public address'}
+              ? 'Public · pay request'
+              : 'Public · address'}
         </Text>
 
         {/* QR card */}
@@ -305,7 +305,7 @@ export function ReceiveScreen({address, shielded = false, onBack}: ReceiveScreen
         <Pressable
           onPress={() => handleCopy(address)}
           accessibilityRole="button"
-          accessibilityLabel={shielded ? 'Copy shielded payment code' : 'Copy wallet address'}
+          accessibilityLabel={shielded ? 'Copy private payment code' : 'Copy wallet address'}
           testID="copy-address-card"
           className={cn(
             'rounded-lg p-4 mb-4 border',
@@ -328,7 +328,7 @@ export function ReceiveScreen({address, shielded = false, onBack}: ReceiveScreen
                 {copied
                   ? 'Copied to clipboard'
                   : shielded
-                    ? 'Shielded payment code'
+                    ? 'Private payment code'
                     : 'Wallet address'}
               </Text>
             </View>
@@ -341,7 +341,7 @@ export function ReceiveScreen({address, shielded = false, onBack}: ReceiveScreen
           </Text>
           {shielded ? (
             <Text variant="caption" className="text-fg-tertiary mt-1.5">
-              Your private address · share it to receive shielded transfers
+              Your private address · share it to receive private transfers
             </Text>
           ) : null}
         </Pressable>
@@ -395,7 +395,7 @@ export function ReceiveScreen({address, shielded = false, onBack}: ReceiveScreen
           <View className="flex-row items-start gap-2 rounded-lg p-3 mb-1 bg-accent-shielded-tint border border-accent-shielded/30">
             <ShieldCheck size={16} color={accentHex} strokeWidth={2} />
             <Text variant="caption" className="flex-1 text-shield-300">
-              The sender's wallet must support Noctura shielded payment codes.
+              The sender's wallet must support Noctura private payment codes.
             </Text>
           </View>
         ) : null}

@@ -11,6 +11,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import {UnshieldRunScreen} from '../UnshieldRunScreen';
 import type {UnshieldRunRequest} from '../UnshieldRunScreen';
+import {A0_STOPPED_ON_DEVICE, A0_UNSHIELD_REFUSAL_COPY, A0_VERIFY_REFUSAL_COPY} from '../unshieldCopy';
 import type {A0UnshieldOutcome, A0UnshieldStage, A0UnshieldRequest} from '../../../../modules/shielded/a0/unshieldFlow';
 
 type Unshield = (
@@ -295,7 +296,7 @@ describe('UX-A 6: the unshield #21 never opens the explorer (it would tell the e
 });
 
 describe('#21 for the unshield — every outcome said as what it is', () => {
-  it('spent → "Unshielded", CONFIRMED, the grant, the change kept shielded, its position, the tx hash', async () => {
+  it('spent → "Now public", CONFIRMED, the grant, the change kept private, its position, the tx hash', async () => {
     const {r, ctl} = await run();
     await act(async () =>
       ctl.resolve({status: 'spent', signature: SIG, changeLeafIndex: 42, changeAmount: 749_990_000n, grantLamports: 3_000_000n, destinationWithoutSol: false}),
@@ -343,6 +344,7 @@ describe('#21 for the unshield — every outcome said as what it is', () => {
     expect(title(r)).toBe('Landed, but failed verification');
     expect(r.getByTestId('unshield-status-loud')).toBeTruthy();
     expect(r.getByText("Landed, but failed verification: E_A0_VERIFY_FEE_PAYER · its fee payer is not the relayer's")).toBeTruthy();
+    expect(sub(r)).toBe('The relayer landed a transaction for this transfer to public that does not match what you approved. It is not retried.'); // Task 5 carry 3
     expect(r.queryByText(/9xyz/)).toBeNull(); // the verifier's detail is never rendered (carry 4)
     expect(r.getByText('UNVERIFIED')).toBeTruthy();
     expect(r.getByTestId('unshield-line-note').props.children).toBe('The transaction spends your note on chain, so the note is spent.');
@@ -483,6 +485,9 @@ describe('#21 for the unshield — every outcome said as what it is', () => {
     await step(ctl, 'submit');
     await act(async () => ctl.reject(Object.assign(new Error('E_A0_STORE_CHANGED: replaced'), {code: 'E_A0_STORE_CHANGED'})));
     expect(title(r)).toBe('Not in this wallet');
+    expect(sub(r)).toBe(
+      'E_A0_STORE_CHANGED · The wallet on this device was replaced while this transfer to public was in flight. It was sent from the earlier wallet; restoring that wallet from its recovery phrase recovers its result.',
+    ); // Task 5 carry 3
     expect(r.queryByTestId('unshield-check-again')).toBeNull();
     expect(r.queryByText(/Not sent|Nothing was sent/)).toBeNull();
   });
@@ -648,7 +653,7 @@ describe('final review I-1 + re-review N-1 / N-2 / N-3 / N-4: what "Check again"
   };
   const caption = (r: R) => r.getByTestId('unshield-check-caption').props.children;
 
-  it('this note settled (verified) → "Unshielded", CONFIRMED; no PENDING, no "Check again"; the caption stays, without the link', async () => {
+  it('this note settled (verified) → "Now public", CONFIRMED; no PENDING, no "Check again"; the caption stays, without the link', async () => {
     const {r} = await pendingRun();
     check(r, rep({settled: [settledOf(MINE)]}), {kind: 'settled', verified: true}, 'Confirmed · now public.'); // part B: "Confirmed · unshielded." → "Confirmed · now public."
     expect(title(r)).toBe('Now public'); // part B: "Unshielded" → "Now public"
@@ -674,11 +679,12 @@ describe('final review I-1 + re-review N-1 / N-2 / N-3 / N-4: what "Check again"
     check(r, rep({settled: [settledOf(MINE, false, 'E_A0_VERIFY_SEED_SIGNER')]}), {kind: 'unverified', code: 'E_A0_VERIFY_SEED_SIGNER'}, 'x');
     expect(title(r)).toBe('Landed, but failed verification');
     expect(r.getByText('Landed, but failed verification: E_A0_VERIFY_SEED_SIGNER · a key of this wallet signed it')).toBeTruthy();
+    expect(sub(r)).toBe('Checked again: the relayer landed a transaction for this transfer to public that does not match what you approved. It is not retried.'); // Task 5 carry 3
     expect(r.getByText('UNVERIFIED')).toBeTruthy();
     expect(r.queryByTestId('unshield-check-again')).toBeNull();
   });
 
-  it('N-1 (a), CP2\'s shape: tap 1 settles THIS note (the older still pending), tap 2 reverts the older → this #21 stays "Unshielded", never "Not sent"', async () => {
+  it('N-1 (a), CP2\'s shape: tap 1 settles THIS note (the older still pending), tap 2 reverts the older → this #21 stays "Now public", never "Not sent"', async () => {
     const {r} = await pendingRun();
     check(r, rep({settled: [settledOf(MINE)], stillPending: [{rho: OLDER, reason: 'in-window'}]}), {kind: 'pending'}, 'Still not confirmed · checked just now.');
     expect(title(r)).toBe('Now public'); // part B: "Unshielded" → "Now public"
@@ -688,7 +694,7 @@ describe('final review I-1 + re-review N-1 / N-2 / N-3 / N-4: what "Check again"
     expect(caption(r)).toBe('Confirmed · now public.'); // part B: "Confirmed · unshielded." → "Confirmed · now public."
   });
 
-  it('N-1 (b), the mirror: the OLDER settles while this one reverts → this #21 says "Not sent", never "Unshielded"', async () => {
+  it('N-1 (b), the mirror: the OLDER settles while this one reverts → this #21 says "Not sent", never "Now public"', async () => {
     const {r} = await pendingRun();
     check(r, rep({settled: [settledOf(OLDER)], reverted: [{rho: MINE}]}), {kind: 'settled', verified: true}, 'Confirmed · now public.'); // part B: "Confirmed · unshielded." → "Confirmed · now public."
     expect(title(r)).toBe('Not sent');
@@ -757,5 +763,15 @@ describe('final review I-1 + re-review N-1 / N-2 / N-3 / N-4: what "Check again"
     check(r, rep({reverted: [{rho: MINE}]}), {kind: 'reverted'}, 'x');
     expect(title(r)).toBe('Now public'); // part B: "Unshielded" → "Now public"
     expect(r.getByText('CONFIRMED')).toBeTruthy();
+  });
+});
+
+describe('Task 5 carry 3: the refusal sentences Task 4 reworded, each held by a row', () => {
+  it('the verifier and flow refusals in the new words', () => {
+    expect(A0_VERIFY_REFUSAL_COPY.E_A0_VERIFY_PROGRAMS).toBe('it calls a program outside the relayed exit');
+    expect(A0_UNSHIELD_REFUSAL_COPY.E_A0_UNSHIELD_BUSY).toBe('Another transfer to public is still running on this device.');
+    expect(A0_UNSHIELD_REFUSAL_COPY.E_A0_UNSHIELD_NOT_READY).toBe('Your private balance is not restored yet.');
+    expect(A0_UNSHIELD_REFUSAL_COPY.E_A0_UNSHIELD_NO_NOTE).toBe('No private note can pay the relayer fee.');
+    expect(A0_STOPPED_ON_DEVICE).toBe('The transfer to public stopped on this device.');
   });
 });

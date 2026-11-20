@@ -25,8 +25,7 @@ export function PortfolioScreen() {
           Portfolio
         </Text>
         <Text variant="body" className="text-center text-fg-secondary max-w-sm">
-          Holdings breakdown, allocation by token, and shielded/transparent
-          split. Coming soon.
+          Holdings breakdown, allocation by token, and the public / private split. Coming soon.
         </Text>
       </View>
     </SafeAreaView>

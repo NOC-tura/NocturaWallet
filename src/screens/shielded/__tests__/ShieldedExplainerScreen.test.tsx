@@ -29,7 +29,7 @@ describe('ShieldedExplainerScreen', () => {
   it('renders H1, all 3 step titles, and footer note', () => {
     const {getByText} = render(<ShieldedExplainerScreen navigation={navigation} route={route} />);
     expect(getByText('Private SOL, three steps.')).toBeTruthy();
-    expect(getByText('Move into the vault')).toBeTruthy();
+    expect(getByText('Move into your private balance')).toBeTruthy(); // part B: Move into the vault → Move into your private balance
     expect(getByText('Generate a ZK proof')).toBeTruthy();
     expect(getByText('Send privately')).toBeTruthy();
     expect(getByText('Screenshots disabled across this flow.')).toBeTruthy();

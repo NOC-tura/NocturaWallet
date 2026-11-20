@@ -53,9 +53,10 @@ jest.mock('../../../store/zustand/shieldedStore', () => ({
   useShieldedStore: () => ({mode: mockMode.current, setMode: jest.fn()}),
 }));
 
+const mockHide = {current: false};
 jest.mock('../../../store/zustand/publicSettingsStore', () => ({
   usePublicSettingsStore: (sel: (s: Record<string, unknown>) => unknown) =>
-    sel({hideBalances: false, setHideBalances: jest.fn()}),
+    sel({hideBalances: mockHide.current, setHideBalances: jest.fn()}),
 }));
 
 // ── Hooks ───────────────────────────────────────────────────────────────────
@@ -152,6 +153,7 @@ beforeEach(() => {
   mockPoolCount.mockResolvedValue({status: 'unavailable'});
   Object.assign(mockCheck, {disabled: false, checking: false, note: null});
   mockRefusal.current = null;
+  mockHide.current = false;
 });
 
 describe('DashboardScreen — transparent mode', () => {
@@ -168,7 +170,7 @@ describe('DashboardScreen — transparent mode', () => {
   it('does NOT render shielded empty state in transparent mode', async () => {
     mockMode.current = 'transparent';
     const {queryByText} = await renderDashboard();
-    expect(queryByText('Nothing shielded yet')).toBeNull();
+    expect(queryByText('Nothing private yet')).toBeNull(); // part B: Nothing shielded yet → Nothing private yet
   });
 });
 
@@ -180,12 +182,12 @@ describe('DashboardScreen — shielded mode, empty state', () => {
 
   it('shows the shielded empty-state heading', async () => {
     const {getByText} = await renderDashboard();
-    expect(getByText('Nothing shielded yet')).toBeTruthy();
+    expect(getByText('Nothing private yet')).toBeTruthy(); // part B: Nothing shielded yet → Nothing private yet
   });
 
   it('shows the empty-state sub-line', async () => {
     const {getByText} = await renderDashboard();
-    expect(getByText('Tap Shield to make a token private')).toBeTruthy();
+    expect(getByText('Tap Make private to move a token in')).toBeTruthy(); // part B: Tap Shield to make a token private → Tap Make private to move a token in
   });
 
   it('does NOT render an anonymity set line when the count is unavailable', async () => {
@@ -222,9 +224,9 @@ describe('re-review N-2: the decided caption outlives the last pending item (no 
     ['a balance', {kind: 'ready', unspent: 200_000_000n, pending: 0n, notes: 1}],
   ])('%s: the caption shown, the link absent', async (_l, view) => {
     mockView.current = view;
-    Object.assign(mockCheck, {note: 'Not sent · your note is back in your shielded balance.'});
+    Object.assign(mockCheck, {note: 'Not sent · your note is back in your private balance.'}); // part B: shielded balance → private balance
     const r = await renderDashboard();
-    expect(r.getByTestId('dashboard-check-caption').props.children).toBe('Not sent · your note is back in your shielded balance.');
+    expect(r.getByTestId('dashboard-check-caption').props.children).toBe('Not sent · your note is back in your private balance.'); // part B: shielded balance → private balance
     expect(r.queryByTestId('dashboard-check-again')).toBeNull();
   });
 });
@@ -235,9 +237,9 @@ describe('DashboardScreen — shielded mode, with balance (the A0 store, ready)'
     mockView.current = {kind: 'ready', unspent: 200_000_000n, pending: 0n, notes: 1};
   });
 
-  it('renders the shielded row "0.2 · shielded" (exact BigInt display)', async () => {
+  it('renders the shielded row "0.2 · private" (exact BigInt display)', async () => {
     const {getByText} = await renderDashboard();
-    expect(getByText('0.2 · shielded')).toBeTruthy();
+    expect(getByText('0.2 · private')).toBeTruthy(); // part B: 0.2 · shielded → 0.2 · private
   });
 
   it('renders the pool token name in the row', async () => {
@@ -287,19 +289,21 @@ describe('DashboardScreen — shielded mode, with balance (the A0 store, ready)'
   it('does NOT render the transparent empty-state in shielded mode with balance', async () => {
     const {queryByText} = await renderDashboard();
     expect(queryByText('No tokens yet · pull to refresh')).toBeNull();
-    expect(queryByText('Nothing shielded yet')).toBeNull();
+    expect(queryByText('Nothing private yet')).toBeNull(); // part B: Nothing shielded yet → Nothing private yet
   });
 
-  it('shows the anonymity set line: the A0 pool note count', async () => {
+  it('the anonymity set (the A0 pool note count) is behind the card\'s Details (spec §4)', async () => {
     mockPoolCount.mockResolvedValue({status: 'ok', count: 42});
-    const {getByText} = await renderDashboard();
+    const {getByText, queryByText, getByTestId} = await renderDashboard();
+    expect(queryByText('Anonymity set · 42')).toBeNull(); // part B: collapsed by default
+    fireEvent.press(getByTestId('dashboard-details-toggle'));
     expect(getByText('Anonymity set · 42')).toBeTruthy();
   });
 
   it('no Send action in shielded mode (the shielded transfer is hidden until M1c); Shield is there', async () => {
     const {queryByText, getByText} = await renderDashboard();
     expect(queryByText('Send')).toBeNull();
-    expect(getByText('Shield')).toBeTruthy();
+    expect(getByText('Make private')).toBeTruthy(); // part B: Shield → Make private
   });
 });
 
@@ -318,7 +322,7 @@ describe('DashboardScreen — shielded mode before the restore finished: a state
     const {getByText, queryByText} = await renderDashboard();
     expect(getByText(hero)).toBeTruthy();
     expect(getByText(line)).toBeTruthy();
-    expect(queryByText('Nothing shielded yet')).toBeNull();
+    expect(queryByText('Nothing private yet')).toBeNull(); // part B: Nothing shielded yet → Nothing private yet
     expect(queryByText(/^0 TEST$/)).toBeNull();
   });
 });
@@ -362,7 +366,7 @@ describe('UX-A 7: "Make public" next to Shield (owner-approved departure: the de
     const onShield = jest.fn();
     const r = await renderDashboard({onShield, onMakePublic});
     const labels = r.getAllByRole('button').map(b => b.props.accessibilityLabel as string | undefined);
-    const i = labels.indexOf('Shield');
+    const i = labels.indexOf('Make private'); // part B: Shield → Make private
     expect(i).toBeGreaterThanOrEqual(0);
     expect(labels[i + 1]).toBe('Make public');
     fireEvent.press(r.getByLabelText('Make public'));
@@ -373,7 +377,7 @@ describe('UX-A 7: "Make public" next to Shield (owner-approved departure: the de
   it('absent without onMakePublic (a build without the unshield route passes none)', async () => {
     mockMode.current = 'shielded';
     const r = await renderDashboard({onShield: jest.fn()});
-    expect(r.getByLabelText('Shield')).toBeTruthy(); // positive control
+    expect(r.getByLabelText('Make private')).toBeTruthy(); // positive control; part B: Shield → Make private
     expect(r.queryByLabelText('Make public')).toBeNull();
   });
 
@@ -382,5 +386,59 @@ describe('UX-A 7: "Make public" next to Shield (owner-approved departure: the de
     const r = await renderDashboard({onMakePublic: jest.fn()});
     expect(r.getByLabelText('Swap')).toBeTruthy(); // positive control
     expect(r.queryByLabelText('Make public')).toBeNull();
+  });
+});
+
+describe('part B: the one vocabulary on the dashboard (spec §2, §4)', () => {
+  it('the toggle reads Public | Private (both modes); no old word', async () => {
+    for (const m of ['transparent', 'shielded'] as const) {
+      mockMode.current = m;
+      const r = await renderDashboard();
+      expect(r.getByText('Public')).toBeTruthy();
+      expect(r.getByText('Private')).toBeTruthy();
+      expect(r.queryByText(/^(Transparent|Shielded)$/)).toBeNull();
+      r.unmount();
+    }
+  });
+
+  it('Private mode: the "Private balance" card, "Private assets", the two actions, the Private balance card\'s honest sentence', async () => {
+    mockMode.current = 'shielded';
+    mockView.current = {kind: 'ready', unspent: 200_000_000n, pending: 0n, notes: 1};
+    const r = await renderDashboard({onShield: jest.fn(), onMakePublic: jest.fn()});
+    expect(r.getAllByText('Private balance').length).toBe(2); // the hero overline and the info card's title
+    expect(r.getByText('Private assets')).toBeTruthy(); // the overline renders "PRIVATE ASSETS"
+    expect(r.getByText('Private assets').props.className).toMatch(/\buppercase\b/); // Task 5 carry: through the overline variant
+    expect(r.getByLabelText('Make private')).toBeTruthy();
+    expect(r.getByLabelText('Make public')).toBeTruthy();
+    expect(r.getByText('Make private moves tokens in with a proof made on this device. Deposits are public on chain.')).toBeTruthy();
+    expect(r.queryByText(/vault/i)).toBeNull();
+  });
+
+  it('Public mode: only the toggle changed — "Total balance", Send, Receive, Swap, "Tokens"', async () => {
+    mockMode.current = 'transparent';
+    const r = await renderDashboard({onReceive: jest.fn()});
+    expect(r.getByText('Total balance')).toBeTruthy();
+    expect(r.getByText('Send')).toBeTruthy();
+    expect(r.getByText('Receive')).toBeTruthy();
+    expect(r.getByLabelText('Swap')).toBeTruthy();
+    expect(r.getByText('Tokens')).toBeTruthy();
+  });
+
+  it('Review Focus 5: balances hidden → no Details toggle and no anonymity number on the Private balance card', async () => {
+    mockMode.current = 'shielded';
+    mockHide.current = true;
+    mockPoolCount.mockResolvedValue({status: 'ok', count: 42});
+    const r = await renderDashboard();
+    expect(r.getByText('Tap eye to reveal')).toBeTruthy(); // positive control: the hidden state
+    expect(r.queryByTestId('dashboard-details-toggle')).toBeNull();
+    expect(r.queryByText(/Anonymity set/)).toBeNull();
+  });
+
+  it('the pending caption is unchanged: "{x} pending · not confirmed yet" with Check again', async () => {
+    mockMode.current = 'shielded';
+    mockView.current = {kind: 'ready', unspent: 200_000_000n, pending: 50_000_000n, notes: 1};
+    const r = await renderDashboard();
+    expect(r.getByText('0.05 pending · not confirmed yet')).toBeTruthy();
+    expect(r.getByTestId('dashboard-check-again')).toBeTruthy();
   });
 });
