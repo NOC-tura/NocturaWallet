@@ -66,6 +66,8 @@ export const DESTINATION_EXTERNAL = 'Another address';
 export const DESTINATION_EXTERNAL_SUB = 'A wallet address outside this wallet';
 export const RECOMMENDED = ' (recommended)';
 export const CHANGE = 'Change';
+/** Change's accessibility label (a screen reader hears what it changes). */
+export const CHANGE_DESTINATION = 'Change destination';
 /** Nothing chosen yet (owner decision A1, 2026-11-20): no quote yet, or the fresh account is not offered (S9 / S11). */
 export const DESTINATION_NONE = 'Choose a destination';
 

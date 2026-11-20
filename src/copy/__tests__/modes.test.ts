@@ -37,6 +37,7 @@ describe('src/copy/modes.ts — the §2 table', () => {
     expect(modes.DESTINATION_EXTERNAL_SUB).toBe('A wallet address outside this wallet');
     expect(modes.RECOMMENDED).toBe(' (recommended)');
     expect(modes.CHANGE).toBe('Change');
+    expect(modes.CHANGE_DESTINATION).toBe('Change destination'); // Task 3 carry 1b: Change's accessibility label
     expect(modes.DESTINATION_NONE).toBe('Choose a destination'); // owner decision A1
   });
 

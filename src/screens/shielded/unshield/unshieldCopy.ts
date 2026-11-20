@@ -34,17 +34,17 @@ export const A0_FRESH_UNAVAILABLE_COPY: Record<A0FreshUnavailable, string> = {
 /** "My main account" (§11, verbatim). */
 export const A0_MAIN_ACCOUNT_WARNING = 'This links your exit to your deposit: your main account made the deposit.';
 
-/** "Another address" (§11, verbatim). */
-export const A0_EXTERNAL_WARNING = 'This is a payment from your shielded balance. The recipient sees the amount.';
+/** "Another address" (§11; part B swaps one word: the honest meaning is unchanged). */
+export const A0_EXTERNAL_WARNING = 'This is a payment from your private balance. The recipient sees the amount.';
 
-/** The amount line (§11; the token's symbol for "NOC"). */
+/** The amount line (§11; the token's symbol for "NOC"; part B: one word swapped). */
 export function a0AmountLine(amount: bigint, fee: bigint, decimals: number, symbol: string): string {
-  return `The destination receives exactly ${displayAmount(amount, decimals)} ${symbol}. The relayer fee of ${displayAmount(fee, decimals)} ${symbol} comes out of your shielded balance.`;
+  return `The destination receives exactly ${displayAmount(amount, decimals)} ${symbol}. The relayer fee of ${displayAmount(fee, decimals)} ${symbol} comes out of your private balance.`;
 }
 
-/** The one-note limit (§11; the token's symbol for "NOC"). */
+/** The one-note limit (§11; part B: in #16's Details, the new vocabulary). */
 export function a0OneNoteLimit(max: bigint, decimals: number, symbol: string): string {
-  return `You can unshield up to ${displayAmount(max, decimals)} ${symbol} from one note at a time; combining notes comes in a later version.`;
+  return `You can make up to ${displayAmount(max, decimals)} ${symbol} public from one note at a time; combining notes comes in a later version.`;
 }
 
 /**

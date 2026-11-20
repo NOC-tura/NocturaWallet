@@ -5,6 +5,7 @@ import {Text} from '../ui';
 import {cn} from '../../utils/cn';
 import {
   CHANGE,
+  CHANGE_DESTINATION,
   DESTINATION_EXTERNAL,
   DESTINATION_EXTERNAL_SUB,
   DESTINATION_FRESH,
@@ -71,6 +72,8 @@ export function DestinationRow({
   children,
 }: DestinationRowProps) {
   const [open, setOpen] = useState(false);
+  // carry 1c: the options never show while nothing can be chosen (the quote went away while open)
+  const expanded = open && !disabled;
   const pick = (c: DestinationChoice) => {
     onChoose(c);
     setOpen(false);
@@ -86,26 +89,26 @@ export function DestinationRow({
           onPress={disabled ? undefined : () => setOpen(o => !o)}
           disabled={disabled}
           accessibilityRole="button"
-          accessibilityLabel={CHANGE}
-          accessibilityState={{disabled, expanded: open}}
+          accessibilityLabel={CHANGE_DESTINATION}
+          accessibilityState={{disabled, expanded}}
           hitSlop={8}>
           <Text variant="body-sm" className={cn('font-geist-semibold', disabled ? 'text-fg-disabled' : 'text-accent-shielded')}>
             {CHANGE}
           </Text>
         </Pressable>
       </View>
-      {freshReason !== null && !open ? (
+      {freshReason !== null && !expanded ? (
         <Text variant="caption" className="text-fg-tertiary mt-1" testID={`${testID}-fresh-reason`}>
           {freshReason}
         </Text>
       ) : null}
       {warning ? (
-        <Text variant="caption" className="text-warning mt-2" testID={warning.testID}>
+        <Text variant="caption" className="text-warning mt-2" testID={warning.testID} accessibilityLiveRegion="polite">
           {warning.text}
         </Text>
       ) : null}
-      {open ? (
-        <View className="mt-3" testID={`${testID}-options`}>
+      {expanded ? (
+        <View className="mt-3" testID={`${testID}-options`} accessibilityRole="radiogroup">
           <OptionRow
             testID={`${testID}-fresh`}
             Icon={UserPlus}

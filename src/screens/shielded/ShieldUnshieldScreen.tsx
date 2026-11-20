@@ -3,6 +3,7 @@ import {View, Pressable, TextInput, ScrollView} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {ArrowLeft, ShieldCheck, AlertTriangle, Shield, RefreshCw, Eye} from 'lucide-react-native';
 import {Text} from '../../components/ui';
+import {AmountLimitHint, DetailsDisclosure, overLimit} from '../../components/private';
 import {useWalletStore} from '../../store/zustand/walletStore';
 import {cn} from '../../utils/cn';
 import {parseTokenAmount, formatTokenAmount, groupInteger} from '../../utils/parseTokenAmount';
@@ -20,44 +21,53 @@ import type {A0CheckAgain, A0ShieldedView} from '../../hooks/useA0Shielded';
 import {CheckAgainLink} from '../../components/CheckAgainLink';
 import {UnshieldSide} from './unshield/UnshieldSide';
 import {a0RefusalLoudText} from './unshield/unshieldCopy';
+import {BalanceRow} from './shieldedParts';
+import {
+  MAKE_PRIVATE,
+  MAKE_PUBLIC,
+  PRIVATE_PUBLIC_TITLE,
+  PUBLIC_BALANCE,
+  makePrivateCta,
+  makePrivateCtaIdle,
+} from '../../copy/modes';
 import type {A0VerifyRefusal} from '../../modules/shielded/a0/landedVerifier';
 import type {A0UnshieldDestination} from '../../modules/shielded/a0/unshieldFlow';
 
 /**
- * #16 Shield / Unshield — mirror /home/user/Downloads/index.html §s16 (+ screen.md #16): both
+ * #16 "Private ⇄ Public" — mirror /home/user/Downloads/index.html §s16 (+ screen.md #16): both
  * sides on the A0 pool (spec §5 step 1, §6 steps 1–2, §11).
  *
- * THE UNSHIELD SIDE (M1c Task 8; spec §12's "hidden until its plan lands" ends for it): the "Make
- * public" tab and `./unshield/UnshieldSide.tsx` (the destination choice, the warnings, the relayer
- * quote). The route exists only in the shielded (devnet) build and no deep link opens this side:
- * `noctura://deposit` opens "Make private" whatever its query says (`deepLinkConfig` pins
- * `direction`; the Navigator honours `initialDirection: 'public'` only on a route in-app navigation
- * created — fix round 1, I-1). The direction tabs flip the sub-region and push no route (the design).
+ * Shielded UX part B (spec 2026-11-20 §4): one vocabulary (`src/copy/modes.ts`); ONE balance line
+ * per tab (decision B-2) — "Public balance" here, "Private balance" on Make public — so the old
+ * private balance line above the card is now only the STATUS (the startup states, a refusal, the
+ * pending sum and "Check again"); the technical fee rows and the pool-size row behind "Details ▾"
+ * (decision B-3); the limit through `AmountLimitHint` (decision B-4).
  *
- * Built from the design's states 1 (idle), 3 (amount entered + fees) and 4 (insufficient), plus the
- * states the A0 flow adds (undrawn, for the owner's visual pass): the shielded balance line and its
- * startup states (restoring / error + Retry / unsupported device), the SOL-short warning, and the
- * deposit-record rent row. The amount is BigInt end to end (cardinal rule 2).
+ * THE MAKE PUBLIC SIDE (M1c Task 8): the "Make public" tab and `./unshield/UnshieldSide.tsx`. The
+ * route exists only in the devnet build and no deep link opens this side: `noctura://deposit`
+ * opens "Make private" whatever its query says (`deepLinkConfig` pins `direction`; the Navigator
+ * honours `initialDirection: 'public'` only on a route in-app navigation created — fix round 1,
+ * I-1). The direction tabs flip the sub-region and push no route (the design).
  *
  * THE FEES ARE WHAT THE A0 DEPOSIT COSTS: the network fee (one signature, 0.000005 SOL), the ZK
  * proof fee — none: the proof is made on this device — and the rent of the deposit's rho marker
- * account. All three are SOL; the token amount is shielded exactly ("You'll shield" = the amount).
+ * account. All three are SOL; the token amount moves exactly ("You'll make private" = the amount).
  *
- * Deviations from the design, said loudly (Task notes): no USD lines (the devnet test token has no
- * price; the old figures were fixed mock values); the anonymity line is the pool's note count read
- * from the chain, a number without the 5-bar meter (spec I4: a measure, not a yes/no); the
- * token chip is the pool's single token, not a selector.
+ * Deviations from the design, said loudly: no USD lines (the devnet test token has no price); the
+ * pool-size line is the pool's note count read from the chain, a number without the 5-bar meter
+ * (spec I4: a measure, not a yes/no), now inside Details; the token chip is the pool's single
+ * token, not a selector. The amount is BigInt end to end (cardinal rule 2).
  */
 
 interface ShieldUnshieldScreenProps {
   onBack: () => void;
   /** CTA → #18 with the amount in base units */
   onShield: (amountBaseUnits: string) => void;
-  /** the unshield CTA → the unshield run (#18 → #21), the amount in base units */
+  /** the Make public CTA → its run (#18 → #21), the amount in base units */
   onUnshield?: (request: {destination: A0UnshieldDestination; amount: string}) => void;
   /** which side opens (default "Make private") */
   initialDirection?: 'private' | 'public';
-  /** changes each time the screen regains focus (the unshield CTA's tap-disable ends there) */
+  /** changes each time the screen regains focus (the Make public CTA's tap-disable ends there) */
   focusKey?: number;
 }
 
@@ -113,7 +123,7 @@ export function ShieldUnshieldScreen({onBack, onShield, onUnshield, initialDirec
   const parsed = parseAmount(amount);
   const hasAmount = parsed.kind === 'ok';
   const units = parsed.kind === 'ok' ? parsed.units : 0n;
-  const insufficient = hasAmount && units > available;
+  const insufficient = overLimit(hasAmount ? units : null, available);
   const solShort = sol < SOL_NEEDED;
   const ready = view.kind === 'ready';
   const canSubmit = ready && hasAmount && !insufficient && !solShort;
@@ -155,7 +165,7 @@ export function ShieldUnshieldScreen({onBack, onShield, onUnshield, initialDirec
           <ArrowLeft size={22} color="#A8ACB5" strokeWidth={1.75} />
         </Pressable>
         <Text variant="h2" className="ml-1 flex-1">
-          Shield / Unshield
+          {PRIVATE_PUBLIC_TITLE}
         </Text>
         <Text variant="caption" className="text-fg-tertiary">
           {sym}
@@ -165,8 +175,8 @@ export function ShieldUnshieldScreen({onBack, onShield, onUnshield, initialDirec
       {/* Direction tabs (the design): they flip the sub-region, no route is pushed */}
       <View className="px-5 mb-4">
         <View className="flex-row bg-bg-surface-2 rounded-pill p-1">
-          <DirTab label="Make private" Icon={ShieldCheck} active={direction === 'private'} onPress={() => setDirection('private')} />
-          <DirTab label="Make public" Icon={Eye} active={direction === 'public'} onPress={() => setDirection('public')} />
+          <DirTab label={MAKE_PRIVATE} Icon={ShieldCheck} active={direction === 'private'} onPress={() => setDirection('private')} />
+          <DirTab label={MAKE_PUBLIC} Icon={Eye} active={direction === 'public'} onPress={() => setDirection('public')} />
         </View>
       </View>
 
@@ -188,20 +198,13 @@ export function ShieldUnshieldScreen({onBack, onShield, onUnshield, initialDirec
             showsVerticalScrollIndicator={false}>
             <ShieldedLine view={view} retrying={retrying} retryError={retryError} onRetry={handleRetry} checkAgain={checkAgain} refusal={refusal} />
 
-            {/* Amount card */}
+            {/* Amount card — its one balance line is the PUBLIC balance (decision B-2) */}
             <View
               className={cn(
                 'rounded-lg bg-bg-surface-1 border p-5 mb-4',
                 insufficient ? 'border-danger' : 'border-bg-surface-3',
               )}>
-              <View className="flex-row items-center justify-between mb-3">
-                <Text variant="body-sm" className="text-fg-secondary">
-                  Available
-                </Text>
-                <Text variant="body-sm" numeral className="font-geist-semibold text-fg-primary">
-                  {`${displayAmount(available, A0_TOKEN.decimals)} ${sym}`}
-                </Text>
-              </View>
+              <BalanceRow label={PUBLIC_BALANCE} value={`${displayAmount(available, A0_TOKEN.decimals)} ${sym}`} testID="shield-balance" />
               {/* UX-A 3 (the design's .amount-line: baseline, gap 8, centred): the input is sized to
                   its content — no min width — so the symbol sits right after the figure */}
               <View className="flex-row items-baseline justify-center gap-2 mb-3" testID="shield-amount-row">
@@ -224,12 +227,12 @@ export function ShieldUnshieldScreen({onBack, onShield, onUnshield, initialDirec
               </View>
               <View className="items-center">
                 {insufficient ? (
-                  <View className="flex-row items-center gap-2">
-                    <AlertTriangle size={12} color="#FF5C6A" strokeWidth={2} />
-                    <Text variant="caption" className="text-danger">
-                      {`Insufficient balance · max ${displayAmount(available, A0_TOKEN.decimals)} ${sym}`}
-                    </Text>
-                  </View>
+                  <AmountLimitHint
+                    amount={hasAmount ? units : null}
+                    max={available}
+                    message={`Insufficient balance · max ${displayAmount(available, A0_TOKEN.decimals)} ${sym}`}
+                    testID="shield-over-max"
+                  />
                 ) : parsed.kind === 'invalid' ? (
                   <Text variant="caption" className="text-danger">
                     {`Enter an amount of ${sym} (up to ${A0_TOKEN.decimals} decimals)`}
@@ -254,7 +257,7 @@ export function ShieldUnshieldScreen({onBack, onShield, onUnshield, initialDirec
               </View>
             </View>
 
-            {/* Fees card */}
+            {/* Fees card — the total visible; the rows behind Details (decision B-3) */}
             <View
               className={cn(
                 'rounded-lg bg-bg-surface-1 border border-bg-surface-3 p-4 mb-4',
@@ -263,24 +266,37 @@ export function ShieldUnshieldScreen({onBack, onShield, onUnshield, initialDirec
               <Text variant="overline" className="mb-3">
                 Fees
               </Text>
-              <FeeRow
-                label="Network fee"
-                value={hasAmount ? `${formatTokenAmount(A0_DEPOSIT_FEE_LAMPORTS, SOL_DECIMALS)} SOL` : '—'}
-              />
-              <FeeRow label="ZK proof fee" value={hasAmount ? 'None · made on this device' : '—'} zk />
-              <FeeRow
-                label="Deposit record rent"
-                value={hasAmount ? `≈ ${formatTokenAmount(A0_RHO_MARKER_RENT_LAMPORTS, SOL_DECIMALS)} SOL` : '—'}
-              />
-              <View className="h-px bg-bg-surface-3 my-3" />
               <View className="flex-row items-center justify-between">
                 <Text variant="body-sm" className="text-fg-secondary">
-                  You'll shield
+                  You'll make private
                 </Text>
                 <Text variant="balance-md" numeral className="text-fg-primary" testID="shield-net">
                   {`${hasAmount && !insufficient ? displayAmount(units, A0_TOKEN.decimals) : '—'} ${sym}`}
                 </Text>
               </View>
+              <DetailsDisclosure testID="shield-details">
+                <View className="h-px bg-bg-surface-3 my-3" />
+                <FeeRow
+                  label="Network fee"
+                  value={hasAmount ? `${formatTokenAmount(A0_DEPOSIT_FEE_LAMPORTS, SOL_DECIMALS)} SOL` : '—'}
+                />
+                <FeeRow label="ZK proof fee" value={hasAmount ? 'None · made on this device' : '—'} zk />
+                <FeeRow
+                  label="Deposit record rent"
+                  value={hasAmount ? `≈ ${formatTokenAmount(A0_RHO_MARKER_RENT_LAMPORTS, SOL_DECIMALS)} SOL` : '—'}
+                />
+                {/* The pool's size — a number, never a yes/no (spec I4); a technical row (ambiguity A6) */}
+                {hasAmount && !insufficient && poolNotes !== null ? (
+                  <View className="flex-row items-center justify-between mt-1">
+                    <Text variant="body-sm" className="text-fg-secondary">
+                      Notes in the pool after this deposit
+                    </Text>
+                    <Text variant="body-sm" numeral className="text-accent-shielded font-geist-semibold" testID="pool-notes">
+                      {groupInteger(String(poolNotes + 1))}
+                    </Text>
+                  </View>
+                ) : null}
+              </DetailsDisclosure>
             </View>
 
             {solShort ? (
@@ -289,20 +305,6 @@ export function ShieldUnshieldScreen({onBack, onShield, onUnshield, initialDirec
                 <Text variant="caption" className="flex-1 text-fg-secondary">
                   {`Not enough SOL: this deposit needs about ${formatTokenAmount(SOL_NEEDED, SOL_DECIMALS)} SOL for the network fee and the deposit record.`}
                 </Text>
-              </View>
-            ) : null}
-
-            {/* The pool's size (Make private + amount) — a number, never a yes/no (spec I4) */}
-            {hasAmount && !insufficient && poolNotes !== null ? (
-              <View className="rounded-lg bg-bg-surface-1 border border-bg-surface-3 p-4 mb-4">
-                <View className="flex-row items-center justify-between">
-                  <Text variant="body-sm" className="text-fg-secondary">
-                    Notes in the pool after this deposit
-                  </Text>
-                  <Text variant="body-sm" numeral className="text-accent-shielded font-geist-semibold" testID="pool-notes">
-                    {groupInteger(String(poolNotes + 1))}
-                  </Text>
-                </View>
               </View>
             ) : null}
 
@@ -321,7 +323,7 @@ export function ShieldUnshieldScreen({onBack, onShield, onUnshield, initialDirec
               accessibilityRole="button"
               accessibilityState={{disabled: !canSubmit}}
               testID="shield-cta"
-              accessibilityLabel={`Shield ${sym}`}
+              accessibilityLabel={makePrivateCtaIdle(sym)}
               className={cn(
                 'min-h-touch-rec rounded-pill items-center justify-center flex-row gap-2',
                 canSubmit ? 'bg-accent-shielded active:opacity-90' : 'bg-bg-surface-3',
@@ -335,7 +337,7 @@ export function ShieldUnshieldScreen({onBack, onShield, onUnshield, initialDirec
               <Text
                 variant="body-lg"
                 className={cn('font-geist-semibold', canSubmit ? 'text-bg-base' : 'text-fg-disabled')}>
-                {canSubmit ? `Shield ${displayAmount(units, A0_TOKEN.decimals)} ${sym}` : `Shield ${sym}`}
+                {canSubmit ? makePrivateCta(displayAmount(units, A0_TOKEN.decimals), sym) : makePrivateCtaIdle(sym)}
               </Text>
             </Pressable>
           </View>
@@ -377,7 +379,7 @@ function DirTab({
   );
 }
 
-// ── The shielded balance line (undrawn: the A0 startup states) ─────────────────
+// ── The private side's STATUS (undrawn: the A0 startup states, a refusal, the pending sum) ─────
 
 function ShieldedLine({
   view,
@@ -397,6 +399,10 @@ function ShieldedLine({
 }) {
   const sym = A0_TOKEN.symbol;
   if (view.kind === 'ready') {
+    // part B, decision B-2: the balance figure is each tab's BalanceRow; this is only the status
+    if (!refusal && view.pending === 0n && !checkAgain.note) {
+      return null;
+    }
     return (
       <View className="px-1 mb-3">
         {refusal ? (
@@ -404,22 +410,8 @@ function ShieldedLine({
             {a0RefusalLoudText(refusal)}
           </Banner>
         ) : null}
-        {/* UX-A 1: the label keeps its width, the value takes the rest of the row (right-aligned, it
-            wraps rather than running into the label); the pending sum is its own line below */}
-        <View className="flex-row items-start justify-between gap-3" testID="shielded-line">
-          <Text variant="body-sm" className="text-fg-secondary shrink-0">
-            Shielded balance
-          </Text>
-          <Text
-            variant="body-sm"
-            numeral
-            className="flex-1 text-right text-accent-shielded font-geist-semibold"
-            testID="shielded-line-value">
-            {`${displayAmount(view.unspent, A0_TOKEN.decimals)} ${sym}`}
-          </Text>
-        </View>
         {view.pending > 0n ? (
-          <Text variant="caption" numeral className="text-right text-fg-secondary mt-0.5" testID="shielded-line-pending">
+          <Text variant="caption" numeral className="text-fg-secondary" testID="shielded-line-pending">
             {`${displayAmount(view.pending, A0_TOKEN.decimals)} ${sym} pending`}
           </Text>
         ) : null}
@@ -442,21 +434,21 @@ function ShieldedLine({
   if (view.kind === 'running') {
     return (
       <Banner tone="info" testID="shielded-line">
-        Restoring your shielded notes from the chain. Shielding is available when it finishes.
+        Restoring your private balance from the chain. Make private is available when it finishes.
       </Banner>
     );
   }
   if (view.kind === 'unsupported') {
     return (
       <Banner tone="warn" testID="shielded-line">
-        Shielding needs the on-device prover, which this device does not have (64-bit ARM phones only).
+        Your private balance needs the on-device prover, which this device does not have (64-bit ARM phones only).
       </Banner>
     );
   }
   const head =
     view.kind === 'error'
-      ? `Your shielded notes could not be restored · ${view.code ?? 'error'}`
-      : 'Your shielded notes are not loaded yet.';
+      ? `Your private balance could not be restored · ${view.code ?? 'error'}`
+      : 'Your private balance is not loaded yet.';
   return (
     <Banner tone={view.kind === 'error' ? 'danger' : 'warn'} testID="shielded-line">
       {head}
@@ -468,7 +460,7 @@ function ShieldedLine({
         className="text-accent-shielded font-geist-semibold"
         onPress={onRetry}
         accessibilityRole="button"
-        accessibilityLabel="Retry restoring shielded notes"
+        accessibilityLabel="Retry restoring your private balance"
         testID="shielded-retry">
         {retrying ? 'Retrying…' : 'Retry'}
       </Text>

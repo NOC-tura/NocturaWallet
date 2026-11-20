@@ -60,31 +60,39 @@ const screen = () => render(<ShieldUnshieldScreen onBack={onBack} onShield={onSh
 const ctaDisabled = (r: ReturnType<typeof screen>) => r.getByTestId('shield-cta').props.accessibilityState?.disabled;
 
 describe('#16 shield side — the design', () => {
-  it('idle: title, the "Make private" tab, Available from the pool mint, MAX, the fee rows with the ZK proof row, the disabled CTA', async () => {
+  it('idle: title, the "Make private" tab, ONE balance line ("Public balance" from the pool mint), MAX, "You\'ll make private", the fee rows behind Details, the disabled CTA', async () => {
     const r = screen();
     await waitFor(() => expect(mockPoolCount).toHaveBeenCalled());
-    expect(r.getByText('Shield / Unshield')).toBeTruthy();
+    expect(r.getByText('Private ⇄ Public')).toBeTruthy(); // part B: "Shield / Unshield" → "Private ⇄ Public"
     expect(r.getByText('Make private')).toBeTruthy();
-    expect(r.getByText('2 TEST')).toBeTruthy(); // Available
+    expect(r.getByText('Public balance')).toBeTruthy(); // part B: "Available" → "Public balance"
+    expect(r.getByTestId('shield-balance-value').props.children).toBe('2 TEST');
+    expect(r.queryByText('Private balance')).toBeNull(); // decision B-2: one balance line per tab
     expect(r.getByLabelText('Max')).toBeTruthy();
+    expect(r.getByText("You'll make private")).toBeTruthy(); // part B: "You'll shield" → "You'll make private"
+    expect(r.queryByText('Network fee')).toBeNull(); // decision B-3: behind Details
+    fireEvent.press(r.getByTestId('shield-details-toggle'));
     expect(r.getByText('Network fee')).toBeTruthy();
     expect(r.getByText('ZK proof fee')).toBeTruthy();
     expect(r.getByText('Deposit record rent')).toBeTruthy();
-    expect(r.getByText("You'll shield")).toBeTruthy();
     expect(ctaDisabled(r)).toBe(true);
-    expect(r.getByText('Shield TEST')).toBeTruthy();
+    expect(r.getByText('Make TEST private')).toBeTruthy(); // part B: "Shield TEST" → "Make TEST private"
+    expect(r.getByTestId('shield-cta').props.accessibilityLabel).toBe('Make TEST private');
   });
 
-  it('amount entered: the fees are the A0 deposit costs (SOL), "You\'ll shield" is the exact amount, the pool count is the chain number + 1', async () => {
+  it('amount entered: the fees are the A0 deposit costs (SOL, behind Details), "You\'ll make private" is the exact amount, the pool count is the chain number + 1', async () => {
     const r = screen();
     fireEvent.changeText(r.getByTestId('shield-amount-input'), '1.25');
+    await waitFor(() => expect(mockPoolCount).toHaveBeenCalled());
+    await act(async () => {});
+    fireEvent.press(r.getByTestId('shield-details-toggle'));
     await waitFor(() => expect(r.getByTestId('pool-notes')).toBeTruthy());
     expect(r.getByText('0.000005 SOL')).toBeTruthy();
     expect(r.getByText('None · made on this device')).toBeTruthy();
     expect(r.getByText('≈ 0.00069596 SOL')).toBeTruthy();
     expect(r.getByTestId('shield-net').props.children).toBe('1.25 TEST');
     expect(r.getByTestId('pool-notes').props.children).toBe('18');
-    expect(r.getByText('Shield 1.25 TEST')).toBeTruthy();
+    expect(r.getByText('Make 1.25 TEST private')).toBeTruthy(); // part B: "Shield 1.25 TEST" → "Make 1.25 TEST private"
     expect(r.queryByText(/USD/)).toBeNull(); // no price exists for the devnet test token
   });
 
@@ -121,6 +129,7 @@ describe('#16 shield side — the design', () => {
     const r = screen();
     fireEvent.changeText(r.getByTestId('shield-amount-input'), '2.000000001');
     expect(r.getByText('Insufficient balance · max 2 TEST')).toBeTruthy();
+    expect(r.getByTestId('shield-over-max').props.children).toBe('Insufficient balance · max 2 TEST'); // part B: through AmountLimitHint (A5)
     expect(ctaDisabled(r)).toBe(true);
     fireEvent.press(r.getByTestId('shield-cta'));
     expect(onShield).not.toHaveBeenCalled();
@@ -158,6 +167,15 @@ describe('#16 shield side — the design', () => {
     fireEvent.press(r.getByTestId('shield-cta'));
     expect(onShield).toHaveBeenCalledTimes(2);
   });
+
+  it('Review Focus 2: the SOL-short warning and the honest deposit sentence stay visible with Details collapsed', () => {
+    mockBalances = {tokenBalances: {[A0.mint]: '2000000000'}, solBalance: '700959'};
+    const r = screen();
+    expect(r.getByText(/Your main account signs this deposit\. The amount, the time and your address are public on chain/)).toBeTruthy();
+    fireEvent.changeText(r.getByTestId('shield-amount-input'), '1');
+    expect(r.queryByTestId('shield-details-body')).toBeNull();
+    expect(r.getByText(/Not enough SOL: this deposit needs about 0.00070096 SOL/)).toBeTruthy();
+  });
 });
 
 describe('#16 — R1-m9: "Check again" on a pending deposit', () => {
@@ -189,41 +207,32 @@ describe('#16 — R1-m9: "Check again" on a pending deposit', () => {
 });
 
 describe('#16 — gated on the A0 startup step', () => {
-  it('ready: the shielded balance line with the pending sum', () => {
+  it('ready: no private balance on the Make private tab (decision B-2), the pending sum is said', () => {
     mockView = {kind: 'ready', unspent: 1_500_000_000n, pending: 250_000_000n, notes: 2};
     const r = screen();
-    expect(r.getByTestId('shielded-line')).toBeTruthy();
-    expect(r.getByTestId('shielded-line-value').props.children).toBe('1.5 TEST');
+    expect(r.queryByText('Private balance')).toBeNull(); // part B: the "Shielded balance" line left this tab
+    expect(r.queryByText('1.5 TEST')).toBeNull();
     expect(r.getByTestId('shielded-line-pending').props.children).toBe('0.25 TEST pending');
   });
 
-  it('UX-A 1: the label and the value are separate elements in a row WITH A GAP; the value takes the rest of the row, right-aligned, and the label never shrinks', () => {
-    mockView = {kind: 'ready', unspent: 4_980_000n, pending: 0n, notes: 1}; // "0.00498 TEST" — the phone's glued case
-    const r = screen();
-    const row = r.getByTestId('shielded-line');
-    expect(row.props.className).toMatch(/(^|\s)gap-\d/);
-    const label = within(row).getByText('Shielded balance');
-    const value = within(row).getByTestId('shielded-line-value');
-    expect(label).not.toBe(value);
-    expect(value.props.children).toBe('0.00498 TEST');
-    expect(value.props.className).toMatch(/(^|\s)flex-1(\s|$)/);
-    expect(value.props.className).toMatch(/(^|\s)text-right(\s|$)/);
-    expect(label.props.className).toMatch(/(^|\s)shrink-0(\s|$)/);
-    expect(r.queryByTestId('shielded-line-pending')).toBeNull(); // nothing pending → no pending line
-  });
-
-  it('UX-A 1: "X pending" is its own Text on its own line BELOW the row, never glued to the balance', () => {
+  it('UX-A 1 kept: the one balance line is a BalanceRow (gap, the value right-aligned); "X pending" is its own Text outside it', () => {
     mockView = {kind: 'ready', unspent: 4_980_000n, pending: 1_000_000n, notes: 2};
     const r = screen();
-    const row = r.getByTestId('shielded-line');
-    expect(within(row).getByTestId('shielded-line-value').props.children).toBe('0.00498 TEST');
+    const row = r.getByTestId('shield-balance');
+    expect(row.props.className).toMatch(/(^|\s)gap-\d/);
     expect(within(row).queryByTestId('shielded-line-pending')).toBeNull(); // not inside the row
     expect(r.getByTestId('shielded-line-pending').props.children).toBe('0.001 TEST pending');
-    expect(r.queryByText(/TEST ·/)).toBeNull(); // the old glued form is gone
+  });
+
+  it('ready, nothing pending, no note, no refusal: no status line at all', () => {
+    const r = screen();
+    expect(r.queryByTestId('shielded-line-pending')).toBeNull();
+    expect(r.queryByTestId('shielded-check-caption')).toBeNull();
+    expect(r.queryByTestId('shielded-refusal')).toBeNull();
   });
 
   it.each([
-    ['running', {kind: 'running'} as A0ShieldedView, /Restoring your shielded notes from the chain/],
+    ['running', {kind: 'running'} as A0ShieldedView, /Restoring your private balance from the chain/], // part B: "Restoring your shielded notes" → "Restoring your private balance"
     ['unsupported', {kind: 'unsupported'} as A0ShieldedView, /needs the on-device prover/],
     ['idle', {kind: 'idle'} as A0ShieldedView, /not loaded yet/],
     ['error', {kind: 'error', code: 'E_A0_TREE_LAYOUT', message: 'bad account'} as A0ShieldedView, /could not be restored · E_A0_TREE_LAYOUT/],
@@ -232,7 +241,7 @@ describe('#16 — gated on the A0 startup step', () => {
     const r = screen();
     fireEvent.changeText(r.getByTestId('shield-amount-input'), '1');
     expect(r.getByText(text)).toBeTruthy();
-    expect(r.queryByText(/Shielded balance/)).toBeNull();
+    expect(r.queryByTestId('shielded-line-pending')).toBeNull(); // part B (review I-4): no figure of the private side in a non-ready state — a "Private balance" negative would be vacuous on this tab
     expect(ctaDisabled(r)).toBe(true);
     fireEvent.press(r.getByTestId('shield-cta'));
     expect(onShield).not.toHaveBeenCalled();
@@ -264,9 +273,9 @@ describe('#16 — gated on the A0 startup step', () => {
 
   it('re-review N-2: the last pending item decided → the caption stays (without "Check again"); none without a note', () => {
     mockView = {kind: 'ready', unspent: 500_000_000n, pending: 0n, notes: 1};
-    Object.assign(mockCheck, {note: 'Not sent · your note is back in your shielded balance.'});
+    Object.assign(mockCheck, {note: 'Not sent · your note is back in your private balance.'}); // part B: the fixture follows the caption Task 4 ships
     const r = screen();
-    expect(r.getByTestId('shielded-check-caption').props.children).toBe('Not sent · your note is back in your shielded balance.');
+    expect(r.getByTestId('shielded-check-caption').props.children).toBe('Not sent · your note is back in your private balance.'); // part B: the fixture follows the caption Task 4 ships
     expect(r.queryByTestId('shielded-check-again')).toBeNull();
     r.unmount();
     Object.assign(mockCheck, {note: null});

@@ -1,8 +1,9 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {View, Pressable, TextInput, ScrollView} from 'react-native';
 import {PublicKey} from '@solana/web3.js';
-import {AlertTriangle, Check, RefreshCw, Shield, UserPlus, Wallet, Send} from 'lucide-react-native';
+import {AlertTriangle, RefreshCw, Shield} from 'lucide-react-native';
 import {Text} from '../../../components/ui';
+import {AmountLimitHint, DestinationRow, DetailsDisclosure, overLimit} from '../../../components/private';
 import {cn} from '../../../utils/cn';
 import {parseTokenAmount, formatTokenAmount} from '../../../utils/parseTokenAmount';
 import {A0_TOKEN, a0ErrorText, displayAmount} from '../../../modules/shielded/a0/screenSupport';
@@ -16,6 +17,8 @@ import type {TransparentScheme} from '../../../modules/keyDerivation/transparent
 import {getConnection} from '../../../modules/solana/connection';
 import {useWalletStore} from '../../../store/zustand/walletStore';
 import type {A0ShieldedView} from '../../../hooks/useA0Shielded';
+import {BalanceRow} from '../shieldedParts';
+import {PRIVATE_BALANCE, makePublicCta, makePublicCtaIdle, makePublicLimit} from '../../../copy/modes';
 import {
   A0_EXTERNAL_WARNING,
   A0_FRESH_UNAVAILABLE_COPY,
@@ -25,6 +28,7 @@ import {
   a0FreshDefaultCopy,
   a0OneNoteLimit,
 } from './unshieldCopy';
+import type {DestinationChoice} from '../../../components/private';
 
 /**
  * #16's "Make public" side — the A0 unshield (spec §6 steps 1–2, §11; M1c Task 8). Mirrors the
@@ -35,6 +39,12 @@ import {
  * DESTINATION CHOICE (a new account — preselected when the relayer grants SOL, S11, controller
  * ruling 4 —, my main account, another address with its input) with §11's warnings, the
  * one-note limit line and the amount line.
+ *
+ * Shielded UX part B (spec 2026-11-20 §3–§4): one balance line ("Private balance", decision B-2);
+ * `DestinationRow` replaces the three cards (decision B-5) — when the fresh account is not offered
+ * (S9 cli, S11 no grant) NOTHING is preselected, as M1c ruled ("To: Choose a destination"; owner
+ * decision 2026-11-20, plan A1), and a chosen destination's warning shows under the row; the network fee, the ZK proof fee and the one-note explanation behind
+ * "Details ▾" (decision B-3); `AmountLimitHint` above the max (decision B-4).
  *
  * WHAT IT DECIDES: nothing about the unshield itself. The quote fetched here only feeds the
  * offer (`a0UnshieldDestinationOffer`), the fee rows and the most one note can pay
@@ -49,7 +59,7 @@ import {
  * (`E_A0_UNSHIELD_BUSY`).
  */
 
-export type UnshieldChoice = 'fresh' | 'main' | 'external';
+export type UnshieldChoice = DestinationChoice;
 
 export interface UnshieldSideProps {
   view: A0ShieldedView;
@@ -176,7 +186,7 @@ export function UnshieldSide({view, shieldedLine, onUnshield, focusKey = 0}: Uns
   const parsed = parseAmount(amount);
   const hasAmount = parsed.kind === 'ok';
   const units = parsed.kind === 'ok' ? parsed.units : 0n;
-  const overMax = hasAmount && source !== null && units > max;
+  const overMax = overLimit(hasAmount && source !== null ? units : null, max);
   const extProblem = choice === 'external' ? externalOwnerProblem(external, mainAddress) : null;
   const destinationValid =
     choice === 'fresh'
@@ -238,25 +248,22 @@ export function UnshieldSide({view, shieldedLine, onUnshield, focusKey = 0}: Uns
         ) : null}
         {notesError ? (
           <Note tone="danger" testID="unshield-notes-error">
-            {`Your shielded notes could not be read · ${notesError}`}
+            {`Your private balance could not be read · ${notesError}`}
           </Note>
         ) : null}
 
-        {/* Amount card — the design's state 2 / 5 */}
+        {/* Amount card — its one balance line is the PRIVATE balance (decision B-2) */}
         <View
           className={cn(
             'rounded-lg bg-bg-surface-1 border p-5 mb-4',
             overMax ? 'border-danger' : 'border-bg-surface-3',
           )}
         >
-          <View className="flex-row items-center justify-between mb-3">
-            <Text variant="body-sm" className="text-fg-secondary">
-              Vault balance
-            </Text>
-            <Text variant="body-sm" numeral className="font-geist-semibold text-fg-primary" testID="unshield-vault">
-              {vault === null ? '—' : `${displayAmount(vault, A0_TOKEN.decimals)} ${sym}`}
-            </Text>
-          </View>
+          <BalanceRow
+            label={PRIVATE_BALANCE}
+            value={vault === null ? '—' : `${displayAmount(vault, A0_TOKEN.decimals)} ${sym}`}
+            testID="unshield-vault"
+          />
           {/* UX-A 3 (the design's .amount-line: baseline, gap 8, centred): the input is sized to its
               content — no min width — so the symbol sits right after the figure */}
           <View className="flex-row items-baseline justify-center gap-2 mb-3" testID="unshield-amount-row">
@@ -276,12 +283,12 @@ export function UnshieldSide({view, shieldedLine, onUnshield, focusKey = 0}: Uns
           </View>
           <View className="items-center">
             {overMax ? (
-              <View className="flex-row items-center gap-2">
-                <AlertTriangle size={12} color="#FF5C6A" strokeWidth={2} />
-                <Text variant="caption" className="text-danger" testID="unshield-over-max">
-                  {`Max per unshield: ${displayAmount(max, A0_TOKEN.decimals)} ${sym} (your largest note, minus the relayer fee)`}
-                </Text>
-              </View>
+              <AmountLimitHint
+                amount={hasAmount && source !== null ? units : null}
+                max={max}
+                message={makePublicLimit(displayAmount(max, A0_TOKEN.decimals), sym)}
+                testID="unshield-over-max"
+              />
             ) : parsed.kind === 'invalid' ? (
               <Text variant="caption" className="text-danger">
                 {`Enter an amount of ${sym} (up to ${A0_TOKEN.decimals} decimals)`}
@@ -303,56 +310,39 @@ export function UnshieldSide({view, shieldedLine, onUnshield, focusKey = 0}: Uns
               </Pressable>
             )}
           </View>
-          {source !== null ? (
-            <Text variant="caption" className="text-fg-tertiary text-center mt-3" testID="unshield-one-note">
-              {a0OneNoteLimit(max, A0_TOKEN.decimals, sym)}
-            </Text>
-          ) : ready && q !== null && notesError === null ? (
+          {source === null && ready && q !== null && notesError === null ? (
             <Text variant="caption" className="text-warning text-center mt-3" testID="unshield-no-note">
-              {`No shielded note can pay the relayer fee of ${displayAmount(q.fee, A0_TOKEN.decimals)} ${sym}.`}
+              {`No private note can pay the relayer fee of ${displayAmount(q.fee, A0_TOKEN.decimals)} ${sym}.`}
             </Text>
           ) : null}
         </View>
 
-        {/* Destination choice — UNDRAWN (spec §11), built from the design system */}
-        <View className="rounded-lg bg-bg-surface-1 border border-bg-surface-3 p-4 mb-4" testID="unshield-destination">
-          <Text variant="overline" className="mb-3">
-            Destination
-          </Text>
-          <DestinationRow
-            testID="unshield-dest-fresh"
-            Icon={UserPlus}
-            title="A new account"
-            sub={
+        {/* The destination (decision B-5): "To: … · Change"; the warnings under it, always visible */}
+        <DestinationRow
+          testID="unshield-dest"
+          choice={choice}
+          onChoose={setChoice}
+          disabled={q === null}
+          fresh={{
+            available: offer !== null && offer.fresh.available,
+            sub:
               offer === null
                 ? '—'
                 : offer.fresh.available
                   ? a0FreshDefaultCopy(offer.fresh.grantLamports)
-                  : A0_FRESH_UNAVAILABLE_COPY[offer.fresh.reason]
-            }
-            selected={choice === 'fresh'}
-            disabled={offer === null || !offer.fresh.available}
-            onPress={() => setChoice('fresh')}
-          />
-          <DestinationRow
-            testID="unshield-dest-main"
-            Icon={Wallet}
-            title="My main account"
-            sub={mainAddress ? shortAddress(mainAddress) : 'Your main account'}
-            mono={mainAddress !== null}
-            selected={choice === 'main'}
-            disabled={q === null}
-            onPress={() => setChoice('main')}
-          />
-          <DestinationRow
-            testID="unshield-dest-external"
-            Icon={Send}
-            title="Another address"
-            sub="A wallet address outside this wallet"
-            selected={choice === 'external'}
-            disabled={q === null}
-            onPress={() => setChoice('external')}
-          />
+                  : A0_FRESH_UNAVAILABLE_COPY[offer.fresh.reason],
+          }}
+          mainSub={mainAddress ? shortAddress(mainAddress) : 'Your main account'}
+          mainMono={mainAddress !== null}
+          freshReason={offer !== null && !offer.fresh.available ? A0_FRESH_UNAVAILABLE_COPY[offer.fresh.reason] : null}
+          warning={
+            choice === 'main'
+              ? {testID: 'unshield-warning-main', text: A0_MAIN_ACCOUNT_WARNING}
+              : choice === 'external'
+                ? {testID: 'unshield-warning-external', text: A0_EXTERNAL_WARNING}
+                : null
+          }
+        >
           {choice === 'external' ? (
             <View className="mt-2">
               {/* UX-A 2: the WHOLE address is visible — two wrapped monospace lines (a single-line input
@@ -383,9 +373,9 @@ export function UnshieldSide({view, shieldedLine, onUnshield, focusKey = 0}: Uns
               ) : null}
             </View>
           ) : null}
-        </View>
+        </DestinationRow>
 
-        {/* Fees card */}
+        {/* Fees card — the relayer fee and what the destination receives visible; the rest behind Details */}
         <View className={cn('rounded-lg bg-bg-surface-1 border border-bg-surface-3 p-4 mb-4', overMax && 'opacity-50')}>
           <Text variant="overline" className="mb-3">
             Fees
@@ -394,8 +384,6 @@ export function UnshieldSide({view, shieldedLine, onUnshield, focusKey = 0}: Uns
             label="Relayer fee"
             value={hasAmount && fee !== null ? `${displayAmount(fee, A0_TOKEN.decimals)} ${sym}` : '—'}
           />
-          <FeeRow label="Network fee" value={hasAmount ? 'Paid by the relayer' : '—'} />
-          <FeeRow label="ZK proof fee" value={hasAmount ? 'None · made on this device' : '—'} zk />
           <View className="h-px bg-bg-surface-3 my-3" />
           <View className="flex-row items-center justify-between">
             <Text variant="body-sm" className="text-fg-secondary">
@@ -410,9 +398,19 @@ export function UnshieldSide({view, shieldedLine, onUnshield, focusKey = 0}: Uns
               {a0AmountLine(units, fee, A0_TOKEN.decimals, sym)}
             </Text>
           ) : null}
+          <DetailsDisclosure testID="unshield-details">
+            <View className="h-px bg-bg-surface-3 my-3" />
+            <FeeRow label="Network fee" value={hasAmount ? 'Paid by the relayer' : '—'} />
+            <FeeRow label="ZK proof fee" value={hasAmount ? 'None · made on this device' : '—'} zk />
+            {source !== null ? (
+              <Text variant="caption" className="text-fg-tertiary mt-1" testID="unshield-one-note">
+                {a0OneNoteLimit(max, A0_TOKEN.decimals, sym)}
+              </Text>
+            ) : null}
+          </DetailsDisclosure>
         </View>
 
-        {/* The design's withdraw banner, carrying §11's warnings for the chosen destination */}
+        {/* The design's withdraw banner: the relayed sentence (the destination warnings sit under the row) */}
         <View
           className="rounded-md bg-bg-surface-2 border-l-2 border-l-warning p-4 mb-4 flex-row gap-3"
           testID="unshield-warning"
@@ -422,16 +420,6 @@ export function UnshieldSide({view, shieldedLine, onUnshield, focusKey = 0}: Uns
             <Text variant="body-sm" className="font-geist-semibold text-fg-primary">
               Privacy decreases on public withdraw
             </Text>
-            {choice === 'main' ? (
-              <Text variant="caption" className="text-warning" testID="unshield-warning-main">
-                {A0_MAIN_ACCOUNT_WARNING}
-              </Text>
-            ) : null}
-            {choice === 'external' ? (
-              <Text variant="caption" className="text-warning" testID="unshield-warning-external">
-                {A0_EXTERNAL_WARNING}
-              </Text>
-            ) : null}
             <Text variant="caption" className="text-fg-secondary" testID="unshield-relayed">
               {A0_RELAYED_COPY}
             </Text>
@@ -447,7 +435,7 @@ export function UnshieldSide({view, shieldedLine, onUnshield, focusKey = 0}: Uns
           accessibilityRole="button"
           accessibilityState={{disabled: !canSubmit}}
           testID="unshield-cta"
-          accessibilityLabel={`Unshield ${sym}`}
+          accessibilityLabel={makePublicCtaIdle(sym)}
           className={cn(
             'min-h-touch-rec rounded-pill items-center justify-center flex-row gap-2',
             canSubmit ? 'bg-accent-shielded active:opacity-90' : 'bg-bg-surface-3',
@@ -457,74 +445,11 @@ export function UnshieldSide({view, shieldedLine, onUnshield, focusKey = 0}: Uns
             variant="body-lg"
             className={cn('font-geist-semibold', canSubmit ? 'text-bg-base' : 'text-fg-disabled')}
           >
-            {hasAmount && !overMax ? `Unshield ${displayAmount(units, A0_TOKEN.decimals)} ${sym}` : `Unshield ${sym}`}
+            {hasAmount && !overMax ? makePublicCta(displayAmount(units, A0_TOKEN.decimals), sym) : makePublicCtaIdle(sym)}
           </Text>
         </Pressable>
       </View>
     </>
-  );
-}
-
-function DestinationRow({
-  testID,
-  Icon,
-  title,
-  sub,
-  mono,
-  selected,
-  disabled,
-  onPress,
-}: {
-  testID: string;
-  Icon: typeof Wallet;
-  title: string;
-  sub: string;
-  mono?: boolean;
-  selected: boolean;
-  disabled: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      testID={testID}
-      onPress={disabled ? undefined : onPress}
-      disabled={disabled}
-      accessibilityRole="radio"
-      accessibilityLabel={title}
-      accessibilityState={{selected, disabled}}
-      className={cn(
-        'flex-row items-start gap-3 p-3 rounded-md mb-2 min-h-touch-min border',
-        selected ? 'border-accent-shielded bg-[rgba(91,227,194,0.08)]' : 'border-bg-surface-3',
-        disabled && 'opacity-60',
-      )}
-    >
-      <View className="w-8 h-8 rounded-pill items-center justify-center bg-bg-surface-2">
-        <Icon size={16} color={disabled ? '#6E727A' : '#A8ACB5'} strokeWidth={1.75} />
-      </View>
-      <View className="flex-1">
-        <Text
-          variant="body-sm"
-          className={cn('font-geist-semibold', disabled ? 'text-fg-disabled' : 'text-fg-primary')}
-        >
-          {title}
-        </Text>
-        <Text
-          variant="caption"
-          className={cn('text-fg-tertiary mt-0.5', mono && 'font-geist-mono')}
-          testID={`${testID}-sub`}
-        >
-          {sub}
-        </Text>
-      </View>
-      <View
-        className={cn(
-          'w-5 h-5 rounded-full items-center justify-center border mt-1',
-          selected ? 'border-accent-shielded bg-accent-shielded' : 'border-fg-tertiary',
-        )}
-      >
-        {selected ? <Check size={12} color="#0A0A0A" strokeWidth={2.5} /> : null}
-      </View>
-    </Pressable>
   );
 }
 

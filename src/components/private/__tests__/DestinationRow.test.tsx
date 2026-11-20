@@ -84,6 +84,48 @@ describe('DestinationRow', () => {
     expect(r.getByTestId('dest-warning-main')).toBeTruthy();
   });
 
+  it('carry 1a / Review Focus 1: nothing chosen → all three options unselected; onChoose is called neither on mount nor by Change', () => {
+    const p = props({choice: null, fresh: {available: false, sub: REASON}, freshReason: REASON});
+    const r = render(<DestinationRow {...p} />);
+    expect(p.onChoose).not.toHaveBeenCalled();
+    fireEvent.press(r.getByTestId('dest-change'));
+    expect(p.onChoose).not.toHaveBeenCalled();
+    for (const id of ['dest-fresh', 'dest-main', 'dest-external']) {
+      expect(r.getByTestId(id).props.accessibilityState).toMatchObject({selected: false});
+    }
+    fireEvent.press(r.getByTestId('dest-change')); // closing chooses nothing either
+    expect(p.onChoose).not.toHaveBeenCalled();
+  });
+
+  it('carry 1b: the options are a radiogroup, the warning is a polite live region, Change is labelled "Change destination"', () => {
+    const w = {testID: 'dest-warning-main', text: 'This links your exit to your deposit: your main account made the deposit.'};
+    const r = render(<DestinationRow {...props({choice: 'main', warning: w})} />);
+    expect(r.getByTestId('dest-change').props.accessibilityLabel).toBe('Change destination');
+    expect(r.getByTestId('dest-warning-main').props.accessibilityLiveRegion).toBe('polite');
+    fireEvent.press(r.getByTestId('dest-change'));
+    expect(r.getByTestId('dest-options').props.accessibilityRole).toBe('radiogroup');
+  });
+
+  it('carry 1c: open, then disabled (the quote went away) → the options are not rendered', () => {
+    const r = render(<DestinationRow {...props()} />);
+    fireEvent.press(r.getByTestId('dest-change'));
+    expect(r.getByTestId('dest-options')).toBeTruthy();
+    r.rerender(<DestinationRow {...props({disabled: true})} />);
+    expect(r.queryByTestId('dest-options')).toBeNull();
+  });
+
+  it('carry 1d: picking the fresh or the external option hands over exactly that choice', () => {
+    const p = props({choice: 'main'});
+    const r = render(<DestinationRow {...p} />);
+    fireEvent.press(r.getByTestId('dest-change'));
+    fireEvent.press(r.getByTestId('dest-fresh'));
+    expect(p.onChoose).toHaveBeenLastCalledWith('fresh');
+    fireEvent.press(r.getByTestId('dest-change'));
+    fireEvent.press(r.getByTestId('dest-external'));
+    expect(p.onChoose).toHaveBeenLastCalledWith('external');
+    expect(p.onChoose).toHaveBeenCalledTimes(2);
+  });
+
   it('children render below the row (the address input lives there)', () => {
     const r = render(
       <DestinationRow {...props({choice: 'external'})}>
