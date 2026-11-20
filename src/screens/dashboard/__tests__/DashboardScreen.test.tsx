@@ -252,10 +252,11 @@ describe('DashboardScreen — shielded mode, with balance (the A0 store, ready)'
     expect(queryByText('$150')).toBeNull(); // the transparent USD total is not the shielded hero
   });
 
-  it('a pending deposit is shown as pending, settled at the next start', async () => {
+  it('UX-A 4: a pending item is shown as pending, "not confirmed yet" (never "settled at the next start")', async () => {
     mockView.current = {kind: 'ready', unspent: 200_000_000n, pending: 50_000_000n, notes: 1};
-    const {getByText} = await renderDashboard();
-    expect(getByText('0.05 pending · settled at the next start')).toBeTruthy();
+    const {getByText, queryByText} = await renderDashboard();
+    expect(getByText('0.05 pending · not confirmed yet')).toBeTruthy();
+    expect(queryByText(/settled at the next start/)).toBeNull();
   });
 
   it('R1-m9: the pending line carries "Check again"; a tap runs the check', async () => {
@@ -351,5 +352,35 @@ describe('DashboardScreen — Receive and Buy (M1b: I9, S13)', () => {
     const withBuy = await renderDashboard({onBuy});
     fireEvent.press(withBuy.getByText('Buy'));
     expect(onBuy).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('UX-A 7: "Make public" next to Shield (owner-approved departure: the design\'s shielded dashboard has Send / Receive / Shield / Buy)', () => {
+  it('shielded mode with onMakePublic: "Make public" right after "Shield"; a tap calls it', async () => {
+    mockMode.current = 'shielded';
+    const onMakePublic = jest.fn();
+    const onShield = jest.fn();
+    const r = await renderDashboard({onShield, onMakePublic});
+    const labels = r.getAllByRole('button').map(b => b.props.accessibilityLabel as string | undefined);
+    const i = labels.indexOf('Shield');
+    expect(i).toBeGreaterThanOrEqual(0);
+    expect(labels[i + 1]).toBe('Make public');
+    fireEvent.press(r.getByLabelText('Make public'));
+    expect(onMakePublic).toHaveBeenCalledTimes(1);
+    expect(onShield).not.toHaveBeenCalled();
+  });
+
+  it('absent without onMakePublic (a build without the unshield route passes none)', async () => {
+    mockMode.current = 'shielded';
+    const r = await renderDashboard({onShield: jest.fn()});
+    expect(r.getByLabelText('Shield')).toBeTruthy(); // positive control
+    expect(r.queryByLabelText('Make public')).toBeNull();
+  });
+
+  it('absent in transparent mode even with onMakePublic', async () => {
+    mockMode.current = 'transparent';
+    const r = await renderDashboard({onMakePublic: jest.fn()});
+    expect(r.getByLabelText('Swap')).toBeTruthy(); // positive control
+    expect(r.queryByLabelText('Make public')).toBeNull();
   });
 });

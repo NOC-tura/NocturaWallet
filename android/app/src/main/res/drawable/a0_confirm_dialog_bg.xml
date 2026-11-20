@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The native unshield confirmation's sheet (UX-A 5): bg-surface-2, the design's radius-xl token (20dp)
+  corners, a bg-surface-3 hairline; inset from the screen edges like the platform's dialog frame.
+-->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:insetLeft="16dp"
+    android:insetTop="16dp"
+    android:insetRight="16dp"
+    android:insetBottom="16dp">
+    <shape android:shape="rectangle">
+        <solid android:color="@color/a0_confirm_surface" />
+        <stroke android:width="1dp" android:color="@color/a0_confirm_border" />
+        <corners android:radius="20dp" />
+    </shape>
+</inset>

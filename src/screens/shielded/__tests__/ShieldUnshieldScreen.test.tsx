@@ -6,7 +6,8 @@
  * unshield side is a tab; its own rows are in unshield/__tests__/UnshieldSide.test.tsx).
  */
 import React from 'react';
-import {render, fireEvent, act, waitFor} from '@testing-library/react-native';
+import {render, fireEvent, act, waitFor, within} from '@testing-library/react-native';
+import {StyleSheet} from 'react-native';
 import {ShieldUnshieldScreen} from '../ShieldUnshieldScreen';
 import type {A0ShieldedView} from '../../../hooks/useA0Shielded';
 import {A0} from '../../../modules/shielded/a0/constants';
@@ -85,6 +86,20 @@ describe('#16 shield side — the design', () => {
     expect(r.getByTestId('pool-notes').props.children).toBe('18');
     expect(r.getByText('Shield 1.25 TEST')).toBeTruthy();
     expect(r.queryByText(/USD/)).toBeNull(); // no price exists for the devnet test token
+  });
+
+  it('UX-A 3: the amount and its symbol sit together, centred — the input is sized to its content (no min width), the symbol right after it', () => {
+    const r = screen();
+    const line = r.getByTestId('shield-amount-row');
+    expect(line.props.className).toMatch(/(^|\s)justify-center(\s|$)/);
+    expect(line.props.className).toMatch(/(^|\s)gap-2(\s|$)/);
+    const [first, second] = React.Children.toArray(line.props.children) as React.ReactElement<{testID?: string}>[];
+    expect(first!.props.testID).toBe('shield-amount-input');
+    expect(second!.props.testID).toBe('shield-amount-symbol');
+    const input = r.getByTestId('shield-amount-input');
+    expect(input.props.className).not.toMatch(/min-w/);
+    expect(StyleSheet.flatten(input.props.style)?.minWidth).toBeUndefined();
+    expect(r.getByTestId('shield-amount-symbol').props.children).toBe('TEST');
   });
 
   it('CTA → onShield with the amount in BASE UNITS (BigInt-exact, 9 decimals)', () => {
@@ -178,7 +193,33 @@ describe('#16 — gated on the A0 startup step', () => {
     mockView = {kind: 'ready', unspent: 1_500_000_000n, pending: 250_000_000n, notes: 2};
     const r = screen();
     expect(r.getByTestId('shielded-line')).toBeTruthy();
-    expect(r.getByText('1.5 TEST · 0.25 TEST pending')).toBeTruthy();
+    expect(r.getByTestId('shielded-line-value').props.children).toBe('1.5 TEST');
+    expect(r.getByTestId('shielded-line-pending').props.children).toBe('0.25 TEST pending');
+  });
+
+  it('UX-A 1: the label and the value are separate elements in a row WITH A GAP; the value takes the rest of the row, right-aligned, and the label never shrinks', () => {
+    mockView = {kind: 'ready', unspent: 4_980_000n, pending: 0n, notes: 1}; // "0.00498 TEST" — the phone's glued case
+    const r = screen();
+    const row = r.getByTestId('shielded-line');
+    expect(row.props.className).toMatch(/(^|\s)gap-\d/);
+    const label = within(row).getByText('Shielded balance');
+    const value = within(row).getByTestId('shielded-line-value');
+    expect(label).not.toBe(value);
+    expect(value.props.children).toBe('0.00498 TEST');
+    expect(value.props.className).toMatch(/(^|\s)flex-1(\s|$)/);
+    expect(value.props.className).toMatch(/(^|\s)text-right(\s|$)/);
+    expect(label.props.className).toMatch(/(^|\s)shrink-0(\s|$)/);
+    expect(r.queryByTestId('shielded-line-pending')).toBeNull(); // nothing pending → no pending line
+  });
+
+  it('UX-A 1: "X pending" is its own Text on its own line BELOW the row, never glued to the balance', () => {
+    mockView = {kind: 'ready', unspent: 4_980_000n, pending: 1_000_000n, notes: 2};
+    const r = screen();
+    const row = r.getByTestId('shielded-line');
+    expect(within(row).getByTestId('shielded-line-value').props.children).toBe('0.00498 TEST');
+    expect(within(row).queryByTestId('shielded-line-pending')).toBeNull(); // not inside the row
+    expect(r.getByTestId('shielded-line-pending').props.children).toBe('0.001 TEST pending');
+    expect(r.queryByText(/TEST ·/)).toBeNull(); // the old glued form is gone
   });
 
   it.each([

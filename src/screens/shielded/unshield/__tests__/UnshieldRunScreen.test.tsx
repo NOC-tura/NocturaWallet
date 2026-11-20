@@ -6,7 +6,9 @@
  */
 import React from 'react';
 import {render, fireEvent, act, waitFor} from '@testing-library/react-native';
-import {Alert} from 'react-native';
+import {Alert, Linking} from 'react-native';
+import * as fs from 'fs';
+import * as path from 'path';
 import {UnshieldRunScreen} from '../UnshieldRunScreen';
 import type {UnshieldRunRequest} from '../UnshieldRunScreen';
 import type {A0UnshieldOutcome, A0UnshieldStage, A0UnshieldRequest} from '../../../../modules/shielded/a0/unshieldFlow';
@@ -208,6 +210,61 @@ describe('#18 for the unshield — the real stages, measured times, never a perc
     await act(async () => ctl.resolve({status: 'not-sent', outcome: 'invalid_request'}));
     fireEvent.press(r.getByTestId('unshield-status-done'));
     expect(onDone).toHaveBeenCalled();
+  });
+});
+
+const clipboard = require('@react-native-clipboard/clipboard') as {setString: jest.Mock};
+
+describe('UX-A 6: the unshield #21 never opens the explorer (it would tell the explorer\'s RPC which exit is ours) — "Copy signature" instead', () => {
+  it.each([
+    ['spent', {status: 'spent', signature: SIG, changeLeafIndex: 42, changeAmount: 1n, grantLamports: 3_000_000n, destinationWithoutSol: false}],
+    ['pending', {status: 'pending', signature: SIG, reason: 'unconfirmed'}],
+  ] as Array<[string, A0UnshieldOutcome]>)(
+    '%s: no "View details"; "Copy signature" copies the FULL signature and says "Copied"; the clipboard is cleared after 30 s; no control opens a URL',
+    async (_n, outcome) => {
+      const open = jest.spyOn(Linking, 'openURL').mockImplementation(() => Promise.resolve(true));
+      clipboard.setString.mockClear();
+      const {r, ctl} = await run();
+      await act(async () => ctl.resolve(outcome));
+      expect(r.queryByTestId('unshield-status-details')).toBeNull();
+      expect(r.queryByText('View details')).toBeNull();
+      const copy = r.getByTestId('unshield-status-copy');
+      expect(copy.props.accessibilityLabel).toBe('Copy signature');
+      expect(r.getByText('Copy signature')).toBeTruthy();
+      jest.useFakeTimers({doNotFake: ['Date']});
+      try {
+        fireEvent.press(r.getByTestId('unshield-status-copy'));
+        expect(clipboard.setString).toHaveBeenCalledTimes(1);
+        expect(clipboard.setString).toHaveBeenCalledWith(SIG); // the whole signature, not "4Hq7Mb…5e6f"
+        expect(r.getByText('Copied')).toBeTruthy();
+        expect(r.queryByText('Copy signature')).toBeNull();
+        act(() => {
+          jest.advanceTimersByTime(2_000);
+        });
+        expect(r.getByText('Copy signature')).toBeTruthy(); // the confirmation is short
+        expect(clipboard.setString).toHaveBeenCalledTimes(1); // not cleared yet
+        act(() => {
+          jest.advanceTimersByTime(28_000);
+        });
+        expect(clipboard.setString).toHaveBeenLastCalledWith(''); // the 30 s clear (never on background)
+      } finally {
+        jest.useRealTimers();
+      }
+      for (const b of r.getAllByRole('button')) {
+        fireEvent.press(b);
+      }
+      expect(open).not.toHaveBeenCalled();
+    },
+  );
+
+  it('the source has no way to the explorer: no Linking, no explorer URL builder (the deposit\'s #21 keeps its own — ShieldTxFlow.test)', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, '../UnshieldRunScreen.tsx'), 'utf8');
+    expect(src).not.toMatch(/\bLinking\b/);
+    expect(src).not.toMatch(/explorerTxUrl|explorer\.solana\.com|solscan/);
+    // positive control: the same scan finds them in the deposit's #21
+    const deposit = fs.readFileSync(path.resolve(__dirname, '../../ShieldStatusScreen.tsx'), 'utf8');
+    expect(deposit).toMatch(/\bLinking\b/);
+    expect(deposit).toMatch(/explorerTxUrl/);
   });
 });
 

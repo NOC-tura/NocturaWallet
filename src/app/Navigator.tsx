@@ -323,6 +323,13 @@ function DashboardScreenNav() {
           rootNav.navigate('ShieldUnshieldModal', {direction: 'private'});
         }
       }}
+      // UX-A 7 (an owner-approved departure from the design's shielded dashboard): "Make public" opens
+      // #16 on the unshield side. Passed only where that route is registered (the same gate as the
+      // route itself); in-app navigation creates a route with no link `path`, so #16's I-1 guard
+      // honours `direction: 'public'` here and still refuses it from a deep link.
+      onMakePublic={
+        isShieldedEnabled() ? () => rootNav.navigate('ShieldUnshieldModal', {direction: 'public'}) : undefined
+      }
       onSwap={() => rootNav.navigate('SwapModal')}
       onBuy={presale ? () => dashNav.navigate('Presale') : undefined}
       onScan={() => rootNav.navigate('ScanModal')}

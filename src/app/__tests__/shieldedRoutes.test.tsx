@@ -42,6 +42,15 @@ jest.mock('../../screens/transparent/ReceiveScreen', () => ({
   },
 }));
 
+// #11, stubbed: records the props DashboardScreenNav hands it (UX-A 7: the "Make public" entry).
+const mockDashboardProps: Array<{onMakePublic?: () => void; onShield?: () => void}> = [];
+jest.mock('../../screens/dashboard/DashboardScreen', () => ({
+  DashboardScreen: (p: {onMakePublic?: () => void; onShield?: () => void}) => {
+    mockDashboardProps.push(p);
+    return null;
+  },
+}));
+
 /** The shield flow M1b registers in the devnet build, and M1c's unshield run (Task 8). */
 const SHIELD_FLOW = [
   'ShieldedExplainer',
@@ -131,6 +140,40 @@ describe('#16 both sides (M1c Task 8)', () => {
     });
     expect(r.queryByTestId('shield-cta')).not.toBeNull();
     expect(r.queryByTestId('unshield-cta')).toBeNull();
+  });
+});
+
+describe('UX-A 7: the dashboard\'s "Make public" opens #16 on the unshield side by IN-APP navigation', () => {
+  it('shielded build: onMakePublic navigates to ShieldUnshieldModal {direction: "public"} — a route with no link path, so the I-1 guard opens "Make public"', async () => {
+    mockDashboardProps.length = 0;
+    mockQuoteCalls.length = 0;
+    const {ref, r} = routeNames({shielded: true});
+    await act(async () => {
+      (ref.navigate as (n: string, p?: object) => void)('MainTabs');
+    });
+    const props = mockDashboardProps[mockDashboardProps.length - 1];
+    expect(props?.onMakePublic).toBeInstanceOf(Function);
+    await act(async () => {
+      props!.onMakePublic!();
+    });
+    const route = ref.getCurrentRoute() as {name?: string; path?: string; params?: {direction?: string}} | undefined;
+    expect(route?.name).toBe('ShieldUnshieldModal');
+    expect(route?.params).toEqual({direction: 'public'});
+    expect(route?.path).toBeUndefined();
+    expect(r.getByLabelText('Make public').props.accessibilityState).toMatchObject({selected: true});
+    expect(r.queryByTestId('unshield-cta')).not.toBeNull();
+    expect(mockQuoteCalls.length).toBeGreaterThan(0);
+  });
+
+  it('production build (no unshield route): the dashboard gets no onMakePublic (positive control: onShield is still passed)', async () => {
+    mockDashboardProps.length = 0;
+    const {ref} = routeNames({shielded: false});
+    await act(async () => {
+      (ref.navigate as (n: string, p?: object) => void)('MainTabs');
+    });
+    const props = mockDashboardProps[mockDashboardProps.length - 1];
+    expect(props?.onShield).toBeInstanceOf(Function);
+    expect(props?.onMakePublic).toBeUndefined();
   });
 });
 

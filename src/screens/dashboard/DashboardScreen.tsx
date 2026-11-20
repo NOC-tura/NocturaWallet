@@ -76,6 +76,10 @@ import {getConnection} from '../../modules/solana/connection';
  *   - Transparent: violet accents, "Total balance" eyebrow, Swap action, presale banner
  *   - Shielded: mint accents, "SHIELDED · vault balance" eyebrow, Shield action,
  *     privacy banner, "· shielded" tag on rows
+ *   - Shielded, DEPARTURE (owner-approved 2026-11-20, UX-A 7): a "Make public" action (the eye of
+ *     #16's tab) right after Shield, opening #16 on its unshield side. The design's shielded
+ *     dashboard has Send / Receive / Shield / Buy; it is shown only when `onMakePublic` is passed,
+ *     which the Navigator does only in the build that registers the unshield route.
  *
  * Privacy hide-ladder (per design D · "Hide-balance privacy completeness"):
  *   - Hero balance + cents → blurred dots
@@ -97,6 +101,8 @@ interface DashboardScreenProps {
   onSend?: (shielded?: boolean) => void;
   onReceive?: () => void;
   onShield?: () => void;
+  /** UX-A 7: #16 on the unshield side — passed only where the unshield route exists (shielded build) */
+  onMakePublic?: () => void;
   onSwap?: () => void;
   onBuy?: () => void;
   onScan?: () => void;
@@ -120,6 +126,7 @@ export function DashboardScreen({
   onSend,
   onReceive,
   onShield,
+  onMakePublic,
   onSwap,
   onBuy,
   onScan,
@@ -341,6 +348,7 @@ export function DashboardScreen({
             onSend={onSend}
             onReceive={onReceive}
             onShield={onShield}
+            onMakePublic={onMakePublic}
             onSwap={onSwap}
             onBuy={onBuy}
             onScan={onScan}
@@ -417,6 +425,7 @@ interface DashboardHeaderProps {
   onSend?: (shielded?: boolean) => void;
   onReceive?: () => void;
   onShield?: () => void;
+  onMakePublic?: () => void;
   onSwap?: () => void;
   onBuy?: () => void;
   onScan?: () => void;
@@ -443,6 +452,7 @@ function DashboardHeader({
   onSend,
   onReceive,
   onShield,
+  onMakePublic,
   onSwap,
   onBuy,
   onScan,
@@ -697,6 +707,16 @@ function DashboardHeader({
               mode={mode}
             />
           )}
+          {/* DEPARTURE (owner-approved, UX-A 7): "Make public" next to Shield — not in the design's
+              shielded dashboard; offered only where the unshield route exists (onMakePublic). */}
+          {isShielded && onMakePublic ? (
+            <QuickAction
+              Icon={Eye}
+              label="Make public"
+              onPress={onMakePublic}
+              mode={mode}
+            />
+          ) : null}
           {/* Buy is the presale: offered only where presale exists (mainnet, S13). */}
           {onBuy ? (
             <QuickAction
@@ -991,7 +1011,7 @@ function ShieldedAssetsBody({view, hidden, checkAgain}: Omit<ShieldedAssetsSecti
         </Text>
         {!hidden && view.pending > 0n ? (
           <Text variant="caption" numeral className="text-warning">
-            {`${displayAmount(view.pending, A0_TOKEN.decimals)} pending · settled at the next start`}
+            {`${displayAmount(view.pending, A0_TOKEN.decimals)} pending · not confirmed yet`}
           </Text>
         ) : null}
         {view.pending > 0n ? (

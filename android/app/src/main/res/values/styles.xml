@@ -6,4 +6,18 @@
         <item name="android:editTextBackground">@drawable/rn_edit_text_material</item>
     </style>
 
+    <!--
+      The native unshield confirmation (UX-A 5; A0ConfirmDialog.build): the app's dark sheet instead
+      of the platform's DayNight alert. Colours: a0_confirm_colors.xml (the app's design tokens,
+      tailwind.config.js). Styling only: the window's security flags are set in code, not here.
+    -->
+    <style name="A0ConfirmDialogTheme" parent="android:Theme.Material.Dialog.Alert">
+        <item name="android:windowBackground">@drawable/a0_confirm_dialog_bg</item>
+        <item name="android:textColorPrimary">@color/a0_confirm_text_primary</item>
+        <item name="android:textColorSecondary">@color/a0_confirm_text_secondary</item>
+        <item name="android:colorAccent">@color/a0_confirm_accent</item>
+        <item name="android:colorControlHighlight">#33FFFFFF</item>
+        <item name="android:backgroundDimAmount">0.7</item>
+    </style>
+
 </resources>

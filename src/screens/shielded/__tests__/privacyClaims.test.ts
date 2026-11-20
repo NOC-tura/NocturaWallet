@@ -35,7 +35,12 @@ function walk(dir: string): string[] {
   });
 }
 
-const EXTRA_COPY = [path.join(ROOT, 'src/components/CheckAgainLink.tsx')];
+const EXTRA_COPY = [
+  path.join(ROOT, 'src/components/CheckAgainLink.tsx'),
+  // Shielded UX part A: the dashboard carries shielded copy too (its "Make public" action, the
+  // "pending · not confirmed yet" caption, the shielded asset lines).
+  path.join(ROOT, 'src/screens/dashboard/DashboardScreen.tsx'),
+];
 
 function screenSources(): Array<{file: string; text: string}> {
   return [...walk(SCREENS), ...EXTRA_COPY].map(p => ({
@@ -85,8 +90,12 @@ describe('shielded screens make no unsupported privacy claim', () => {
         'src/screens/shielded/unshield/UnshieldRunScreen.tsx',
         'src/screens/shielded/unshield/unshieldCopy.ts',
         'src/components/CheckAgainLink.tsx',
+        'src/screens/dashboard/DashboardScreen.tsx',
       ]),
     );
+    // the dashboard is read as text: its shielded caption is in what the guard sees
+    const dash = screenSources().find(s => s.file === 'src/screens/dashboard/DashboardScreen.tsx')!;
+    expect(dash.text).toContain('pending · not confirmed yet');
     expect(files.some(f => f.includes('__tests__'))).toBe(false);
     // the copy module is read as text: §11's relayed-unshield sentence is in what the guard sees
     const copy = screenSources().find(s => s.file.endsWith('unshield/unshieldCopy.ts'))!;

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Approve (UX-A 5): a filled pill (the design's .btn-primary), accent-shielded; a ripple on touch. -->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="#33000000">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@color/a0_confirm_approve_fill" />
+            <corners android:radius="9999dp" />
+        </shape>
+    </item>
+</ripple>

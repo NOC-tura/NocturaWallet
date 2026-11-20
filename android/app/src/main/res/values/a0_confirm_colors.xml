@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The native unshield confirmation's colours (UX-A 5): the app's design tokens, copied from
+  tailwind.config.js `theme.extend.colors` (DS v0.2, whose source of truth is the owner's design,
+  /home/user/Downloads/index.html). The dialog is on the shielded side, so its accent is
+  `accent-shielded`. Change a value here only together with the token it names.
+-->
+<resources>
+    <!-- bg-surface-2: the dialog's sheet (the design's .sheet background) -->
+    <color name="a0_confirm_surface">#17171A</color>
+    <!-- bg-surface-3: the sheet's hairline border, and the disabled Approve fill -->
+    <color name="a0_confirm_border">#212126</color>
+    <!-- fg-primary: the title and the values -->
+    <color name="a0_confirm_text_primary">#F4F5F7</color>
+    <!-- fg-secondary: the labels -->
+    <color name="a0_confirm_text_secondary">#A8ACB5</color>
+    <!-- fg-tertiary: the Cancel outline -->
+    <color name="a0_confirm_outline">#6E727A</color>
+    <!-- fg-disabled: Approve's text while the biometric prompt runs (the button is disabled) -->
+    <color name="a0_confirm_text_disabled">#3A3D44</color>
+    <!-- accent-shielded: Approve's fill -->
+    <color name="a0_confirm_accent">#5BE3C2</color>
+    <!-- bg-base: the dark text on the accent (the design's .btn-primary) -->
+    <color name="a0_confirm_on_accent">#0A0A0A</color>
+</resources>

@@ -202,7 +202,9 @@ export function ShieldUnshieldScreen({onBack, onShield, onUnshield, initialDirec
                   {`${displayAmount(available, A0_TOKEN.decimals)} ${sym}`}
                 </Text>
               </View>
-              <View className="flex-row items-baseline justify-center gap-2 mb-3">
+              {/* UX-A 3 (the design's .amount-line: baseline, gap 8, centred): the input is sized to
+                  its content — no min width — so the symbol sits right after the figure */}
+              <View className="flex-row items-baseline justify-center gap-2 mb-3" testID="shield-amount-row">
                 <TextInput
                   value={amount}
                   onChangeText={setAmount}
@@ -211,13 +213,12 @@ export function ShieldUnshieldScreen({onBack, onShield, onUnshield, initialDirec
                   keyboardType="decimal-pad"
                   accessibilityLabel="Amount"
                   testID="shield-amount-input"
-                  className={cn(
-                    'font-geist text-balance-xl text-center min-w-[80px]',
-                    insufficient ? 'text-danger' : 'text-fg-primary',
-                  )}
-                  style={{minWidth: 120}}
+                  className={cn('font-geist text-balance-xl shrink p-0', insufficient ? 'text-danger' : 'text-fg-primary')}
                 />
-                <Text variant="h2" className={cn(insufficient ? 'text-danger' : 'text-fg-secondary')}>
+                <Text
+                  variant="h2"
+                  className={cn(insufficient ? 'text-danger' : 'text-fg-secondary')}
+                  testID="shield-amount-symbol">
                   {sym}
                 </Text>
               </View>
@@ -403,15 +404,25 @@ function ShieldedLine({
             {a0RefusalLoudText(refusal)}
           </Banner>
         ) : null}
-        <View className="flex-row items-center justify-between" testID="shielded-line">
-          <Text variant="body-sm" className="text-fg-secondary">
+        {/* UX-A 1: the label keeps its width, the value takes the rest of the row (right-aligned, it
+            wraps rather than running into the label); the pending sum is its own line below */}
+        <View className="flex-row items-start justify-between gap-3" testID="shielded-line">
+          <Text variant="body-sm" className="text-fg-secondary shrink-0">
             Shielded balance
           </Text>
-          <Text variant="body-sm" numeral className="text-accent-shielded font-geist-semibold">
+          <Text
+            variant="body-sm"
+            numeral
+            className="flex-1 text-right text-accent-shielded font-geist-semibold"
+            testID="shielded-line-value">
             {`${displayAmount(view.unspent, A0_TOKEN.decimals)} ${sym}`}
-            {view.pending > 0n ? ` · ${displayAmount(view.pending, A0_TOKEN.decimals)} ${sym} pending` : ''}
           </Text>
         </View>
+        {view.pending > 0n ? (
+          <Text variant="caption" numeral className="text-right text-fg-secondary mt-0.5" testID="shielded-line-pending">
+            {`${displayAmount(view.pending, A0_TOKEN.decimals)} ${sym} pending`}
+          </Text>
+        ) : null}
         {view.pending > 0n ? (
           <View className="flex-row items-center justify-between mt-1">
             <Text variant="caption" className="text-warning flex-1">

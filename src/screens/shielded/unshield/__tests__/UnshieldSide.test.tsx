@@ -10,6 +10,7 @@
  */
 import React from 'react';
 import {render, fireEvent, act, waitFor} from '@testing-library/react-native';
+import {StyleSheet} from 'react-native';
 import {ShieldUnshieldScreen} from '../../ShieldUnshieldScreen';
 import type {A0ShieldedView} from '../../../../hooks/useA0Shielded';
 import type {A0RelayerQuote} from '../../../../modules/shielded/a0/relayerClient';
@@ -147,6 +148,20 @@ describe('#16 — the direction tabs (spec §12: the unshield side is no longer 
 });
 
 describe('#16 unshield — the design (states 2 and 5) and the A0 lines', () => {
+  it('UX-A 3: the amount and its symbol sit together, centred — the input is sized to its content (no min width), the symbol right after it', async () => {
+    const r = await screen();
+    const line = r.getByTestId('unshield-amount-row');
+    expect(line.props.className).toMatch(/(^|\s)justify-center(\s|$)/);
+    expect(line.props.className).toMatch(/(^|\s)gap-2(\s|$)/);
+    const [first, second] = React.Children.toArray(line.props.children) as React.ReactElement<{testID?: string}>[];
+    expect(first!.props.testID).toBe('unshield-amount-input');
+    expect(second!.props.testID).toBe('unshield-amount-symbol');
+    const input = r.getByTestId('unshield-amount-input');
+    expect(input.props.className).not.toMatch(/min-w/);
+    expect(StyleSheet.flatten(input.props.style)?.minWidth).toBeUndefined();
+    expect(text(r, 'unshield-amount-symbol')).toBe('TEST');
+  });
+
   it('idle: Vault balance, the one-note limit, the relayed copy, the fee rows empty, CTA "Unshield TEST" disabled', async () => {
     const r = await screen();
     expect(text(r, 'unshield-vault')).toBe('2.5 TEST');
@@ -245,6 +260,18 @@ describe('#16 unshield — the destination choice (undrawn; spec §11, S3 / S9 /
     fireEvent.changeText(r.getByTestId('unshield-amount-input'), '0.5');
     fireEvent.press(r.getByTestId('unshield-cta'));
     expect(onUnshield).toHaveBeenCalledWith({destination: {kind: 'main'}, amount: '500000000'});
+  });
+
+  it('UX-A 2: the "Another address" input shows the WHOLE address — multiline (2 lines), monospace; Enter submits instead of breaking the line', async () => {
+    const r = await screen();
+    fireEvent.press(r.getByTestId('unshield-dest-external'));
+    const input = r.getByTestId('unshield-external-input');
+    expect(input.props.multiline).toBe(true); // wraps: a single-line input scrolls the start out of view
+    expect(input.props.numberOfLines).toBe(2);
+    expect(input.props.className).toMatch(/(^|\s)font-geist-mono(\s|$)/);
+    expect(input.props.submitBehavior).toBe('blurAndSubmit');
+    fireEvent.changeText(input, OTHER);
+    expect(r.getByTestId('unshield-external-input').props.value).toBe(OTHER); // the full text, nothing cut
   });
 
   it('"Another address" → the payment warning (§11 verbatim), the input; a valid wallet address → {kind: "external", owner}', async () => {
