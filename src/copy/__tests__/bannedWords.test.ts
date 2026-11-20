@@ -95,6 +95,14 @@ describe('the banned words (spec §2) are out of every user-visible string', () 
     expect(bannedStrings('f.tsx', "const a = 'Go non-shielded now';")).toHaveLength(1);
     expect(bannedStrings('f.tsx', "const a = 'border border-accent-transparent';")).toEqual([]);
     expect(bannedStrings('f.tsx', "const a = 'rounded bg-accent-shielded-tint p-2';")).toEqual([]);
+    // fix round 2: class-like TOKENS are dropped, copy that merely contains a prefix is not
+    expect(bannedStrings('f.tsx', "const a = 'px-2 divide-shield-700';")).toEqual([]);
+    expect(bannedStrings('f.tsx', "const a = 'border-l-transparent px-2';")).toEqual([]);
+    expect(bannedStrings('f.tsx', "const a = 'Auto-shield incoming funds';")).toHaveLength(1);
+    expect(bannedStrings('f.tsx', "const a = 'Crypto-vault ready';")).toHaveLength(1);
+    expect(bannedStrings('f.tsx', "const a = 'Public-to-shielded transfer';")).toHaveLength(1);
+    expect(bannedStrings('f.tsx', 'const a = <Text>Enable auto-shield</Text>;')).toHaveLength(1);
+    expect(bannedStrings('f.tsx', 'const a = <Text>text-shield here</Text>;')).toHaveLength(1); // JSX text is never stripped
   });
 
   // One row per exclusion rule, each isolated: the banned phrase sits ONLY behind that rule (review M-2).

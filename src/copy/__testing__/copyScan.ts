@@ -18,8 +18,8 @@ import * as ts from 'typescript';
  * Comments are never strings. accessibilityLabel IS copy (a screen reader says it).
  */
 
-/** spec §2: the words that disappear from user-visible copy. A word glued to `+`, `/` or a letter is a token (`noctura+shielded:`); a hyphen is NOT a glue ("Shielded-only mode", "non-shielded" are copy); a Tailwind utility (`border-accent-transparent`, `bg-shield-x`) is not, by its prefix. */
-export const BANNED_WORDS = /(?<![\w+/])(?<!(?:border|bg|text|accent|fill|stroke|ring|shadow|outline|from|via|to)-)(?:un)?shield(?:ed|ing|s)?(?![\w])|(?<![\w+/])(?<!(?:border|bg|text|accent|fill|stroke|ring|shadow|outline|from|via|to)-)(?:transparent|vaults?)(?![\w])/i;
+/** spec §2: the words that disappear from user-visible copy. A word glued to `+`, `/` or a letter is a token (`noctura+shielded:`); a hyphen is NOT a glue ("Shielded-only mode", "non-shielded" are copy); a class-like token of a non-JSX string is dropped first (CLASS_TOKEN). */
+export const BANNED_WORDS = /(?<![\w+/])(?:un)?shield(?:ed|ing|s)?(?![\w])|(?<![\w+/])(?:transparent|vaults?)(?![\w])/i;
 
 /** spec §2 "Forbidden": no new copy may say or imply these (the last three: what implies it — review M-2 / I-5). */
 export const FORBIDDEN_NEW: readonly RegExp[] = [
@@ -33,6 +33,10 @@ export const FORBIDDEN_NEW: readonly RegExp[] = [
   /hidden from everyone/i,
   /stays? private on-?chain/i,
 ];
+
+/** A whitespace-separated token that is wholly a Tailwind utility (`border-accent-transparent`, `divide-shield-700`, `hover:bg-transparent`). Case-sensitive, anchored: "Auto-shield" and a lower-case "non-shielded" (one hyphen, no utility prefix) are not one; a lower-case three-part word like "auto-shield-ready" would be (stated limit). */
+const CLASS_TOKEN =
+  /^(?:[a-z]+:)*(?:-?[a-z]+(?:-[a-z0-9./[\]#%]+){2,}|(?:bg|border|text|fill|stroke|ring|shadow|outline)-[a-z0-9./[\]#%]+)$/;
 
 const MACHINE_TOKEN = /^[a-z0-9_.:/#@-]*$/;
 const NON_COPY_ATTRIBUTES = new Set([
@@ -55,6 +59,8 @@ const NON_COPY_CALLS = /^(cn|clsx|require|console\.\w+|jest\.\w+)$/;
 export interface VisibleString {
   line: number;
   text: string;
+  /** JSX text is never stripped of class-like tokens. */
+  jsx: boolean;
 }
 
 export function userVisibleStrings(fileName: string, source: string): VisibleString[] {
@@ -97,7 +103,7 @@ export function userVisibleStrings(fileName: string, source: string): VisibleStr
     }
     // JSX text is always copy (a lower-case fragment like "vault" between two expressions too)
     if (text !== null && text !== '' && (jsx || !MACHINE_TOKEN.test(text)) && !notCopy(node)) {
-      out.push({line: sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1, text});
+      out.push({line: sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1, text, jsx});
     }
     if (ts.isTemplateExpression(node)) {
       node.templateSpans.forEach(s => visit(s.expression));
@@ -111,7 +117,15 @@ export function userVisibleStrings(fileName: string, source: string): VisibleStr
 
 /** The banned strings of one source file. */
 export function bannedStrings(fileName: string, source: string): VisibleString[] {
-  return userVisibleStrings(fileName, source).filter(s => BANNED_WORDS.test(s.text));
+  return userVisibleStrings(fileName, source).filter(s => {
+    const said = s.jsx
+      ? s.text
+      : s.text
+          .split(/\s+/)
+          .filter(t => !CLASS_TOKEN.test(t))
+          .join(' ');
+    return BANNED_WORDS.test(said);
+  });
 }
 
 /** spec §2 "Forbidden", over the user-visible strings only (a comment may name what it forbids). */
