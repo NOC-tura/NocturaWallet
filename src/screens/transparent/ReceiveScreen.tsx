@@ -396,7 +396,6 @@ export function ReceiveScreen({address, shielded = false, onBack}: ReceiveScreen
             <ShieldCheck size={16} color={accentHex} strokeWidth={2} />
             <Text variant="caption" className="flex-1 text-shield-300">
               The sender's wallet must support Noctura shielded payment codes.
-              Amounts and parties stay private on-chain.
             </Text>
           </View>
         ) : null}

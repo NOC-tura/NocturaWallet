@@ -82,6 +82,12 @@ describe('ReceiveScreen', () => {
   describe('shielded variant (#13.shielded)', () => {
     const NOC = 'noc1qqqqqqqqqqqqqqexampleshieldedpaymentcodexxxxxxxxxxxxxxxxx';
 
+    it('owner decision A10 (2026-11-20): the M2 banner makes no "stay private on-chain" claim', () => {
+      const {queryByText} = renderScreen({address: NOC, shielded: true});
+      expect(queryByText(/stay private on-chain/)).toBeNull();
+      expect(queryByText(/must support Noctura/)).toBeTruthy(); // positive control: the banner is rendered
+    });
+
     it('renders the shielded mode strip + payment-code title', () => {
       const {getByText} = renderScreen({address: NOC, shielded: true});
       expect(getByText('Shielded · payment code')).toBeTruthy();

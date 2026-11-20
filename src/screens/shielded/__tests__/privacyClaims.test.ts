@@ -40,6 +40,8 @@ const EXTRA_COPY = [
   // Shielded UX part A: the dashboard carries shielded copy too (its "Make public" action, the
   // "pending · not confirmed yet" caption, the shielded asset lines).
   path.join(ROOT, 'src/screens/dashboard/DashboardScreen.tsx'),
+  // Shielded UX part B (spec §2 "Widened"): the one vocabulary module.
+  path.join(ROOT, 'src/copy/modes.ts'),
 ];
 
 function screenSources(): Array<{file: string; text: string}> {
@@ -91,6 +93,7 @@ describe('shielded screens make no unsupported privacy claim', () => {
         'src/screens/shielded/unshield/unshieldCopy.ts',
         'src/components/CheckAgainLink.tsx',
         'src/screens/dashboard/DashboardScreen.tsx',
+        'src/copy/modes.ts',
       ]),
     );
     // the dashboard is read as text: its shielded caption is in what the guard sees
@@ -100,6 +103,9 @@ describe('shielded screens make no unsupported privacy claim', () => {
     // the copy module is read as text: §11's relayed-unshield sentence is in what the guard sees
     const copy = screenSources().find(s => s.file.endsWith('unshield/unshieldCopy.ts'))!;
     expect(copy.text).toContain('so no key of yours signs it. Amounts and timing are public.');
+    // part B: the vocabulary module is read as text; its honest sentence is in what the guard sees
+    const vocab = screenSources().find(s => s.file === 'src/copy/modes.ts')!;
+    expect(vocab.text).toContain('Deposits are public on chain.');
   });
 
   it('M1c: the scope reaches every Android string resource (the Kotlin strings.xml and the dialog resource)', () => {
