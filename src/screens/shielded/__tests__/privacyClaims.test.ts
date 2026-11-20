@@ -44,8 +44,11 @@ const EXTRA_COPY = [
   path.join(ROOT, 'src/copy/modes.ts'),
 ];
 
+/** Shielded UX part B (spec §2 "Widened"): the shared components of the private side. */
+const PRIVATE_COMPONENTS = path.join(ROOT, 'src/components/private');
+
 function screenSources(): Array<{file: string; text: string}> {
-  return [...walk(SCREENS), ...EXTRA_COPY].map(p => ({
+  return [...walk(SCREENS), ...walk(PRIVATE_COMPONENTS), ...EXTRA_COPY].map(p => ({
     file: path.relative(ROOT, p),
     text: fs.readFileSync(p, 'utf8'),
   }));
@@ -92,6 +95,7 @@ describe('shielded screens make no unsupported privacy claim', () => {
         'src/screens/shielded/unshield/UnshieldRunScreen.tsx',
         'src/screens/shielded/unshield/unshieldCopy.ts',
         'src/components/CheckAgainLink.tsx',
+        'src/components/private/DestinationRow.tsx',
         'src/screens/dashboard/DashboardScreen.tsx',
         'src/copy/modes.ts',
       ]),
