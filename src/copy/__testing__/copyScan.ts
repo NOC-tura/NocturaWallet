@@ -13,12 +13,13 @@ import * as ts from 'typescript';
  *   - the JSX attributes in NON_COPY_ATTRIBUTES (test ids, class names, colours, enum props);
  *   - arguments of cn / clsx / require / console.* / jest.*;
  *   - an operand of === / !==, a `case` label, an object key;
- *   - a lower-case token with no space (`'shielded'`, `'transparent'`, `'slip10:0'`).
+ *   - a lower-case token with no space (`'shielded'`, `'transparent'`, `'slip10:0'`) outside JSX text:
+ *     a single lower-case word in a string is never copy here (a stated limit, see bannedWords.test.ts).
  * Comments are never strings. accessibilityLabel IS copy (a screen reader says it).
  */
 
-/** spec §2: the words that disappear from user-visible copy. A word glued to `-`, `+`, `/` or a letter is a token (`accent-shielded`, `noctura+shielded:`). */
-export const BANNED_WORDS = /(?<![\w+/-])(?:un)?shield(?:ed|ing|s)?(?![\w-])|(?<![\w+/-])(?:transparent|vaults?)(?![\w-])/i;
+/** spec §2: the words that disappear from user-visible copy. A word glued to `+`, `/` or a letter is a token (`noctura+shielded:`); a hyphen is NOT a glue ("Shielded-only mode", "non-shielded" are copy); a Tailwind utility (`border-accent-transparent`, `bg-shield-x`) is not, by its prefix. */
+export const BANNED_WORDS = /(?<![\w+/])(?<!(?:border|bg|text|accent|fill|stroke|ring|shadow|outline|from|via|to)-)(?:un)?shield(?:ed|ing|s)?(?![\w])|(?<![\w+/])(?<!(?:border|bg|text|accent|fill|stroke|ring|shadow|outline|from|via|to)-)(?:transparent|vaults?)(?![\w])/i;
 
 /** spec §2 "Forbidden": no new copy may say or imply these (the last three: what implies it — review M-2 / I-5). */
 export const FORBIDDEN_NEW: readonly RegExp[] = [
@@ -27,7 +28,8 @@ export const FORBIDDEN_NEW: readonly RegExp[] = [
   /invisible/i,
   /fully private/i,
   /no one can see/i,
-  /can(?:'|no)?t be traced/i,
+  /can(?:['’]|&apos;|no)?t be traced/i,
+  /nobody can see/i,
   /hidden from everyone/i,
   /stays? private on-?chain/i,
 ];
@@ -47,7 +49,6 @@ const NON_COPY_ATTRIBUTES = new Set([
   'tone',
   'mode',
   'kind',
-  'name',
 ]);
 const NON_COPY_CALLS = /^(cn|clsx|require|console\.\w+|jest\.\w+)$/;
 
@@ -91,7 +92,7 @@ export function userVisibleStrings(fileName: string, source: string): VisibleStr
     } else if (ts.isTemplateExpression(node)) {
       text = [node.head.text, ...node.templateSpans.map(s => s.literal.text)].join(' ');
     } else if (ts.isJsxText(node)) {
-      text = node.text.trim();
+      text = node.text.replace(/\s+/g, ' ').trim();
       jsx = true;
     }
     // JSX text is always copy (a lower-case fragment like "vault" between two expressions too)

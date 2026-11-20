@@ -82,6 +82,9 @@ describe('src/copy/modes.ts — honesty', () => {
     expect(forbiddenClaims('f.ts', "const a = 'It cannot be traced';")).toHaveLength(1);
     expect(forbiddenClaims('f.ts', "const a = 'Hidden from everyone';")).toEqual(['hidden from everyone']);
     expect(forbiddenClaims('f.ts', "const a = 'Amounts and parties stay private on-chain.';")).toEqual(['stays? private on-?chain']);
+    expect(forbiddenClaims('f.ts', "const a = 'It can\u2019t be traced';")).toHaveLength(1);
+    expect(forbiddenClaims('f.tsx', 'const a = <Text>It can&apos;t be traced</Text>;')).toHaveLength(1);
+    expect(forbiddenClaims('f.ts', "const a = 'Nobody can see it';")).toEqual(['nobody can see']);
     expect(forbiddenClaims('f.ts', "// anonymous, in a comment\nconst a = 'Deposits are public on chain.';")).toEqual([]);
   });
 });

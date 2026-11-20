@@ -90,9 +90,47 @@ describe('the banned words (spec §2) are out of every user-visible string', () 
     expect(bannedStrings('fixture.tsx', only)).toEqual([]);
   });
 
+  it('review M-1 (fix round 1): hyphenated copy counts, a Tailwind utility with spaces does not', () => {
+    expect(bannedStrings('f.tsx', "const a = 'Shielded-only mode';")).toHaveLength(1);
+    expect(bannedStrings('f.tsx', "const a = 'Go non-shielded now';")).toHaveLength(1);
+    expect(bannedStrings('f.tsx', "const a = 'border border-accent-transparent';")).toEqual([]);
+    expect(bannedStrings('f.tsx', "const a = 'rounded bg-accent-shielded-tint p-2';")).toEqual([]);
+  });
+
+  // One row per exclusion rule, each isolated: the banned phrase sits ONLY behind that rule (review M-2).
+  it('each exclusion rule is isolated (a hit when the rule does not apply, none when it does)', () => {
+    expect(bannedStrings('f.tsx', 'const a = <Row subtitle="Shielded NOC" />;')).toHaveLength(1);
+    expect(bannedStrings('f.tsx', 'const a = <Row testID="Shielded NOC" />;')).toEqual([]);
+    expect(bannedStrings('f.tsx', 'const a = <Row className="Shielded NOC" />;')).toEqual([]);
+    expect(bannedStrings('f.tsx', "const a = f('Shielded pool');")).toHaveLength(1);
+    expect(bannedStrings('f.tsx', "const a = cn('Shielded pool');")).toEqual([]);
+    expect(bannedStrings('f.tsx', "const a = x == 'Shielded pool';")).toHaveLength(1);
+    expect(bannedStrings('f.tsx', "const a = x === 'Shielded pool';")).toEqual([]);
+    expect(bannedStrings('f.tsx', "switch (x) { case 'Shielded pool': break; }")).toEqual([]);
+    expect(bannedStrings('f.tsx', "const a = {'Shielded pool': 1};")).toEqual([]);
+    expect(bannedStrings('f.tsx', "const a = {label: 'Shielded pool'};")).toHaveLength(1);
+    expect(bannedStrings('f.tsx', "import {x} from 'Shielded pool';")).toEqual([]);
+  });
+
+  it('stated limit (review M-3): a lower-case single word outside JSX text is a token, not copy', () => {
+    expect(bannedStrings('f.tsx', "const a = {label: 'shielded'};")).toEqual([]);
+    expect(bannedStrings('f.tsx', 'const a = <Text>{x} shielded</Text>;')).toHaveLength(1); // JSX text is always copy
+  });
+
+  it('review I-1 (fix round 1): a phrase wrapped across lines inside JSX text is still caught', () => {
+    expect(forbiddenClaims('f.tsx', 'const C = () => (\n<Text>\n  Your wallet is fully\n   private here.\n</Text>);')).toEqual(['fully private']);
+    expect(forbiddenClaims('f.tsx', 'const C = () => (\n<Text>\n  Amounts stay private\n   on-chain.\n</Text>);')).toEqual(['stays? private on-?chain']);
+    expect(forbiddenClaims('f.tsx', 'const C = () => (\n<Text>\n  No one\n   can see it.\n</Text>);')).toEqual(['no one can see']);
+  });
+
+  it('review M-2 (fix round 1): copy-like props are scanned for forbidden claims', () => {
+    expect(forbiddenClaims('f.tsx', 'const a = <Row name="Fully private wallet" />;')).toEqual(['fully private']);
+    expect(forbiddenClaims('f.tsx', 'const a = <Row accessibilityLabel="Anonymous send" />;')).toEqual(['anonymous']);
+  });
+
   it('the scan reads every screen and component (positive control)', () => {
     const files = sources().map(s => s.file);
-    expect(files.length).toBeGreaterThanOrEqual(70);
+    expect(files.length).toBeGreaterThanOrEqual(80);
     expect(files).toEqual(
       expect.arrayContaining([
         'src/screens/dashboard/DashboardScreen.tsx',
