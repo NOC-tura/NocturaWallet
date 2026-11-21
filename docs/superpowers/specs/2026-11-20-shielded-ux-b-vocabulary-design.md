@@ -91,8 +91,8 @@ All four live under `src/components/private/`, except the copy module.
     - "PRIVATE ASSETS";
     - the pending caption "{x} pending · not confirmed yet" with Check again, and the decided captions;
   - Public mode: only the toggle's label changes.
-- **#16 "Private ⇄ Public":**
-  - tabs Make private / Make public;
+- **#16 "Private ⇄ Public":** *(Amended 2026-11-21 by owner decision after the phone pass: two separate screens with no tabs; the dashboard button fixes the direction, the title is the action "Make private" / "Make public", the other direction is reached by going back. The bullets below apply to each screen.)*
+  - ~~tabs Make private / Make public~~ (superseded, see the amendment);
   - one balance line: Public balance on Make private, Private balance on Make public (decision B-2);
   - the amount with MAX and `AmountLimitHint` (decision B-4);
   - Make public:
