@@ -19,14 +19,14 @@ import {A0_TOKEN, SOL_DECIMALS, a0ErrorText, displayAmount} from '../../../modul
 import {keychainManager} from '../../../modules/keychain/keychainModule';
 import {mnemonicToSeed} from '../../../modules/keyDerivation/mnemonicUtils';
 import {getConnection} from '../../../modules/solana/connection';
-import {useA0Shielded} from '../../../hooks/useA0Shielded';
+import {a0PrivateBalanceNow, useA0Shielded} from '../../../hooks/useA0Shielded';
 import {a0CheckCaption, a0UnshieldDecisionFor} from '../../../modules/shielded/a0/unshieldCheck';
 import type {A0UnshieldCheck} from '../../../modules/shielded/a0/unshieldCheck';
 import {CheckAgainLink} from '../../../components/CheckAgainLink';
 import {A0_OWN_ACCOUNT_REFUSAL_COPY, a0RefusalLoudText, a0UnshieldRefusalSentence} from './unshieldCopy';
 import {MetaRow, ProofHeroRing, StageRow, StatusRing, shortSignature} from '../shieldedParts';
 import {DetailsDisclosure} from '../../../components/private';
-import {MAKE_PUBLIC, MAKING_PUBLIC, NOW_PUBLIC, PRIVATE_MARK} from '../../../copy/modes';
+import {LEFT_IN_THIS_NOTE, MAKE_PUBLIC, MAKING_PUBLIC, NOW_PUBLIC, PRIVATE_MARK, privateBalanceNow} from '../../../copy/modes';
 import type {StageRowStatus, StatusTone} from '../shieldedParts';
 
 /**
@@ -86,6 +86,12 @@ import type {StageRowStatus, StatusTone} from '../shieldedParts';
  * link: a deposit is signed by the main account and public by design.
  * part B (spec 2026-11-20 §4): the header "PRIVATE · Make public"; the tx hash and the change position
  * behind "Details ▾"; the stage labels in plain words (plan A7).
+ * Owner phone pass 2, 2026-11-21: "Now public" says the wallet's private balance AFTER the exit
+ * ("Private balance now {total} {sym}", item 1) from the dashboard's own source
+ * (`a0PrivateBalanceNow`, read when the outcome is spent, or when "Check again" settled this note)
+ * — never the spent note's change, which only shows in Details ("Left in this note"); no sentence
+ * when the total is not known. The sub-line "The destination received …" is gone (item 7): the card
+ * says it.
  */
 
 /** how long "Copied" replaces "Copy signature" */
@@ -169,12 +175,18 @@ export function UnshieldRunScreen({request, onDone, onBack}: UnshieldRunScreenPr
   // settled) or decides another pending note never changes what this #21 says
   const [ownRho, setOwnRho] = useState<string | null>(null);
   const [ownDecision, setOwnDecision] = useState<A0UnshieldCheck | null>(null);
+  /** owner phone pass 2, item 1: the private balance after this exit (the dashboard's source), null = not known */
+  const [balanceAfter, setBalanceAfter] = useState<bigint | null>(null);
   const checkReport = checkAgain.report;
   useEffect(() => {
     if (ownRho === null || !checkReport) return;
     const d = a0UnshieldDecisionFor(checkReport, ownRho);
     if (d !== null && d.kind !== 'pending') setOwnDecision(prev => prev ?? d);
   }, [checkReport, ownRho]);
+  // "Check again" settled THIS note: the store is reconciled, so the balance is read again then
+  useEffect(() => {
+    if (ownDecision?.kind === 'settled') setBalanceAfter(readBalanceNow());
+  }, [ownDecision]);
 
   let amount: bigint | null = null;
   try {
@@ -247,6 +259,8 @@ export function UnshieldRunScreen({request, onDone, onBack}: UnshieldRunScreenPr
         const current = at.stage;
         if (current !== null && done.current[current] === undefined) done.current[current] = t;
         setNow(t);
+        // spent: the change note is stored and the note spent before the flow returns — read the total now
+        if (outcome.status === 'spent') setBalanceAfter(readBalanceNow());
         setPhase({kind: 'done', outcome});
       } catch (e) {
         const err = a0ErrorText(e);
@@ -369,7 +383,13 @@ export function UnshieldRunScreen({request, onDone, onBack}: UnshieldRunScreenPr
   const decided = undecided && ownDecision !== null && ownDecision.kind !== 'pending' ? ownDecision : null;
   // N-3: a landed-unverified first outcome keeps its loud line after the decision
   const firstLoud = phase.kind === 'done' && phase.outcome.status === 'landed-unverified' ? a0RefusalLoudText(phase.outcome.code) : null;
-  const view = decided ? decidedView(decided, amountText, firstLoud) : statusView(phase, amountText, start.current, now);
+  const shown = decided ? decidedView(decided, amountText, firstLoud) : statusView(phase, start.current, now);
+  // item 1: "Now public" (spent, or settled by "Check again") says the balance after it, when known
+  const landed = (phase.kind === 'done' && phase.outcome.status === 'spent' && !decided) || decided?.kind === 'settled';
+  const view =
+    landed && balanceAfter !== null
+      ? {...shown, lines: [...shown.lines, {id: 'balance', text: privateBalanceNow(displayAmount(balanceAfter, A0_TOKEN.decimals), sym)}]}
+      : shown;
   const pending = undecided && decided === null;
   // the caption: this note's decision; while it is undecided, a done check says "still not confirmed"
   // whatever it decided about other notes; an error / busy check says its own text
@@ -435,9 +455,11 @@ export function UnshieldRunScreen({request, onDone, onBack}: UnshieldRunScreenPr
             )}>
             {view.title}
           </Text>
-          <Text variant="body-sm" className="text-center text-fg-secondary max-w-[320px]" testID="unshield-status-sub">
-            {view.sub}
-          </Text>
+          {view.sub ? (
+            <Text variant="body-sm" className="text-center text-fg-secondary max-w-[320px]" testID="unshield-status-sub">
+              {view.sub}
+            </Text>
+          ) : null}
         </View>
 
         {view.loud ? (
@@ -470,7 +492,11 @@ export function UnshieldRunScreen({request, onDone, onBack}: UnshieldRunScreenPr
             <DetailsDisclosure testID="unshield-details">
               <MetaRow label="Tx hash" value={shortSignature(signature)} onCopy={copySig} />
               {phase.kind === 'done' && phase.outcome.status === 'spent' ? (
-                <MetaRow label="Change" value={`#${phase.outcome.changeLeafIndex} in the pool`} />
+                <>
+                  <MetaRow label="Change" value={`#${phase.outcome.changeLeafIndex} in the pool`} />
+                  {/* item 1: the spent note's change, as a plain row — not the balance */}
+                  <MetaRow label={LEFT_IN_THIS_NOTE} value={`${displayAmount(phase.outcome.changeAmount, A0_TOKEN.decimals)} ${sym}`} />
+                </>
               ) : null}
             </DetailsDisclosure>
           </View>
@@ -540,6 +566,15 @@ export function UnshieldRunScreen({request, onDone, onBack}: UnshieldRunScreenPr
       </View>
     </SafeAreaView>
   );
+}
+
+/** The dashboard's total (null = not known); a throw is "not known" too, never a screen error. */
+function readBalanceNow(): bigint | null {
+  try {
+    return a0PrivateBalanceNow();
+  } catch {
+    return null;
+  }
 }
 
 // ── #18: the proof part ──────────────────────────────────────────────────────
@@ -619,7 +654,6 @@ const PENDING_WHY: Record<'unconfirmed' | 'already_spent' | 'relay_failed' | 'un
 
 function statusView(
   phase: Phase,
-  amountText: string,
   start: Partial<Record<A0UnshieldStage, number>>,
   now: number,
 ): StatusView {
@@ -692,11 +726,12 @@ function statusView(
               warn: true,
             });
           }
-          lines.push({id: 'change', text: `Your change, ${displayAmount(o.changeAmount, A0_TOKEN.decimals)} ${A0_TOKEN.symbol}, stays private.`});
+          // item 1: the change line is gone (it is the note's, not the balance — in Details now); item 7:
+          // no sub-line — the card already says what the destination receives
           return {
             ...base,
             title: NOW_PUBLIC,
-            sub: `The destination received ${amountText}.`,
+            sub: '',
             tone: 'ok',
             badge: 'CONFIRMED',
             lines,

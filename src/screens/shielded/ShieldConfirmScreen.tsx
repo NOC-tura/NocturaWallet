@@ -14,13 +14,13 @@ import {
   displayAmount,
   preparedA0Deposit,
 } from '../../modules/shielded/a0/screenSupport';
-import {PRIVATE_MARK, makePrivateCta} from '../../copy/modes';
+import {PRIVATE_MARK, PROOF_FEE, PROOF_FEE_NONE, makePrivateCta} from '../../copy/modes';
 import type {ShieldIntent} from '../../types/shield';
 
 /**
  * #20 tx-confirm for the A0 deposit — mirror /home/user/Downloads/index.html §s20, its SHIELDED
  * variant (state 4: "SHIELDED Confirm", the "You are about to send privately" card, From / To /
- * Anonymity / Network rows, Fees with the ZK proof row, the mint CTA with the shield glyph).
+ * Anonymity / Network rows, Fees with the proof-fee row, the mint CTA with the shield glyph).
  *
  * Adapted to what a deposit is (D27 copy; part B words): "You are about to make this private"; From = your main account
  * (checksum first-6 / last-6 highlighted, screen.md's convention) — it signs and pays; To = the
@@ -131,9 +131,10 @@ export function ShieldConfirmScreen({intent, requestAuth, onAuthorized, onCancel
 
         <Card className="gap-3">
           <Text variant="overline">Fees</Text>
-          <Row label="ZK proof fee" zk>
+          {/* owner phone pass 2, 2026-11-21, item 5: "ZK PROOF FEE" → "PROOF FEE", the value as #19's */}
+          <Row label={PROOF_FEE} zk>
             <Text variant="body-sm" className="text-fg-primary">
-              None · on this device
+              {PROOF_FEE_NONE}
             </Text>
           </Row>
           <Row label="Network fee">

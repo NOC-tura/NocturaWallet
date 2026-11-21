@@ -8,7 +8,7 @@ import {cn} from '../../utils/cn';
 import {formatTokenAmount} from '../../utils/parseTokenAmount';
 import {submitA0Deposit} from '../../modules/shielded/a0/depositFlow';
 import type {A0DepositOutcome, A0SubmitStage} from '../../modules/shielded/a0/depositFlow';
-import {a0UnspentBalance} from '../../modules/shielded/a0/noteStore';
+import {a0PrivateBalanceNow} from '../../hooks/useA0Shielded';
 import {
   A0_DEPOSIT_FEE_LAMPORTS,
   A0_RHO_MARKER_RENT_LAMPORTS,
@@ -24,7 +24,8 @@ import type {ShieldIntent} from '../../types/shield';
 import {A0} from '../../modules/shielded/a0/constants';
 import {explorerTxUrl} from '../../constants/chain';
 import {MetaRow, StatusRing, shortSignature} from './shieldedParts';
-import {MAKE_PRIVATE, MAKING_PRIVATE, NOW_PRIVATE, PRIVATE_MARK} from '../../copy/modes';
+import {DetailsDisclosure} from '../../components/private';
+import {MAKE_PRIVATE, MAKING_PRIVATE, NOW_PRIVATE, PRIVATE_MARK, VIEW_ON_EXPLORER, yourPrivateBalanceIsNow} from '../../copy/modes';
 
 /**
  * #21 tx-status for the A0 deposit — mirror /home/user/Downloads/index.html §s21: the loading state
@@ -51,10 +52,17 @@ import {MAKE_PRIVATE, MAKING_PRIVATE, NOW_PRIVATE, PRIVATE_MARK} from '../../cop
  *     flight): "Not in this wallet", the earlier wallet's phrase recovers it.
  * Pending deposits are settled by the startup reconciliation or "Check again" (#16, dashboard).
  *
- * DEPARTURES FROM THE DESIGN (said loudly, R1-m2): "View details" opens the explorer
+ * DEPARTURES FROM THE DESIGN (said loudly, R1-m2): "View on explorer" (was "View details") opens the explorer
  * (`explorer.solana.com/tx/<sig>?cluster=devnet`), not #27; there is no ~90 s stuck-tx redirect to
  * #54 — `submitA0Deposit`'s poll ends in an outcome, and a pending deposit is the reconciliation's.
  * No retry and no re-sign on this screen (one prepared deposit → one send); a new shield starts at #16.
+ *
+ * Owner phone pass 2, 2026-11-21, item 6 — laid out like Now public: under "Now private" the
+ * sentence "Your private balance is now {total} {sym}." where {total} is the dashboard's own source
+ * (`a0PrivateBalanceNow`, read once the deposit landed) — omitted when that total is not known; the
+ * card keeps the amount and "Your deposit is public on chain."; the tx hash (with its copy), the
+ * position and the fees sit behind "Details ▾", collapsed; the button says "View on explorer"
+ * (the same explorer link as before).
  *
  * Back is locked while the send runs (screen.md #21 "Predictive-back LOCKED"): leaving would not stop
  * it, so the gesture explains that instead of pretending to cancel.
@@ -115,7 +123,7 @@ export function ShieldStatusScreen({intent, onDone}: ShieldStatusScreenProps) {
         setSignature(outcome.signature);
         if (outcome.status === 'unspent') {
           try {
-            setBalance(a0UnspentBalance());
+            setBalance(a0PrivateBalanceNow());
           } catch {
             setBalance(null);
           }
@@ -141,7 +149,12 @@ export function ShieldStatusScreen({intent, onDone}: ShieldStatusScreenProps) {
   }, [running, onDone]);
 
   const amount = `${displayAmount(BigInt(intent.amount), intent.decimals)} ${intent.tokenSymbol}`;
-  const view = viewOf(phase);
+  const base = viewOf(phase);
+  // item 6: the landed deposit's line is the balance after it — or nothing when it is not known
+  const view =
+    phase.kind === 'done' && phase.outcome.status === 'unspent'
+      ? {...base, sub: balance !== null ? yourPrivateBalanceIsNow(displayAmount(balance, intent.decimals), intent.tokenSymbol) : ''}
+      : base;
   const shortSig = signature ? shortSignature(signature) : signature;
 
   const copySig = () => {
@@ -186,9 +199,11 @@ export function ShieldStatusScreen({intent, onDone}: ShieldStatusScreenProps) {
             )}>
             {view.title}
           </Text>
-          <Text variant="body-sm" className="text-center text-fg-secondary" style={{maxWidth: 320}} testID="shield-status-sub">
-            {view.sub}
-          </Text>
+          {view.sub ? (
+            <Text variant="body-sm" className="text-center text-fg-secondary" style={{maxWidth: 320}} testID="shield-status-sub">
+              {view.sub}
+            </Text>
+          ) : null}
         </View>
 
         <View className="w-full rounded-2xl p-5 items-center gap-2 border border-[rgba(91,227,194,0.45)] bg-bg-surface-1">
@@ -198,11 +213,6 @@ export function ShieldStatusScreen({intent, onDone}: ShieldStatusScreenProps) {
           <Text variant="balance-lg" numeral className="text-fg-primary">
             {amount}
           </Text>
-          {balance !== null ? (
-            <Text variant="caption" className="text-fg-tertiary" testID="shield-status-balance">
-              {`Private balance now ${displayAmount(balance, intent.decimals)} ${intent.tokenSymbol}`}
-            </Text>
-          ) : null}
           {phase.kind === 'done' && phase.outcome.status === 'unspent' ? (
             <Text variant="caption" className="text-fg-tertiary text-center" testID="shield-status-public">
               Your deposit is public on chain.
@@ -212,14 +222,16 @@ export function ShieldStatusScreen({intent, onDone}: ShieldStatusScreenProps) {
 
         {signature ? (
           <View className="w-full bg-bg-surface-1 rounded-lg px-5 mt-3">
-            <MetaRow label="Tx hash" value={shortSig ?? ''} onCopy={copySig} />
-            {phase.kind === 'done' && phase.outcome.status === 'unspent' ? (
-              <MetaRow label="Position" value={`#${phase.outcome.leafIndex} in the pool`} />
-            ) : null}
-            <MetaRow
-              label="Fees"
-              value={`${formatTokenAmount(A0_DEPOSIT_FEE_LAMPORTS, SOL_DECIMALS)} SOL + ≈ ${formatTokenAmount(A0_RHO_MARKER_RENT_LAMPORTS, SOL_DECIMALS)} SOL rent`}
-            />
+            <DetailsDisclosure testID="shield-status-meta-details">
+              <MetaRow label="Tx hash" value={shortSig ?? ''} onCopy={copySig} />
+              {phase.kind === 'done' && phase.outcome.status === 'unspent' ? (
+                <MetaRow label="Position" value={`#${phase.outcome.leafIndex} in the pool`} />
+              ) : null}
+              <MetaRow
+                label="Fees"
+                value={`${formatTokenAmount(A0_DEPOSIT_FEE_LAMPORTS, SOL_DECIMALS)} SOL + ≈ ${formatTokenAmount(A0_RHO_MARKER_RENT_LAMPORTS, SOL_DECIMALS)} SOL rent`}
+              />
+            </DetailsDisclosure>
           </View>
         ) : null}
       </ScrollView>
@@ -236,11 +248,11 @@ export function ShieldStatusScreen({intent, onDone}: ShieldStatusScreenProps) {
                   Linking.openURL(explorerTxUrl(signature, 'solanaexplorer', A0.cluster)).catch(() => {});
                 }}
                 accessibilityRole="button"
-                accessibilityLabel="View details"
+                accessibilityLabel={VIEW_ON_EXPLORER}
                 className="flex-1 min-h-touch-rec rounded-pill items-center justify-center flex-row gap-2 bg-bg-surface-1">
                 <FileText size={16} color="#E7E9EE" strokeWidth={1.75} />
                 <Text variant="body-lg" className="font-geist-semibold text-fg-primary">
-                  View details
+                  {VIEW_ON_EXPLORER}
                 </Text>
               </Pressable>
             ) : null}
@@ -304,7 +316,8 @@ function viewOf(phase: Phase): {title: string; sub: string; tone: Tone; badge: s
       if (o.status === 'unspent') {
         return {
           title: NOW_PRIVATE,
-          sub: `Confirmed on Solana devnet · your note is at position #${o.leafIndex} in the pool.`,
+          // item 6: the balance sentence replaces this in the component (the position is in Details)
+          sub: '',
           tone: 'ok',
           badge: 'CONFIRMED',
         };

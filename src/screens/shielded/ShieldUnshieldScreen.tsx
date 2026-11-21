@@ -23,9 +23,11 @@ import {UnshieldSide} from './unshield/UnshieldSide';
 import {a0RefusalLoudText} from './unshield/unshieldCopy';
 import {BalanceRow} from './shieldedParts';
 import {
+  DEPOSIT_PUBLIC_SENTENCE,
   MAKE_PRIVATE,
   MAKE_PUBLIC,
   PUBLIC_BALANCE,
+  SUMMARY,
   makePrivateCta,
   makePrivateCtaIdle,
 } from '../../copy/modes';
@@ -255,14 +257,14 @@ export function ShieldUnshieldScreen({onBack, onShield, onUnshield, initialDirec
               </View>
             </View>
 
-            {/* Fees card — the total visible; the rows behind Details (decision B-3) */}
+            {/* Summary card — the total visible; the rows behind Details (decision B-3; heading: owner phone pass 2, item 3) */}
             <View
               className={cn(
                 'rounded-lg bg-bg-surface-1 border border-bg-surface-3 p-4 mb-4',
                 insufficient && 'opacity-50',
               )}>
               <Text variant="overline" className="mb-3">
-                Fees
+                {SUMMARY}
               </Text>
               <View className="flex-row items-center justify-between">
                 <Text variant="body-sm" className="text-fg-secondary">
@@ -308,7 +310,7 @@ export function ShieldUnshieldScreen({onBack, onShield, onUnshield, initialDirec
 
             {/* The honest deposit sentence (spec §2): ALWAYS visible, with or without an amount (Task 3 fix round 1) */}
             <Text variant="caption" className="text-fg-tertiary text-center px-2 mt-1" testID="shield-deposit-public">
-              Your main account signs this deposit. The amount, the time and your address are public on chain, and a later withdrawal to this wallet can be linked to it.
+              {DEPOSIT_PUBLIC_SENTENCE}
             </Text>
           </ScrollView>
 

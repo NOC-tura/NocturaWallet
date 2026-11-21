@@ -69,6 +69,34 @@ describe('src/copy/modes.ts — the §2 table', () => {
   it('the Private balance card keeps the honest sentence (spec §2 "Kept as is"), in plain words (owner phone pass 2026-11-21)', () => {
     expect(modes.PRIVATE_CARD_BODY).toBe('When you make tokens private, a proof is made on this device. Deposits are public on chain.');
   });
+
+  it('owner phone pass 2, 2026-11-21: the new words, verbatim', () => {
+    // item 2: only an exit to the MAIN account is linkable to a deposit (memory: shielded privacy guarantee)
+    expect(modes.DEPOSIT_PUBLIC_SENTENCE).toBe(
+      'Your main account signs this deposit. The amount, the time and your address are public on chain, and making it public later to your main account can link the two.',
+    );
+    expect(modes.SUMMARY).toBe('Summary'); // item 3: the overline renders "SUMMARY"
+    // item 1 / item 6: the balance after the run, same sentence forms the owner named
+    expect(modes.privateBalanceNow('1.00374', 'TEST')).toBe('Private balance now 1.00374 TEST');
+    expect(modes.yourPrivateBalanceIsNow('1.00374', 'TEST')).toBe('Your private balance is now 1.00374 TEST.');
+    expect(modes.LEFT_IN_THIS_NOTE).toBe('Left in this note'); // item 1: the change, in Details
+    // item 4 / 5: #19 / #20 for a deposit
+    expect(modes.SIMULATION_PASSED).toBe('Simulation passed');
+    expect(modes.CHECK_KNOWN_PROGRAMS_TITLE).toBe('Only known programs');
+    expect(modes.CHECK_KNOWN_PROGRAMS_BODY).toBe('Noctura and Solana programs only');
+    expect(modes.CHECK_NO_ACCESS_TITLE).toBe('No one gets access to your tokens');
+    expect(modes.CHECK_NO_ACCESS_BODY).toBe('No approval or authority change');
+    expect(modes.YOUR_BALANCE_CHANGES).toBe('Your balance changes'); // the overline renders "YOUR BALANCE CHANGES"
+    expect(modes.PROOF_FEE).toBe('Proof fee'); // the #20 overline renders "PROOF FEE"
+    expect(modes.PROOF_FEE_NONE).toBe('None · made on this device');
+    expect(modes.DETAIL_COMPUTE_UNITS).toBe('Compute units');
+    expect(modes.DETAIL_PROGRAMS).toBe('Programs');
+    expect(modes.DETAIL_APPROVALS).toBe('Approvals');
+    // item 6
+    expect(modes.VIEW_ON_EXPLORER).toBe('View on explorer');
+    // item 8
+    expect(modes.FEE_IS_HIGH).toBe('The fee is high for this amount.');
+  });
 });
 
 describe('src/copy/modes.ts — honesty', () => {

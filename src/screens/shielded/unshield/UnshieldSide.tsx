@@ -23,6 +23,8 @@ import {
   PRIVATE_BALANCE,
   WHAT_STAYS_PUBLIC,
   DESTINATION_IS_PUBLIC,
+  FEE_IS_HIGH,
+  SUMMARY,
   makePublicCta,
   makePublicCtaIdle,
   makePublicLimit,
@@ -99,6 +101,15 @@ function parseAmount(text: string): Parsed {
 }
 
 /** "Another address": a canonical base58 wallet address on the Ed25519 curve, not the main account. */
+/**
+ * Owner phone pass 2, 2026-11-21, item 8: the relayer fee is "high" when it is more than half the
+ * amount (fee * 2 > amount, in base units — fee = amount is high, fee * 2 = amount is not). No quote
+ * (fee null) → never.
+ */
+export function feeIsHigh(fee: bigint | null, amount: bigint): boolean {
+  return fee !== null && fee * 2n > amount;
+}
+
 export function externalOwnerProblem(text: string, main: string | null): string | null {
   const t = text.trim();
   if (t === '') return null;
@@ -391,10 +402,10 @@ export function UnshieldSide({view, shieldedLine, onUnshield, focusKey = 0}: Uns
           ) : null}
         </DestinationRow>
 
-        {/* Fees card — the relayer fee and what the destination receives visible; the rest behind Details */}
+        {/* Summary card — the relayer fee and what the destination receives visible; the rest behind Details (heading: owner phone pass 2, item 3) */}
         <View className={cn('rounded-lg bg-bg-surface-1 border border-bg-surface-3 p-4 mb-4', overMax && 'opacity-50')}>
           <Text variant="overline" className="mb-3">
-            Fees
+            {SUMMARY}
           </Text>
           <FeeRow
             label="Relayer fee"
@@ -409,6 +420,12 @@ export function UnshieldSide({view, shieldedLine, onUnshield, focusKey = 0}: Uns
               {`${hasAmount && !overMax ? displayAmount(units, A0_TOKEN.decimals) : '—'} ${sym}`}
             </Text>
           </View>
+          {/* owner phone pass 2, item 8: a hint only — it never disables the CTA */}
+          {hasAmount && feeIsHigh(fee, units) ? (
+            <Text variant="caption" className="text-warning mt-3" testID="unshield-fee-high">
+              {FEE_IS_HIGH}
+            </Text>
+          ) : null}
           {hasAmount && !overMax && fee !== null ? (
             <Text variant="caption" className="text-fg-tertiary mt-3" testID="unshield-amount-line">
               {a0AmountLine(units, fee, A0_TOKEN.decimals, sym)}

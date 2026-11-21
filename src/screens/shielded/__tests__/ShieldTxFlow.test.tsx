@@ -6,7 +6,7 @@
  */
 import React from 'react';
 import {render, fireEvent, act, waitFor} from '@testing-library/react-native';
-import {ShieldSimulateScreen} from '../ShieldSimulateScreen';
+import {ShieldSimulateScreen, depositCheckView} from '../ShieldSimulateScreen';
 import {ShieldConfirmScreen} from '../ShieldConfirmScreen';
 import {ShieldStatusScreen} from '../ShieldStatusScreen';
 import type {A0DepositOutcome, A0PreparedDeposit, A0SubmitStage} from '../../../modules/shielded/a0/depositFlow';
@@ -17,6 +17,7 @@ import {
 } from '../../../modules/shielded/a0/screenSupport';
 import type {ShieldIntent} from '../../../types/shield';
 import {Linking} from 'react-native';
+import {checkInstructions} from '../../../modules/solana/instructionChecks';
 
 const mockSimulate = jest.fn();
 type Submit = (c: unknown, p: A0PreparedDeposit, seed: Uint8Array, o: {onStage: (s: A0SubmitStage, sig?: string) => void}) => Promise<A0DepositOutcome>;
@@ -25,8 +26,9 @@ jest.mock('../../../modules/shielded/a0/depositFlow', () => ({
   simulateA0Deposit: (...a: unknown[]) => mockSimulate(...a),
   submitA0Deposit: (...a: Parameters<Submit>) => mockSubmit(...a),
 }));
+/** owner phone pass 2, 2026-11-21, item 6: the private balance as the dashboard reads it (null = not known) */
 const mockBalance = jest.fn();
-jest.mock('../../../modules/shielded/a0/noteStore', () => ({a0UnspentBalance: () => mockBalance()}));
+jest.mock('../../../hooks/useA0Shielded', () => ({a0PrivateBalanceNow: () => mockBalance()}));
 const mockRetrieve = jest.fn();
 jest.mock('../../../modules/keychain/keychainModule', () => ({
   keychainManager: {retrieveSeed: () => mockRetrieve()},
@@ -71,10 +73,15 @@ beforeEach(() => {
 });
 afterEach(() => jest.restoreAllMocks());
 
-const CHECKS = [
-  {status: 'ok', title: 'Known programs only', meta: '2 instruction(s), all known programs'},
-  {status: 'ok', title: 'No token approvals granted', meta: 'no Approve instruction'},
-];
+/**
+ * The REAL rows `simulateA0Deposit` returns for a deposit (compute budget + the pool): the plain
+ * deposit wording (owner phone pass 2, 2026-11-21, item 4) maps these exact rows, so a drift in
+ * `checkInstructions` shows here, not on the phone.
+ */
+const CHECKS = checkInstructions([
+  {programId: 'ComputeBudget111111111111111111111111111111', data: new Uint8Array([2])},
+  {programId: 'FeGSSsJtmA7GnMgnpj33JsiceSk1NyFopff2FtQFsMuH', data: new Uint8Array([1])},
+]);
 
 describe('#19 ShieldSimulate', () => {
   it('simulates the HELD deposit; ready: the public-deposit row, the risk rows, the balance delta, Continue', async () => {
@@ -83,14 +90,31 @@ describe('#19 ShieldSimulate', () => {
     const onContinue = jest.fn();
     const r = render(<ShieldSimulateScreen intent={intentFor(id)} onContinue={onContinue} onCancel={jest.fn()} />);
     expect(r.getByText('Simulating the deposit')).toBeTruthy(); // part B: "Simulating shield deposit" → "Simulating the deposit"
-    await waitFor(() => expect(r.getByText('Simulation passed · 142,287 CU')).toBeTruthy()); // part B: "Shield simulation passed" → "Simulation passed"
+    // owner phone pass 2, 2026-11-21, item 4: plain words; the compute units only in Details
+    await waitFor(() => expect(r.getByText('Simulation passed')).toBeTruthy());
+    expect(r.queryByText(/CU/)).toBeNull();
     expect(mockSimulate).toHaveBeenCalledWith({rpc: 'fake'}, PREPARED);
     expect(r.getByText('3 of 4')).toBeTruthy();
     expect(r.getByTestId('shield-sim-amount').props.children).toBe('2.5 TEST');
     expect(r.getByText('A public deposit')).toBeTruthy();
     expect(r.getByText('Your main account signs it. Its amount and time are visible on chain.')).toBeTruthy();
-    expect(r.getByText('Known programs only')).toBeTruthy();
-    expect(r.getByText('No token approvals granted')).toBeTruthy();
+    expect(r.getByText('Only known programs')).toBeTruthy();
+    expect(r.getByText('Noctura and Solana programs only')).toBeTruthy();
+    expect(r.getByText('No one gets access to your tokens')).toBeTruthy();
+    expect(r.getByText('No approval or authority change')).toBeTruthy();
+    expect(r.getAllByText('PASS')).toHaveLength(2); // every check still shows its badge
+    expect(r.queryByText(/instruction|unknown contracts|token approvals granted|Approve/)).toBeNull();
+    expect(r.getByText('Your balance changes')).toBeTruthy();
+    expect(r.queryByText(/Balance delta/)).toBeNull();
+    expect(r.getByText('Proof fee')).toBeTruthy();
+    expect(r.getByText('None · made on this device')).toBeTruthy();
+    expect(r.queryByText(/ZK proof fee/)).toBeNull();
+    // Details (collapsed): the compute units, the instruction count, the instruction names
+    expect(r.queryByTestId('shield-sim-details-body')).toBeNull();
+    fireEvent.press(r.getByTestId('shield-sim-details-toggle'));
+    expect(r.getByText('142,287 CU')).toBeTruthy();
+    expect(r.getByText('2 instruction(s), all known programs')).toBeTruthy();
+    expect(r.getByText('no Approve / SetAuthority / CloseAccount instruction')).toBeTruthy();
     expect(r.getByText('− 2.5 TEST')).toBeTruthy();
     expect(r.getByText('the pool')).toBeTruthy(); // Task 5 carry 3: Task 4's "→ the pool" (A11)
     expect(r.getByText('Making private')).toBeTruthy(); // Task 5 carry 3: the delta row's label
@@ -98,6 +122,49 @@ describe('#19 ShieldSimulate', () => {
     expect(r.getByText('− ≈ 0.00069596 SOL')).toBeTruthy();
     fireEvent.press(r.getByTestId('shield-sim-continue'));
     expect(onContinue).toHaveBeenCalledWith(intentFor(id));
+  });
+
+  it('owner phone pass 2, 2026-11-21, item 4: a failing or inconclusive check is never plain-worded away nor hidden in Details — its own title, its meta, its badge, visible', async () => {
+    const id = holdPreparedA0Deposit(PREPARED);
+    const bad = checkInstructions([
+      {programId: 'ComputeBudget111111111111111111111111111111', data: new Uint8Array([2])},
+      {programId: 'Evi1Program1111111111111111111111111111111', data: new Uint8Array([0])},
+      {programId: 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA', data: new Uint8Array([4])},
+    ]);
+    mockSimulate.mockResolvedValue({simulation: {success: true, unitsConsumed: 1000}, checks: bad});
+    const r = render(<ShieldSimulateScreen intent={intentFor(id)} onContinue={jest.fn()} onCancel={jest.fn()} />);
+    await waitFor(() => expect(r.getByText('Interacts with an unknown contract')).toBeTruthy());
+    expect(r.getByText('unrecognised program: Evi1Program1111111111111111111111111111111')).toBeTruthy();
+    expect(r.getByText('Grants authority over your tokens')).toBeTruthy();
+    expect(r.getByText('Approve — this is not part of a transfer')).toBeTruthy();
+    expect(r.getAllByText('FAIL')).toHaveLength(2);
+    expect(r.queryByText('Only known programs')).toBeNull();
+    expect(r.queryByText('No one gets access to your tokens')).toBeNull();
+    expect(r.queryByTestId('shield-sim-details-body')).toBeNull(); // all of the above with Details collapsed
+    // the inconclusive row (no instructions) keeps its CHECK badge and its words
+    const id2 = holdPreparedA0Deposit(PREPARED);
+    mockSimulate.mockResolvedValue({simulation: {success: true}, checks: checkInstructions([])});
+    const r2 = render(<ShieldSimulateScreen intent={intentFor(id2)} onContinue={jest.fn()} onCancel={jest.fn()} />);
+    await waitFor(() => expect(r2.getByText("Couldn't inspect the transaction")).toBeTruthy());
+    expect(r2.getByText('no instructions to check — do not read this as a pass')).toBeTruthy();
+    expect(r2.getByText('CHECK')).toBeTruthy();
+  });
+
+  it('owner phone pass 2, 2026-11-21, item 4: only a PASSING row is plain-worded — the same title with warn / danger keeps its own words and its meta, nothing for Details', () => {
+    for (const status of ['warn', 'danger'] as const) {
+      for (const title of ['No interactions with unknown contracts', 'No token approvals granted']) {
+        expect(depositCheckView({status, title, meta: 'm'})).toEqual({status, title, body: 'm', detail: null});
+      }
+    }
+    // control: the passing row is re-worded and its meta goes to Details
+    expect(depositCheckView({status: 'ok', title: 'No token approvals granted', meta: 'm'})).toEqual({
+      status: 'ok',
+      title: 'No one gets access to your tokens',
+      body: 'No approval or authority change',
+      detail: {label: 'Approvals', value: 'm'},
+    });
+    // an unknown title (a renamed check) is shown as it is, never hidden
+    expect(depositCheckView({status: 'ok', title: 'Something new', meta: 'm'})).toEqual({status: 'ok', title: 'Something new', body: 'm', detail: null});
   });
 
   it('failed: the reason, Retry re-simulates, and NO "Continue anyway" (preflight would refuse it)', async () => {
@@ -152,6 +219,10 @@ describe('#20 ShieldConfirm', () => {
     expect(r.getByText('Your main account')).toBeTruthy();
     expect(r.getByText(/^Pool · 8VMe…/)).toBeTruthy(); // part B: "Shielded pool" → "Pool" (A11)
     expect(r.getByText('The amount, the time and your main account are public in this deposit.')).toBeTruthy();
+    // owner phone pass 2, 2026-11-21, item 5: "ZK PROOF FEE" → "PROOF FEE" (the overline upper-cases it)
+    expect(r.getByText('Proof fee')).toBeTruthy();
+    expect(r.getByText('None · made on this device')).toBeTruthy();
+    expect(r.queryByText(/ZK proof fee/)).toBeNull();
     await act(async () => {
       fireEvent.press(r.getByTestId('shield-confirm-send'));
     });
@@ -220,20 +291,60 @@ describe('#21 ShieldStatus', () => {
     await act(async () => ctl.stage('signing'));
     expect(sub(r)).toBe('Signing with your main account.');
     await act(async () => ctl.stage('recorded', SIG));
+    fireEvent.press(r.getByTestId('shield-status-meta-details-toggle')); // item 6: the hash lives in Details
     expect(r.getByText('5kAj9N…b81e')).toBeTruthy(); // the signature from `recorded` on
+    fireEvent.press(r.getByTestId('shield-status-meta-details-toggle')); // collapse it again
     await act(async () => ctl.stage('confirming', SIG));
     expect(r.queryByTestId('shield-status-public')).toBeNull(); // running: not landed yet
     expect(sub(r)).toBe('Submitted to Solana devnet · waiting for confirmation.');
     expect(r.getByText("Don't close · waiting for confirmation")).toBeTruthy();
     await act(async () => ctl.resolve({status: 'unspent', signature: SIG, leafIndex: 17, root: 'ee'.repeat(32)}));
     expect(title(r)).toBe('Now private'); // part B: "Shielded" → "Now private"
-    expect(sub(r)).toBe('Confirmed on Solana devnet · your note is at position #17 in the pool.');
+    // owner phone pass 2, 2026-11-21, item 6: laid out like Now public — the balance under the title,
+    // the position only in Details
+    expect(sub(r)).toBe('Your private balance is now 4 TEST.');
+    expect(r.queryByText(/Confirmed on Solana devnet/)).toBeNull();
+    expect(r.queryByTestId('shield-status-balance')).toBeNull(); // no longer a card line
     expect(r.getByText('CONFIRMED')).toBeTruthy();
-    expect(r.getByText('#17 in the pool')).toBeTruthy();
-    expect(r.getByTestId('shield-status-balance').props.children).toBe('Private balance now 4 TEST'); // part B: "Shielded balance" → "Private balance"
+    expect(r.getByText('2.5 TEST')).toBeTruthy(); // the card keeps PRIVATE {amount}
     expect(r.getByTestId('shield-status-public').props.children).toBe('Your deposit is public on chain.'); // part B (spec §4, A2)
+    expect(r.queryByText('#17 in the pool')).toBeNull();
+    expect(r.queryByText('5kAj9N…b81e')).toBeNull();
+    expect(r.queryByTestId('shield-status-meta-details-body')).toBeNull(); // collapsed
+    fireEvent.press(r.getByTestId('shield-status-meta-details-toggle'));
+    expect(r.getByText('#17 in the pool')).toBeTruthy();
+    expect(r.getByText('5kAj9N…b81e')).toBeTruthy();
+    expect(r.getByLabelText('Copy Tx hash')).toBeTruthy(); // the copy stays, inside Details
+    expect(r.getByText(/0\.000005 SOL \+ ≈ 0\.00069596 SOL rent/)).toBeTruthy();
     expect(r.getByTestId('shield-status-details')).toBeTruthy(); // the explorer stays (a deposit is public by design)
+    expect(r.getByText('View on explorer')).toBeTruthy();
+    expect(r.getByTestId('shield-status-details').props.accessibilityLabel).toBe('View on explorer');
+    expect(r.queryByText('View details')).toBeNull();
     expect(r.getByTestId('shield-status-header-sep').props.children).toBe('·'); // Task 5 carry 1: "PRIVATE · Make private", as the unshield #21
+  });
+
+  it('owner phone pass 2, 2026-11-21, item 6: unspent but the balance NOT known → no balance sentence (never a guess); the rest unchanged', async () => {
+    mockBalance.mockReturnValue(null);
+    const id = holdPreparedA0Deposit(PREPARED);
+    const ctl = controlledSubmit();
+    const r = render(<ShieldStatusScreen intent={intentFor(id)} onDone={jest.fn()} />);
+    await waitFor(() => expect(mockSubmit).toHaveBeenCalledTimes(1));
+    await act(async () => ctl.resolve({status: 'unspent', signature: SIG, leafIndex: 17, root: 'ee'.repeat(32)}));
+    expect(title(r)).toBe('Now private');
+    expect(r.queryByTestId('shield-status-sub')).toBeNull();
+    expect(r.queryByText(/private balance/i)).toBeNull();
+    expect(r.getByTestId('shield-status-public').props.children).toBe('Your deposit is public on chain.');
+  });
+
+  it('owner phone pass 2, 2026-11-21, item 6: the balance is read only for a landed deposit — pending says no balance', async () => {
+    const id = holdPreparedA0Deposit(PREPARED);
+    const ctl = controlledSubmit();
+    const r = render(<ShieldStatusScreen intent={intentFor(id)} onDone={jest.fn()} />);
+    await waitFor(() => expect(mockSubmit).toHaveBeenCalledTimes(1));
+    await act(async () => ctl.resolve({status: 'pending', signature: SIG, reason: 'not-confirmed'}));
+    expect(title(r)).toBe('Not confirmed yet');
+    expect(r.queryByText(/private balance is now|Private balance now/)).toBeNull();
+    expect(mockBalance).not.toHaveBeenCalled();
   });
 
   it('View details opens the deposit on the devnet explorer (?cluster=devnet — S13)', async () => {

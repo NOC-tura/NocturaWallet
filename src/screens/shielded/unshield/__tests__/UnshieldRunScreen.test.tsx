@@ -47,8 +47,15 @@ jest.mock('../../../../modules/screenSecurity/screenSecurityModule', () => ({
   },
 }));
 const mockCheck = {disabled: false, checking: false, note: null as string | null, unshield: null as unknown, report: null as unknown, run: jest.fn()};
+/** owner phone pass 2, 2026-11-21, item 1: the private balance as the dashboard reads it (null = not known) */
+let mockBalanceNow: bigint | null = null;
+const mockBalanceReads = {n: 0};
 jest.mock('../../../../hooks/useA0Shielded', () => ({
   useA0Shielded: () => ({view: {kind: 'ready', unspent: 0n, pending: 0n, notes: 0}, refresh: jest.fn(), checkAgain: mockCheck}),
+  a0PrivateBalanceNow: () => {
+    mockBalanceReads.n += 1;
+    return mockBalanceNow;
+  },
 }));
 
 jest.setTimeout(30_000);
@@ -87,6 +94,8 @@ beforeEach(() => {
   Object.assign(mockCheck, {disabled: false, checking: false, note: null, unshield: null, report: null});
   mockSecure.on = 0;
   mockSecure.off = 0;
+  mockBalanceNow = null;
+  mockBalanceReads.n = 0;
   clock += 100_000;
   jest.spyOn(Date, 'now').mockImplementation(() => clock);
 });
@@ -295,22 +304,33 @@ describe('UX-A 6: the unshield #21 never opens the explorer (it would tell the e
 });
 
 describe('#21 for the unshield — every outcome said as what it is', () => {
-  it('spent → "Now public", CONFIRMED, the grant, the change kept private, its position, the tx hash', async () => {
+  it('spent → "Now public", CONFIRMED, the grant, the private balance after the exit, the change and its position in Details, the tx hash', async () => {
+    mockBalanceNow = 3_004_990_000n; // the dashboard's source, read after the exit — NOT the note's change
     const {r, ctl} = await run();
     await act(async () =>
       ctl.resolve({status: 'spent', signature: SIG, changeLeafIndex: 42, changeAmount: 749_990_000n, grantLamports: 3_000_000n, destinationWithoutSol: false}),
     );
     expect(title(r)).toBe('Now public'); // part B: "Unshielded" → "Now public"
-    expect(sub(r)).toBe('The destination received 1.25 TEST.'); // part B: "Landed on Solana devnet and verified · the destination received" → "The destination received" (A8)
+    // owner phone pass 2, 2026-11-21, item 7: "The destination received 1.25 TEST." duplicated the card — gone
+    expect(r.queryByTestId('unshield-status-sub')).toBeNull();
+    expect(r.queryByText(/The destination received/)).toBeNull();
     expect(r.getByText('CONFIRMED')).toBeTruthy();
     expect(r.getByTestId('unshield-line-grant').props.children).toBe('The relayer also sent the new account 0.003 SOL for its own fees.');
-    expect(r.getByTestId('unshield-line-change').props.children).toBe('Your change, 0.74999 TEST, stays private.'); // part B: "stays shielded" → "stays private"
+    // owner phone pass 2, 2026-11-21, item 1: the wallet's private balance after the exit, never the note's change
+    expect(r.getByTestId('unshield-line-balance').props.children).toBe('Private balance now 3.00499 TEST');
+    expect(mockBalanceReads.n).toBeGreaterThan(0);
+    expect(r.queryByTestId('unshield-line-change')).toBeNull();
+    expect(r.queryByText(/Your change|stays private/)).toBeNull();
     expect(r.queryByTestId('unshield-line-no-sol')).toBeNull();
     expect(r.queryByText('#42 in the pool')).toBeNull(); // part B (spec §4): behind Details
     expect(r.queryByText('4Hq7Mb…5e6f')).toBeNull();
+    expect(r.queryByText('0.74999 TEST')).toBeNull();
     fireEvent.press(r.getByTestId('unshield-details-toggle'));
     expect(r.getByText('#42 in the pool')).toBeTruthy();
     expect(r.getByText('4Hq7Mb…5e6f')).toBeTruthy();
+    // item 1: the note's change stays, as a plain row inside Details
+    expect(r.getByText('Left in this note')).toBeTruthy();
+    expect(r.getByText('0.74999 TEST')).toBeTruthy();
     expect(r.queryByTestId('unshield-check-again')).toBeNull();
     expect(r.queryByTestId('unshield-status-loud')).toBeNull();
   });
@@ -632,6 +652,39 @@ describe('#21 for the unshield — every outcome said as what it is', () => {
   });
 });
 
+describe('owner phone pass 2, 2026-11-21, item 1: the private balance after the exit — the dashboard\'s source, or no sentence', () => {
+  const spent: A0UnshieldOutcome = {status: 'spent', signature: SIG, changeLeafIndex: 42, changeAmount: 749_990_000n, grantLamports: null, destinationWithoutSol: false};
+
+  it('spent, the balance NOT known (the startup state is not ready) → no balance sentence, never the note\'s change in its place', async () => {
+    mockBalanceNow = null;
+    const {r, ctl} = await run();
+    await act(async () => ctl.resolve(spent));
+    expect(title(r)).toBe('Now public');
+    expect(r.queryByTestId('unshield-line-balance')).toBeNull();
+    expect(r.queryByText(/Private balance now/)).toBeNull();
+    expect(r.queryByText(/0\.74999/)).toBeNull(); // the change is Details-only
+  });
+
+  it('spent, a zero balance after the exit → said as zero (known, not unknown)', async () => {
+    mockBalanceNow = 0n;
+    const {r, ctl} = await run();
+    await act(async () => ctl.resolve(spent));
+    expect(r.getByTestId('unshield-line-balance').props.children).toBe('Private balance now 0 TEST');
+  });
+
+  it.each([
+    ['pending', {status: 'pending', signature: SIG, reason: 'unconfirmed'}],
+    ['not-sent', {status: 'not-sent', outcome: 'rejected'}],
+    ['landed-unverified', {status: 'landed-unverified', signature: SIG, code: 'E_A0_VERIFY_FEE', note: 'spent', changeRecorded: true, linked: false}],
+  ] as Array<[string, A0UnshieldOutcome]>)('%s → no balance sentence even when a balance is known (the honest outcome is unchanged)', async (_n, outcome) => {
+    mockBalanceNow = 9_000_000_000n;
+    const {r, ctl} = await run();
+    await act(async () => ctl.resolve(outcome));
+    expect(r.queryByTestId('unshield-line-balance')).toBeNull();
+    expect(r.queryByText(/Private balance now/)).toBeNull();
+  });
+});
+
 describe('final review I-1 + re-review N-1 / N-2 / N-3 / N-4: what "Check again" decided about THIS run\'s note replaces "Not confirmed yet" on #21', () => {
   const MINE = 'rho-of-this-run';
   const OLDER = 'rho-of-another-note';
@@ -658,6 +711,7 @@ describe('final review I-1 + re-review N-1 / N-2 / N-3 / N-4: what "Check again"
     expect(title(r)).toBe('Now public'); // part B: "Unshielded" → "Now public"
     expect(sub(r)).toBe('Checked again: it landed on Solana devnet and was verified · the destination received 1.25 TEST.');
     expect(r.getByText('CONFIRMED')).toBeTruthy();
+    expect(r.queryByTestId('unshield-line-balance')).toBeNull(); // item 1: mockBalanceNow is null here — not known, no sentence
     expect(r.queryByText('PENDING')).toBeNull();
     expect(r.queryByTestId('unshield-check-again')).toBeNull();
     expect(caption(r)).toBe('Confirmed · now public.'); // part B: "Confirmed · unshielded." → "Confirmed · now public."
@@ -681,6 +735,26 @@ describe('final review I-1 + re-review N-1 / N-2 / N-3 / N-4: what "Check again"
     expect(sub(r)).toBe('Checked again: the relayer landed a transaction for this transfer to public that does not match what you approved. It is not retried.'); // Task 5 carry 3
     expect(r.getByText('UNVERIFIED')).toBeTruthy();
     expect(r.queryByTestId('unshield-check-again')).toBeNull();
+  });
+
+  it('owner phone pass 2, 2026-11-21, item 1: this note settled by "Check again" and the balance known → "Private balance now …"; reverted → none', async () => {
+    const {r} = await pendingRun();
+    expect(r.queryByTestId('unshield-line-balance')).toBeNull(); // pending: not decided, no sentence
+    mockBalanceNow = 2_000_000_000n;
+    expect(r.queryByTestId('unshield-line-balance')).toBeNull(); // known now, but this note is still undecided
+    check(r, rep({settled: [settledOf(MINE)]}), {kind: 'settled', verified: true}, 'Confirmed · now public.');
+    await act(async () => {});
+    expect(title(r)).toBe('Now public');
+    expect(r.getByTestId('unshield-line-balance').props.children).toBe('Private balance now 2 TEST');
+  });
+
+  it('owner phone pass 2, 2026-11-21, item 1: this note reverted by "Check again" → "Not sent", no balance sentence even when one is known', async () => {
+    const {r} = await pendingRun();
+    mockBalanceNow = 2_000_000_000n;
+    check(r, rep({reverted: [{rho: MINE}]}), {kind: 'reverted'}, 'x');
+    await act(async () => {});
+    expect(title(r)).toBe('Not sent');
+    expect(r.queryByTestId('unshield-line-balance')).toBeNull();
   });
 
   it('N-1 (a), CP2\'s shape: tap 1 settles THIS note (the older still pending), tap 2 reverts the older → this #21 stays "Now public", never "Not sent"', async () => {

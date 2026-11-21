@@ -188,11 +188,22 @@ describe('#16 shield side — the design', () => {
     await act(async () => {});
     fireEvent.changeText(r.getByTestId('shield-amount-input'), '1.25');
     expect(r.queryByTestId('shield-details-body')).toBeNull();
+    // owner phone pass 2, 2026-11-21, item 2: only an exit to the MAIN account is linkable; no "withdrawal"
     expect(
       r.getByText(
-        'Your main account signs this deposit. The amount, the time and your address are public on chain, and a later withdrawal to this wallet can be linked to it.',
+        'Your main account signs this deposit. The amount, the time and your address are public on chain, and making it public later to your main account can link the two.',
       ),
     ).toBeTruthy();
+    expect(r.queryByText(/withdrawal|to this wallet can be linked/)).toBeNull();
+  });
+
+  it('owner phone pass 2, 2026-11-21, item 3: the card heading is "Summary" (it holds what you make private, not only fees)', async () => {
+    const r = screen();
+    await waitFor(() => expect(mockPoolCount).toHaveBeenCalled());
+    await act(async () => {});
+    expect(r.getByText('Summary')).toBeTruthy();
+    expect(r.queryByText('Fees')).toBeNull();
+    expect(r.getByText("You'll make private")).toBeTruthy();
   });
 });
 

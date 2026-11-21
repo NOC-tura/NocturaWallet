@@ -5,7 +5,7 @@
 import React from 'react';
 import {Text} from 'react-native';
 import {render, act, fireEvent} from '@testing-library/react-native';
-import {a0ShieldedView, a0UnshieldCheckOf, a0UnshieldDecisionFor, checkA0PendingAgain, retryA0Startup, useA0Shielded} from '../useA0Shielded';
+import {a0PrivateBalanceNow, a0ShieldedView, a0UnshieldCheckOf, a0UnshieldDecisionFor, checkA0PendingAgain, retryA0Startup, useA0Shielded} from '../useA0Shielded';
 import type {A0UnshieldReconcileReport} from '../../modules/shielded/a0/unshieldFlow';
 import type {A0StartupState} from '../../modules/shielded/a0/startup';
 import type {A0Note} from '../../modules/shielded/a0/noteStore';
@@ -74,6 +74,33 @@ beforeEach(() => {
   mockReconcile.mockReset().mockResolvedValue({confirmed: [], dropped: [], stillPending: [], skipped: 0});
   mockPendingUnshields = false;
   mockReconcileUnshields.mockReset().mockResolvedValue({settled: [], reverted: [], stillPending: [], skipped: 0, released: [], promoted: []});
+});
+
+describe('a0PrivateBalanceNow (owner phone pass 2, 2026-11-21, items 1 and 6): the dashboard\'s total, or null', () => {
+  it('ready → the unspent total (the same number the dashboard shows), read at the call', () => {
+    mockState = READY;
+    expect(a0PrivateBalanceNow()).toBe(1_250n);
+    mockNotes = [note(7n, 'unspent')]; // the store moved (an exit landed): the next read says so
+    expect(a0PrivateBalanceNow()).toBe(7n);
+  });
+
+  it.each([
+    ['idle', {phase: 'idle'} as A0StartupState],
+    ['running (restore / reconcile not done)', {phase: 'running'} as A0StartupState],
+    ['error', {phase: 'error', code: 'E_A0_SYNC_RPC', message: 'x'} as A0StartupState],
+  ])('%s → null (not known), never 0', (_n, state) => {
+    mockState = state;
+    expect(a0PrivateBalanceNow()).toBeNull();
+  });
+
+  it('a store read that throws, or no shielded on this device → null', () => {
+    mockState = READY;
+    mockNotes = Object.assign(new Error('bad record'), {code: 'E_A0_STORE_CORRUPT'});
+    expect(a0PrivateBalanceNow()).toBeNull();
+    mockNotes = [note(5n, 'unspent')];
+    mockSupported = false;
+    expect(a0PrivateBalanceNow()).toBeNull();
+  });
 });
 
 describe('a0ShieldedView', () => {

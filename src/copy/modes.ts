@@ -53,6 +53,56 @@ export const NOW_PRIVATE = 'Now private';
 export const PRIVATE_CARD_BODY = 'When you make tokens private, a proof is made on this device. Deposits are public on chain.';
 
 /**
+ * The deposit's honest sentence on Make private (spec §2; owner phone pass 2, 2026-11-21, item 2):
+ * only an exit to the MAIN account is linkable to a deposit (memory project_shielded_privacy_guarantee)
+ * — an exit to a new account of this wallet is not, so the sentence names the main account.
+ */
+export const DEPOSIT_PUBLIC_SENTENCE =
+  'Your main account signs this deposit. The amount, the time and your address are public on chain, and making it public later to your main account can link the two.';
+
+/** The card heading on Make private and Make public (owner phone pass 2, item 3): it holds more than fees. */
+export const SUMMARY = 'Summary';
+
+/**
+ * The private balance after a run (owner phone pass 2, items 1 and 6): the TOTAL as the dashboard
+ * reads it (`a0PrivateBalanceNow`), never arithmetic. Said only when that total is known.
+ */
+export function privateBalanceNow(total: string, sym: string): string {
+  return `Private balance now ${total} ${sym}`;
+}
+
+export function yourPrivateBalanceIsNow(total: string, sym: string): string {
+  return `Your private balance is now ${total} ${sym}.`;
+}
+
+/** Now public's Details row: the spent note's change (owner phone pass 2, item 1) — not the balance. */
+export const LEFT_IN_THIS_NOTE = 'Left in this note';
+
+/**
+ * #19 / #20 for a deposit, plain words (owner phone pass 2, items 4 and 5). The technical lines
+ * (compute units, instruction count and names) move behind Details; a check that does not pass
+ * keeps its own words and is never moved there.
+ */
+export const SIMULATION_PASSED = 'Simulation passed';
+export const CHECK_KNOWN_PROGRAMS_TITLE = 'Only known programs';
+export const CHECK_KNOWN_PROGRAMS_BODY = 'Noctura and Solana programs only';
+export const CHECK_NO_ACCESS_TITLE = 'No one gets access to your tokens';
+export const CHECK_NO_ACCESS_BODY = 'No approval or authority change';
+export const YOUR_BALANCE_CHANGES = 'Your balance changes';
+export const PROOF_FEE = 'Proof fee';
+export const PROOF_FEE_NONE = 'None · made on this device';
+/** #19's Details rows for a deposit: the technical lines the plain rows replaced (item 4). */
+export const DETAIL_COMPUTE_UNITS = 'Compute units';
+export const DETAIL_PROGRAMS = 'Programs';
+export const DETAIL_APPROVALS = 'Approvals';
+
+/** Now private's explorer button (owner phone pass 2, item 6): it opens the explorer, so it says so. */
+export const VIEW_ON_EXPLORER = 'View on explorer';
+
+/** Make public, when the relayer fee is more than half the amount (owner phone pass 2, item 8). */
+export const FEE_IS_HIGH = 'The fee is high for this amount.';
+
+/**
  * The native confirmation (§2 row 9). Android cannot import this module: the resource
  * `android/app/src/main/res/values/a0_confirm_strings.xml` holds the same words, and
  * `src/copy/__tests__/nativeStrings.test.ts` (Task 6) holds the two equal.

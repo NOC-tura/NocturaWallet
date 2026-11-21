@@ -560,3 +560,43 @@ describe('#16 unshield — the note read (fix round 1, M-9)', () => {
     expect(mockNoteReads.n).toBeGreaterThan(before);
   });
 });
+
+describe('#16 unshield — owner phone pass 2, 2026-11-21', () => {
+  it('item 3: the card heading is "Summary" (it holds "Destination receives", not only fees); the fee row keeps its name', async () => {
+    const r = await screen();
+    expect(r.getByText('Summary')).toBeTruthy();
+    expect(r.queryByText('Fees')).toBeNull();
+    expect(r.getByText('Relayer fee')).toBeTruthy();
+    expect(r.getByText('Destination receives')).toBeTruthy();
+  });
+
+  // item 8: the quote's fee is 10_000 base units = 0.00001 TEST; the hint shows when fee * 2 > amount
+  it.each([
+    ['fee = amount → shown', '0.00001', true],
+    ['fee * 2 > amount (0.000015) → shown', '0.000015', true],
+    ['fee * 2 == amount → not shown', '0.00002', false],
+    ['fee * 2 < amount → not shown', '1', false],
+  ])('item 8: the high-fee hint, %s; it never disables the CTA', async (_n, typed, shown) => {
+    const r = await screen();
+    fireEvent.changeText(r.getByTestId('unshield-amount-input'), typed);
+    if (shown) {
+      expect(text(r, 'unshield-fee-high')).toBe('The fee is high for this amount.');
+      expect(r.getByTestId('unshield-fee-high').props.className).toContain('text-warning');
+    } else {
+      expect(r.queryByTestId('unshield-fee-high')).toBeNull();
+    }
+    expect(disabled(r, 'unshield-cta')).toBe(false);
+  });
+
+  it('item 8: no quote → no hint, whatever the amount', async () => {
+    mockQuote.mockRejectedValueOnce(Object.assign(new Error('E_A0_QUOTE_UNAVAILABLE: no answer'), {code: 'E_A0_QUOTE_UNAVAILABLE'}));
+    const r = await screen();
+    fireEvent.changeText(r.getByTestId('unshield-amount-input'), '0.00001');
+    expect(r.queryByTestId('unshield-fee-high')).toBeNull();
+  });
+
+  it('item 8: no amount typed → no hint (a quote alone says nothing about this amount)', async () => {
+    const r = await screen();
+    expect(r.queryByTestId('unshield-fee-high')).toBeNull();
+  });
+});

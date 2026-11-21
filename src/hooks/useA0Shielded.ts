@@ -69,6 +69,17 @@ export function a0ShieldedView(state: A0StartupState): A0ShieldedView {
   }
 }
 
+/**
+ * The private balance NOW, from the dashboard's own source (`a0ShieldedView` over the startup
+ * state): the unspent total once the startup restore/reconcile is `ready`, else null — "not known",
+ * never a 0 and never arithmetic. #21 reads it after a landed run (owner phone pass 2, 2026-11-21,
+ * items 1 and 6) and says no balance sentence on null. Read only; changes nothing.
+ */
+export function a0PrivateBalanceNow(): bigint | null {
+  const view = a0ShieldedView(a0StartupState());
+  return view.kind === 'ready' ? view.unspent : null;
+}
+
 /** The startup state, live (subscribed). */
 export function useA0StartupState(): A0StartupState {
   const [s, setS] = useState<A0StartupState>(a0StartupState());

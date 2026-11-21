@@ -18,7 +18,21 @@ import {
 import {getConnection} from '../../modules/solana/connection';
 import type {TransferCheck} from '../../modules/solana/simulationChecks';
 import type {ShieldIntent} from '../../types/shield';
-import {PRIVATE_MARK} from '../../copy/modes';
+import {
+  CHECK_KNOWN_PROGRAMS_BODY,
+  CHECK_KNOWN_PROGRAMS_TITLE,
+  CHECK_NO_ACCESS_BODY,
+  CHECK_NO_ACCESS_TITLE,
+  DETAIL_APPROVALS,
+  DETAIL_COMPUTE_UNITS,
+  DETAIL_PROGRAMS,
+  PRIVATE_MARK,
+  PROOF_FEE,
+  PROOF_FEE_NONE,
+  SIMULATION_PASSED,
+  YOUR_BALANCE_CHANGES,
+} from '../../copy/modes';
+import {DetailsDisclosure} from '../../components/private';
 
 /**
  * #19 tx-simulate for the A0 deposit — mirror /home/user/Downloads/index.html §s19, its SHIELDED
@@ -39,7 +53,43 @@ import {PRIVATE_MARK} from '../../copy/modes';
  * button could only burn the deposit counter and leave a pending note. Failed = Retry or Cancel.
  *
  * A stale or forged intent (no held deposit under its id) shows that state and cannot continue.
+ *
+ * Plain words by default (owner phone pass 2, 2026-11-21, item 4): "Simulation passed" without the
+ * compute units; the two PASSING instruction checks in plain words ("Only known programs", "No one
+ * gets access to your tokens"); "Your balance changes"; "Proof fee". The technical lines (compute
+ * units, the instruction count, the authority instruction names) sit behind "Details ▾". A check
+ * that does NOT pass keeps its own title and meta, visible, with its badge — never in Details.
+ * This screen is the deposit's own (#19 for transparent sends / dApp signing is TxSimulateScreen,
+ * unchanged).
  */
+
+/**
+ * The two passing rows `checkInstructions` returns for a clean deposit, by their exact title
+ * (src/modules/solana/instructionChecks.ts) → the plain words. Only an `ok` row is re-worded; its
+ * technical meta goes to Details under `detailLabel`. ShieldTxFlow.test feeds the REAL rows, so a
+ * changed title there shows as the technical title here, never as a hidden check.
+ */
+const PLAIN_PASSING: Record<string, {title: string; body: string; detailLabel: string}> = {
+  'No interactions with unknown contracts': {title: CHECK_KNOWN_PROGRAMS_TITLE, body: CHECK_KNOWN_PROGRAMS_BODY, detailLabel: DETAIL_PROGRAMS},
+  'No token approvals granted': {title: CHECK_NO_ACCESS_TITLE, body: CHECK_NO_ACCESS_BODY, detailLabel: DETAIL_APPROVALS},
+};
+
+interface ShownCheck {
+  status: TransferCheck['status'];
+  title: string;
+  body: string;
+  /** the technical line for Details, or null when the row shows it itself */
+  detail: {label: string; value: string} | null;
+}
+
+/** A check as #19 shows it for a deposit: plain words for a known passing row; anything else as it is. */
+export function depositCheckView(check: TransferCheck): ShownCheck {
+  const plain = check.status === 'ok' && Object.prototype.hasOwnProperty.call(PLAIN_PASSING, check.title) ? PLAIN_PASSING[check.title] : undefined;
+  if (plain) {
+    return {status: check.status, title: plain.title, body: plain.body, detail: {label: plain.detailLabel, value: check.meta}};
+  }
+  return {status: check.status, title: check.title, body: check.meta, detail: null};
+}
 
 type SimState =
   | {kind: 'simulating'}
@@ -175,16 +225,26 @@ export function ShieldSimulateScreen({intent, onContinue, onCancel}: ShieldSimul
                 Privacy & risk
               </Text>
               <PublicRow />
-              {sim.checks.map((c, i) => (
+              {sim.checks.map(depositCheckView).map((c, i) => (
                 <CheckRow key={i} check={c} />
               ))}
+              <DetailsDisclosure testID="shield-sim-details">
+                {sim.units !== null ? <DetailRow label={DETAIL_COMPUTE_UNITS} value={`${sim.units.toLocaleString('en-US')} CU`} /> : null}
+                {sim.checks
+                  .map(depositCheckView)
+                  .map(c => c.detail)
+                  .filter((d): d is {label: string; value: string} => d !== null)
+                  .map(d => (
+                    <DetailRow key={d.label} label={d.label} value={d.value} />
+                  ))}
+              </DetailsDisclosure>
             </Card>
             <Card padding="p-4">
               <Text variant="overline" className="mb-3">
-                Balance delta · this deposit
+                {YOUR_BALANCE_CHANGES}
               </Text>
               <DeltaRow label="Making private" value={`− ${amount}`} />
-              <DeltaRow label="ZK proof fee" value="None · on this device" zk />
+              <DeltaRow label={PROOF_FEE} value={PROOF_FEE_NONE} zk />
               <DeltaRow label="Network fee" value={`− ${formatTokenAmount(A0_DEPOSIT_FEE_LAMPORTS, SOL_DECIMALS)} SOL`} />
               <DeltaRow
                 label="Deposit record rent"
@@ -235,7 +295,7 @@ function Eyebrow({sim}: {sim: SimState}) {
       <View className="flex-row items-center gap-1 mb-2">
         <Check size={12} color="#3FD68B" strokeWidth={2.5} />
         <Text variant="caption" className="text-success">
-          {sim.units !== null ? `Simulation passed · ${sim.units.toLocaleString('en-US')} CU` : 'Simulation passed'}
+          {SIMULATION_PASSED}
         </Text>
       </View>
     );
@@ -272,7 +332,7 @@ function PublicRow() {
   );
 }
 
-function CheckRow({check}: {check: TransferCheck}) {
+function CheckRow({check}: {check: ShownCheck}) {
   const color = check.status === 'ok' ? '#3FD68B' : check.status === 'warn' ? '#F5A623' : '#FF5C6A';
   const bg =
     check.status === 'ok'
@@ -292,12 +352,25 @@ function CheckRow({check}: {check: TransferCheck}) {
         <Text variant="body-sm" className="text-fg-primary">
           {check.title}
         </Text>
-        <Text variant="caption" mono className="text-fg-tertiary">
-          {check.meta}
+        <Text variant="caption" className="text-fg-tertiary">
+          {check.body}
         </Text>
       </View>
       <Text variant="caption" className={cn('font-geist-semibold pt-0.5', badgeCls)}>
         {badge}
+      </Text>
+    </View>
+  );
+}
+
+function DetailRow({label, value}: {label: string; value: string}) {
+  return (
+    <View className="flex-row items-start justify-between gap-3 py-1">
+      <Text variant="caption" className="text-fg-tertiary">
+        {label}
+      </Text>
+      <Text variant="caption" mono className="flex-1 text-right text-fg-secondary">
+        {value}
       </Text>
     </View>
   );

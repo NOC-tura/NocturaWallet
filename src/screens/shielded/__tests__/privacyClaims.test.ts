@@ -140,6 +140,11 @@ describe('shielded screens make no unsupported privacy claim', () => {
     // part B: the vocabulary module is read as text; its honest sentence is in what the guard sees
     const vocab = screenSources().find(s => s.file === 'src/copy/modes.ts')!;
     expect(vocab.text).toContain('Deposits are public on chain.');
+    // owner phone pass 2, 2026-11-21, item 2: the deposit sentence now lives in the vocabulary module
+    // (DEPOSIT_PUBLIC_SENTENCE) — the guard reads it there, and the screen no longer holds a copy
+    expect(vocab.text).toContain('making it public later to your main account can link the two.');
+    const side = screenSources().find(s => s.file === 'src/screens/shielded/ShieldUnshieldScreen.tsx')!;
+    expect(side.text).toContain('DEPOSIT_PUBLIC_SENTENCE');
   });
 
   it('M1c: the scope reaches every Android string resource (the Kotlin strings.xml and the dialog resource)', () => {
