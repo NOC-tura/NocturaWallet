@@ -56,7 +56,45 @@ describe('formatSide', () => {
   });
 });
 
+describe('formatSide — large values, wide decimals, small USD (review M1, M3)', () => {
+  it('M1: raw amounts above 2^53 that differ by 1 still order exactly (BigInt, no Number)', () => {
+    const a: SideAsset = {mint: 'A', symbol: 'AAA', amountRaw: 9007199254740992n, decimals: 9};
+    const b: SideAsset = {mint: 'B', symbol: 'BBB', amountRaw: 9007199254740993n, decimals: 9};
+    const c: SideAsset = {mint: 'C', symbol: 'CCC', amountRaw: 1n, decimals: 9};
+    expect(formatSide(known([a, b, c]), null, ', ')).toBe('9,007,199.2547 BBB, 9,007,199.2547 AAA +1');
+  });
+  it('M1: a 24-decimal asset is normalised down, not up (the decimals >= 18 branch)', () => {
+    const wide: SideAsset = {mint: 'W', symbol: 'WIDE', amountRaw: 2_000_000_000_000_000_000_000_000n, decimals: 24}; // 2 whole
+    expect(formatSide(known([sol(1_000_000_000n), wide]), null, ', ')).toBe('2 WIDE, 1 SOL');
+    expect(formatSide(known([sol(3_000_000_000n), wide]), null, ', ')).toBe('3 SOL, 2 WIDE');
+  });
+  it('M1: u64 max formats whole at 9 decimals', () => {
+    expect(formatSide(known([sol(18446744073709551615n)]), null, ', ')).toBe('18,446,744,073.7096 SOL');
+  });
+  it('M2: both sides in USD → two separate figures, never one sum', () => {
+    const pub = known([sol(1_000_000_000n)]);
+    const priv = known([tst(2_000_000_000n)], 'TEST');
+    const prices = {...PRICES, [A0_TOKEN.mint]: {usd: 0.5, change24h: null}};
+    expect(combinedValueLine(pub, priv, prices, false)).toBe('Public $150.00 · Private $1.00');
+  });
+  it('M3: a priced, non-empty side worth under half a cent reads "<$0.01", never "$0.00"', () => {
+    expect(formatSide(known([sol(1_000n)]), PRICES, ', ')).toBe('<$0.01');
+    expect(formatSide(known([sol(0n)]), PRICES, ', ')).toBe('0 SOL'); // known-empty stays distinguishable
+  });
+});
+
 describe('the sides', () => {
+  it('M6: wrapped SOL is folded into SOL (one "SOL", priced as SOL)', () => {
+    const WSOL = 'So11111111111111111111111111111111111111112';
+    const s = publicSide({
+      status: 'ready', syncedAt: 1, solBalance: '1000000000', nocBalance: '0',
+      tokenBalances: {[WSOL]: '500000000'},
+      tokens: [{mint: WSOL, symbol: 'SOL', name: 'Wrapped SOL', decimals: 9, trust: 'core'}],
+    });
+    expect(s).toEqual(known([sol(1_500_000_000n), {mint: NOC_MINT, symbol: 'NOC', amountRaw: 0n, decimals: 9}]));
+    expect(formatSide(s, PRICES, ', ')).toBe('$225.00');
+  });
+
   const ready = {status: 'ready' as const, syncedAt: 1, solBalance: '20000000', nocBalance: '0', tokenBalances: {}, tokens: []};
 
   it('publicSide: loading / error / never synced (plan A12) / a malformed amount → unknown', () => {

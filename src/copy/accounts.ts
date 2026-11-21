@@ -39,6 +39,8 @@ export const RECEIVED_BY = 'Received by';
 /** The combined line (§4.5): an unknown side, and a hidden one */
 export const VALUE_UNKNOWN = '—';
 export const VALUE_HIDDEN = '•••';
+/** A held, priced side worth under half a cent (never "$0.00" for a non-empty side) */
+export const BELOW_ONE_CENT = '<$0.01';
 
 /** #17 (M1 spec §11 R11; plan A15: "unshield" reworded, nothing widened) */
 export const WHO_SEES_WHAT = 'Who sees what';

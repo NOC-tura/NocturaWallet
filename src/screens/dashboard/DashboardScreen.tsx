@@ -591,7 +591,7 @@ function DashboardHeader({
       {/* M1d (spec §4.5, D3): one thin line directly under the toggle, in both modes; the big figure below is unchanged */}
       {combined !== null ? (
         <View className="px-5 -mt-2 mb-3">
-          <Text variant="body-sm" numeral className="text-fg-secondary text-center" testID="dashboard-combined-line">
+          <Text variant="body-sm" numeral numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} className="text-fg-secondary text-center" testID="dashboard-combined-line">
             {combined}
           </Text>
         </View>

@@ -97,11 +97,12 @@ jest.mock('../../../hooks/useAccent', () => ({
   useAccentColor: () => '#B084FC',
 }));
 
+// M1d: switchable — the combined line's USD form depends on the prices the dashboard hands it
+const mockResolved = {
+  current: {prices: {native: {usd: 150, change24h: 1.5}} as Record<string, {usd: number; change24h: number | null}>, havePrices: true},
+};
 jest.mock('../../../hooks/useResolvedPrices', () => ({
-  useResolvedPrices: () => ({
-    prices: {'native': {usd: 150, change24h: 1.5}},
-    havePrices: true,
-  }),
+  useResolvedPrices: () => mockResolved.current,
 }));
 
 jest.mock('../../../hooks/usePresaleSync', () => ({
@@ -189,6 +190,7 @@ beforeEach(() => {
   mockPublic.current = READY_MAIN; // M1d: the same values the walletStore mock holds
   mockPublicArgs.length = 0;
   mockFeatures.shielded = true; // M1d: the shielded build unless a row says otherwise
+  mockResolved.current = {prices: {native: {usd: 150, change24h: 1.5}}, havePrices: true}; // M1d: priced SOL unless a row says otherwise
 });
 
 describe('DashboardScreen — transparent mode', () => {
@@ -560,6 +562,17 @@ describe('M1d — the combined line under the toggle (spec §4.5, D2–D4)', () 
   it('hidden balances → "Public ••• · Private •••"', async () => {
     mockHide.current = true;
     expect((await renderDashboard()).getByTestId('dashboard-combined-line')).toHaveTextContent('Public ••• · Private •••');
+  });
+
+  it('I1: only priced assets held and prices known → the USD form "Public $150.00 · Private 0 TEST"', async () => {
+    mockPublic.current = {...READY_MAIN, nocBalance: '0', tokenBalances: {}};
+    expect((await renderDashboard()).getByTestId('dashboard-combined-line')).toHaveTextContent('Public $150.00 · Private 0 TEST');
+  });
+
+  it('I1: havePrices false (prices not empty) → the token form, never a USD figure from half-loaded prices', async () => {
+    mockPublic.current = {...READY_MAIN, nocBalance: '0', tokenBalances: {}};
+    mockResolved.current = {prices: {native: {usd: 150, change24h: 1.5}}, havePrices: false};
+    expect((await renderDashboard()).getByTestId('dashboard-combined-line')).toHaveTextContent('Public 1 SOL · Private 0 TEST');
   });
 
   it('plan A9: a build without private balances shows no line', async () => {

@@ -9,7 +9,7 @@ import {formatBalanceForDisplay} from '../../utils/parseTokenAmount';
 import {formatUsdString} from '../../utils/formatUsd';
 import {NOC_DECIMALS, NOC_MINT} from '../../constants/programs';
 import {A0_TOKEN} from '../shielded/a0/screenSupport';
-import {VALUE_HIDDEN, VALUE_UNKNOWN, combinedLine} from '../../copy/accounts';
+import {BELOW_ONE_CENT, VALUE_HIDDEN, VALUE_UNKNOWN, combinedLine} from '../../copy/accounts';
 import type {TokenPrice} from '../prices/priceModule';
 import type {AccountPublicData} from '../../hooks/useAccountPublicData';
 import type {A0ShieldedView} from '../../hooks/useA0Shielded';
@@ -28,6 +28,8 @@ export type SideValue = {kind: 'unknown'} | {kind: 'known'; assets: readonly Sid
 export const LISTED_ASSETS = 2;
 
 const DIGITS = /^\d+$/;
+/** Wrapped SOL is SOL: folded into the SOL amount (priced as SOL, one "SOL" in the line) */
+const WSOL_MINT = 'So11111111111111111111111111111111111111112';
 const NORMALISED_DECIMALS = 18;
 
 /** The public side: SOL, NOC and the account's listed tokens (the dashboard's holdings, plan A11). */
@@ -35,11 +37,13 @@ export function publicSide(data: AccountPublicData): SideValue {
   if (data.status !== 'ready' || data.syncedAt === null) {
     return {kind: 'unknown'};
   }
+  const wrapped = data.tokenBalances[WSOL_MINT] ?? '0';
+  const solAmount = DIGITS.test(data.solBalance) && DIGITS.test(wrapped) ? (BigInt(data.solBalance) + BigInt(wrapped)).toString() : data.solBalance;
   const raw: {mint: string; symbol: string; amount: string; decimals: number}[] = [
-    {mint: 'native', symbol: 'SOL', amount: data.solBalance, decimals: 9},
+    {mint: 'native', symbol: 'SOL', amount: solAmount, decimals: 9},
     {mint: NOC_MINT, symbol: 'NOC', amount: data.tokenBalances[NOC_MINT] ?? data.nocBalance, decimals: NOC_DECIMALS},
     ...data.tokens
-      .filter(t => t.mint !== NOC_MINT && t.mint !== 'native')
+      .filter(t => t.mint !== NOC_MINT && t.mint !== 'native' && t.mint !== WSOL_MINT)
       .map(t => ({mint: t.mint, symbol: t.symbol, amount: data.tokenBalances[t.mint] ?? '0', decimals: t.decimals})),
   ];
   const assets: SideAsset[] = [];
@@ -83,7 +87,13 @@ export function formatSide(side: SideValue, prices: Record<string, TokenPrice> |
     for (const a of held) {
       usd += (Number(a.amountRaw) / 10 ** a.decimals) * prices[a.mint]!.usd;
     }
-    return formatUsdString(usd);
+    if (Number.isFinite(usd) && usd >= 0.005) {
+      return formatUsdString(usd);
+    }
+    // a held side worth under half a cent (or not finite) never reads "$0.00": the token form below, or "<$0.01"
+    if (Number.isFinite(usd)) {
+      return BELOW_ONE_CENT;
+    }
   }
   const sorted = [...held].sort((x, y) => {
     const d = normalised(y) - normalised(x);
