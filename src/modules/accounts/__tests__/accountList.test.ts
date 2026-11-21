@@ -54,14 +54,13 @@ describe('the list (spec §3.1)', () => {
     expect(l.accounts[1]).toEqual({scheme: 'slip10:2', address: A2, label: 'Account 3', number: 3, role: 'fresh-exit', isMain: false, linked: true});
     expect(l.accounts[2]).toEqual({scheme: 'slip10:3', address: A3, label: 'Account 4', number: 4, role: 'fresh-exit', isMain: false, linked: false});
     expect(l.accounts.some(a => a.address === A1)).toBe(false);
-    expect(l.seed).toEqual(
-      expect.arrayContaining([
-        {address: MAIN, role: 'main'},
-        {address: A1, role: 'fresh-pending'},
-        {address: A2, role: 'fresh-exit'},
-        {address: A3, role: 'fresh-exit'},
-      ]),
-    );
+    // M1d: the exact array in registry order (arrayContaining let a duplicate pass)
+    expect(l.seed).toEqual([
+      {address: MAIN, role: 'main'},
+      {address: A3, role: 'fresh-exit'},
+      {address: A1, role: 'fresh-pending'},
+      {address: A2, role: 'fresh-exit'},
+    ]);
     expect(l.unreadable).toBe(false);
   });
 
@@ -83,6 +82,13 @@ describe('the list (spec §3.1)', () => {
     expect(l2.unreadable).toBe(true);
     // control: the same registry for the wallet it belongs to is read
     expect(buildAccountList(A2, SLIP0, otherWallet).accounts.map(a => a.address)).toEqual([A2, A3]);
+  });
+
+  it('M1d: a registry with no main entry, or an exit that is not slip10 → unreadable (an account never vanishes silently)', () => {
+    expect(buildAccountList(MAIN, SLIP0, () => [e('slip10:3', 'fresh-exit', A3)]).unreadable).toBe(true);
+    const l = buildAccountList(MAIN, SLIP0, () => [e('slip10:0', 'main', MAIN), e('cli', 'fresh-exit', A3)]);
+    expect(l.unreadable).toBe(true);
+    expect(l.accounts.map(a => a.scheme)).toEqual(['slip10:0']);
   });
 
   it('a cli wallet lists its one account (S9), with or without a registry', () => {

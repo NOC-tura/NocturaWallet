@@ -47,13 +47,9 @@ export function resolveSelection(list: AccountList, stored: string | undefined):
   return {selected: main, rewrite: !list.unreadable};
 }
 
-/** The stored choice; with no encrypted instance, the in-memory one (it cannot be stored now). */
+/** The stored choice. With no encrypted instance nothing can be stored or read: main (the list is main only then). */
 function storedSelection(): string | undefined {
-  const store = mmkvSecure();
-  if (store) {
-    return store.getString(KEY);
-  }
-  return useAccountsStore.getState().state?.selected.scheme;
+  return mmkvSecure()?.getString(KEY);
 }
 
 /** The list and the selection as stored now — a read only, nothing written. */

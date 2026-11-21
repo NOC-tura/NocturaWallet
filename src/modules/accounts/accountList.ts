@@ -98,7 +98,8 @@ export function buildAccountList(
     }
     const s = parseA0Scheme(x.scheme);
     if (s === null || s.kind !== 'slip10') {
-      continue;
+      // defence only (the registry reader rejects it): never drop an account without the line
+      return mainOnly(true);
     }
     exits.push({
       index: s.account,

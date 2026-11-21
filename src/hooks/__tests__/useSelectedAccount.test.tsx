@@ -4,6 +4,7 @@ import {clearAllStores, initSecureMmkv, mmkvSecure} from '../../store/mmkv/insta
 import {storeTransparentScheme} from '../../modules/keyDerivation/derivationScheme';
 import {useWalletStore} from '../../store/zustand/walletStore';
 import {resetAccountsForTests, selectAccount, useAccountsStore} from '../../modules/accounts/selectedAccount';
+import type {WalletAccount} from '../../modules/accounts/accountList';
 import {useAccountList, useRefreshAccounts, useSelectedAccount} from '../useSelectedAccount';
 
 const MAIN = 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk';
@@ -19,9 +20,28 @@ beforeEach(() => {
 });
 
 it('the first render already returns the main account; the store is then hydrated', () => {
-  const {result} = renderHook(() => useSelectedAccount());
-  expect(result.current).toMatchObject({scheme: 'slip10:0', address: MAIN, label: 'Account 1', role: 'main', isMain: true});
+  const seen: Array<WalletAccount | null> = [];
+  renderHook(() => {
+    const v = useSelectedAccount();
+    seen.push(v);
+    return v;
+  });
+  // M1d: asserted on the FIRST render (result.current is read after the hydrating effect ran)
+  expect(seen[0]).toMatchObject({scheme: 'slip10:0', address: MAIN, label: 'Account 1', role: 'main', isMain: true});
   expect(useAccountsStore.getState().forMain).toBe(MAIN);
+});
+
+it('the first render already returns a STORED non-main selection (read from MMKV, not defaulted)', () => {
+  setRegistry([{scheme: 'slip10:0', role: 'main', address: MAIN}, {scheme: 'slip10:3', role: 'fresh-exit', address: A3}]);
+  mmkvSecure()!.set('v1_accounts.selected', 'slip10:3');
+  const seen: Array<WalletAccount | null> = [];
+  renderHook(() => {
+    const v = useSelectedAccount();
+    seen.push(v);
+    return v;
+  });
+  // M1d: first render, before the effect hydrates the store
+  expect(seen[0]).toMatchObject({scheme: 'slip10:3', address: A3, label: 'Account 4', isMain: false});
 });
 
 it('a selection is observable (spec §3.2 "changes are observable")', () => {
@@ -34,7 +54,13 @@ it('a selection is observable (spec §3.2 "changes are observable")', () => {
 });
 
 it('useRefreshAccounts re-reads the registry: an exit that landed appears in the list', () => {
-  const {result} = renderHook(() => ({list: useAccountList(), refresh: useRefreshAccounts()}));
+  const lists: Array<number | null> = [];
+  const {result} = renderHook(() => {
+    const list = useAccountList();
+    lists.push(list ? list.accounts.length : null);
+    return {list, refresh: useRefreshAccounts()};
+  });
+  expect(lists[0]).toBe(1); // M1d: the first render already has the list
   expect(result.current.list!.accounts).toHaveLength(1);
   setRegistry([{scheme: 'slip10:0', role: 'main', address: MAIN}, {scheme: 'slip10:3', role: 'fresh-exit', address: A3}]);
   act(() => result.current.refresh());
