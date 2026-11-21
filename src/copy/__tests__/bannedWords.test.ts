@@ -17,6 +17,9 @@ const EXTRA = [
   'src/app/Navigator.tsx',
   'src/constants/errors.ts',
   'src/modules/geoFence/geoFenceModule.ts',
+  // M1d: the accounts copy and the account labels
+  'src/copy/accounts.ts',
+  'src/modules/accounts/accountList.ts',
 ];
 
 function sources(): Array<{file: string; text: string}> {
