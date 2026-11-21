@@ -185,6 +185,18 @@ describe('UX-A 7: the dashboard\'s "Make public" opens #16 on the unshield side 
     expect(mockQuoteCalls.length).toBeGreaterThan(0);
   });
 
+  it('M1d (D5): the dashboard is handed no Profile navigation — the avatar opens the Accounts sheet', async () => {
+    mockDashboardProps.length = 0;
+    const {ref} = routeNames({shielded: true});
+    await act(async () => {
+      (ref.navigate as (n: string, p?: object) => void)('MainTabs');
+    });
+    expect(mockDashboardProps.length).toBeGreaterThan(0);
+    for (const p of mockDashboardProps) {
+      expect('onProfileTap' in (p as Record<string, unknown>)).toBe(false);
+    }
+  });
+
   it('production build (no unshield route): the dashboard gets no onMakePublic (positive control: onShield is still passed)', async () => {
     mockDashboardProps.length = 0;
     const {ref} = routeNames({shielded: false});

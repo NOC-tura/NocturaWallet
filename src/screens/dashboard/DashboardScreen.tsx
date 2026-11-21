@@ -29,9 +29,10 @@ import {
 } from 'lucide-react-native';
 import {Text} from '../../components/ui';
 import {useWalletStore} from '../../store/zustand/walletStore';
-import {useRefreshAccounts, useSelectedAccount} from '../../hooks/useSelectedAccount';
+import {useAccountList, useRefreshAccounts, useSelectAccount, useSelectedAccount} from '../../hooks/useSelectedAccount';
 import {NO_PUBLIC_DATA, useAccountPublicData} from '../../hooks/useAccountPublicData';
-import {PUBLIC_LOADING, PUBLIC_UNAVAILABLE, VALUE_UNKNOWN} from '../../copy/accounts';
+import {PUBLIC_LOADING, PUBLIC_UNAVAILABLE, VALUE_UNKNOWN, avatarA11y} from '../../copy/accounts';
+import {AccountsSheet} from '../../components/accounts/AccountsSheet';
 import {useShieldedStore} from '../../store/zustand/shieldedStore';
 import {usePublicSettingsStore} from '../../store/zustand/publicSettingsStore';
 import {useNetworkStatus} from '../../hooks/useNetworkStatus';
@@ -122,7 +123,6 @@ interface DashboardScreenProps {
   onBuy?: () => void;
   onScan?: () => void;
   onNotifications?: () => void;
-  onProfileTap?: () => void;
   onPresale?: () => void;
   onFirstShieldedToggle?: () => void;
   onTokenTap?: (mint: string) => void;
@@ -146,7 +146,6 @@ export function DashboardScreen({
   onBuy,
   onScan,
   onNotifications,
-  onProfileTap,
   onPresale,
   onFirstShieldedToggle,
   onTokenTap,
@@ -217,6 +216,30 @@ export function DashboardScreen({
       setRefreshing(false);
     }
   }, [runSync]);
+
+  // M1d (spec §4.1, D5): the avatar opens the Accounts sheet — never Profile (it stays on its tab)
+  const accountList = useAccountList();
+  const selectAccountScheme = useSelectAccount();
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const openAccounts = useCallback(() => {
+    refreshAccountList();
+    setSheetOpen(true);
+    // review r1 m7: unreadable because the encrypted store is closed -> open it (biometric), then re-read
+    if (accountList?.unreadable && mmkvSecure() === null) {
+      unlockSecureStorage()
+        .then(() => refreshAccountList())
+        .catch(() => undefined);
+    }
+  }, [refreshAccountList, accountList]);
+  const handleSelectAccount = useCallback(
+    (scheme: string) => {
+      selectAccountScheme(scheme);
+      setSheetOpen(false);
+      // review r1 m11: the main account's sync only - the newly selected account's query starts by itself
+      runSync({showErrors: false, refetchSelected: false});
+    },
+    [selectAccountScheme, runSync],
+  );
 
   // M1d: re-read the account list on focus — an exit that landed since appears, a wiped selection falls back
   useFocusEffect(
@@ -355,7 +378,8 @@ export function DashboardScreen({
   const isShielded = mode === 'shielded';
   const usd = formatUsd(portfolio.totalUsd);
   const change24h = publicReady ? portfolio.change24hPct : null; // number | null (transparent only); M1d: none before the data is known
-  const avatarInitial = getAddressInitial(publicKey);
+  const avatarText = selected ? String(selected.number) : getAddressInitial(publicKey);
+  const avatarLabel = selected ? avatarA11y(selected.label) : 'Accounts';
 
   return (
     <SafeAreaView
@@ -380,7 +404,9 @@ export function DashboardScreen({
         ListHeaderComponent={
           <DashboardHeader
             mode={mode}
-            avatarInitial={avatarInitial}
+            avatarText={avatarText}
+            avatarLabel={avatarLabel}
+            onAvatarPress={openAccounts}
             usd={usd}
             solBalance={solBalance}
             nocBalance={nocBalance}
@@ -395,7 +421,6 @@ export function DashboardScreen({
             onBuy={onBuy}
             onScan={onScan}
             onNotifications={onNotifications}
-            onProfileTap={onProfileTap}
             isOffline={!isOnline}
             change24hPct={change24h}
             havePrices={havePrices}
@@ -455,6 +480,16 @@ export function DashboardScreen({
           />
         }
       />
+      {sheetOpen && accountList && selected ? (
+        <AccountsSheet
+          visible
+          list={accountList}
+          selectedScheme={selected.scheme}
+          hidden={hideBalances}
+          onSelect={handleSelectAccount}
+          onClose={() => setSheetOpen(false)}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -463,7 +498,11 @@ export function DashboardScreen({
 
 interface DashboardHeaderProps {
   mode: 'transparent' | 'shielded';
-  avatarInitial: string;
+  /** M1d: the selected account's number ("4") */
+  avatarText: string;
+  /** M1d: "Account 4, switch account" */
+  avatarLabel: string;
+  onAvatarPress: () => void;
   usd: {whole: string; cents: string};
   solBalance: string;
   nocBalance: string;
@@ -478,7 +517,6 @@ interface DashboardHeaderProps {
   onBuy?: () => void;
   onScan?: () => void;
   onNotifications?: () => void;
-  onProfileTap?: () => void;
   isOffline: boolean;
   change24hPct: number | null;
   havePrices: boolean;
@@ -494,7 +532,9 @@ interface DashboardHeaderProps {
 
 function DashboardHeader({
   mode,
-  avatarInitial,
+  avatarText,
+  avatarLabel,
+  onAvatarPress,
   usd,
   solBalance,
   nocBalance,
@@ -509,7 +549,6 @@ function DashboardHeader({
   onBuy,
   onScan,
   onNotifications,
-  onProfileTap,
   isOffline,
   change24hPct,
   havePrices,
@@ -525,9 +564,10 @@ function DashboardHeader({
       {/* Top row · avatar + bell + scan */}
       <View className="flex-row items-center justify-between px-5 pt-2 pb-3">
         <Pressable
-          onPress={onProfileTap}
+          onPress={onAvatarPress}
           accessibilityRole="button"
-          accessibilityLabel="Profile"
+          accessibilityLabel={avatarLabel}
+          testID="dashboard-avatar"
           className="w-10 h-10 rounded-pill bg-bg-surface-2 items-center justify-center active:opacity-80">
           <Text
             variant="body-lg"
@@ -535,7 +575,7 @@ function DashboardHeader({
               'font-geist-semibold',
               isShielded ? 'text-accent-shielded' : 'text-accent-transparent',
             )}>
-            {avatarInitial}
+            {avatarText}
           </Text>
         </Pressable>
         {/* The test build's chain marker (not in the design): a devnet build never passes for the

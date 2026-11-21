@@ -307,7 +307,6 @@ function PresaleScreenOnboarding() {
 function DashboardScreenNav() {
   const rootNav = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const dashNav = useNavigation<NativeStackNavigationProp<DashboardStackParamList>>();
-  const tabNav = useNavigation();
   // Presale (and its Buy entry, banner and routes) exists on mainnet only (S13).
   const presale = isPresaleEnabled();
   return (
@@ -335,7 +334,6 @@ function DashboardScreenNav() {
       onBuy={presale ? () => dashNav.navigate('Presale') : undefined}
       onScan={() => rootNav.navigate('ScanModal')}
       onNotifications={() => rootNav.navigate('NotificationsModal')}
-      onProfileTap={() => tabNav.getParent()?.navigate('ProfileTab' as never)}
       onPresale={presale ? () => dashNav.navigate('Presale') : undefined}
       onFirstShieldedToggle={() => {
         if (isShieldedEnabled()) {

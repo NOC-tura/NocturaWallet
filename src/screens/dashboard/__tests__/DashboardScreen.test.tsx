@@ -54,6 +54,20 @@ jest.mock('../../../hooks/useAccountPublicData', () => ({
   },
 }));
 
+// M1d (review r1 m7): opening the encrypted store when the registry is unreadable, controlled here
+const mockUnlock = jest.fn(() => Promise.resolve());
+jest.mock('../../../modules/session/secureStorageSession', () => ({unlockSecureStorage: () => mockUnlock()}));
+
+// M1d (spec §4.1): the Accounts sheet, stubbed — records its props, renders a marker
+const mockSheetProps: Array<Record<string, unknown>> = [];
+jest.mock('../../../components/accounts/AccountsSheet', () => ({
+  AccountsSheet: (p: Record<string, unknown>) => {
+    mockSheetProps.push(p);
+    const {Text: RNText} = require('react-native');
+    return require('react').createElement(RNText, {testID: 'mock-accounts-sheet'}, 'sheet');
+  },
+}));
+
 // ── Navigation ──────────────────────────────────────────────────────────────
 jest.mock('@react-navigation/native', () => ({
   useFocusEffect: (cb: () => void | (() => void)) => {
@@ -189,6 +203,7 @@ beforeEach(() => {
   mockSelected.current = MAIN_ACCOUNT; // M1d: the main account selected unless a row says otherwise
   mockPublic.current = READY_MAIN; // M1d: the same values the walletStore mock holds
   mockPublicArgs.length = 0;
+  mockSheetProps.length = 0; mockListUnreadable.current = false; mockUnlock.mockClear(); // M1d: the sheet stub and unlock reset
   mockFeatures.shielded = true; // M1d: the shielded build unless a row says otherwise
   mockResolved.current = {prices: {native: {usd: 150, change24h: 1.5}}, havePrices: true}; // M1d: priced SOL unless a row says otherwise
 });
@@ -578,5 +593,97 @@ describe('M1d — the combined line under the toggle (spec §4.5, D2–D4)', () 
   it('plan A9: a build without private balances shows no line', async () => {
     mockFeatures.shielded = false;
     expect((await renderDashboard()).queryByTestId('dashboard-combined-line')).toBeNull();
+  });
+});
+
+describe('M1d — the numbered avatar opens the Accounts sheet (spec §4.1, D5)', () => {
+  it('the avatar shows the selected account\'s number and says what it does', async () => {
+    mockSelected.current = EXIT_ACCOUNT;
+    const r = await renderDashboard();
+    expect(r.getByTestId('dashboard-avatar')).toHaveTextContent('4');
+    expect(r.getByTestId('dashboard-avatar').props.accessibilityLabel).toBe('Account 4, switch account');
+    mockSelected.current = MAIN_ACCOUNT;
+    expect((await renderDashboard()).getByTestId('dashboard-avatar')).toHaveTextContent('1');
+  });
+
+  it('a tap opens the sheet (re-reading the list) with the selection checked — never Profile', async () => {
+    mockSelected.current = EXIT_ACCOUNT;
+    const r = await renderDashboard();
+    expect(r.queryByTestId('mock-accounts-sheet')).toBeNull();
+    mockRefreshAccounts.mockClear();
+    await act(async () => {
+      fireEvent.press(r.getByTestId('dashboard-avatar'));
+    });
+    expect(r.getByTestId('mock-accounts-sheet')).toBeTruthy();
+    expect(mockRefreshAccounts).toHaveBeenCalled();
+    expect(mockSheetProps[mockSheetProps.length - 1]).toMatchObject({visible: true, selectedScheme: 'slip10:3'});
+  });
+
+  it('selecting a row selects it, closes the sheet and refreshes the dashboard', async () => {
+    const {forceSync} = jest.requireMock('../../../modules/backgroundSync/backgroundSyncModule') as {forceSync: jest.Mock};
+    const r = await renderDashboard();
+    await act(async () => {
+      fireEvent.press(r.getByTestId('dashboard-avatar'));
+    });
+    forceSync.mockClear();
+    await act(async () => {
+      (mockSheetProps[mockSheetProps.length - 1]!.onSelect as (s: string) => void)('slip10:3');
+    });
+    expect(mockSelect).toHaveBeenCalledWith('slip10:3');
+    expect(r.queryByTestId('mock-accounts-sheet')).toBeNull();
+    expect(forceSync).toHaveBeenCalled();
+  });
+
+  it('review r1 m11: a switch does not re-read the account just left (the new one\'s query starts by itself)', async () => {
+    const r = await renderDashboard();
+    await act(async () => {
+      fireEvent.press(r.getByTestId('dashboard-avatar'));
+    });
+    mockRefetchPublic.mockClear();
+    await act(async () => {
+      (mockSheetProps[mockSheetProps.length - 1]!.onSelect as (s: string) => void)('slip10:3');
+    });
+    expect(mockRefetchPublic).not.toHaveBeenCalled();
+  });
+
+  it('review r1 m4: the sheet gets the eye\'s state', async () => {
+    mockHide.current = true;
+    const r = await renderDashboard();
+    await act(async () => {
+      fireEvent.press(r.getByTestId('dashboard-avatar'));
+    });
+    expect(mockSheetProps[mockSheetProps.length - 1]).toMatchObject({hidden: true});
+  });
+
+  it('review r1 m7: an unreadable registry with the encrypted store closed → the store is opened, then the list re-read', async () => {
+    mockListUnreadable.current = true;
+    const r = await renderDashboard();
+    mockRefreshAccounts.mockClear();
+    await act(async () => {
+      fireEvent.press(r.getByTestId('dashboard-avatar'));
+    });
+    expect(mockUnlock).toHaveBeenCalledTimes(1);
+    expect(mockRefreshAccounts).toHaveBeenCalledTimes(2); // on open, and after the store opened
+    mockListUnreadable.current = false;
+    mockUnlock.mockClear();
+    const r2 = await renderDashboard();
+    await act(async () => {
+      fireEvent.press(r2.getByTestId('dashboard-avatar'));
+    });
+    expect(mockUnlock).not.toHaveBeenCalled(); // control: a readable list asks nothing
+  });
+
+  it('Private mode: the same avatar and sheet; the private balance does not depend on the selection', async () => {
+    mockMode.current = 'shielded';
+    mockView.current = {kind: 'ready', unspent: 200_000_000n, pending: 0n, notes: 1};
+    mockSelected.current = EXIT_ACCOUNT;
+    const r = await renderDashboard();
+    expect(r.getByTestId('dashboard-avatar')).toHaveTextContent('4');
+    expect(r.getByTestId('dashboard-shielded-balance')).toHaveTextContent('0.2 TEST');
+    await act(async () => {
+      fireEvent.press(r.getByTestId('dashboard-avatar'));
+    });
+    expect(r.getByTestId('mock-accounts-sheet')).toBeTruthy();
+    expect(r.getByTestId('dashboard-shielded-balance')).toHaveTextContent('0.2 TEST'); // unchanged by the sheet
   });
 });
