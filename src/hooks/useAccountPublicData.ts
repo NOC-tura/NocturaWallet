@@ -3,6 +3,8 @@
  * slot forceSync writes — no request here); any other account's come from the address-keyed query
  * `['accountSnapshot', address]` (the Accounts sheet shares it). Never a 0 for an unknown value:
  * `loading` / `error` are states, and NO_PUBLIC_DATA is only ever read behind a not-ready gate.
+ * Only the main branch's `data` is referentially stable; the non-main branches build a new object per
+ * render (consumers destructure fields; put fields, not `data`, in a dependency list).
  */
 import {useMemo} from 'react';
 import {useQuery} from '@tanstack/react-query';
@@ -32,7 +34,12 @@ export function useAccountPublicData(account: {address: string; isMain: boolean}
   /** resolves when the selected non-main account's read settled (at once for main) */
   refetch: () => Promise<void>;
 } {
-  const wallet = useWalletStore();
+  // field selectors (review m3): a walletStore write to an unrelated field (prices) does not re-render here
+  const solBalance = useWalletStore(s => s.solBalance);
+  const nocBalance = useWalletStore(s => s.nocBalance);
+  const tokenBalances = useWalletStore(s => s.tokenBalances);
+  const tokens = useWalletStore(s => s.tokens);
+  const lastSyncedAt = useWalletStore(s => s.lastSyncedAt);
   const other = account !== null && !account.isMain ? account.address : null;
   const isMain = account !== null && account.isMain;
   const q = useQuery({
@@ -49,7 +56,6 @@ export function useAccountPublicData(account: {address: string; isMain: boolean}
           () => undefined,
         ) // review r1 m11: never cancels a read in flight
       : Promise.resolve();
-  const {solBalance, nocBalance, tokenBalances, tokens, lastSyncedAt} = wallet;
   // plan A11: the main account's held pool token is listed too (display only; walletStore unchanged).
   // Memoised: the object is referentially stable across renders while walletStore's values are.
   const mainData = useMemo<AccountPublicData | null>(() => {

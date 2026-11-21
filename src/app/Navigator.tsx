@@ -1,7 +1,7 @@
 import React from 'react';
-import {useSelectedAccount} from '../hooks/useSelectedAccount';
 import {createNativeStackNavigator} from '@react-navigation/native-stack';
 import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
+import {useSelectedAccount} from '../hooks/useSelectedAccount';
 import {useNavigation, useRoute} from '@react-navigation/native';
 import type {RouteProp} from '@react-navigation/native';
 import type {NativeStackNavigationProp, NativeStackScreenProps} from '@react-navigation/native-stack';

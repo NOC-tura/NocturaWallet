@@ -81,3 +81,19 @@ it('the main branch is referentially stable across renders (Fable r2 minor 1)', 
   rerender({});
   expect(result.current.data).toBe(first);
 });
+
+it('review I2: a switch never shows the previous account\'s data (another → another, and main → another)', async () => {
+  const A4 = '9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin';
+  mockFetch.mockImplementation((a: string) => (a === A3 ? Promise.resolve(SNAP) : new Promise(() => undefined)));
+  const {result, rerender} = renderHook(
+    ({acc}: {acc: {address: string; isMain: boolean}}) => useAccountPublicData(acc),
+    {wrapper, initialProps: {acc: {address: A3, isMain: false}}},
+  );
+  await waitFor(() => expect(result.current.data.status).toBe('ready'));
+  rerender({acc: {address: A4, isMain: false}});
+  expect(result.current.data).toEqual({status: 'loading'}); // the very first render after the change
+  rerender({acc: {address: MAIN, isMain: true}});
+  expect(result.current.data).toMatchObject({status: 'ready', solBalance: '1000000000'});
+  rerender({acc: {address: A4, isMain: false}});
+  expect(result.current.data).toEqual({status: 'loading'}); // not the main values
+});

@@ -507,6 +507,15 @@ describe('M1d — Public mode follows the selected account (spec §3.4, D1/D2)',
     expect(r.getByTestId('dashboard-sub-sol')).toHaveTextContent('1');
   });
 
+  it('review I1: a READY non-main dataset is what the dashboard shows — not walletStore\'s figures', async () => {
+    mockSelected.current = EXIT_ACCOUNT;
+    mockPublic.current = {status: 'ready', solBalance: '3000000', nocBalance: '0', tokens: [], tokenBalances: {}, syncedAt: 1};
+    const r = await renderDashboard();
+    expect(r.getByTestId('dashboard-sub-sol')).toHaveTextContent('0.003');
+    expect(r.getByTestId('dashboard-sub-noc')).toHaveTextContent('0');
+    expect(r.getByTestId('dashboard-sub-sol')).not.toHaveTextContent('1'); // walletStore's SOL is 1
+  });
+
   it('plan A6: forceSync still runs with another account selected (the main slot stays fresh for main-only screens)', async () => {
     const {forceSync} = jest.requireMock('../../../modules/backgroundSync/backgroundSyncModule') as {forceSync: jest.Mock};
     mockSelected.current = EXIT_ACCOUNT;

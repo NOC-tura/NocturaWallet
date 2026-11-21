@@ -6,9 +6,11 @@
  *
  * PRIVACY (review r1 I1): token metadata comes from the CACHED map only (`loadCachedMetadata`). This
  * module never asks the Noctura backend (`fetchTokenMetadata` posts a mint list to the coordinator,
- * the relayer's operator) and never writes mmkvPublic: a non-main account's holdings reach no party
- * but the RPC provider, which #17 names. (The Jupiter verified list it loads is one global list, not
- * this account's.) The held pool token is listed where private balances exist (`withPoolToken`, A11).
+ * the relayer's operator) and writes NOTHING ABOUT THIS ACCOUNT to mmkvPublic: a non-main account's
+ * holdings reach no party but the RPC provider, which #17 names. The only mmkvPublic writes on this
+ * path are the global Jupiter verified list and its timestamp (`TokenManager.fetchVerifiedList`, one
+ * list for everyone, a request that carries nothing about the account). The held pool token is listed
+ * where private balances exist (`withPoolToken`, A11).
  */
 import {PublicKey} from '@solana/web3.js';
 import {getConnection} from '../solana/connection';

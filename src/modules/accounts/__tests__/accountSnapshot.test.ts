@@ -30,7 +30,6 @@ jest.mock('../../../constants/features', () => ({isShieldedEnabled: () => mockFe
 import {fetchAccountSnapshot} from '../accountSnapshot';
 import {withPoolToken} from '../poolToken';
 import {useWalletStore} from '../../../store/zustand/walletStore';
-import {mmkvPublic} from '../../../store/mmkv/instances';
 import {NOC_MINT} from '../../../constants/programs';
 import {A0_TOKEN} from '../../shielded/a0/screenSupport';
 
@@ -54,7 +53,9 @@ it('reads the named address; sums a mint across token accounts; no NOC → "0"',
   expect(s.solBalance).toBe('3000000');
   expect(s.tokenBalances).toEqual({[USDC]: '3500000'});
   expect(s.nocBalance).toBe('0');
-  expect(s.tokens.map(t => t.mint)).toEqual([USDC, USDC]);
+  // M1d: pre-existing, parked — buildDisplayTokens (shared with the main path's forceSync) emits one
+  // entry per token ACCOUNT, so a mint held in two accounts lists twice. Not enshrined: only the set is asserted.
+  expect(new Set(s.tokens.map(t => t.mint))).toEqual(new Set([USDC]));
 });
 
 it('NOC held → nocBalance is its sum', async () => {
@@ -77,14 +78,11 @@ it('never writes walletStore (the main account\'s slot)', async () => {
   expect(useWalletStore.getState().lastSyncedAt).toBeNull();
 });
 
-it('review r1 I1: never the Noctura backend, never a write to mmkvPublic (the cached metadata only)', async () => {
-  const keys = mmkvPublic.getAllKeys().sort();
-  const values = keys.map(k => mmkvPublic.getString(k));
+it('review r1 I1: never the Noctura backend\'s metadata proxy, never a metadata write (cached metadata only)', async () => {
   await fetchAccountSnapshot(A3);
   expect(mockFetchMeta).not.toHaveBeenCalled();
   expect(mockSaveMeta).not.toHaveBeenCalled();
-  expect(mmkvPublic.getAllKeys().sort()).toEqual(keys);
-  expect(keys.map(k => mmkvPublic.getString(k))).toEqual(values);
+  // the mmkvPublic side runs against the REAL TokenManager in accountSnapshotStorage.test.ts (review I3)
 });
 
 it('plan A11 (ruling C1): a held pool token is listed where private balances exist; not in a build without them', async () => {
