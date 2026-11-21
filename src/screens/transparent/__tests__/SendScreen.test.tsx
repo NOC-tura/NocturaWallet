@@ -219,3 +219,130 @@ describe('M1d — #12 sends from the account selected when it opened (spec §3.3
     expect(onReview).toHaveBeenCalledWith(expect.objectContaining({tokenMint: TEST_MINT, tokenSymbol: 'TEST', decimals: 9, amount: '0.001'}));
   });
 });
+
+describe('M1d — the linking warning and its second tap (spec §4.4)', () => {
+  const MAIN = 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk';
+  const A1 = 'Hh8QwFUA6MtVu1qAoq12ucvFHNwCcVTV7hpWjeY1Hztb';
+  const A3 = '3YqEpfo3c818GhvbQ1UmVY1nJxw16vtu4JB9peJXT94k';
+  const FOREIGN = 'E48cosDiQZK1iDSsyUzhvW4WxJeoKuDk5qgcdkmANV4N';
+  const SEED_LIST = {
+    accounts: [],
+    seed: [
+      {address: MAIN, role: 'main'},
+      {address: A3, role: 'fresh-exit'},
+      {address: A1, role: 'fresh-pending'},
+    ],
+    walletKind: 'slip10',
+    unreadable: false,
+  };
+  let now = 1_000_000;
+  beforeEach(() => {
+    mockSendSelected.current = A3_SRC; // the exit account is the source
+    mockSendList.current = SEED_LIST;
+    mockSendPublic.current = READY_1_SOL;
+    now = 1_000_000;
+    jest.spyOn(Date, 'now').mockImplementation(() => now);
+  });
+  afterEach(() => jest.restoreAllMocks());
+  const setup = (recipient: string) => {
+    const onReview = jest.fn();
+    const r = render(<SendScreen onReview={onReview} />);
+    fireEvent.changeText(r.getByTestId('recipient-input'), recipient);
+    fireEvent.changeText(r.getByTestId('amount-input'), '0.001');
+    return {r, onReview};
+  };
+  /** one tap, past the 500 ms debounce */
+  const tap = (r: ReturnType<typeof render>) => {
+    now += 600;
+    fireEvent.press(r.getByTestId('review-button'));
+  };
+
+  it('exit → main: the warning before #19; the first tap only acknowledges, the second goes on', () => {
+    const {r, onReview} = setup(MAIN);
+    const w = r.getByTestId('send-link-warning');
+    expect(w).toHaveTextContent('Sending between your own accounts links them on chain.Anyone can see that these two accounts belong to the same person.');
+    tap(r);
+    expect(onReview).not.toHaveBeenCalled();
+    expect(r.getByText('Tap again to send anyway')).toBeTruthy();
+    tap(r);
+    expect(onReview).toHaveBeenCalledTimes(1);
+    expect(onReview.mock.calls[0]![0]).toMatchObject({recipient: MAIN, from: {address: A3}});
+  });
+
+  it('the debounce still holds: a second tap within 500 ms is not the second tap', () => {
+    const {r, onReview} = setup(MAIN);
+    tap(r);
+    now += 100;
+    fireEvent.press(r.getByTestId('review-button'));
+    expect(onReview).not.toHaveBeenCalled();
+    tap(r);
+    expect(onReview).toHaveBeenCalledTimes(1);
+  });
+
+  it('changing the amount resets the acknowledgement', () => {
+    const {r, onReview} = setup(MAIN);
+    tap(r);
+    fireEvent.changeText(r.getByTestId('amount-input'), '0.002');
+    expect(r.queryByText('Tap again to send anyway')).toBeNull();
+    tap(r);
+    expect(onReview).not.toHaveBeenCalled(); // acknowledged again, not sent
+    tap(r);
+    expect(onReview).toHaveBeenCalledTimes(1);
+  });
+
+  it('changing the recipient resets the acknowledgement', () => {
+    const {r, onReview} = setup(MAIN);
+    tap(r);
+    fireEvent.changeText(r.getByTestId('recipient-input'), A1);
+    expect(r.queryByText('Tap again to send anyway')).toBeNull();
+    tap(r);
+    expect(onReview).not.toHaveBeenCalled();
+  });
+
+  it('Review Focus 3: main → a fresh-pending reservation warns too', () => {
+    mockSendSelected.current = {...MAIN_SRC, address: MAIN};
+    const {r} = setup(A1);
+    expect(r.getByTestId('send-link-warning')).toBeTruthy();
+  });
+
+  it('a foreign recipient: no warning, one tap reviews', () => {
+    const {r, onReview} = setup(FOREIGN);
+    expect(r.queryByTestId('send-link-warning')).toBeNull();
+    tap(r);
+    expect(onReview).toHaveBeenCalledTimes(1);
+  });
+
+  it('review r1 m6: #12 re-reads the registry as it opens (a reservation made since is in the seed set)', () => {
+    mockSendRefresh.mockClear();
+    setup(MAIN);
+    expect(mockSendRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('review r1 m5: MAX changes the amount → the acknowledgement resets', () => {
+    const {r, onReview} = setup(MAIN);
+    tap(r);
+    fireEvent.press(r.getByTestId('max-button'));
+    expect(r.queryByText('Tap again to send anyway')).toBeNull();
+    tap(r);
+    expect(onReview).not.toHaveBeenCalled();
+  });
+
+  it('review r1 m5: picking a token clears the amount → the acknowledgement resets', () => {
+    const {r} = setup(MAIN);
+    tap(r);
+    fireEvent.press(r.getByTestId('token-picker'));
+    fireEvent.press(r.getByLabelText('Select SOL'));
+    expect(r.queryByText('Tap again to send anyway')).toBeNull();
+  });
+
+  it('control: no registry known (list null) → no warning', () => {
+    mockSendList.current = null;
+    const {r} = setup(MAIN);
+    expect(r.queryByTestId('send-link-warning')).toBeNull();
+  });
+
+  it('no "fund this account" shortcut anywhere on #12', () => {
+    const {r} = setup(MAIN);
+    expect(r.queryByText(/fund this account|fund account/i)).toBeNull();
+  });
+});
