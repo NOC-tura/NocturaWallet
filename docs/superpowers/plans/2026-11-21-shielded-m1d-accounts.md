@@ -12,6 +12,18 @@
 
 **Base:** branch `feat/shielded-m1d-accounts` at 1a3ce4d (the spec commit), on `main` 31afb4e (part B merged, PR #125). Not stacked.
 
+**Revision 2 (2026-11-21):** after Fable plan review r1 (`m1d-plan-review-r1.md`: 1 Critical, 3 Important, 14 Minor) and the controller's rulings: C1 — A11 reversed (the pool token a fresh exit holds is listed and sendable where private balances exist; the checkpoint sends TEST); I1 — a non-main account's snapshot never asks the Noctura backend and never writes `mmkvPublic`; I2 — `sendTransaction.ts` and `valueLine.ts` join the guards' file lists; I3 — the sheet's footer only where private balances exist. "Review r1 dispositions" at the end lists every finding.
+
+## Needs owner yes
+
+Plan rulings that read the spec narrower or wider than its letter; the controller asks the owner. Each is implemented as written below until the owner says otherwise.
+
+- **A4** — when the registry cannot be read (locked, corrupt, another wallet's), the selection falls back to main in memory and the STORED choice is kept (spec §3.2 says "rewritten"); it is rewritten only when the registry was read and the account is gone.
+- **A6a** — `forceSync` is not split (the spec leaves it to the plan): it keeps writing the main account's slot; a non-main selection reads its own address-keyed query.
+- **A6b** — TokenDetail (#28) follows the selection, which widens D1's four surfaces: it opens from the dashboard's token list of the SELECTED account, so showing the main account's holding there would contradict the row just tapped. Its Swap button still opens the main-only Swap.
+- **A9** — the combined line (D3) and, by the same reasoning, the sheet's footer (review r1 I3) are not shown in a build without private balances (production); the sheet itself is.
+
+
 ## Global Constraints
 
 - Owner decisions (spec §2, verbatim in effect): **D1** Send, Receive, transaction history and the dashboard's public balance follow the selected account; Make private (deposit), Swap, presale and referral stay on the main account. **D2** "Public X" is the selected account's public balance. **D3** one thin line directly under the Public | Private toggle, in both modes; the big figure below is unchanged. **D4** USD where a price is known, otherwise the token amount; the two sides are never summed. **D5** the avatar (top-left of #11) opens a bottom sheet; the avatar shows the selected account's number; Profile stays on its tab. **D6** no adding accounts by hand. **Approach 1:** a new `selectedAccount` module; `walletStore.publicKey` stays the main account forever.
@@ -26,7 +38,7 @@
 - Cardinal rules (CLAUDE.md): BigInt amounts end to end (USD figures are display floats only, as `computePortfolio` already does), TypeScript strict (no `any`, no `@ts-ignore`), no `// TODO`, every send/sign CTA debounced 500 ms and disabled on tap (keep the existing debounce; the second-tap gate runs inside it).
 - Gates, every task, with their real exit codes read (not the tick): `npx jest` (alone, nothing else on the line), `npx tsc --noEmit`, `npm run lint:ci` (no new warning: exactly `✖ 144 problems (0 errors, 144 warnings)` after Tasks 1–2, and `✖ 143 problems (0 errors, 143 warnings)` from Task 3 on — Task 3 deletes a `require` whose `eslint-disable` comment then goes too, measured on a dry run of the plan), `node scripts/check-no-tge-date.mjs`. Task 9 also runs `node --no-warnings --test scripts/m1d-checkpoint/*.test.mjs`. The Kotlin JVM job is unchanged (no Kotlin or Android resource is touched by any task).
 - Reviews (owner rule: every plan and every review goes to Fable): each task has one implementer, then a Fable task review, a fix loop and a scoped Fable re-review before the next task starts; a final Fable review of the whole branch after Task 8's owner answer.
-- Commits end with the trailer `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`, whichever model implements the task (session-mandated attribution; the PR body states who implemented and reviewed each task). One commit per task.
+- Commits end with the attribution trailer the EXECUTING session's attribution reminder gives (review r1 m14; for the session that wrote this plan: `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`); the commands below show that line — use your session's if it differs. The PR body states who implemented and reviewed each task. One commit per task.
 
 ## Review Focus
 
@@ -45,12 +57,12 @@ Each is the smaller or the more secure reading; the owner may overturn any.
 - **A3 — a registry whose main entry is not this wallet's** (address ≠ `walletStore.publicKey` or scheme ≠ `loadTransparentScheme()`) is treated as unreadable: main only + the line (§3.1's failure rule). Review Focus 1.
 - **A4 — "the stored value is rewritten" (§3.2)** only when the registry was READ and the stored scheme is not in it; when the registry is unreadable (locked, corrupt, another wallet's) the fallback to main is in memory only and the stored choice is kept, so a temporary read failure never erases it.
 - **A5 — `useSelectedAccount()` returns `WalletAccount | null`**: null only while no wallet is loaded (`walletStore.publicKey` null). The returned object carries the spec's `{scheme, address, label, role, isMain}` plus `number` (the avatar) and `linked` (the tag).
-- **A6 — `forceSync` is not split** (§3.4 leaves it to the plan). It keeps writing the main account's slot on every dashboard trigger (mount, foreground, 60 s poll, pull), whatever is selected, so every main-only consumer keeps the main account's values. A non-main selection's public data is a separate address-keyed query (`['accountSnapshot', address]`, `fetchAccountSnapshot`) that is never written into `walletStore`; the dashboard refetches it on the same triggers. **TokenDetail (#28) follows the selection** too: it is opened from the dashboard's token list, which shows the selected account's tokens, so its holding must be that account's (its Swap button still opens the main-only Swap, which says so).
+- **A6 — `forceSync` is not split** (§3.4 leaves it to the plan; "Needs owner yes" A6a / A6b). It keeps writing the main account's slot on every dashboard trigger (mount, foreground, 60 s poll, pull), whatever is selected, so every main-only consumer keeps the main account's values. A non-main selection's public data is a separate address-keyed query (`['accountSnapshot', address]`, `fetchAccountSnapshot`) that is never written into `walletStore`; the dashboard refetches it on the same triggers. **TokenDetail (#28) follows the selection** too: it is opened from the dashboard's token list, which shows the selected account's tokens, so its holding must be that account's (its Swap button still opens the main-only Swap, which says so).
 - **A7 — #20 keeps its row layout:** the "From" row's value reads "Account 4 · 3YqEpf…JXT94k" (main: "Account 1 (main) · HAgk14…3DKpqk"); #19 shows the full caption "From: Account 4 · 3YqEpf…JXT94k" under the intent card.
 - **A8 — #19's "After" and #20's high-value gate** use the SOURCE's balances, carried in the intent as `sourceBalances` (captured with the source at #12), never the main account's store.
 - **A9 — the combined line is rendered only in a build with private balances** (`isShieldedEnabled()`); the production build (no private side at all) shows no "Private —" forever. Where the private view is `unsupported` (no on-device prover), its side reads "—".
 - **A10 — the formatter's details (§4.5):** within one side, assets are joined by ", " on the combined line and " · " on a sheet row; the overflow is " +N" after a space; "largest first" = the largest whole-token amount (decimals-normalised BigInt), ties by symbol; a side with no non-zero asset reads "0 SOL" (public) / "0 TEST" (private); the private side is the unspent total only (pending excluded, as the dashboard's hero). Hidden: "Public ••• · Private •••". The spec's devnet example "Public $12.40" cannot occur on devnet (the devnet build resolves no price, `isPricingEnabled()`), so devnet always shows token amounts; the rule, not the example, is implemented.
-- **A11 — the public side's assets are the dashboard's holdings:** SOL, NOC and the tokens the dashboard lists (core + verified mints, `TokenManager.buildDisplayTokens`). The devnet TEST token is an unknown mint, so it is not in the public list today (existing rule, unchanged); the M1d checkpoint's send is therefore SOL. Listed for the owner's phone pass.
+- **A11 — the pool token is a listed token (controller ruling on review r1 C1, reversing revision 1):** where private balances exist (`isShieldedEnabled()`), a held pool token (A0_TOKEN, "TEST" on devnet) is listed for EVERY account — main and fresh exits — in the dashboard's list, the sheet rows, the combined line's public side and #12's picker (sendable), added at the display layer (`withPoolToken`) so `walletStore` and `forceSync` stay untouched; it is unpriced, so a side that holds it reads token amounts. The production build is unchanged. The checkpoint's send is the exit's TEST, its fee from the granted SOL.
 - **A12 — the main account before its first sync** (`walletStore.lastSyncedAt` null) is "not loaded": its public side reads "—". After a failed later sync the last synced values stand (stale, not unknown), as the dashboard shows them today.
 - **A13 — the main-only lines (§4.3):** Swap and #23 presale (the screen with the amount and Buy) read "From: {main label} (main)" — "From: Account 1 (main)" for a `slip10:0` main, "From: Account 4 (main)" for a `slip10:3` main; referral reads "Uses your main account". Only while the selected account is not main. #23's confirmation screen (`PresaleBuyConfirmScreen`) is not changed (it follows #23 directly; one line per flow).
 - **A14 — "Received by" (§4.3)** without changing M1c's flow: the run screen reads the reserved scheme from the note store's pending intent at the flow's `onPending(rho)` callback (the settled note drops it), and after a `spent` outcome looks that scheme up in the registry as `fresh-exit`; anything missing → no row (never a guess).
@@ -63,9 +75,9 @@ Each is the smaller or the more secure reading; the owner may overturn any.
 ## File map
 
 - Create `src/modules/accounts/accountList.ts` (labels, order, short address, the list), `src/modules/accounts/selectedAccount.ts` (store, persistence, fallback), `src/hooks/useSelectedAccount.ts`, `src/copy/accounts.ts`, and their tests `src/modules/accounts/__tests__/{accountList,selectedAccount}.test.ts`, `src/hooks/__tests__/useSelectedAccount.test.tsx`, `src/copy/__tests__/accounts.test.ts`; modify `src/constants/mmkvKeys.ts`, the guard's and the scan's file lists (Task 1).
-- Create `src/modules/accounts/accountSnapshot.ts`, `src/hooks/useAccountPublicData.ts` + tests; modify `src/screens/dashboard/DashboardScreen.tsx`, `src/screens/transparent/{TokenDetailScreen,TransactionHistoryScreen,ReceiveScreen}.tsx`, `src/app/Navigator.tsx` (`ReceiveScreenNav`) and their tests, `src/app/__tests__/shieldedRoutes.test.tsx`, `src/screens/dashboard/__tests__/DashboardChainIdentity.test.tsx` (Task 2).
-- Modify `src/types/transfer.ts`, `src/modules/solana/sendTransaction.ts`, `src/screens/transparent/{SendScreen,TxSimulateScreen,TxConfirmScreen,TransactionStatusScreen}.tsx` and their tests, `src/modules/solana/__tests__/{submitTransaction,transferRisk}.test.ts`; create `src/modules/solana/__tests__/sendSigner.test.ts` (Task 3).
-- Create `src/modules/accounts/valueLine.ts` + test; modify `DashboardScreen.tsx` + test (Task 4).
+- Create `src/modules/accounts/poolToken.ts`, `src/modules/accounts/accountSnapshot.ts`, `src/hooks/useAccountPublicData.ts` + tests; modify `src/screens/dashboard/DashboardScreen.tsx`, `src/screens/transparent/{TokenDetailScreen,TransactionHistoryScreen,ReceiveScreen}.tsx`, `src/app/Navigator.tsx` (`ReceiveScreenNav`) and their tests, `src/app/__tests__/shieldedRoutes.test.tsx`, `src/screens/dashboard/__tests__/DashboardChainIdentity.test.tsx` (Task 2).
+- Modify `src/types/transfer.ts`, `src/modules/solana/sendTransaction.ts`, `src/screens/transparent/{SendScreen,TxSimulateScreen,TxConfirmScreen,TransactionStatusScreen}.tsx` and their tests, `src/modules/solana/__tests__/{submitTransaction,transferRisk}.test.ts`; create `src/modules/solana/__tests__/sendSigner.test.ts`, `src/screens/transparent/__tests__/sendChainSource.test.ts`; the guards' file lists gain `sendTransaction.ts` (Task 3).
+- Create `src/modules/accounts/valueLine.ts` + test; modify `DashboardScreen.tsx` + test; the guards' file lists gain `valueLine.ts` (Task 4).
 - Create `src/hooks/useAccountRowBalances.ts`, `src/components/accounts/AccountsSheet.tsx` + tests; modify `DashboardScreen.tsx` (avatar, sheet), `src/app/Navigator.tsx` (no `onProfileTap`) + tests (Task 5).
 - Create `src/modules/accounts/linking.ts` + test; modify `SendScreen.tsx` + test (Task 6).
 - Create `src/components/accounts/MainAccountLine.tsx`, `src/modules/accounts/receivedBy.ts` + tests; modify `src/screens/transparent/SwapScreen.tsx`, `src/screens/PresaleScreen.tsx`, `src/screens/referral/ReferralScreen.tsx`, `src/screens/shielded/unshield/UnshieldRunScreen.tsx`, `src/screens/shielded/ShieldedExplainerScreen.tsx` and their tests (Task 7).
@@ -945,6 +957,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ### Task 2: Public data follows the selection — the dashboard's Public mode, TokenDetail, Receive, history
 
 **Files:**
+- Create: `src/modules/accounts/poolToken.ts` (the pool token as a listed token, plan A11)
 - Create: `src/modules/accounts/accountSnapshot.ts`
 - Create: `src/hooks/useAccountPublicData.ts`
 - Modify: `src/screens/dashboard/DashboardScreen.tsx` (Public mode's data source, the focus refresh, the not-loaded states)
@@ -955,12 +968,13 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 **Interfaces:**
 - Consumes (Task 1): `useSelectedAccount(): WalletAccount | null`, `useRefreshAccounts(): () => void`, `useAccountList(): AccountList | null`, `useSelectAccount()`, `useAccounts()` from `src/hooks/useSelectedAccount.ts`; `WalletAccount {scheme; address; label; number; role: 'main' | 'fresh-exit'; isMain; linked}` from `src/modules/accounts/accountList.ts`; `PUBLIC_LOADING = 'Loading balances…'`, `PUBLIC_UNAVAILABLE = 'Balance unavailable · pull to refresh'`, `VALUE_UNKNOWN = '—'` from `src/copy/accounts.ts`.
-- Consumes (existing): `getBalance(connection, pk): Promise<bigint>`, `getTokenAccounts(connection, pk): Promise<TokenAccount[]>` (`src/modules/solana/queries.ts`); `sumTokenBalancesByMint(accounts): Record<string, string>` (`src/modules/solana/tokenBalances.ts`); `TokenManager` (`fetchVerifiedList`, `buildDisplayTokens`), `fetchTokenMetadata`, `loadCachedMetadata`, `saveCachedMetadata`; `forceSync()` (unchanged).
-- Produces (`src/modules/accounts/accountSnapshot.ts`): `interface AccountSnapshot {solBalance: string; nocBalance: string; tokenBalances: Record<string, string>; tokens: TokenMetadata[]}`, `fetchAccountSnapshot(address: string): Promise<AccountSnapshot>` (rejects when either read fails — never a partial snapshot).
-- Produces (`src/hooks/useAccountPublicData.ts`): `interface PublicBalances {solBalance: string; nocBalance: string; tokenBalances: Record<string, string>; tokens: TokenMetadata[]}`, `type AccountPublicData = {status: 'loading'} | {status: 'error'} | ({status: 'ready'; syncedAt: number | null} & PublicBalances)`, `NO_PUBLIC_DATA: PublicBalances`, `ACCOUNT_SNAPSHOT_KEY = 'accountSnapshot'`, `useAccountPublicData(account: {address: string; isMain: boolean} | null): {data: AccountPublicData; refetch: () => void}`. Main → `walletStore`'s values (`syncedAt` = `lastSyncedAt ?? null`), no request; another account → the query `['accountSnapshot', address]`.
+- Consumes (existing): `getBalance(connection, pk): Promise<bigint>`, `getTokenAccounts(connection, pk): Promise<TokenAccount[]>` (`src/modules/solana/queries.ts`); `sumTokenBalancesByMint(accounts): Record<string, string>` (`src/modules/solana/tokenBalances.ts`); `TokenManager` (`fetchVerifiedList`, `buildDisplayTokens` — core + verified mints only), `loadCachedMetadata()` (`src/modules/tokens/tokenMetadata.ts`; NOT `fetchTokenMetadata` / `saveCachedMetadata`, review r1 I1), `isShieldedEnabled()` (`src/constants/features.ts`), `A0_TOKEN` (`src/modules/shielded/a0/screenSupport.ts`, read only); `forceSync()` (unchanged).
+- Produces (`src/modules/accounts/accountSnapshot.ts`): `interface AccountSnapshot {solBalance: string; nocBalance: string; tokenBalances: Record<string, string>; tokens: TokenMetadata[]}`, `fetchAccountSnapshot(address: string): Promise<AccountSnapshot>` (rejects when either read fails — never a partial snapshot; cached metadata only, never the backend, never an mmkvPublic write — review r1 I1).
+- Produces (`src/modules/accounts/poolToken.ts`): `withPoolToken<T extends {tokenBalances: Record<string, string>; tokens: TokenMetadata[]}>(data: T, enabled = isShieldedEnabled()): T` — adds `{mint: A0_TOKEN.mint, symbol: 'TEST', name, decimals: 9, trust: 'unknown'}` to `tokens` when the pool token's balance is non-zero and private balances exist (plan A11). Applied by `fetchAccountSnapshot` and by `useAccountPublicData`'s main branch; so the dashboard list, the sheet rows, `publicSide` and #12's picker all list it.
+- Produces (`src/hooks/useAccountPublicData.ts`): `interface PublicBalances {solBalance: string; nocBalance: string; tokenBalances: Record<string, string>; tokens: TokenMetadata[]}`, `type AccountPublicData = {status: 'loading'} | {status: 'error'} | ({status: 'ready'; syncedAt: number | null} & PublicBalances)`, `NO_PUBLIC_DATA: PublicBalances`, `ACCOUNT_SNAPSHOT_KEY = 'accountSnapshot'`, `useAccountPublicData(account: {address: string; isMain: boolean} | null): {data: AccountPublicData; refetch: () => Promise<void>}`. Main → `walletStore`'s values (`syncedAt` = `lastSyncedAt ?? null`), no request; another account → the query `['accountSnapshot', address]`.
 - Produces (`ReceiveScreen`): optional prop `accountLabel?: string` (testID `receive-account-label`). Dashboard testIDs: `dashboard-public-balance`, `dashboard-sub-sol`, `dashboard-sub-noc`, `dashboard-public-empty`. History testID `history-account-label`.
 
-**Decision (spec §3.4, plan A6), stated in the code comments:** `forceSync` is NOT split. The dashboard runs it on every trigger whatever is selected, so the main account's slot in `walletStore` stays fresh for every main-only screen; a non-main selection is read by its own address-keyed query and never written into `walletStore`.
+**Decision (spec §3.4, plan A6), stated in the code comments:** `forceSync` is NOT split. The dashboard runs it on every trigger whatever is selected, so the main account's slot in `walletStore` stays fresh for every main-only screen; a non-main selection is read by its own address-keyed query and never written into `walletStore`. **Privacy (review r1 I1):** that read asks the RPC provider only — the cached token metadata, never the Noctura backend's metadata proxy, never an `mmkvPublic` write.
 
 - [ ] **Step 1: Write the failing tests — the snapshot and the hook**
 
@@ -978,24 +992,38 @@ jest.mock('../../solana/queries', () => ({
 jest.mock('../../tokens/tokenModule', () => ({
   TokenManager: jest.fn().mockImplementation(() => ({
     fetchVerifiedList: jest.fn().mockResolvedValue([]),
+    // the real rule: core + verified only — a pool token (an unknown mint) is NOT listed by it
     buildDisplayTokens: (accs: {mint: string; amount: string; decimals: number}[]) =>
-      accs.filter(a => a.amount !== '0').map(a => ({mint: a.mint, symbol: a.mint.slice(0, 4), name: 'T', decimals: a.decimals, trust: 'core'})),
+      accs
+        .filter(a => a.amount !== '0' && a.mint === 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v')
+        .map(a => ({mint: a.mint, symbol: 'USDC', name: 'USD Coin', decimals: a.decimals, trust: 'core'})),
   })),
 }));
+const mockFetchMeta = jest.fn().mockResolvedValue({});
+const mockSaveMeta = jest.fn();
 jest.mock('../../tokens/tokenMetadata', () => ({
-  fetchTokenMetadata: jest.fn().mockResolvedValue({}),
+  fetchTokenMetadata: (m: string[]) => mockFetchMeta(m),
+  fetchTokenMetadataDirect: (m: string[]) => mockFetchMeta(m),
   loadCachedMetadata: () => ({}),
-  saveCachedMetadata: jest.fn(),
+  saveCachedMetadata: (m: unknown) => mockSaveMeta(m),
 }));
+const mockFeatures = {shielded: true};
+jest.mock('../../../constants/features', () => ({isShieldedEnabled: () => mockFeatures.shielded}));
 
 import {fetchAccountSnapshot} from '../accountSnapshot';
+import {withPoolToken} from '../poolToken';
 import {useWalletStore} from '../../../store/zustand/walletStore';
+import {mmkvPublic} from '../../../store/mmkv/instances';
 import {NOC_MINT} from '../../../constants/programs';
+import {A0_TOKEN} from '../../shielded/a0/screenSupport';
 
 const A3 = '3YqEpfo3c818GhvbQ1UmVY1nJxw16vtu4JB9peJXT94k';
 const USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 
 beforeEach(() => {
+  mockFeatures.shielded = true;
+  mockFetchMeta.mockClear();
+  mockSaveMeta.mockClear();
   mockGetBalance.mockReset().mockResolvedValue(3_000_000n);
   mockGetTokenAccounts.mockReset().mockResolvedValue([
     {mint: USDC, owner: A3, amount: '1000000', decimals: 6, address: 'x1'},
@@ -1031,6 +1059,34 @@ it('never writes walletStore (the main account\'s slot)', async () => {
   expect(useWalletStore.getState().solBalance).toBe('42');
   expect(useWalletStore.getState().lastSyncedAt).toBeNull();
 });
+
+it('review r1 I1: never the Noctura backend, never a write to mmkvPublic (the cached metadata only)', async () => {
+  const keys = mmkvPublic.getAllKeys().sort();
+  const values = keys.map(k => mmkvPublic.getString(k));
+  await fetchAccountSnapshot(A3);
+  expect(mockFetchMeta).not.toHaveBeenCalled();
+  expect(mockSaveMeta).not.toHaveBeenCalled();
+  expect(mmkvPublic.getAllKeys().sort()).toEqual(keys);
+  expect(keys.map(k => mmkvPublic.getString(k))).toEqual(values);
+});
+
+it('plan A11 (ruling C1): a held pool token is listed where private balances exist; not in a build without them', async () => {
+  mockGetTokenAccounts.mockResolvedValue([{mint: A0_TOKEN.mint, owner: A3, amount: '8990000000', decimals: 9, address: 't'}]);
+  const on = await fetchAccountSnapshot(A3);
+  expect(on.tokens).toEqual([expect.objectContaining({mint: A0_TOKEN.mint, symbol: 'TEST', decimals: 9})]);
+  expect(on.tokenBalances[A0_TOKEN.mint]).toBe('8990000000');
+  mockFeatures.shielded = false;
+  expect((await fetchAccountSnapshot(A3)).tokens).toEqual([]);
+});
+
+it('withPoolToken: only a non-zero pool balance, once, never twice', () => {
+  const pool = {mint: A0_TOKEN.mint, symbol: 'TEST', name: 'x', decimals: 9, trust: 'unknown' as const};
+  expect(withPoolToken({tokenBalances: {[A0_TOKEN.mint]: '0'}, tokens: []}, true).tokens).toEqual([]);
+  expect(withPoolToken({tokenBalances: {}, tokens: []}, true).tokens).toEqual([]);
+  expect(withPoolToken({tokenBalances: {[A0_TOKEN.mint]: '5'}, tokens: [pool]}, true).tokens).toEqual([pool]);
+  expect(withPoolToken({tokenBalances: {[A0_TOKEN.mint]: '5'}, tokens: []}, false).tokens).toEqual([]);
+  expect(withPoolToken({tokenBalances: {[A0_TOKEN.mint]: '5'}, tokens: []}, true).tokens).toHaveLength(1);
+});
 ```
 
 Create `src/hooks/__tests__/useAccountPublicData.test.tsx`:
@@ -1044,8 +1100,11 @@ import {useWalletStore} from '../../store/zustand/walletStore';
 
 const mockFetch = jest.fn();
 jest.mock('../../modules/accounts/accountSnapshot', () => ({fetchAccountSnapshot: (a: string) => mockFetch(a)}));
+const mockFeatures = {shielded: true};
+jest.mock('../../constants/features', () => ({isShieldedEnabled: () => mockFeatures.shielded}));
 
 import {NO_PUBLIC_DATA, useAccountPublicData} from '../useAccountPublicData';
+import {A0_TOKEN} from '../../modules/shielded/a0/screenSupport';
 
 const MAIN = 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk';
 const A3 = '3YqEpfo3c818GhvbQ1UmVY1nJxw16vtu4JB9peJXT94k';
@@ -1058,6 +1117,7 @@ function wrapper({children}: {children: React.ReactNode}) {
 
 beforeEach(() => {
   mockFetch.mockReset();
+  mockFeatures.shielded = true;
   useWalletStore.setState({publicKey: MAIN, solBalance: '1000000000', nocBalance: '7', tokenBalances: {}, tokens: [], lastSyncedAt: 123});
 });
 
@@ -1088,6 +1148,21 @@ it('Review Focus 4: a failed read → error, never zeros', async () => {
   await waitFor(() => expect(result.current.data).toEqual({status: 'error'}));
 });
 
+it('plan A11 (ruling C1): the main account\'s held pool token is listed where private balances exist; never otherwise', () => {
+  useWalletStore.setState({tokenBalances: {[A0_TOKEN.mint]: '1250000000'}});
+  const on = renderHook(() => useAccountPublicData({address: MAIN, isMain: true}), {wrapper});
+  expect(on.result.current.data).toMatchObject({status: 'ready', tokens: [expect.objectContaining({mint: A0_TOKEN.mint, symbol: 'TEST'})]});
+  expect(useWalletStore.getState().tokens).toEqual([]); // display only: the store is not written
+  mockFeatures.shielded = false;
+  const off = renderHook(() => useAccountPublicData({address: MAIN, isMain: true}), {wrapper});
+  expect(off.result.current.data).toMatchObject({status: 'ready', tokens: []});
+});
+
+it('refetch resolves (a no-op for main)', async () => {
+  const {result} = renderHook(() => useAccountPublicData({address: MAIN, isMain: true}), {wrapper});
+  await expect(result.current.refetch()).resolves.toBeUndefined();
+});
+
 it('no account → loading; NO_PUBLIC_DATA is all zeros (shown only behind a not-ready state)', () => {
   const {result} = renderHook(() => useAccountPublicData(null), {wrapper});
   expect(result.current.data).toEqual({status: 'loading'});
@@ -1108,9 +1183,10 @@ const EXIT_ACCOUNT: WalletAccount = {scheme: 'slip10:3', address: '3YqEpfo3c818G
 const mockSelected: {current: WalletAccount | null} = {current: MAIN_ACCOUNT};
 const mockRefreshAccounts = jest.fn();
 const mockSelect = jest.fn(() => true);
+const mockListUnreadable = {current: false};
 jest.mock('../../../hooks/useSelectedAccount', () => ({
   useSelectedAccount: () => mockSelected.current,
-  useAccountList: () => (mockSelected.current ? {accounts: [mockSelected.current], seed: [], walletKind: 'slip10', unreadable: false} : null),
+  useAccountList: () => (mockSelected.current ? {accounts: [mockSelected.current], seed: [], walletKind: 'slip10', unreadable: mockListUnreadable.current} : null),
   useAccounts: () => null,
   useSelectAccount: () => mockSelect,
   useRefreshAccounts: () => mockRefreshAccounts,
@@ -1118,7 +1194,7 @@ jest.mock('../../../hooks/useSelectedAccount', () => ({
 const READY_MAIN: AccountPublicData = {status: 'ready', solBalance: '1000000000', nocBalance: '2000000000', tokens: [], tokenBalances: {}, syncedAt: 1};
 const mockPublic: {current: AccountPublicData} = {current: READY_MAIN};
 const mockPublicArgs: unknown[] = [];
-const mockRefetchPublic = jest.fn();
+const mockRefetchPublic = jest.fn(() => Promise.resolve());
 jest.mock('../../../hooks/useAccountPublicData', () => ({
   NO_PUBLIC_DATA: {solBalance: '0', nocBalance: '0', tokenBalances: {}, tokens: []},
   ACCOUNT_SNAPSHOT_KEY: 'accountSnapshot',
@@ -1317,15 +1393,49 @@ Expected: FAIL — the two new modules are missing; the dashboard has no `dashbo
 
 - [ ] **Step 4: Write the snapshot**
 
+Create `src/modules/accounts/poolToken.ts`:
+
+```ts
+/**
+ * M1d plan A11 (controller ruling on review r1 C1): where private balances exist
+ * (`isShieldedEnabled()`), the pool token (A0_TOKEN, "TEST" on devnet) is a listed token of EVERY
+ * account that holds it — the funds a fresh exit received must be visible (the sheet, the dashboard's
+ * list, the combined line) and sendable from #12. Display layer only: walletStore and forceSync are
+ * untouched. The production build (no private balances) is unchanged. Pure.
+ */
+import {isShieldedEnabled} from '../../constants/features';
+import {A0_TOKEN} from '../shielded/a0/screenSupport';
+import type {TokenMetadata} from '../../store/zustand/walletStore';
+
+const DIGITS = /^\d+$/;
+
+export function withPoolToken<T extends {tokenBalances: Record<string, string>; tokens: TokenMetadata[]}>(
+  data: T,
+  enabled: boolean = isShieldedEnabled(),
+): T {
+  const held = data.tokenBalances[A0_TOKEN.mint];
+  if (!enabled || held === undefined || !DIGITS.test(held) || BigInt(held) === 0n || data.tokens.some(t => t.mint === A0_TOKEN.mint)) {
+    return data;
+  }
+  const pool: TokenMetadata = {mint: A0_TOKEN.mint, symbol: A0_TOKEN.symbol, name: A0_TOKEN.name, decimals: A0_TOKEN.decimals, trust: 'unknown'};
+  return {...data, tokens: [...data.tokens, pool]};
+}
+```
+
 Create `src/modules/accounts/accountSnapshot.ts`:
 
 ```ts
 /**
  * M1d spec §3.4 (plan A6): the public data of an account that is NOT the main one — its SOL, its
- * token sums per mint and the dashboard's display tokens, read by address. Never written into
- * walletStore: that slot is the main account's (forceSync, unchanged), which every main-only
- * screen reads. Both reads must succeed: a failure rejects (the screens show "—", never a 0).
- * The display-token rule is forceSync's (core + verified mints; metadata best-effort).
+ * token sums per mint and the display tokens, read by address from the RPC. Never written into
+ * walletStore: that slot is the main account's (forceSync, unchanged), which every main-only screen
+ * reads. Both reads must succeed: a failure rejects (the screens show "—", never a 0).
+ *
+ * PRIVACY (review r1 I1): token metadata comes from the CACHED map only (`loadCachedMetadata`). This
+ * module never asks the Noctura backend (`fetchTokenMetadata` posts a mint list to the coordinator,
+ * the relayer's operator) and never writes mmkvPublic: a non-main account's holdings reach no party
+ * but the RPC provider, which #17 names. (The Jupiter verified list it loads is one global list, not
+ * this account's.) The held pool token is listed where private balances exist (`withPoolToken`, A11).
  */
 import {PublicKey} from '@solana/web3.js';
 import {getConnection} from '../solana/connection';
@@ -1333,7 +1443,8 @@ import {getBalance, getTokenAccounts} from '../solana/queries';
 import {sumTokenBalancesByMint} from '../solana/tokenBalances';
 import {NOC_MINT} from '../../constants/programs';
 import {TokenManager} from '../tokens/tokenModule';
-import {fetchTokenMetadata, loadCachedMetadata, saveCachedMetadata} from '../tokens/tokenMetadata';
+import {loadCachedMetadata} from '../tokens/tokenMetadata';
+import {withPoolToken} from './poolToken';
 import type {TokenMetadata} from '../../store/zustand/walletStore';
 
 const tokenManager = new TokenManager();
@@ -1355,21 +1466,12 @@ export async function fetchAccountSnapshot(address: string): Promise<AccountSnap
   } catch {
     // the verified list is unavailable: core tokens only, as forceSync
   }
-  const held = accounts.filter(t => t.amount !== '0' && t.mint !== NOC_MINT).map(t => t.mint);
-  let meta = loadCachedMetadata();
-  try {
-    const resolved = await fetchTokenMetadata(held);
-    meta = {...meta, ...resolved};
-    saveCachedMetadata(meta);
-  } catch {
-    // metadata unavailable: keep the cached names and logos
-  }
-  return {
+  return withPoolToken({
     solBalance: lamports.toString(),
     nocBalance: tokenBalances[NOC_MINT] ?? '0',
     tokenBalances,
-    tokens: tokenManager.buildDisplayTokens(accounts, meta),
-  };
+    tokens: tokenManager.buildDisplayTokens(accounts, loadCachedMetadata()),
+  });
 }
 ```
 
@@ -1388,6 +1490,7 @@ import {useQuery} from '@tanstack/react-query';
 import {useWalletStore} from '../store/zustand/walletStore';
 import type {TokenMetadata} from '../store/zustand/walletStore';
 import {fetchAccountSnapshot} from '../modules/accounts/accountSnapshot';
+import {withPoolToken} from '../modules/accounts/poolToken';
 
 export interface PublicBalances {
   solBalance: string;
@@ -1407,7 +1510,8 @@ export const ACCOUNT_SNAPSHOT_KEY = 'accountSnapshot';
 
 export function useAccountPublicData(account: {address: string; isMain: boolean} | null): {
   data: AccountPublicData;
-  refetch: () => void;
+  /** resolves when the selected non-main account's read settled (at once for main) */
+  refetch: () => Promise<void>;
 } {
   const wallet = useWalletStore();
   const other = account !== null && !account.isMain ? account.address : null;
@@ -1418,26 +1522,25 @@ export function useAccountPublicData(account: {address: string; isMain: boolean}
     staleTime: 10_000,
     gcTime: 5 * 60_000,
   });
-  const refetch = (): void => {
-    if (other !== null) {
-      q.refetch().catch(() => undefined);
-    }
-  };
+  const refetch = (): Promise<void> =>
+    other !== null
+      ? q.refetch({cancelRefetch: false}).then(
+          () => undefined,
+          () => undefined,
+        ) // review r1 m11: never cancels a read in flight
+      : Promise.resolve();
   if (account === null) {
     return {data: {status: 'loading'}, refetch};
   }
   if (account.isMain) {
-    return {
-      data: {
-        status: 'ready',
-        solBalance: wallet.solBalance,
-        nocBalance: wallet.nocBalance,
-        tokenBalances: wallet.tokenBalances,
-        tokens: wallet.tokens,
-        syncedAt: wallet.lastSyncedAt ?? null,
-      },
-      refetch,
-    };
+    // plan A11: the main account's held pool token is listed too (display only; walletStore unchanged)
+    const main = withPoolToken({
+      solBalance: wallet.solBalance,
+      nocBalance: wallet.nocBalance,
+      tokenBalances: wallet.tokenBalances,
+      tokens: wallet.tokens,
+    });
+    return {data: {status: 'ready', ...main, syncedAt: wallet.lastSyncedAt ?? null}, refetch};
   }
   if (q.data) {
     return {data: {status: 'ready', ...q.data, syncedAt: q.dataUpdatedAt}, refetch};
@@ -1486,10 +1589,31 @@ with
   refetchPublicRef.current = refetchPublic;
 ```
 
-and inside `runSync`, as the first line of its `try {` block (before `const result = await forceSync();`):
+and replace the whole `runSync` `useCallback` (from `const runSync = useCallback(` to its closing `}, []);`) with:
 
 ```ts
-      refetchPublicRef.current();
+  const runSync = useCallback(async (opts: {showErrors: boolean; refetchSelected?: boolean}) => {
+    if (syncingRef.current) return;
+    syncingRef.current = true;
+    try {
+      // M1d (review r1 m11): the selected account's own read runs alongside the main account's
+      // forceSync and is awaited too, so pull-to-refresh ends after BOTH; a switch passes
+      // refetchSelected: false (the new account's query starts by itself, the old one is not read again)
+      const selectedRead = opts.refetchSelected === false ? Promise.resolve() : refetchPublicRef.current();
+      const result = await forceSync();
+      if (!result.success && opts.showErrors) {
+        Alert.alert(
+          'Could not refresh balance',
+          result.error
+            ? `RPC error: ${result.error}\n\nIf the funds are visible on a block explorer but not here, the bundle may be pointing at the wrong cluster.`
+            : 'Unknown error. Try again in a moment.',
+        );
+      }
+      await selectedRead;
+    } finally {
+      syncingRef.current = false;
+    }
+  }, []);
 ```
 
 (d) Directly after the `handleRefresh` `useCallback` block add:
@@ -1678,6 +1802,8 @@ Run the Step 3 command. Expected: PASS, every existing row of the touched suites
 1. In `useAccountPublicData`, return `{status: 'ready', ...NO_PUBLIC_DATA, syncedAt: null}` instead of the error state → `useAccountPublicData.test.tsx` "Review Focus 4" FAILS. Revert.
 2. In the dashboard, change `havePrices && publicReady ? (` back to `havePrices ? (` → the dashboard "Review Focus 4: loading" row FAILS. Revert.
 3. In `ReceiveScreenNav`, change `selected?.address ?? publicKey` to `publicKey ?? selected?.address` → the route row FAILS. Revert.
+4. In `fetchAccountSnapshot`, add back `await fetchTokenMetadata(held)` (import it) → "review r1 I1" FAILS. Revert.
+5. In `withPoolToken`, drop `!enabled ||` → the "not in a build without them" rows (snapshot and hook) FAIL. Revert.
 
 - [ ] **Step 10: Run the gates**
 
@@ -1693,7 +1819,7 @@ Expected: all green; tsc 0; `✖ 144 problems (0 errors, 144 warnings)`; TGE che
 - [ ] **Step 11: Commit**
 
 ```bash
-git add src/modules/accounts/accountSnapshot.ts src/modules/accounts/__tests__/accountSnapshot.test.ts \
+git add src/modules/accounts/poolToken.ts src/modules/accounts/accountSnapshot.ts src/modules/accounts/__tests__/accountSnapshot.test.ts \
   src/hooks/useAccountPublicData.ts src/hooks/__tests__/useAccountPublicData.test.tsx \
   src/screens/dashboard src/screens/transparent/TokenDetailScreen.tsx src/screens/transparent/TransactionHistoryScreen.tsx \
   src/screens/transparent/ReceiveScreen.tsx src/screens/transparent/__tests__ src/app/Navigator.tsx src/app/__tests__/shieldedRoutes.test.tsx
@@ -1713,7 +1839,8 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - Modify: `src/screens/transparent/TxSimulateScreen.tsx` (sender = the source, "After" from its balances, the From caption)
 - Modify: `src/screens/transparent/TxConfirmScreen.tsx` (the From row, the high-value gate on the source's balances)
 - Modify: `src/screens/transparent/TransactionStatusScreen.tsx` (the scheme and the expected signer from the intent)
-- Test: create `src/modules/solana/__tests__/sendSigner.test.ts`; modify `src/modules/solana/__tests__/{submitTransaction,transferRisk}.test.ts`, `src/screens/transparent/__tests__/{SendScreen,TxSimulateScreen,TxConfirmScreen,TransactionStatusScreen}.test.tsx`
+- Modify: `src/screens/shielded/__tests__/privacyClaims.test.ts`, `src/copy/__tests__/bannedWords.test.ts` (file lists only: `sendTransaction.ts`, review r1 I2)
+- Test: create `src/modules/solana/__tests__/sendSigner.test.ts`, `src/screens/transparent/__tests__/sendChainSource.test.ts`; modify `src/modules/solana/__tests__/{submitTransaction,transferRisk}.test.ts`, `src/screens/transparent/__tests__/{SendScreen,TxSimulateScreen,TxConfirmScreen,TransactionStatusScreen}.test.tsx`
 
 **Interfaces:**
 - Consumes (Task 1): `useSelectedAccount(): WalletAccount | null`, `useAccountList(): AccountList | null` (`src/hooks/useSelectedAccount.ts`); `shortAccountAddress(address: string): string` (`src/modules/accounts/accountList.ts`); `fromLine(label, short, isMain)`, `accountWithAddress(label, short, isMain)`, `VALUE_UNKNOWN` (`src/copy/accounts.ts`).
@@ -1732,9 +1859,10 @@ Create `src/modules/solana/__tests__/sendSigner.test.ts`:
  * M1d spec §3.3 (plan A16): a Send signs from the scheme it names, and only when that key derives
  * the account's address. The addresses are the repo's offline vectors
  * (src/modules/shielded/a0/__tests__/fixtures/a0-account-vectors.json, "abandon … about"), not
- * computed by the code under test.
+ * computed by the code under test. Review r1 m8/m9: the seed and the secret are captured where they
+ * are made (the real functions, wrapped) and their CONTENTS are checked after the call.
  */
-import {PublicKey} from '@solana/web3.js';
+import {Keypair, PublicKey} from '@solana/web3.js';
 import {SendSignerMismatchError, submitTransparentTransfer} from '../sendTransaction';
 import {KeychainManager} from '../../keychain/keychainModule';
 
@@ -1747,15 +1875,34 @@ const mockBlockhash = jest.fn(async () => ({blockhash: 'bh', lastValidBlockHeigh
 jest.mock('../connection', () => ({
   getConnection: () => ({getLatestBlockhash: mockBlockhash, sendRawTransaction: mockSendRaw}),
 }));
-const mockZeroized: Uint8Array[] = [];
-jest.mock('../../session/zeroize', () => ({
-  zeroize: (d: Uint8Array | null | undefined) => {
-    if (d) {
-      mockZeroized.push(d);
-      d.fill(0);
-    }
-  },
-}));
+const mockSeeds: Uint8Array[] = [];
+jest.mock('../../keyDerivation/mnemonicUtils', () => {
+  const actual = jest.requireActual<typeof import('../../keyDerivation/mnemonicUtils')>('../../keyDerivation/mnemonicUtils');
+  return {
+    ...actual,
+    mnemonicToSeed: async (m: string) => {
+      const seed = await actual.mnemonicToSeed(m);
+      mockSeeds.push(seed);
+      return seed;
+    },
+  };
+});
+const mockSecrets: Uint8Array[] = [];
+const mockDerive = {throws: false};
+jest.mock('../../keyDerivation/transparent', () => {
+  const actual = jest.requireActual<typeof import('../../keyDerivation/transparent')>('../../keyDerivation/transparent');
+  return {
+    ...actual,
+    deriveTransparentKeypair: (seed: Uint8Array, scheme: Parameters<typeof actual.deriveTransparentKeypair>[1]) => {
+      if (mockDerive.throws) {
+        throw new Error('derivation failed');
+      }
+      const kp = actual.deriveTransparentKeypair(seed, scheme);
+      mockSecrets.push(kp.secretKey);
+      return kp;
+    },
+  };
+});
 
 const sol = (account: number, expectedSigner: string) => ({
   kind: 'sol' as const,
@@ -1765,11 +1912,15 @@ const sol = (account: number, expectedSigner: string) => ({
   scheme: {kind: 'slip10' as const, account},
   expectedSigner,
 });
+const allZero = (b: Uint8Array): boolean => b.every(x => x === 0);
 
 beforeEach(() => {
   mockSendRaw.mockClear();
   mockBlockhash.mockClear();
-  mockZeroized.length = 0;
+  (Keypair.fromSecretKey as jest.Mock).mockClear();
+  mockSeeds.length = 0;
+  mockSecrets.length = 0;
+  mockDerive.throws = false;
   jest.spyOn(KeychainManager.prototype, 'retrieveSeed').mockResolvedValue(ABANDON);
 });
 afterEach(() => jest.restoreAllMocks());
@@ -1779,20 +1930,31 @@ it('signs from the named scheme when its key derives the account\'s address (sli
   expect(mockSendRaw).toHaveBeenCalledTimes(1);
 });
 
-it('Review Focus 2: a key that does not derive the address → E_SEND_SIGNER_MISMATCH; nothing built, signed or sent', async () => {
+it('Review Focus 2: a key that does not derive the address → E_SEND_SIGNER_MISMATCH; no key object, nothing built, signed or sent', async () => {
   const run = submitTransparentTransfer(sol(1, MAIN));
   await expect(run).rejects.toBeInstanceOf(SendSignerMismatchError);
   await expect(submitTransparentTransfer(sol(1, MAIN))).rejects.toMatchObject({code: 'E_SEND_SIGNER_MISMATCH'});
+  expect(Keypair.fromSecretKey).not.toHaveBeenCalled();
   expect(mockBlockhash).not.toHaveBeenCalled();
   expect(mockSendRaw).not.toHaveBeenCalled();
 });
 
-it('the seed and the secret key are both zero-filled, on the refusal as on the send', async () => {
+it('the seed and the secret key are zero-filled — their contents, on the refusal as on the send', async () => {
   await expect(submitTransparentTransfer(sol(1, MAIN))).rejects.toBeInstanceOf(SendSignerMismatchError);
-  expect(mockZeroized.filter(d => d.length === 64)).toHaveLength(2); // the 64-byte seed and the 64-byte secret
-  mockZeroized.length = 0;
+  expect(mockSeeds).toHaveLength(1);
+  expect(mockSecrets).toHaveLength(1);
+  expect(allZero(mockSeeds[0]!) && mockSeeds[0]!.length === 64).toBe(true);
+  expect(allZero(mockSecrets[0]!) && mockSecrets[0]!.length === 64).toBe(true);
   await submitTransparentTransfer(sol(1, A1));
-  expect(mockZeroized.filter(d => d.length === 64)).toHaveLength(2);
+  expect(mockSeeds.every(allZero) && mockSecrets.every(allZero)).toBe(true);
+});
+
+it('review r1 m8: a derivation that throws still zero-fills the seed; nothing is sent', async () => {
+  mockDerive.throws = true;
+  await expect(submitTransparentTransfer(sol(1, A1))).rejects.toThrow('derivation failed');
+  expect(mockSeeds).toHaveLength(1);
+  expect(allZero(mockSeeds[0]!)).toBe(true);
+  expect(mockSendRaw).not.toHaveBeenCalled();
 });
 ```
 
@@ -1820,9 +1982,11 @@ const A3_SRC = {scheme: 'slip10:3', address: '3YqEpfo3c818GhvbQ1UmVY1nJxw16vtu4J
 const READY_1_SOL = {status: 'ready', syncedAt: 1, solBalance: '1000000000', nocBalance: '0', tokens: [], tokenBalances: {}};
 const mockSendSelected: {current: unknown} = {current: MAIN_SRC};
 const mockSendList: {current: unknown} = {current: null};
+const mockSendRefresh = jest.fn();
 jest.mock('../../../hooks/useSelectedAccount', () => ({
   useSelectedAccount: () => mockSendSelected.current,
   useAccountList: () => mockSendList.current,
+  useRefreshAccounts: () => mockSendRefresh,
 }));
 const mockSendPublic: {current: unknown} = {current: READY_1_SOL};
 jest.mock('../../../hooks/useAccountPublicData', () => ({
@@ -1997,10 +2161,60 @@ describe('M1d — #21 signs from the intent\'s source (spec §3.3)', () => {
 });
 ```
 
+Create `src/screens/transparent/__tests__/sendChainSource.test.ts`:
+
+```ts
+/**
+ * M1d Review Focus 2 (review r1 m10): #19, #20 and #21 read the source ONLY from the intent — never the
+ * live selection, never walletStore — so a selection change cannot move an in-flight Send. A source
+ * check, with its positive control (#12 does read the live selection, once, at open).
+ */
+import * as fs from 'fs';
+import * as path from 'path';
+
+const read = (f: string): string => fs.readFileSync(path.resolve(__dirname, '..', f), 'utf8');
+
+it.each(['TxSimulateScreen.tsx', 'TxConfirmScreen.tsx', 'TransactionStatusScreen.tsx'])('%s imports neither the selection hooks nor walletStore', f => {
+  const src = read(f);
+  expect(src).not.toMatch(/useSelectedAccount|selectedAccount|walletStore/);
+  expect(src).toMatch(/intent\.from/);
+});
+
+it('positive control: #12 reads the selection (and captures it in state)', () => {
+  expect(read('SendScreen.tsx')).toMatch(/useState\(liveSelected\)/);
+});
+```
+
+And append to the `describe('M1d — #12 sends from the account …')` block in `SendScreen.test.tsx`:
+
+```tsx
+  it('plan A11 (ruling C1): the source\'s pool token is in the picker and can be sent', () => {
+    const TEST_MINT = 'ERkpCFGaoWmeZPhKTUHumrqHTP1QmyHVhMJUnxbRPKCs';
+    mockSendSelected.current = A3_SRC;
+    mockSendPublic.current = {
+      status: 'ready',
+      syncedAt: 1,
+      solBalance: '3000000',
+      nocBalance: '0',
+      tokenBalances: {[TEST_MINT]: '1250000000'},
+      tokens: [{mint: TEST_MINT, symbol: 'TEST', name: 'Devnet test token', decimals: 9, trust: 'unknown'}],
+    };
+    const onReview = jest.fn();
+    const r = render(<SendScreen onReview={onReview} />);
+    fireEvent.press(r.getByTestId('token-picker'));
+    fireEvent.press(r.getByLabelText('Select TEST'));
+    fill(r);
+    fireEvent.press(r.getByTestId('review-button'));
+    expect(onReview).toHaveBeenCalledWith(expect.objectContaining({tokenMint: TEST_MINT, tokenSymbol: 'TEST', decimals: 9, amount: '0.001'}));
+  });
+```
+
+(the picker lists what `useAccountPublicData` returns, so with Task 2's `withPoolToken` the pool token a fresh exit holds is sendable.)
+
 - [ ] **Step 3: Run the tests to verify they fail**
 
 Run: `npx jest src/modules/solana src/screens/transparent`
-Expected: FAIL — `SendSignerMismatchError` is not exported; `expectedSigner` unknown; #12's intent has no `from`; no `tx-simulate-from` / `tx-confirm-from`; #21 calls with `loadTransparentScheme()`'s scheme and no `expectedSigner`. (`npx tsc --noEmit` also fails on the new intent fields until Step 4.)
+Expected: FAIL — `SendSignerMismatchError` is not exported; `sendChainSource.test.ts` finds `walletStore` in #19/#20; `expectedSigner` unknown; #12's intent has no `from`; no `tx-simulate-from` / `tx-confirm-from`; #21 calls with `loadTransparentScheme()`'s scheme and no `expectedSigner`. (`npx tsc --noEmit` also fails on the new intent fields until Step 4.)
 
 - [ ] **Step 4: The intent type**
 
@@ -2071,6 +2285,7 @@ export class SendSignerMismatchError extends Error {
 (d) replace
 
 ```ts
+  const seed = await mnemonicToSeed(mnemonic);
   const {secretKey} = deriveTransparentKeypair(seed, params.scheme);
   zeroize(seed);
   try {
@@ -2080,14 +2295,35 @@ export class SendSignerMismatchError extends Error {
 with
 
 ```ts
-  const {publicKey, secretKey} = deriveTransparentKeypair(seed, params.scheme);
-  zeroize(seed);
+  const seed = await mnemonicToSeed(mnemonic);
+  let secretKey: Uint8Array | null = null;
   try {
+    // review r1 m8: derived inside the try, so a throwing derivation still zero-fills the seed below
+    const derived = deriveTransparentKeypair(seed, params.scheme);
+    secretKey = derived.secretKey;
+    zeroize(seed);
     // M1d (spec §3.3): the key must derive the account's own address before anything is built or signed
-    if (base58.encode(publicKey) !== params.expectedSigner) {
+    if (base58.encode(derived.publicKey) !== params.expectedSigner) {
       throw new SendSignerMismatchError(params.expectedSigner);
     }
-    const signer = Keypair.fromSecretKey(secretKey);
+    const signer = Keypair.fromSecretKey(derived.secretKey);
+```
+
+and the `finally` block at the end of the function
+
+```ts
+  } finally {
+    zeroize(secretKey);
+  }
+```
+
+with
+
+```ts
+  } finally {
+    zeroize(seed);
+    zeroize(secretKey);
+  }
 ```
 
 and update the function's doc comment's first sentence to: `Retrieve the seed (biometric / passcode gated), derive the signer with the given scheme, refuse unless it is \`expectedSigner\` (M1d), build the transfer instructions, sign, and broadcast via sendRawTransaction.`
@@ -2255,9 +2491,18 @@ and replace `const scheme = loadTransparentScheme();` with
 
 (d) in `buildParams`, add `expectedSigner: intent.from.address,` after `scheme,` in BOTH branches.
 
+Widen the guards (file lists only; review r1 I2): `sendTransaction.ts`'s refusal message reaches #21 as it is. In `src/screens/shielded/__tests__/privacyClaims.test.ts` append to `EXTRA_COPY`:
+
+```ts
+  // M1d (review r1 I2): the signer refusal #21 shows as it is
+  path.join(ROOT, 'src/modules/solana/sendTransaction.ts'),
+```
+
+and to its positive-control list (after the Task 1 entries) `'src/modules/solana/sendTransaction.ts',`; in `src/copy/__tests__/bannedWords.test.ts` append `'src/modules/solana/sendTransaction.ts',` to `EXTRA`. No regex changes.
+
 - [ ] **Step 8: Run the tests to verify they pass**
 
-Run: `npx jest src/modules/solana src/screens/transparent`
+Run: `npx jest src/modules/solana src/screens/transparent src/copy src/screens/shielded/__tests__/privacyClaims.test.ts`
 Expected: PASS, every existing row included.
 
 - [ ] **Step 9: Mutations (each must go red, then revert)**
@@ -2266,6 +2511,8 @@ Expected: PASS, every existing row included.
 2. Move the signer check below `const {blockhash, lastValidBlockHeight} = await connection.getLatestBlockhash();` → "nothing built, signed or sent" FAILS (`mockBlockhash` called). Revert.
 3. In `SendScreen`, replace `const [source] = useState(liveSelected);` with `const source = liveSelected;` → "Review Focus 2: a selection change after #12 opened" FAILS. Revert.
 4. In `TransactionStatusScreen`, change `expectedSigner: intent.from.address` to `expectedSigner: ''` in the SOL branch → the #21 "expected signer" row FAILS. Revert.
+5. In `sendTransaction.ts`, move `const derived = deriveTransparentKeypair(…)` back above the `try` → "a derivation that throws still zero-fills the seed" FAILS. Revert.
+6. Add `import {useWalletStore} from '../../store/zustand/walletStore';` back to `TxConfirmScreen.tsx` → `sendChainSource.test.ts` FAILS. Revert.
 
 - [ ] **Step 10: Run the gates**
 
@@ -2283,7 +2530,8 @@ Expected: all green; tsc 0; `✖ 143 problems (0 errors, 143 warnings)` (Task 3 
 ```bash
 git add src/types/transfer.ts src/modules/solana/sendTransaction.ts src/modules/solana/__tests__ \
   src/screens/transparent/SendScreen.tsx src/screens/transparent/TxSimulateScreen.tsx src/screens/transparent/TxConfirmScreen.tsx \
-  src/screens/transparent/TransactionStatusScreen.tsx src/screens/transparent/__tests__
+  src/screens/transparent/TransactionStatusScreen.tsx src/screens/transparent/__tests__ \
+  src/screens/shielded/__tests__/privacyClaims.test.ts src/copy/__tests__/bannedWords.test.ts
 git commit -m "feat(m1d): Send signs from the selected account — the source carried #12 to #21, the signer-address check
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
@@ -2296,6 +2544,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 **Files:**
 - Create: `src/modules/accounts/valueLine.ts`
 - Modify: `src/screens/dashboard/DashboardScreen.tsx` (the line under the toggle)
+- Modify: `src/screens/shielded/__tests__/privacyClaims.test.ts`, `src/copy/__tests__/bannedWords.test.ts` (file lists only: `valueLine.ts`, review r1 I2)
 - Test: create `src/modules/accounts/__tests__/valueLine.test.ts`; modify `src/screens/dashboard/__tests__/DashboardScreen.test.tsx`
 
 **Interfaces:**
@@ -2643,9 +2892,18 @@ and `combined,` to `DashboardHeader`'s destructuring after `publicReady,`;
       ) : null}
 ```
 
+Widen the guards (file lists only; review r1 I2): `valueLine.ts` builds "0 SOL" / "0 TEST" and "+N" for the line and the sheet rows. In `src/screens/shielded/__tests__/privacyClaims.test.ts` append to `EXTRA_COPY`:
+
+```ts
+  // M1d (review r1 I2): the combined line's and the sheet rows' formatter
+  path.join(ROOT, 'src/modules/accounts/valueLine.ts'),
+```
+
+and `'src/modules/accounts/valueLine.ts',` to its positive-control list; in `src/copy/__tests__/bannedWords.test.ts` append `'src/modules/accounts/valueLine.ts',` to `EXTRA`. No regex changes.
+
 - [ ] **Step 6: Run the tests to verify they pass**
 
-Run the Step 3 command, then `npx jest src/screens/dashboard`. Expected: PASS (`DashboardChainIdentity.test.tsx` included: on devnet the line is in token form, so its "no `$` figure" row still holds).
+Run the Step 3 command, then `npx jest src/screens/dashboard src/copy src/screens/shielded/__tests__/privacyClaims.test.ts`. Expected: PASS (`DashboardChainIdentity.test.tsx` included: on devnet the line is in token form, so its "no `$` figure" row still holds).
 
 - [ ] **Step 7: Mutations (each must go red, then revert)**
 
@@ -2669,7 +2927,8 @@ Expected: all green; tsc 0; `✖ 143 problems (0 errors, 143 warnings)`; TGE che
 
 ```bash
 git add src/modules/accounts/valueLine.ts src/modules/accounts/__tests__/valueLine.test.ts \
-  src/screens/dashboard/DashboardScreen.tsx src/screens/dashboard/__tests__/DashboardScreen.test.tsx
+  src/screens/dashboard/DashboardScreen.tsx src/screens/dashboard/__tests__/DashboardScreen.test.tsx \
+  src/screens/shielded/__tests__/privacyClaims.test.ts src/copy/__tests__/bannedWords.test.ts
 git commit -m "feat(m1d): the combined line \"Public X · Private Y\" under the toggle
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
@@ -2690,12 +2949,12 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - Consumes (Task 1): `AccountList {accounts: readonly WalletAccount[]; seed; walletKind: 'slip10' | 'cli'; unreadable: boolean}`, `WalletAccount {scheme; address; label; number; role; isMain; linked}`, `shortAccountAddress(address)` (`src/modules/accounts/accountList.ts`); `useSelectedAccount()`, `useAccountList()`, `useSelectAccount(): (scheme: string) => boolean`, `useRefreshAccounts(): () => void` (`src/hooks/useSelectedAccount.ts`); `ACCOUNTS_TITLE`, `ACCOUNTS_FOOTER`, `ACCOUNTS_UNREADABLE`, `ROW_NOT_CHECKED`, `ROW_UNAVAILABLE`, `TAG_MAIN`, `TAG_EXIT`, `TAG_LINKED`, `avatarA11y(label)` (`src/copy/accounts.ts`).
 - Consumes (Task 2): `fetchAccountSnapshot(address): Promise<AccountSnapshot>`, `AccountSnapshot {solBalance; nocBalance; tokenBalances; tokens}` (`src/modules/accounts/accountSnapshot.ts`); `ACCOUNT_SNAPSHOT_KEY = 'accountSnapshot'` (`src/hooks/useAccountPublicData.ts` — the sheet shares the dashboard's query key).
 - Consumes (Task 4): `publicSide(data: AccountPublicData): SideValue`, `formatSide(side, prices | null, sep: string): string` (`src/modules/accounts/valueLine.ts`).
-- Consumes (existing): `useResolvedPrices(): {prices: Record<string, TokenPrice>; havePrices: boolean}`.
+- Consumes (existing): `useResolvedPrices(): {prices: Record<string, TokenPrice>; havePrices: boolean}`; `isShieldedEnabled()` (`src/constants/features.ts`); `VALUE_HIDDEN` (Task 1); on #11, `mmkvSecure()` and `unlockSecureStorage()` (already imported by the dashboard).
 - Produces (`src/hooks/useAccountRowBalances.ts`): `ROW_WINDOW = 10`, `type RowBalance = {state: 'not-checked'} | {state: 'failed'} | {state: 'ready'; data: AccountSnapshot; at: number}`, `useAccountRowBalances(addresses: readonly string[], active: boolean): Record<string, RowBalance>`.
-- Produces (`src/components/accounts/AccountsSheet.tsx`): `interface AccountsSheetProps {visible: boolean; list: AccountList; selectedScheme: string; onSelect: (scheme: string) => void; onClose: () => void}`, `AccountsSheet(props)`, `tagsOf(a: WalletAccount): string[]`, `rowBalanceText(row: RowBalance | undefined, prices: Record<string, TokenPrice> | null): string`. TestIDs: `accounts-sheet`, `accounts-radiogroup`, `accounts-unreadable`, `accounts-footer`, `accounts-row-<scheme>`, `accounts-row-<scheme>-address`, `accounts-row-<scheme>-balance`, `accounts-row-<scheme>-check`, `accounts-row-<scheme>-tag-<tag>`.
+- Produces (`src/components/accounts/AccountsSheet.tsx`): `interface AccountsSheetProps {visible: boolean; list: AccountList; selectedScheme: string; hidden: boolean; onSelect: (scheme: string) => void; onClose: () => void}` (`hidden`: the dashboard's eye — every row balance then reads `•••`, review r1 m4), `AccountsSheet(props)`, `tagsOf(a: WalletAccount): string[]`, `rowBalanceText(row: RowBalance | undefined, prices: Record<string, TokenPrice> | null): string`. TestIDs: `accounts-sheet`, `accounts-radiogroup`, `accounts-unreadable`, `accounts-footer`, `accounts-row-<scheme>`, `accounts-row-<scheme>-address`, `accounts-row-<scheme>-balance`, `accounts-row-<scheme>-check`, `accounts-row-<scheme>-tag-<tag>`.
 - Produces (#11): testID `dashboard-avatar` (text = the selected account's number; label `avatarA11y(label)`); `DashboardScreenProps` loses `onProfileTap`.
 
-Spec §4.1 in full: the avatar shows the selected account's number and opens the sheet (never Profile — Profile stays on its tab); title "Accounts"; each row: label, tag(s), short address, balances (USD where every held asset is priced, else the token amounts), a check on the selected row; rows are radios in a radiogroup with `checked`; tap selects, closes, refreshes; the footer for slip10 wallets only; no Add / rename / remove; a cli wallet lists one row and no footer; the same in Private mode, where the private balance does not change with the selection. Balances (§3.4, plan A1): read when the sheet opens, at most 10 in flight, a row waiting reads "not checked yet", a failed row "Balance unavailable".
+Spec §4.1 in full: the avatar shows the selected account's number and opens the sheet (never Profile — Profile stays on its tab); title "Accounts"; each row: label, tag(s), short address, balances (USD where every held asset is priced, else the token amounts), a check on the selected row; rows are radios in a radiogroup with `checked`; tap selects, closes, refreshes; the footer for slip10 wallets only, and only in a build with private balances (review r1 I3: the production build has no Make public, so no "A new account"); no Add / rename / remove; a cli wallet lists one row and no footer; the same in Private mode, where the private balance does not change with the selection. Balances (§3.4, plan A1): read when the sheet opens, at most 10 in flight, a row waiting reads "not checked yet", a failed row "Balance unavailable".
 
 - [ ] **Step 1: Write the failing tests — the row balances**
 
@@ -2778,6 +3037,8 @@ jest.mock('../../../hooks/useAccountRowBalances', () => ({
 }));
 const mockPrices: {current: {prices: Record<string, {usd: number; change24h: null}>; havePrices: boolean}} = {current: {prices: {}, havePrices: false}};
 jest.mock('../../../hooks/useResolvedPrices', () => ({useResolvedPrices: () => mockPrices.current}));
+const mockFeatures = {shielded: true};
+jest.mock('../../../constants/features', () => ({isShieldedEnabled: () => mockFeatures.shielded}));
 
 import {AccountsSheet} from '../AccountsSheet';
 
@@ -2796,7 +3057,7 @@ const LIST: AccountList = {
 };
 const sheet = (over: Partial<React.ComponentProps<typeof AccountsSheet>> = {}) => {
   const onSelect = jest.fn();
-  const r = render(<AccountsSheet visible list={LIST} selectedScheme="slip10:3" onSelect={onSelect} onClose={jest.fn()} {...over} />);
+  const r = render(<AccountsSheet visible list={LIST} selectedScheme="slip10:3" hidden={false} onSelect={onSelect} onClose={jest.fn()} {...over} />);
   return {r, onSelect};
 };
 
@@ -2804,6 +3065,7 @@ beforeEach(() => {
   mockRows.current = {};
   mockRowArgs.length = 0;
   mockPrices.current = {prices: {}, havePrices: false};
+  mockFeatures.shielded = true;
 });
 
 it('title "Accounts"; rows in order with label, tags and the short address', () => {
@@ -2867,6 +3129,36 @@ it('an unreadable registry: the main row and the line, never an empty sheet', ()
   expect(r.getAllByRole('radio')).toHaveLength(1);
 });
 
+it('plan A11 (ruling C1): a fresh exit\'s pool token is in its row — "8.99 TEST · 0.003 SOL"', () => {
+  const TEST_MINT = 'ERkpCFGaoWmeZPhKTUHumrqHTP1QmyHVhMJUnxbRPKCs';
+  mockRows.current = {
+    [A3]: {
+      state: 'ready',
+      at: 1,
+      data: {
+        solBalance: '3000000',
+        nocBalance: '0',
+        tokenBalances: {[TEST_MINT]: '8990000000'},
+        tokens: [{mint: TEST_MINT, symbol: 'TEST', name: 'Devnet test token', decimals: 9, trust: 'unknown'}],
+      },
+    },
+  };
+  expect(sheet().r.getByTestId('accounts-row-slip10:3-balance')).toHaveTextContent('8.99 TEST · 0.003 SOL');
+});
+
+it('review r1 m4: balances hidden on the dashboard → every row reads "•••"', () => {
+  mockRows.current = {[MAIN]: {state: 'ready', at: 1, data: {solBalance: '20000000', nocBalance: '0', tokenBalances: {}, tokens: []}}};
+  const {r} = sheet({hidden: true});
+  expect(r.getByTestId('accounts-row-slip10:0-balance')).toHaveTextContent('•••');
+  expect(r.getByTestId('accounts-row-slip10:3-balance')).toHaveTextContent('•••');
+  expect(r.queryByText('0.02 SOL')).toBeNull();
+});
+
+it('review r1 I3: a build without private balances shows no footer (no "A new account" exists there)', () => {
+  mockFeatures.shielded = false;
+  expect(sheet().r.queryByTestId('accounts-footer')).toBeNull();
+});
+
 it('D6: no Add, no rename, no remove', () => {
   const {r} = sheet();
   expect(r.queryByText(/add account|rename|remove|delete/i)).toBeNull();
@@ -2883,6 +3175,10 @@ it('a closed sheet asks no balance', () => {
 In `src/screens/dashboard/__tests__/DashboardScreen.test.tsx`, add after the `useAccountPublicData` mock block:
 
 ```tsx
+// M1d (review r1 m7): opening the encrypted store when the registry is unreadable, controlled here
+const mockUnlock = jest.fn(() => Promise.resolve());
+jest.mock('../../../modules/session/secureStorageSession', () => ({unlockSecureStorage: () => mockUnlock()}));
+
 // M1d (spec §4.1): the Accounts sheet, stubbed — records its props, renders a marker
 const mockSheetProps: Array<Record<string, unknown>> = [];
 jest.mock('../../../components/accounts/AccountsSheet', () => ({
@@ -2894,7 +3190,7 @@ jest.mock('../../../components/accounts/AccountsSheet', () => ({
 }));
 ```
 
-add `mockSheetProps.length = 0;` to the top-level `beforeEach`, and append:
+add `mockSheetProps.length = 0; mockListUnreadable.current = false; mockUnlock.mockClear();` to the top-level `beforeEach`, and append:
 
 ```tsx
 describe('M1d — the numbered avatar opens the Accounts sheet (spec §4.1, D5)', () => {
@@ -2933,6 +3229,45 @@ describe('M1d — the numbered avatar opens the Accounts sheet (spec §4.1, D5)'
     expect(mockSelect).toHaveBeenCalledWith('slip10:3');
     expect(r.queryByTestId('mock-accounts-sheet')).toBeNull();
     expect(forceSync).toHaveBeenCalled();
+  });
+
+  it('review r1 m11: a switch does not re-read the account just left (the new one\'s query starts by itself)', async () => {
+    const r = await renderDashboard();
+    await act(async () => {
+      fireEvent.press(r.getByTestId('dashboard-avatar'));
+    });
+    mockRefetchPublic.mockClear();
+    await act(async () => {
+      (mockSheetProps[mockSheetProps.length - 1]!.onSelect as (s: string) => void)('slip10:3');
+    });
+    expect(mockRefetchPublic).not.toHaveBeenCalled();
+  });
+
+  it('review r1 m4: the sheet gets the eye\'s state', async () => {
+    mockHide.current = true;
+    const r = await renderDashboard();
+    await act(async () => {
+      fireEvent.press(r.getByTestId('dashboard-avatar'));
+    });
+    expect(mockSheetProps[mockSheetProps.length - 1]).toMatchObject({hidden: true});
+  });
+
+  it('review r1 m7: an unreadable registry with the encrypted store closed → the store is opened, then the list re-read', async () => {
+    mockListUnreadable.current = true;
+    const r = await renderDashboard();
+    mockRefreshAccounts.mockClear();
+    await act(async () => {
+      fireEvent.press(r.getByTestId('dashboard-avatar'));
+    });
+    expect(mockUnlock).toHaveBeenCalledTimes(1);
+    expect(mockRefreshAccounts).toHaveBeenCalledTimes(2); // on open, and after the store opened
+    mockListUnreadable.current = false;
+    mockUnlock.mockClear();
+    const r2 = await renderDashboard();
+    await act(async () => {
+      fireEvent.press(r2.getByTestId('dashboard-avatar'));
+    });
+    expect(mockUnlock).not.toHaveBeenCalled(); // control: a readable list asks nothing
   });
 
   it('Private mode: the same avatar and sheet; the private balance does not depend on the selection', async () => {
@@ -3050,6 +3385,7 @@ import {shortAccountAddress} from '../../modules/accounts/accountList';
 import type {AccountList, WalletAccount} from '../../modules/accounts/accountList';
 import {formatSide, publicSide} from '../../modules/accounts/valueLine';
 import type {TokenPrice} from '../../modules/prices/priceModule';
+import {isShieldedEnabled} from '../../constants/features';
 import {
   ACCOUNTS_FOOTER,
   ACCOUNTS_TITLE,
@@ -3059,12 +3395,15 @@ import {
   TAG_EXIT,
   TAG_LINKED,
   TAG_MAIN,
+  VALUE_HIDDEN,
 } from '../../copy/accounts';
 
 export interface AccountsSheetProps {
   visible: boolean;
   list: AccountList;
   selectedScheme: string;
+  /** the dashboard's eye: balances hidden there are hidden here too (review r1 m4) */
+  hidden: boolean;
   onSelect: (scheme: string) => void;
   onClose: () => void;
 }
@@ -3088,7 +3427,7 @@ export function rowBalanceText(row: RowBalance | undefined, prices: Record<strin
   return formatSide(publicSide({status: 'ready', ...row.data, syncedAt: row.at}), prices, ' · ');
 }
 
-export function AccountsSheet({visible, list, selectedScheme, onSelect, onClose}: AccountsSheetProps) {
+export function AccountsSheet({visible, list, selectedScheme, hidden, onSelect, onClose}: AccountsSheetProps) {
   const rows = useAccountRowBalances(
     list.accounts.map(a => a.address),
     visible,
@@ -3147,7 +3486,7 @@ export function AccountsSheet({visible, list, selectedScheme, onSelect, onClose}
                         {shortAccountAddress(a.address)}
                       </Text>
                       <Text variant="body-sm" numeral className="text-fg-secondary mt-0.5" testID={`accounts-row-${a.scheme}-balance`}>
-                        {rowBalanceText(rows[a.address], havePrices ? prices : null)}
+                        {hidden ? VALUE_HIDDEN : rowBalanceText(rows[a.address], havePrices ? prices : null)}
                       </Text>
                     </View>
                     {checked ? (
@@ -3160,7 +3499,8 @@ export function AccountsSheet({visible, list, selectedScheme, onSelect, onClose}
               })}
             </View>
           </ScrollView>
-          {list.walletKind === 'slip10' ? (
+          {/* review r1 I3: only where "A new account" exists (a build with private balances) */}
+          {isShieldedEnabled() && list.walletKind === 'slip10' ? (
             <Text variant="caption" className="text-fg-tertiary px-5 pt-3" testID="accounts-footer">
               {ACCOUNTS_FOOTER}
             </Text>
@@ -3190,12 +3530,19 @@ In `src/screens/dashboard/DashboardScreen.tsx`:
   const openAccounts = useCallback(() => {
     refreshAccountList();
     setSheetOpen(true);
-  }, [refreshAccountList]);
+    // review r1 m7: unreadable because the encrypted store is closed → open it (biometric), then re-read
+    if (accountList?.unreadable && mmkvSecure() === null) {
+      unlockSecureStorage()
+        .then(() => refreshAccountList())
+        .catch(() => undefined);
+    }
+  }, [refreshAccountList, accountList]);
   const handleSelectAccount = useCallback(
     (scheme: string) => {
       selectAccountScheme(scheme);
       setSheetOpen(false);
-      runSync({showErrors: false});
+      // review r1 m11: the main account's sync only — the newly selected account's query starts by itself
+      runSync({showErrors: false, refetchSelected: false});
     },
     [selectAccountScheme, runSync],
   );
@@ -3251,6 +3598,7 @@ and its text `{avatarInitial}` with `{avatarText}`;
           visible
           list={accountList}
           selectedScheme={selected.scheme}
+          hidden={hideBalances}
           onSelect={handleSelectAccount}
           onClose={() => setSheetOpen(false)}
         />
@@ -3267,7 +3615,8 @@ Run the Step 4 command. Expected: PASS.
 
 1. In `useAccountRowBalances`, change `settled + ROW_WINDOW` to `ROW_WINDOW` → the window row FAILS (stops at 10 calls). Revert.
 2. In the same hook, replace `i < released` by `true` → the row FAILS (12 at once). Revert.
-3. In `AccountsSheet`, drop the `list.walletKind === 'slip10' ?` condition (always show the footer) → the cli row FAILS. Revert.
+3. In `AccountsSheet`, drop the `list.walletKind === 'slip10' &&` condition → the cli row FAILS; drop `isShieldedEnabled() &&` → "review r1 I3" FAILS. Revert.
+5. In `AccountsSheet`, drop the `hidden ? VALUE_HIDDEN :` branch → "review r1 m4: … every row reads •••" FAILS. Revert.
 4. In `handleSelectAccount`, delete `setSheetOpen(false);` → the "closes the sheet" row FAILS. Revert.
 
 - [ ] **Step 10: Run the gates**
@@ -3301,8 +3650,8 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - Test: create `src/modules/accounts/__tests__/linking.test.ts`; modify `src/screens/transparent/__tests__/SendScreen.test.tsx`
 
 **Interfaces:**
-- Consumes (Task 1): `SeedAccount {address: string; role: A0AccountRole}`, `AccountList.seed` (`src/modules/accounts/accountList.ts`); `useAccountList(): AccountList | null` (`src/hooks/useSelectedAccount.ts`); `LINK_WARNING_TITLE`, `LINK_WARNING_BODY`, `LINK_TAP_AGAIN` (`src/copy/accounts.ts`).
-- Consumes (Task 3): SendScreen's captured `source: WalletAccount | null` (the `useState(liveSelected)` value) and its `handleReview` (debounced 500 ms, `canReview` gate); the SendScreen test file's mocks `mockSendSelected`, `mockSendList`, `mockSendPublic`, `MAIN_SRC`, `A3_SRC`, `READY_1_SOL`.
+- Consumes (Task 1): `SeedAccount {address: string; role: A0AccountRole}`, `AccountList.seed` (`src/modules/accounts/accountList.ts`); `useAccountList(): AccountList | null`, `useRefreshAccounts(): () => void` (`src/hooks/useSelectedAccount.ts`); `LINK_WARNING_TITLE`, `LINK_WARNING_BODY`, `LINK_TAP_AGAIN` (`src/copy/accounts.ts`).
+- Consumes (Task 3): SendScreen's captured `source: WalletAccount | null` (the `useState(liveSelected)` value) and its `handleReview` (debounced 500 ms, `canReview` gate); the SendScreen test file's mocks `mockSendSelected`, `mockSendList`, `mockSendRefresh`, `mockSendPublic`, `MAIN_SRC`, `A3_SRC`, `READY_1_SOL`.
 - Produces (`src/modules/accounts/linking.ts`): `linkingWarningApplies(seed: readonly SeedAccount[], source: string, recipient: string | null): boolean`. Produces testID `send-link-warning`.
 
 Spec §4.4 / M1 spec §10 C2: the condition is "the Send's source and its recipient are both accounts of this seed (registry addresses, plus main), they differ, and at least one is `fresh-exit`" — a `fresh-pending` reservation counts as an exit (plan A2). Recognised locally from the registry; no network request. Shown on #12 as soon as the recipient is recognised, before #19, warning tone, title "Sending between your own accounts links them on chain.", body "Anyone can see that these two accounts belong to the same person." The first tap on the CTA only acknowledges (the CTA then reads "Tap again to send anyway"); the second goes to #19. Changing the recipient or the amount resets the acknowledgement (the token picker and MAX change the amount, so they reset it too). No "fund this account" shortcut anywhere. **Stated limit:** with an unreadable registry the seed set is the main account only, so no pair can be recognised; the sheet says the registry is unreadable (spec §3.1).
@@ -3455,6 +3804,29 @@ describe('M1d — the linking warning and its second tap (spec §4.4)', () => {
     expect(onReview).toHaveBeenCalledTimes(1);
   });
 
+  it('review r1 m6: #12 re-reads the registry as it opens (a reservation made since is in the seed set)', () => {
+    mockSendRefresh.mockClear();
+    setup(MAIN);
+    expect(mockSendRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('review r1 m5: MAX changes the amount → the acknowledgement resets', () => {
+    const {r, onReview} = setup(MAIN);
+    tap(r);
+    fireEvent.press(r.getByTestId('max-button'));
+    expect(r.queryByText('Tap again to send anyway')).toBeNull();
+    tap(r);
+    expect(onReview).not.toHaveBeenCalled();
+  });
+
+  it('review r1 m5: picking a token clears the amount → the acknowledgement resets', () => {
+    const {r} = setup(MAIN);
+    tap(r);
+    fireEvent.press(r.getByTestId('token-picker'));
+    fireEvent.press(r.getByLabelText('Select SOL'));
+    expect(r.queryByText('Tap again to send anyway')).toBeNull();
+  });
+
   it('control: no registry known (list null) → no warning', () => {
     mockSendList.current = null;
     const {r} = setup(MAIN);
@@ -3505,7 +3877,17 @@ export function linkingWarningApplies(seed: readonly SeedAccount[], source: stri
 
 In `src/screens/transparent/SendScreen.tsx`:
 
-(a) change `import {useSelectedAccount} from '../../hooks/useSelectedAccount';` to `import {useAccountList, useSelectedAccount} from '../../hooks/useSelectedAccount';`, change `import {VALUE_UNKNOWN} from '../../copy/accounts';` to `import {LINK_TAP_AGAIN, LINK_WARNING_BODY, LINK_WARNING_TITLE, VALUE_UNKNOWN} from '../../copy/accounts';`, and add `import {linkingWarningApplies} from '../../modules/accounts/linking';`;
+(a) change `import {useSelectedAccount} from '../../hooks/useSelectedAccount';` to `import {useAccountList, useRefreshAccounts, useSelectedAccount} from '../../hooks/useSelectedAccount';`, change `import {VALUE_UNKNOWN} from '../../copy/accounts';` to `import {LINK_TAP_AGAIN, LINK_WARNING_BODY, LINK_WARNING_TITLE, VALUE_UNKNOWN} from '../../copy/accounts';`, and add `import {linkingWarningApplies} from '../../modules/accounts/linking';`;
+
+(a2) add `useEffect` to the React import (`import React, {useState, useCallback, useMemo, useRef, useEffect} from 'react';`) and, directly after `const [source] = useState(liveSelected);` add:
+
+```ts
+  // review r1 m6: re-read the registry once as #12 opens — a reservation made since is in the seed set
+  const refreshAccountList = useRefreshAccounts();
+  useEffect(() => {
+    refreshAccountList();
+  }, [refreshAccountList]);
+```
 
 (b) directly after the `selectedBalance` `useMemo` add:
 
@@ -3591,6 +3973,7 @@ Run the Step 3 command. Expected: PASS (every earlier SendScreen row included: w
 2. Delete `recipient === source ||` → "main → itself" / "exit → itself" FAIL. Revert.
 3. In `handleAmountChange`, delete `setLinkAck(false);` → "changing the amount resets" FAILS. Revert.
 4. In `handleReview`, move the linking block ABOVE the debounce lines → "the debounce still holds" FAILS. Revert.
+5. Delete `setLinkAck(false);` in `handleMaxAmount` → "MAX changes the amount" FAILS; in the picker's `onSelect` → "picking a token" FAILS. Revert.
 
 - [ ] **Step 8: Run the gates**
 
@@ -3990,6 +4373,8 @@ export function freshExitAccountOf(scheme: string | null): {label: string; addre
 
 - [ ] **Step 6: #21 "Received by"**
 
+**Stated limit (review r1 m12):** the row shows only on a `spent` outcome. A run that ends `pending` and is settled later by "Check again" on the same #21 shows no row (that path's #21 reads the reconciliation's caption, and the registry may still say `fresh-pending` when it renders); the account is in the Accounts sheet either way, tagged "exit". Not extended here: it would read the reconciliation's settled entry on the run screen, beyond §4.3's one line.
+
 In `src/screens/shielded/unshield/UnshieldRunScreen.tsx`:
 
 (a) add
@@ -4114,9 +4499,11 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 **The process (spec §5; owner's standing guidance 2026-11-21 "improve the design as we build"):** back up first, edit in place, hand the diffs and the per-screen summary to the controller, and STOP. The controller shows them to the owner and handles the approval; only the owner's own message approves. On a change request, edit again and re-diff against the same backup; on a rejection, restore with `cp -p <backup> <original>` (Step 6). The backups stay (the owner deletes them).
 
-- [ ] **Step 1: The dated backup (never overwriting one)**
+- [ ] **Step 1: The dated backup (never overwriting one) — self-checking (review r1 m13)**
 
 ```bash
+set -euo pipefail
+W=<the session's scratchpad directory>
 cd /home/user/Downloads
 d=$(date +%F)
 n=""
@@ -4124,17 +4511,28 @@ for suf in "" b c d e f g h i j; do
   if [ ! -e "index.html.bak-$d$suf" ] && [ ! -e "screen.md.bak-$d$suf" ]; then n="bak-$d$suf"; break; fi
 done
 [ -n "$n" ] || { echo "STOP: no free backup name for $d"; exit 3; }
-cp -p index.html "index.html.$n" && cp -p screen.md "screen.md.$n"
-sha256sum index.html "index.html.$n" screen.md "screen.md.$n"
-echo "BACKUP NAME: $n"
+cp -p index.html "index.html.$n"
+cp -p screen.md "screen.md.$n"
+cmp -s index.html "index.html.$n" || { echo "STOP: index.html backup differs"; exit 3; }
+cmp -s screen.md "screen.md.$n" || { echo "STOP: screen.md backup differs"; exit 3; }
+printf '%s\n' "$n" > "$W/design-m1d.backup-name"
+echo "BACKUP NAME: $n (also in $W/design-m1d.backup-name)"
 ```
 
-Expected: each original's hash equals its backup's; note the printed name (`$n`) — every later step uses it.
+Expected: `BACKUP NAME: bak-…`, exit 0. `$n` does not survive between shell calls: every later step starts by reading it back and proving the backup is still intact (Steps 4–6 begin with this guard):
+
+```bash
+set -euo pipefail
+W=<the session's scratchpad directory>
+n=$(cat "$W/design-m1d.backup-name")
+test -s "/home/user/Downloads/index.html.$n" && test -s "/home/user/Downloads/screen.md.$n" || { echo "STOP: backup $n missing"; exit 3; }
+```
 
 - [ ] **Step 2: The check, with its positive control, BEFORE editing**
 
 ```bash
 W=<the session's scratchpad directory>
+n=$(cat "$W/design-m1d.backup-name")
 cat > "$W/check-m1d.sh" <<'EOF'
 #!/usr/bin/env bash
 # usage: check-m1d.sh <index.html> <screen.md> — prints MISSING for every M1d string the design must carry
@@ -4147,7 +4545,7 @@ for t in 'switch account' 'Accounts' "Other accounts can't be read right now." \
          'Tap again to send anyway' 'From: Account 4 · 3YqEpf…JXT94k' 'Account 4 · 3YqEpf…JXT94k' \
          'Received by' 'From: Account 1 (main)' 'Uses your main account' 'Who sees what' \
          'The RPC provider the app uses sees every request the app makes, including the balances of all your accounts.' \
-         'Public ••• · Private •••' 'not checked yet' 'Balance unavailable'; do need "$i" "$t"; done
+         'Public ••• · Private •••' 'not checked yet' 'Balance unavailable' '1.25 TEST · 0.003 SOL'; do need "$i" "$t"; done
 for t in 'Accounts sheet' 'Public X · Private Y' 'linking warning' 'Received by' 'Uses your main account' 'Who sees what'; do need "$s" "$t"; done
 exit $miss
 EOF
@@ -4163,13 +4561,16 @@ In `index.html` read the sections `id="s11"`, `id="s12"`, `id="s17"`, `id="s19"`
 
 - [ ] **Step 4: Edit `index.html` (existing classes and tokens only)**
 
+Run the Step 1 guard first (it must exit 0) — it re-reads `$n` and proves the backup exists before anything is edited.
+
+
 - **§s11 dashboard:**
   - every phone's `.top .avatar`: the letter "M" → the account's number "1", with `aria-label="Account 1, switch account"`;
   - in the "Loaded · public" and "Loaded · private" phones, directly under `.mode-toggle`: `<div class="noc-body-sm noc-numeral" style="text-align:center;color:var(--fg-secondary);margin:calc(-1 * var(--space-2)) var(--space-5) var(--space-3)">Public $14,881.19 · Private <the private phone's own hero figure and token></div>` (the public phone's figure is its hero total; the big figure below stays as drawn — D3);
-  - new phone **"Accounts sheet · default"**: the "Loaded · public" phone dimmed by `.s8-sheet-overlay` and an `.s8-sheet` with `.grabber`, `.head` "Accounts", a `.list` of three `.row`s — "Account 1" + a `main` pill, `HAgk14…3DKpqk` in `noc-mono`, "$14,881.19"; "Account 4" + an `exit` pill, `3YqEpf…JXT94k`, "0.003 SOL", the check (`#i-check`, `color:var(--accent)`) on this row (selected); "Account 6" + `exit` and `linked` pills (`linked` in `color:var(--warning)`), its short address, "not checked yet"; below the list the footer `noc-caption` "New accounts appear here when you make funds public to “A new account”.";
+  - new phone **"Accounts sheet · default"**: the "Loaded · public" phone dimmed by `.s8-sheet-overlay` and an `.s8-sheet` with `.grabber`, `.head` "Accounts", a `.list` of three `.row`s — "Account 1" + a `main` pill, `HAgk14…3DKpqk` in `noc-mono`, "$14,881.19"; "Account 4" + an `exit` pill, `3YqEpf…JXT94k`, "1.25 TEST · 0.003 SOL" (the pool token a fresh exit holds is listed, plan A11), the check (`#i-check`, `color:var(--accent)`) on this row (selected); "Account 6" + `exit` and `linked` pills (`linked` in `color:var(--warning)`), its short address, "not checked yet"; below the list the footer `noc-caption` "New accounts appear here when you make funds public to “A new account”." (state label: "builds with private balances only — the production build shows no footer", review r1 I3);
   - new phone **"Accounts sheet · cli wallet"**: one row "Account 1" + `main`, no footer;
   - new phone **"Accounts sheet · registry unreadable"**: the line "Other accounts can't be read right now." (`noc-body-sm`, `color:var(--warning)`) above the one main row; and in the default phone one more row state: "Balance unavailable";
-  - new phone **"Loaded · public · Account 4 selected"**: avatar "4" (`aria-label="Account 4, switch account"`), hero = that account's figure, sub-balance "0.003 SOL · 0 NOC", the combined line "Public 0.003 SOL · Private <figure>";
+  - new phone **"Loaded · public · Account 4 selected"**: avatar "4" (`aria-label="Account 4, switch account"`), hero = that account's figure, sub-balance "0.003 SOL · 0 NOC", a TEST token row "1.25 TEST", the combined line "Public 1.25 TEST, 0.003 SOL · Private <figure>";
   - new phone **"Combined line · hidden"**: the eye-off state with "Public ••• · Private •••" under the toggle; and **"Combined line · unknown"**: "Public — · Private <figure>" (a non-main account still loading);
   - (B): the Accounts sheet ↔ `.s8-sheet` / `.row` + pills; the combined line ↔ `noc-body-sm noc-numeral`; (C): the new states counted; (E): "avatar → Accounts sheet (Profile stays on its tab)".
 - **§s12 send:** new phone **"Own account · linking warning"**: recipient = the main account's address (mono, valid), directly under the recipient field a `.banner.warning` with the bold title "Sending between your own accounts links them on chain." and the body "Anyone can see that these two accounts belong to the same person."; the sticky CTA reading "Tap again to send anyway" (state label "after the first tap"); update (C).
@@ -4184,8 +4585,11 @@ Swap has no phone in `index.html`; its line ("From: Account 1 (main)" while anot
 
 - [ ] **Step 5: Edit `screen.md`**
 
+Run the Step 1 guard first (it must exit 0).
+
+
 - **§0**, after the Vocabulary line: "Accounts (M1d, 2026-11-21): the avatar on #11 shows the selected account's number and opens the Accounts sheet (Profile stays on its tab). Send (#12 → #19 → #21), Receive (#13), the history and the dashboard's public balance follow the selected account; Make private, Swap, presale and referral stay on the main account and say "From: Account 1 (main)" / "Uses your main account" whenever another account is selected. No adding, renaming or removing accounts."
-- **`11`**: "Accounts sheet: …" (title, rows, tags main / exit / linked, short address first 6 … last 6, balances — USD where every asset is priced, else the token amounts; "not checked yet", "Balance unavailable"; the check; the footer for slip10 wallets; a cli wallet one row; "Other accounts can't be read right now."), and "Public X · Private Y: one thin line under the toggle in both modes; never summed; "—" for an unknown side; "Public ••• · Private •••" when hidden".
+- **`11`**: "Accounts sheet: …" (the footer only in builds with private balances; title, rows, tags main / exit / linked, short address first 6 … last 6, balances — USD where every asset is priced, else the token amounts; "not checked yet", "Balance unavailable"; the check; the footer for slip10 wallets; a cli wallet one row; "Other accounts can't be read right now."), and "Public X · Private Y: one thin line under the toggle in both modes; never summed; "—" for an unknown side; "Public ••• · Private •••" when hidden".
 - **`12`**: "linking warning: a Send between two of the wallet's accounts where one is a new account (exit) shows a warning under the recipient; the CTA needs a second tap ("Tap again to send anyway"); changing the recipient or the amount resets it".
 - **`17`**: "Who sees what: the relayer, the RPC provider, the chain (R11)".
 - **`19`**, **`20`**: "From: Account N · first6…last6" / the From row.
@@ -4193,6 +4597,9 @@ Swap has no phone in `index.html`; its line ("From: Account 1 (main)" while anot
 - **`23`**, **`24`**: "From: Account 1 (main)" / "Uses your main account" while another account is selected.
 
 - [ ] **Step 6: Check, diff, hand over and STOP**
+
+Run the Step 1 guard first; the commands below use its `$n` and `$W`.
+
 
 ```bash
 "$W/check-m1d.sh" /home/user/Downloads/index.html /home/user/Downloads/screen.md; echo "check exit=$?"
@@ -4227,7 +4634,7 @@ The PR description gets: "design files updated <date>, backup `<n>`, owner's ans
 - Produces (`lib.mjs`): `seedFromReadouts(lines): {seedKeys: string[]; main: string; registry: object[]} | null`, `freshUnshieldOf(lines, fresh: string): string | null`, `txKeys(result): {signature, keys, signers, feePayer, ok, pre, post} | null`, `judgeM1d({fresh, external, unshieldSig, sendSig, seed, history: {owner: {signature}[]; ata: {signature}[]}, txs: {unshield, send}}): {lines: {id, text, pass, detail}[]; pass: boolean}` — lines `M1d.D0` … `M1d.D6`.
 - Produces (`m1d-checkpoint.mjs`): `verify --fresh ADDR --send SIG --external ADDR [--unshield SIG] [--readouts FILE] [--rpc URL] [--out DIR]` → prints PASS / FAIL per line, writes `OUT/verify.json`, exit 0 only if every line passed (default OUT `build/m1d-checkpoint`).
 
-M1 spec §16 M1d, line by line: "switch to the fresh account and send from it to a devnet address outside this seed, paying only from the granted SOL" (D0, D3, D4); "the desk script asserts the fresh account's history is exactly {the relayed unshield, this send}" (D1, D2) "and that no transaction connects it to another account of the seed" (D5); "the linking warning appears when a send from it to the main account is started (and is cancelled, not sent)" (D6 on chain; the warning itself on the phone, the owner's line); "the owner's visual pass" (README). The desk never holds a seed (plan A17): the seed's keys are the app's own `startup-accounts` readout.
+M1 spec §16 M1d, line by line: "switch to the fresh account and send from it to a devnet address outside this seed, paying only from the granted SOL" (D0, D3, D4 — the send is the exit's TEST, plan A11 / ruling C1, its fee paid from the granted SOL; a SOL send is judged the same way); "the desk script asserts the fresh account's history is exactly {the relayed unshield, this send}" (D1, D2) "and that no transaction connects it to another account of the seed" (D5); "the linking warning appears when a send from it to the main account is started (and is cancelled, not sent)" (D6 on chain; the warning itself on the phone, the owner's line); "the owner's visual pass" (README). The desk never holds a seed (plan A17): the seed's keys are the app's own `startup-accounts` readout.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -4312,6 +4719,17 @@ test('D3: a send paid by the main account, or a failed send, fails', () => {
   const failed = base();
   failed.txs.send.meta.err = { InstructionError: [0, 'Custom'] };
   assert.ok(failing(judgeM1d(failed)).includes('M1d.D3'));
+});
+
+test('the checkpoint\'s TEST send (plan A11): fresh token account → the recipient\'s token account, fee from the grant — every line passes', () => {
+  const TOKEN = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
+  const b = base();
+  b.txs.send = tx({ sig: S_SIG, keys: [FRESH, ataOf(FRESH), ataOf(EXT), TOKEN], signers: 1, pre: [3_000_000, 2_039_280, 2_039_280, 1], post: [2_995_000, 2_039_280, 2_039_280, 1] });
+  b.history.ata.push({ signature: S_SIG });
+  assert.deepEqual(failing(judgeM1d(b)), []);
+  // control: neither the recipient nor its token account in the send → D3 fails
+  b.txs.send.transaction.message.accountKeys[2] = SYS;
+  assert.ok(failing(judgeM1d(b)).includes('M1d.D3'));
 });
 
 test('D4: SOL from anywhere but the grant (a balance at the send that is not what the unshield left) fails', () => {
@@ -4483,8 +4901,8 @@ export function judgeM1d({ fresh, external, unshieldSig, sendSig, seed, history,
   const is = s ? s.keys.indexOf(fresh) : -1;
   line(
     'M1d.D3',
-    'the send: landed, the fresh account its only signer and its fee payer, the recipient in it',
-    s !== null && s.ok && s.signature === sendSig && s.signers.length === 1 && s.signers[0] === fresh && s.feePayer === fresh && s.keys.includes(external),
+    'the send: landed, the fresh account its only signer and its fee payer, the recipient (or its TEST token account) in it',
+    s !== null && s.ok && s.signature === sendSig && s.signers.length === 1 && s.signers[0] === fresh && s.feePayer === fresh && (s.keys.includes(external) || s.keys.includes(ataOf(external))),
     s ? `signers ${s.signers.join(',')}; fee payer ${s.feePayer}` : 'not read',
   );
 
@@ -4519,7 +4937,7 @@ export function judgeM1d({ fresh, external, unshieldSig, sendSig, seed, history,
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `node --no-warnings --test scripts/m1d-checkpoint/*.test.mjs`
-Expected: PASS (all 11 tests).
+Expected: PASS (all 12 tests).
 
 - [ ] **Step 5: Mutations (each must go red, then revert)**
 
@@ -4734,16 +5152,18 @@ file — it ran in the M1c session — `verify` takes it with `--unshield SIG`.)
 - [ ] Tap the avatar (top left of #11): **Accounts** opens. "Account 1 · main" first, then your fresh account
       "Account N · exit" with its short address and balance; no "pending" account; the footer "New accounts appear
       here when you make funds public to “A new account”."; no Add / rename / remove.
-- [ ] Tap the fresh account: the sheet closes, the avatar shows **N**, Public mode shows that account's balance
-      (SOL only — the devnet TEST token is not a listed token, plan A11), the line under the toggle reads
-      "Public 0.003 SOL · Private …".
+- [ ] Tap the fresh account: the sheet closes, the avatar shows **N**, Public mode shows that account's balance —
+      the TEST the exit received and the granted SOL — and the line under the toggle reads
+      "Public <x> TEST, 0.003 SOL · Private …".
 - [ ] Receive shows the fresh account's address with its name; the history shows one transaction (the unshield).
 - [ ] Swap and Referral show "From: Account 1 (main)" / "Uses your main account".
 
 ## 5. The send (paid only from the granted SOL)
 
-- [ ] Send → recipient = the outside address → amount **0.001 SOL** → #19 reads "From: Account N · …", #20's From
-      row "Account N · …" → approve → #21 "Sent successfully". Copy the signature (#21 Tx hash).
+- [ ] Send → token **TEST** → recipient = the outside address (it already has a TEST token account from M1c, so
+      no account is created) → amount: part of the exit's TEST (e.g. **0.5**) → #19 reads "From: Account N · …",
+      #20's From row "Account N · …" → approve → #21 "Sent successfully". The network fee comes out of the granted
+      SOL — the fresh account holds no other SOL. Copy the signature (#21 Tx hash).
 
 ## 6. The linking warning (cancelled, not sent)
 
@@ -4784,7 +5204,7 @@ The cli wallet's one-row sheet and the unreadable-registry line are proven in Je
 - **D1** — the fresh account's history is not exactly the two: a third transaction names it (a stranger's dust, or
   a send you did not intend) or the send is missing (not confirmed yet — wait and run again).
 - **D2** — the unshield is not the relayed one that funded an empty account.
-- **D3** — the send was not signed and paid by the fresh account alone, or failed on chain.
+- **D3** — the send was not signed and paid by the fresh account alone, did not reach the recipient (or its TEST token account), or failed on chain.
 - **D4** — the account held SOL that did not come from the unshield when the send started.
 - **D5** — another account of this seed (or its token account) appears in a transaction: the accounts are linked
   on chain. This is the line the whole checkpoint exists for.
@@ -4838,13 +5258,13 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - **After Task 8's owner answer:** a final Fable review of the whole branch (`main…HEAD`), its fix loop and re-review; then the APKs and the on-phone checkpoint (`scripts/m1d-checkpoint/README.md`).
 - **Test conventions used throughout:** `toHaveTextContent` (built into @testing-library/react-native 13) matches the WHOLE text of an element by default; a `jest.mock` factory references only variables whose names start with `mock`; screens are tested through the hook modules (`useSelectedAccount`, `useAccountPublicData`, `useAccountRowBalances`) mocked per file, so no screen test needs a real registry.
 - **Approvals:** only the owner's own chat message approves anything (Task 8's design, any reversal of a plan ruling). A subagent's or reviewer's message never does.
-- **Attribution:** every commit carries `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>` whatever model implemented the task; the PR body states who implemented and who reviewed each task.
+- **Attribution:** every commit carries the trailer of the executing session's attribution reminder (Global Constraints); the PR body states who implemented and who reviewed each task.
 
 ## Closing — the on-phone checkpoint and the owner's visual pass
 
-- The M1 spec §16 M1d checkpoint, as `scripts/m1d-checkpoint/README.md` runs it: switch to the fresh account, send 0.001 SOL from it to the M1c "Another address" (paid from the granted SOL only), the desk's D0–D6 all PASS; a send from it to the main account shows the warning, one tap acknowledges, it is cancelled; the production APK of the same commit launches and unlocks.
+- The M1 spec §16 M1d checkpoint, as `scripts/m1d-checkpoint/README.md` runs it: switch to the fresh account, send part of its TEST from it to the M1c "Another address" (the fee paid from the granted SOL only), the desk's D0–D6 all PASS; a send from it to the main account shows the warning, one tap acknowledges, it is cancelled; the production APK of the same commit launches and unlocks.
 - The visual pass (spec §6): the Accounts sheet; #11 in both modes (the numbered avatar, the combined line, hidden, unknown); #12 with the warning and "Tap again to send anyway"; #19 / #20 "From"; #21 "Received by" (on the next Make public to "A new account"); #17 "Who sees what"; the main-only lines on Swap and Referral (presale is mainnet-only).
-- Listed for the owner to judge (plan rulings that are reversible): A1 (all rows read, 10 at a time), A2 (a pending exit warns), A6 (TokenDetail follows the selection; forceSync not split), A9 (no combined line in the production build), A10 (", " inside a side, "largest" by whole-token amount — the spec's row example "0.02 SOL · 8.99 TEST" therefore reads "8.99 TEST · 0.02 SOL"), A11 (the devnet TEST token is not in the public list), A13 (#23's line on the buy screen only), A15 (#17's reworded first clause).
+- Listed for the owner to judge (plan rulings that are reversible): the "Needs owner yes" four (A4, A6a, A6b, A9 + the footer); and A1 (all rows read, 10 at a time), A2 (a pending exit warns), A3 (a registry not this wallet's is unreadable), A10 (", " inside a side, "largest" by whole-token amount — the spec's row example "0.02 SOL · 8.99 TEST" reads "8.99 TEST · 0.02 SOL"), A11 (TEST listed wherever private balances exist), A12 (main before its first sync is "—"), A13 (#23's line on the buy screen only), A15 (#17's reworded first clause); the stated limit of review r1 m12 (no "Received by" on a run settled later by "Check again").
 
 ## Self-review (done by the planner against the spec, 2026-11-21)
 
@@ -4853,7 +5273,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - §2 D1 → Tasks 2, 3, 7; D2, D3, D4 → Task 4; D5 → Task 5; D6 → Task 5 ("no Add / rename / remove" row) and the absence of any add path; approach 1 → Task 1 (`walletStore.publicKey is never changed` row).
 - §3.1 source, no-registry case, labels, tags, order, read failure → Task 1; §3.2 module, encrypted key, default, fallback + rewrite, the hook, publicKey untouched → Task 1; §3.3 derive from the scheme, explicit scheme, zero-fill, captured at #12 and carried, the signer check with a code → Task 3; §3.4 address-keyed balances (dashboard only), forceSync decision, the sheet's window and row states, the private balance unchanged → Tasks 2, 5, (4).
 - §4.1 → Task 5 (avatar number + label, sheet title, rows, tags, short address, balances, check, radios, select/close/refresh, footer, no add, cli, Private mode); §4.2 → Task 2 (dashboard, Receive, history) + Task 3 (#12 → #21, From on #19/#20); §4.3 → Task 7 (Swap, presale, referral lines; #21 Received by; Make private / Make public unchanged — no task edits them); §4.4 → Task 6; §4.5 → Task 4; §4.6 → Task 7.
-- §5 → Task 8 (dated backup first, every listed surface, per-screen report). §6 tests: the unit lists → Tasks 1, 3, 4, 6; the screen lists → Tasks 2, 3, 5, 6, 7; the guard's scope → Task 1 (`EXTRA_COPY` / `EXTRA` for the two new copy files outside `src/screens` / `src/components`; every other new copy file is inside them); the gates → every task; the checkpoint → Task 9.
+- §5 → Task 8 (dated backup first, every listed surface, per-screen report). §6 tests: the unit lists → Tasks 1, 3, 4, 6; the screen lists → Tasks 2, 3, 5, 6, 7; the guard's scope → Task 1 (`copy/accounts.ts`, `accountList.ts`), Task 3 (`sendTransaction.ts`, whose refusal #21 shows) and Task 4 (`valueLine.ts`) in `EXTRA_COPY` / `EXTRA` — revision 2 (review r1 I2) corrected revision 1's claim that the other new copy files were all inside `src/screens` / `src/components`; checked again: `linking.ts`, `selectedAccount.ts`, `accountSnapshot.ts`, `poolToken.ts`, `receivedBy.ts` and the three hooks carry no user-visible string; the gates → every task; the checkpoint → Task 9.
 - M1 spec §10 "the selected account is the one Send, Receive and Shield use": the M1d spec's D1 narrowed it (Make private stays on main); this plan follows the M1d spec.
 
 **2. Placeholder scan.** No "TBD", "TODO", "implement later", "similar to Task N" or "add appropriate …"; every code step carries its code and every test step its test code. The bracketed values left are runtime values only: `<the session's scratchpad directory>` and the backup name `$n` (Task 8, printed by Step 1), the private hero figure the design's own phone already shows (Task 8), and the owner's addresses / signatures on the README's command lines.
@@ -4865,3 +5285,26 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 **Infeasible in the spec:** nothing. Two notes: the spec's devnet example "Public $12.40" cannot appear on devnet (no prices in that build; A10), and its sheet-row example lists SOL before the larger TEST amount (A10's ordering rule reverses it).
 
 **Verified by running, not by reading (2026-11-21):** every task's code and test edits (Tasks 1–7) were applied mechanically from this plan's text to a scratch worktree of 1a3ce4d: `npx jest` 209 suites / 2,989 tests green, `npx tsc --noEmit` clean, `npm run lint:ci` 143 warnings (the one removed is Task 3's dead `eslint-disable`); the RED state of `sendSigner.test.ts` before Task 3's edit was seen. Task 9's three files run: 11/11 desk tests green, the usage exit 2, the missing-readouts STOP exit 3. Two plan rows were corrected by that run (the #11 route row now navigates to MainTabs; the Private-mode avatar row compares text, not element trees).
+
+**Verified again for revision 2 (2026-11-21):** the revised Tasks 1–7 (every code and test edit, the guards' new file lists included) applied mechanically from this plan's text to a fresh scratch worktree of 1a3ce4d: `npx jest` 210 suites / 3,021 tests green (1 suite skipped, as on the base), `npx tsc --noEmit` clean, `npm run lint:ci` `✖ 143 problems (0 errors, 143 warnings)`; Task 9's desk 12/12.
+
+## Review r1 dispositions (Fable plan review r1, 2026-11-21)
+
+- **C1 — fixed (controller ruling):** A11 reversed. `withPoolToken` (`src/modules/accounts/poolToken.ts`, Task 2) lists a held pool token for every account where `isShieldedEnabled()`, applied in `fetchAccountSnapshot` and in `useAccountPublicData`'s main branch — so the sheet rows ("8.99 TEST · 0.003 SOL"), the dashboard's list, the combined line and #12's picker show it; production unchanged. Rows: snapshot on/off, hook on/off (store not written), the sheet row, #12 picks and sends TEST. The checkpoint sends TEST with the fee from the granted SOL; the desk's D3 accepts the recipient's token account (a TEST send row added). The contradicting Closing sentence is gone.
+- **I1 — fixed:** `fetchAccountSnapshot` reads `loadCachedMetadata()` only — no `fetchTokenMetadata` (backend), no `saveCachedMetadata` (mmkvPublic). Row: neither fetcher nor saver called, `mmkvPublic` keys and values unchanged; the rule is in the module header; mutation 4 of Task 2.
+- **I2 — fixed:** `sendTransaction.ts` (Task 3) and `valueLine.ts` (Task 4) added to `EXTRA_COPY`, its positive-control list and `EXTRA`; regexes untouched; the self-review sentence corrected.
+- **I3 — fixed:** the footer renders only when `isShieldedEnabled() && walletKind === 'slip10'`; a sheet row for the build without private balances; listed with A9 under "Needs owner yes"; Task 8's design marks the footer "builds with private balances only".
+- **m1 — accepted:** TokenDetail has its own line (A6b) under "Needs owner yes".
+- **m2 — accepted:** A3, A4, A12 are in the Closing's list; A4 is under "Needs owner yes".
+- **m3 — accepted:** A9 is under "Needs owner yes".
+- **m4 — accepted:** `AccountsSheet` takes `hidden`; every row reads "•••"; a sheet row and a dashboard row.
+- **m5 — partly accepted:** rows for MAX and the token picker (the two resets that are reachable without changing the recipient). Rejected for a suggestion tap, Clear and the Solana Pay blur: each is reached only through a recipient edit (typing a name, re-entering after Clear, typing the URI), which already resets the acknowledgement in `handleRecipientChange`, so no test can observe their own reset; they stay as defensive resets.
+- **m6 — accepted:** #12 calls `useRefreshAccounts()` once on mount; a row.
+- **m7 — partly accepted:** on opening the sheet, an unreadable list with the encrypted store closed runs `unlockSecureStorage()` and re-reads (rows with a control). Rejected for #12's open: a biometric prompt when the user only opened Send surprises, and the warning's stated limit stays (an unreadable registry shows its line in the sheet, which #12 does not hide).
+- **m8 — accepted:** derivation moved inside the `try`, the seed zero-filled in `finally`; a row where derivation throws.
+- **m9 — accepted:** the signer test captures the real seed and secret where they are made and checks their contents; `Keypair.fromSecretKey` asserted not reached on the refusal.
+- **m10 — accepted:** `sendChainSource.test.ts` (#19/#20/#21 import neither the selection hooks nor walletStore; positive control on #12).
+- **m11 — accepted:** `refetch` uses `{cancelRefetch: false}` and returns a promise; `runSync` awaits the selected account's read, so pull-to-refresh ends after both; a switch passes `refetchSelected: false` (a row: the account just left is not read again).
+- **m12 — rejected, stated as a limit (Task 7 Step 6):** a run settled later by "Check again" shows no "Received by"; the account is in the sheet either way. Reading the reconciliation's settled entry on the run screen goes beyond §4.3's one line and touches M1c's decided-outcome rendering.
+- **m13 — accepted:** Task 8's backup runs under `set -euo pipefail`, `cmp -s` per pair with a STOP, the name saved to `$W/design-m1d.backup-name`, and Steps 4–6 begin with a guard that re-reads it and checks the backups exist.
+- **m14 — accepted (wording):** the plan no longer fixes a model in the trailer; commits carry the executing session's attribution line (the commands show this session's).
