@@ -54,6 +54,22 @@ jest.mock('../../../modules/shielded/a0/poolSize', () => ({
 }));
 jest.mock('../../../modules/solana/connection', () => ({getConnection: () => ({})}));
 
+// M1d: the dashboard reads the selected account (main here) and its public data — the walletStore mock's values
+jest.mock('../../../hooks/useSelectedAccount', () => ({
+  useSelectedAccount: () => ({scheme: 'slip10:0', address: 'AbCdEfAbCdEf', label: 'Account 1', number: 1, role: 'main', isMain: true, linked: false}),
+  useAccountList: () => null,
+  useAccounts: () => null,
+  useSelectAccount: () => () => true,
+  useRefreshAccounts: () => () => undefined,
+}));
+jest.mock('../../../hooks/useAccountPublicData', () => {
+  const store = jest.requireMock('../../../store/zustand/walletStore') as {useWalletStore: () => Record<string, unknown>};
+  return {
+    NO_PUBLIC_DATA: {solBalance: '0', nocBalance: '0', tokenBalances: {}, tokens: []},
+    useAccountPublicData: () => ({data: {status: 'ready', syncedAt: 1, ...store.useWalletStore()}, refetch: () => undefined}),
+  };
+});
+
 jest.mock('@react-navigation/native', () => ({
   useFocusEffect: (cb: () => void | (() => void)) => {
     const {useEffect} = require('react');

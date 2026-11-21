@@ -125,4 +125,8 @@ describe('ReceiveScreen', () => {
       expect(getByText('No private address')).toBeTruthy(); // part B: No shielded address → No private address
     });
   });
+  it('M1d: the account\'s name is shown with its address (spec §4.2); none without one', () => {
+    expect(renderScreen({address: MOCK_ADDRESS, accountLabel: 'Account 4'}).getByTestId('receive-account-label')).toHaveTextContent('Account 4');
+    expect(renderScreen({address: MOCK_ADDRESS}).queryByTestId('receive-account-label')).toBeNull();
+  });
 });

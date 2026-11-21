@@ -8,6 +8,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import {useWalletStore} from '../../store/zustand/walletStore';
+import {useSelectedAccount} from '../../hooks/useSelectedAccount';
 import {useTransactionHistory} from '../../hooks/useSolanaQueries';
 import {formatAddress} from '../../utils/formatAddress';
 import type {ParsedTransaction} from '../../modules/solana/types';
@@ -118,7 +119,9 @@ function TransactionRow({tx, publicKey, nocUsdPrice, onPress}: TransactionRowPro
 
 export function TransactionHistoryScreen({onSelectTx, onBack}: Props) {
   const [activeFilter, setActiveFilter] = useState<FilterTab>('All');
-  const publicKey = useWalletStore(s => s.publicKey);
+  // M1d (spec §4.2, D1): the SELECTED account's history
+  const selected = useSelectedAccount();
+  const publicKey = selected?.address ?? null;
   const nocUsdPrice = useWalletStore(s => s.nocUsdPrice);
   const {data: transactions = []} = useTransactionHistory(publicKey);
 
@@ -142,7 +145,14 @@ export function TransactionHistoryScreen({onSelectTx, onBack}: Props) {
         <TouchableOpacity onPress={onBack} accessibilityRole="button">
           <Text style={styles.backButton}>← Back</Text>
         </TouchableOpacity>
-        <Text style={styles.title}>Transaction History</Text>
+        <View>
+          <Text style={styles.title}>Transaction History</Text>
+          {selected ? (
+            <Text style={styles.accountLabel} testID="history-account-label">
+              {selected.label}
+            </Text>
+          ) : null}
+        </View>
       </View>
 
       {/* Filter tabs */}
@@ -205,6 +215,7 @@ const styles = StyleSheet.create({
   },
   backButton: {color: '#a78bfa', fontSize: 16},
   title: {color: '#ffffff', fontSize: 20, fontWeight: '700'},
+  accountLabel: {color: '#A8ACB5', fontSize: 13, marginTop: 2},
   tabsContainer: {maxHeight: 52},
   tabsContent: {paddingHorizontal: 16, gap: 8, alignItems: 'center'},
   tab: {

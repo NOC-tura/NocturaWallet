@@ -46,6 +46,8 @@ const NOC_LOGO = require('../../assets/tokens/noc-logo.png');
 
 interface ReceiveScreenProps {
   address: string;
+  /** M1d (spec §4.2): the account this address belongs to ("Account 4") — shown with it */
+  accountLabel?: string;
   shielded?: boolean;
   onBack?: () => void;
 }
@@ -67,7 +69,7 @@ function truncateMiddle(s: string, head = 8, tail = 8): string {
   return `${s.slice(0, head)}…${s.slice(-tail)}`;
 }
 
-export function ReceiveScreen({address, shielded = false, onBack}: ReceiveScreenProps) {
+export function ReceiveScreen({address, accountLabel, shielded = false, onBack}: ReceiveScreenProps) {
   const [amount, setAmount] = useState('');
   const [copied, setCopied] = useState(false);
   const [countdown, setCountdown] = useState<number | null>(null);
@@ -251,6 +253,11 @@ export function ReceiveScreen({address, shielded = false, onBack}: ReceiveScreen
               ? 'Public · pay request'
               : 'Public · address'}
         </Text>
+        {accountLabel && !shielded ? (
+          <Text variant="body-sm" className="text-fg-secondary -mt-2 mb-3" testID="receive-account-label">
+            {accountLabel}
+          </Text>
+        ) : null}
 
         {/* QR card */}
         <View className="bg-bg-surface-1 rounded-lg border border-bg-surface-3 p-5 items-center mb-4">

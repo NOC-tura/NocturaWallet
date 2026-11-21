@@ -11,6 +11,7 @@ import React from 'react';
 import {render, act} from '@testing-library/react-native';
 import {NavigationContainer, createNavigationContainerRef, getStateFromPath} from '@react-navigation/native';
 import {RootNavigator} from '../Navigator';
+import {useWalletStore} from '../../store/zustand/walletStore';
 import type {LinkingOptions} from '@react-navigation/native';
 
 jest.mock('../../screens/SplashScreen', () => ({SplashScreen: () => null}));
@@ -34,12 +35,22 @@ jest.mock('../../constants/features', () => {
   return {...actual, isShieldedEnabled: () => mockFlags.shielded};
 });
 // #13 Receive, stubbed: records the props the route hands it.
-const mockReceiveProps: Array<{address: string; shielded?: boolean}> = [];
+const mockReceiveProps: Array<{address: string; shielded?: boolean; accountLabel?: string}> = []; // M1d: the route now passes the account's name
 jest.mock('../../screens/transparent/ReceiveScreen', () => ({
-  ReceiveScreen: (p: {address: string; shielded?: boolean}) => {
+  ReceiveScreen: (p: {address: string; shielded?: boolean; accountLabel?: string}) => { // M1d: the route now passes the account's name
     mockReceiveProps.push(p);
     return null;
   },
+}));
+
+// M1d: the route reads the selected account (null = not known yet → the stored main key, as before)
+const mockRouteSelected: {current: {address: string; label: string} | null} = {current: null};
+jest.mock('../../hooks/useSelectedAccount', () => ({
+  useSelectedAccount: () => mockRouteSelected.current,
+  useAccountList: () => null,
+  useAccounts: () => null,
+  useSelectAccount: () => () => true,
+  useRefreshAccounts: () => () => undefined,
 }));
 
 // #11, stubbed: records the props DashboardScreenNav hands it (UX-A 7: the "Make public" entry).
@@ -331,6 +342,22 @@ describe('#13 Receive: transparent only until M2 (spec §12 I9)', () => {
     for (const p of mockReceiveProps) {
       expect(p.shielded).toBeUndefined();
     }
+  });
+
+  it('M1d (spec §4.2): ReceiveModal shows the SELECTED account\'s address and name', () => {
+    mockRouteSelected.current = {address: '3YqEpfo3c818GhvbQ1UmVY1nJxw16vtu4JB9peJXT94k', label: 'Account 4'};
+    useWalletStore.setState({publicKey: 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk'}); // the main key is set, so the selection must beat it
+    const {ref} = routeNames({shielded: true});
+    mockReceiveProps.length = 0;
+    act(() => {
+      (ref.navigate as (n: string, p?: object) => void)('ReceiveModal');
+    });
+    expect(mockReceiveProps.length).toBeGreaterThan(0);
+    const last = mockReceiveProps[mockReceiveProps.length - 1]!;
+    expect(last.address).toBe('3YqEpfo3c818GhvbQ1UmVY1nJxw16vtu4JB9peJXT94k');
+    expect(last.accountLabel).toBe('Account 4');
+    mockRouteSelected.current = null;
+    useWalletStore.setState({publicKey: null});
   });
 });
 

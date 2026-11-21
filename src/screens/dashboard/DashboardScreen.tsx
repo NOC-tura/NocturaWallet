@@ -29,6 +29,9 @@ import {
 } from 'lucide-react-native';
 import {Text} from '../../components/ui';
 import {useWalletStore} from '../../store/zustand/walletStore';
+import {useRefreshAccounts, useSelectedAccount} from '../../hooks/useSelectedAccount';
+import {NO_PUBLIC_DATA, useAccountPublicData} from '../../hooks/useAccountPublicData';
+import {PUBLIC_LOADING, PUBLIC_UNAVAILABLE, VALUE_UNKNOWN} from '../../copy/accounts';
 import {useShieldedStore} from '../../store/zustand/shieldedStore';
 import {usePublicSettingsStore} from '../../store/zustand/publicSettingsStore';
 import {useNetworkStatus} from '../../hooks/useNetworkStatus';
@@ -148,8 +151,14 @@ export function DashboardScreen({
   onTokenTap,
   onSeeAllTokens,
 }: DashboardScreenProps) {
-  const {publicKey, solBalance, nocBalance, tokens, tokenBalances} =
-    useWalletStore();
+  // M1d (spec §3.4, D1/D2, plan A6): walletStore.publicKey stays the MAIN account and forceSync keeps
+  // writing its slot (every main-only screen reads it); Public mode shows the SELECTED account's data.
+  const {publicKey} = useWalletStore();
+  const selected = useSelectedAccount();
+  const refreshAccountList = useRefreshAccounts();
+  const {data: publicData, refetch: refetchPublic} = useAccountPublicData(selected);
+  const publicReady = publicData.status === 'ready';
+  const {solBalance, nocBalance, tokens, tokenBalances} = publicData.status === 'ready' ? publicData : NO_PUBLIC_DATA;
 
   const {prices, havePrices} = useResolvedPrices();
   const {isPaused: presalePaused} = usePresaleSync();
@@ -173,10 +182,17 @@ export function DashboardScreen({
   // Single sync entry point so mount, AppState, polling, and pull-to-refresh
   // share one in-flight guard (avoids hammering the RPC if several triggers
   // fire close together — common with public devnet RPC rate limits).
-  const runSync = useCallback(async (opts: {showErrors: boolean}) => {
+  // M1d: the selected account's own data refreshes on every sync trigger too (a no-op for main)
+  const refetchPublicRef = useRef(refetchPublic);
+  refetchPublicRef.current = refetchPublic;
+  const runSync = useCallback(async (opts: {showErrors: boolean; refetchSelected?: boolean}) => {
     if (syncingRef.current) return;
     syncingRef.current = true;
     try {
+      // M1d (review r1 m11): the selected account's own read runs alongside the main account's
+      // forceSync and is awaited too, so pull-to-refresh ends after BOTH; a switch passes
+      // refetchSelected: false (the new account's query starts by itself, the old one is not read again)
+      const selectedRead = opts.refetchSelected === false ? Promise.resolve() : refetchPublicRef.current();
       const result = await forceSync();
       if (!result.success && opts.showErrors) {
         Alert.alert(
@@ -186,6 +202,7 @@ export function DashboardScreen({
             : 'Unknown error. Try again in a moment.',
         );
       }
+      await selectedRead;
     } finally {
       syncingRef.current = false;
     }
@@ -199,6 +216,13 @@ export function DashboardScreen({
       setRefreshing(false);
     }
   }, [runSync]);
+
+  // M1d: re-read the account list on focus — an exit that landed since appears, a wiped selection falls back
+  useFocusEffect(
+    useCallback(() => {
+      refreshAccountList();
+    }, [refreshAccountList]),
+  );
 
   // 1. Sync once on mount (cold start / login → see latest balance immediately).
   // 2. Sync whenever the app returns to foreground (user funded the wallet from
@@ -323,7 +347,7 @@ export function DashboardScreen({
 
   const isShielded = mode === 'shielded';
   const usd = formatUsd(portfolio.totalUsd);
-  const change24h = portfolio.change24hPct; // number | null (transparent only)
+  const change24h = publicReady ? portfolio.change24hPct : null; // number | null (transparent only); M1d: none before the data is known
   const avatarInitial = getAddressInitial(publicKey);
 
   return (
@@ -334,7 +358,7 @@ export function DashboardScreen({
       <StatusBar barStyle="light-content" backgroundColor="#0A0A0A" />
 
       <FlatList
-        data={isShielded ? ([] as typeof displayTokens) : displayTokens}
+        data={isShielded || !publicReady ? ([] as typeof displayTokens) : displayTokens}
         keyExtractor={item => item.mint}
         showsVerticalScrollIndicator={false}
         refreshControl={
@@ -368,6 +392,7 @@ export function DashboardScreen({
             isOffline={!isOnline}
             change24hPct={change24h}
             havePrices={havePrices}
+            publicReady={publicReady}
             anonymitySet={anon}
             shieldedView={a0View}
           />
@@ -403,8 +428,12 @@ export function DashboardScreen({
             <ShieldedAssetsSection view={a0View} hidden={hideBalances} checkAgain={a0CheckAgain} refusal={a0Refusal ?? null} />
           ) : (
             <View className="px-5 py-8">
-              <Text variant="body-sm" className="text-fg-tertiary text-center">
-                No tokens yet · pull to refresh
+              <Text variant="body-sm" className="text-fg-tertiary text-center" testID="dashboard-public-empty">
+                {publicData.status === 'loading'
+                  ? PUBLIC_LOADING
+                  : publicData.status === 'error'
+                    ? PUBLIC_UNAVAILABLE
+                    : 'No tokens yet · pull to refresh'}
               </Text>
             </View>
           )
@@ -445,6 +474,8 @@ interface DashboardHeaderProps {
   isOffline: boolean;
   change24hPct: number | null;
   havePrices: boolean;
+  /** M1d (Review Focus 4): the selected account's public data is known — every public figure waits for it */
+  publicReady: boolean;
   /** Live on-chain anonymity set leaf count; null while loading or on RPC error. */
   anonymitySet: number | null;
   /** The A0 shielded balance view (shielded mode's hero). */
@@ -472,6 +503,7 @@ function DashboardHeader({
   isOffline,
   change24hPct,
   havePrices,
+  publicReady,
   anonymitySet,
   shieldedView,
 }: DashboardHeaderProps) {
@@ -601,8 +633,8 @@ function DashboardHeader({
               </Text>
             </View>
           ) : (
-            <View className="flex-row items-baseline mb-2">
-              {havePrices ? (
+            <View className="flex-row items-baseline mb-2" testID="dashboard-public-balance">
+              {havePrices && publicReady ? (
                 <>
                   <Text variant="balance-xl" numeral className="text-fg-primary">
                     {usd.whole}
@@ -658,14 +690,16 @@ function DashboardHeader({
           {isShielded ? null : (
             <View className="flex-row items-center gap-3">
               <SubBalanceCell
-                amount={hidden ? '••••' : formatBalanceForDisplay(solBalance, SOL_DECIMALS)}
+                amount={hidden ? '••••' : publicReady ? formatBalanceForDisplay(solBalance, SOL_DECIMALS) : VALUE_UNKNOWN}
                 ticker="SOL"
+                testID="dashboard-sub-sol"
                 hidden={hidden}
               />
               <View className="w-1 h-1 rounded-pill bg-fg-tertiary" />
               <SubBalanceCell
-                amount={hidden ? '••••' : formatBalanceForDisplay(nocBalance, NOC_DECIMALS)}
+                amount={hidden ? '••••' : publicReady ? formatBalanceForDisplay(nocBalance, NOC_DECIMALS) : VALUE_UNKNOWN}
                 ticker="NOC"
+                testID="dashboard-sub-noc"
                 hidden={hidden}
               />
             </View>
@@ -804,16 +838,19 @@ function SubBalanceCell({
   amount,
   ticker,
   hidden,
+  testID,
 }: {
   amount: string;
   ticker: string;
   hidden: boolean;
+  testID?: string;
 }) {
   return (
     <View className="flex-row items-baseline gap-1">
       <Text
         variant="body-sm"
         numeral={!hidden}
+        testID={testID}
         className={cn(
           'font-geist-semibold',
           hidden ? 'text-fg-secondary' : 'text-fg-primary',

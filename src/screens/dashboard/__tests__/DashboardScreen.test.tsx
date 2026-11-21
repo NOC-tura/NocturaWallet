@@ -25,6 +25,35 @@ jest.mock('../../../modules/shielded/a0/poolSize', () => ({
 }));
 jest.mock('../../../modules/solana/connection', () => ({getConnection: () => ({})}));
 
+// ── M1d: the selected account and its public data (spec §3.4) ────────────────
+import type {WalletAccount} from '../../../modules/accounts/accountList';
+import type {AccountPublicData} from '../../../hooks/useAccountPublicData';
+const MAIN_ACCOUNT: WalletAccount = {scheme: 'slip10:0', address: 'AbCdEfAbCdEf', label: 'Account 1', number: 1, role: 'main', isMain: true, linked: false};
+const EXIT_ACCOUNT: WalletAccount = {scheme: 'slip10:3', address: '3YqEpfo3c818GhvbQ1UmVY1nJxw16vtu4JB9peJXT94k', label: 'Account 4', number: 4, role: 'fresh-exit', isMain: false, linked: false};
+const mockSelected: {current: WalletAccount | null} = {current: MAIN_ACCOUNT};
+const mockRefreshAccounts = jest.fn();
+const mockSelect = jest.fn(() => true);
+const mockListUnreadable = {current: false};
+jest.mock('../../../hooks/useSelectedAccount', () => ({
+  useSelectedAccount: () => mockSelected.current,
+  useAccountList: () => (mockSelected.current ? {accounts: [mockSelected.current], seed: [], walletKind: 'slip10', unreadable: mockListUnreadable.current} : null),
+  useAccounts: () => null,
+  useSelectAccount: () => mockSelect,
+  useRefreshAccounts: () => mockRefreshAccounts,
+}));
+const READY_MAIN: AccountPublicData = {status: 'ready', solBalance: '1000000000', nocBalance: '2000000000', tokens: [], tokenBalances: {}, syncedAt: 1};
+const mockPublic: {current: AccountPublicData} = {current: READY_MAIN};
+const mockPublicArgs: unknown[] = [];
+const mockRefetchPublic = jest.fn(() => Promise.resolve());
+jest.mock('../../../hooks/useAccountPublicData', () => ({
+  NO_PUBLIC_DATA: {solBalance: '0', nocBalance: '0', tokenBalances: {}, tokens: []},
+  ACCOUNT_SNAPSHOT_KEY: 'accountSnapshot',
+  useAccountPublicData: (a: unknown) => {
+    mockPublicArgs.push(a);
+    return {data: mockPublic.current, refetch: mockRefetchPublic};
+  },
+}));
+
 // ── Navigation ──────────────────────────────────────────────────────────────
 jest.mock('@react-navigation/native', () => ({
   useFocusEffect: (cb: () => void | (() => void)) => {
@@ -154,6 +183,9 @@ beforeEach(() => {
   Object.assign(mockCheck, {disabled: false, checking: false, note: null});
   mockRefusal.current = null;
   mockHide.current = false;
+  mockSelected.current = MAIN_ACCOUNT; // M1d: the main account selected unless a row says otherwise
+  mockPublic.current = READY_MAIN; // M1d: the same values the walletStore mock holds
+  mockPublicArgs.length = 0;
 });
 
 describe('DashboardScreen — transparent mode', () => {
@@ -440,5 +472,51 @@ describe('part B: the one vocabulary on the dashboard (spec §2, §4)', () => {
     const r = await renderDashboard();
     expect(r.getByText('0.05 pending · not confirmed yet')).toBeTruthy();
     expect(r.getByTestId('dashboard-check-again')).toBeTruthy();
+  });
+});
+
+describe('M1d — Public mode follows the selected account (spec §3.4, D1/D2)', () => {
+  it('the public data is asked for the SELECTED account', async () => {
+    mockSelected.current = EXIT_ACCOUNT;
+    await renderDashboard();
+    expect(mockPublicArgs[mockPublicArgs.length - 1]).toEqual(EXIT_ACCOUNT);
+  });
+
+  it('Review Focus 4: loading → "—" hero and sub-balances, "Loading balances…", no token row', async () => {
+    mockSelected.current = EXIT_ACCOUNT;
+    mockPublic.current = {status: 'loading'};
+    const r = await renderDashboard();
+    expect(r.getByTestId('dashboard-public-balance')).toHaveTextContent('—');
+    expect(r.getByTestId('dashboard-sub-sol')).toHaveTextContent('—');
+    expect(r.getByTestId('dashboard-sub-noc')).toHaveTextContent('—');
+    expect(r.getByTestId('dashboard-public-empty')).toHaveTextContent('Loading balances…');
+    expect(r.queryByText('$150')).toBeNull();
+    expect(r.queryByText(/· 24h/)).toBeNull();
+  });
+
+  it('Review Focus 4: failed → "Balance unavailable · pull to refresh"', async () => {
+    mockSelected.current = EXIT_ACCOUNT;
+    mockPublic.current = {status: 'error'};
+    const r = await renderDashboard();
+    expect(r.getByTestId('dashboard-public-empty')).toHaveTextContent('Balance unavailable · pull to refresh');
+  });
+
+  it('control: ready → the figures show (the same mocks as the other rows)', async () => {
+    const r = await renderDashboard();
+    expect(r.getByTestId('dashboard-public-balance')).toHaveTextContent('$150.00');
+    expect(r.getByTestId('dashboard-sub-sol')).toHaveTextContent('1');
+  });
+
+  it('plan A6: forceSync still runs with another account selected (the main slot stays fresh for main-only screens)', async () => {
+    const {forceSync} = jest.requireMock('../../../modules/backgroundSync/backgroundSyncModule') as {forceSync: jest.Mock};
+    mockSelected.current = EXIT_ACCOUNT;
+    await renderDashboard();
+    expect(forceSync).toHaveBeenCalled();
+    expect(mockRefetchPublic).toHaveBeenCalled(); // and the selected account's own data is refreshed with it
+  });
+
+  it('the account list is re-read on focus (an exit that landed appears)', async () => {
+    await renderDashboard();
+    expect(mockRefreshAccounts).toHaveBeenCalled();
   });
 });

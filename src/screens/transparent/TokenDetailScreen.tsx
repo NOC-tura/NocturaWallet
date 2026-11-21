@@ -12,7 +12,9 @@ import {
 import {Text} from '../../components/ui';
 import {TokenLogo} from '../../components/TokenLogo';
 import {SparkChart, SparkChartSkeleton} from '../../components/SparkChart';
-import {useWalletStore} from '../../store/zustand/walletStore';
+import {useSelectedAccount} from '../../hooks/useSelectedAccount';
+import {NO_PUBLIC_DATA, useAccountPublicData} from '../../hooks/useAccountPublicData';
+import {VALUE_UNKNOWN} from '../../copy/accounts';
 import {useResolvedPrices} from '../../hooks/useResolvedPrices';
 import {usePriceHistory} from '../../hooks/usePriceHistory';
 import {buildHoldings} from '../../modules/prices/holdings';
@@ -50,7 +52,10 @@ const TIMEFRAMES: Timeframe[] = ['24H', '7D', '30D', '1Y'];
 export function TokenDetailScreen({mint, onBack, onSend, onReceive, onSwap}: Props) {
   // ── Data wiring ────────────────────────────────────────────────────────────
 
-  const {solBalance, nocBalance, tokenBalances, tokens} = useWalletStore();
+  // M1d (plan A6): opened from the dashboard's list of the SELECTED account — its holding is that account's
+  const {data: publicData} = useAccountPublicData(useSelectedAccount());
+  const publicReady = publicData.status === 'ready';
+  const {solBalance, nocBalance, tokenBalances, tokens} = publicData.status === 'ready' ? publicData : NO_PUBLIC_DATA;
   const {prices, havePrices} = useResolvedPrices();
 
   const isNoc = mint === NOC_MINT;
@@ -229,10 +234,10 @@ export function TokenDetailScreen({mint, onBack, onSend, onReceive, onSwap}: Pro
           <View className="flex-row items-center justify-between">
             <View>
               <Text variant="body-lg" numeral className="text-fg-primary">
-                {`${formatBalanceForDisplay(balanceRaw, meta.decimals)} ${meta.symbol}`}
+                {`${publicReady ? formatBalanceForDisplay(balanceRaw, meta.decimals) : VALUE_UNKNOWN} ${meta.symbol}`}
               </Text>
               <Text variant="body-sm" numeral className="text-fg-secondary mt-0.5">
-                {fiat != null ? formatUsdString(fiat) : '—'}
+                {fiat != null && publicReady ? formatUsdString(fiat) : '—'}
               </Text>
             </View>
             {pct != null ? (

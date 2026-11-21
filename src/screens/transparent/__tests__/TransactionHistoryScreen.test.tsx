@@ -9,6 +9,10 @@ jest.mock('../../../store/zustand/walletStore', () => ({
   ),
 }));
 
+// M1d (spec §4.2): the history is the SELECTED account's
+const mockHistSelected: {current: {address: string; label: string} | null} = {current: {address: 'myPublicKey111111111111111111111111111111', label: 'Account 1'}};
+jest.mock('../../../hooks/useSelectedAccount', () => ({useSelectedAccount: () => mockHistSelected.current}));
+
 const mockTxs: ParsedTransaction[] = [
   {
     signature: 'sig1aaaaaaaaaaaaaaaaaaaaa',
@@ -97,5 +101,13 @@ describe('TransactionHistoryScreen', () => {
     );
     fireEvent.press(getByTestId('tx-row-sig1aaaaaaaaaaaaaaaaaaaaa'));
     expect(onSelectTx).toHaveBeenCalledWith('sig1aaaaaaaaaaaaaaaaaaaaa');
+  });
+  it('M1d: asks the history of the selected account and names it', () => {
+    const {useTransactionHistory} = jest.requireMock('../../../hooks/useSolanaQueries') as {useTransactionHistory: jest.Mock};
+    mockHistSelected.current = {address: '3YqEpfo3c818GhvbQ1UmVY1nJxw16vtu4JB9peJXT94k', label: 'Account 4'};
+    const {getByTestId} = render(<TransactionHistoryScreen onSelectTx={onSelectTx} onBack={onBack} />);
+    expect(useTransactionHistory).toHaveBeenLastCalledWith('3YqEpfo3c818GhvbQ1UmVY1nJxw16vtu4JB9peJXT94k');
+    expect(getByTestId('history-account-label')).toHaveTextContent('Account 4');
+    mockHistSelected.current = {address: 'myPublicKey111111111111111111111111111111', label: 'Account 1'};
   });
 });

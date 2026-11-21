@@ -39,6 +39,15 @@ jest.mock('../../../store/zustand/walletStore', () => ({
   }),
 }));
 
+// M1d (plan A6): the holding follows the selected account
+const mockTdSelected: {current: {address: string; isMain: boolean; label: string} | null} = {current: {address: 'MAIN', isMain: true, label: 'Account 1'}};
+const mockTdPublic: {current: Record<string, unknown>} = {current: {status: 'ready', syncedAt: 1, solBalance: '2000000000', nocBalance: '0', tokenBalances: {}, tokens: []}};
+jest.mock('../../../hooks/useSelectedAccount', () => ({useSelectedAccount: () => mockTdSelected.current}));
+jest.mock('../../../hooks/useAccountPublicData', () => ({
+  NO_PUBLIC_DATA: {solBalance: '0', nocBalance: '0', tokenBalances: {}, tokens: []},
+  useAccountPublicData: () => ({data: mockTdPublic.current, refetch: () => undefined}),
+}));
+
 jest.mock('../../../store/mmkv/instances', () => ({
   mmkvPublic: {
     set: jest.fn(),
@@ -245,5 +254,25 @@ describe('the chart on a build without pricing (devnet)', () => {
     }
     expect(getByText('$150.00')).toBeTruthy();
     expect(mockPriceHistory).toHaveBeenCalledWith('solana', expect.any(String));
+  });
+});
+
+describe('M1d — the holding is the selected account\'s (plan A6)', () => {
+  const screen = () =>
+    render(withSafeArea(<TokenDetailScreen mint="native" onBack={() => {}} onSend={jest.fn()} onReceive={() => {}} onSwap={jest.fn()} />));
+  afterEach(() => {
+    mockTdSelected.current = {address: 'MAIN', isMain: true, label: 'Account 1'};
+    mockTdPublic.current = {status: 'ready', syncedAt: 1, solBalance: '2000000000', nocBalance: '0', tokenBalances: {}, tokens: []};
+  });
+  it('another account selected → its SOL, not the main account\'s', () => {
+    mockTdSelected.current = {address: '3YqEpfo3c818GhvbQ1UmVY1nJxw16vtu4JB9peJXT94k', isMain: false, label: 'Account 4'};
+    mockTdPublic.current = {status: 'ready', syncedAt: 1, solBalance: '3000000', nocBalance: '0', tokenBalances: {}, tokens: []};
+    expect(screen().getByText('0.003 SOL')).toBeTruthy();
+  });
+  it('Review Focus 4: not loaded → "— SOL", never 0', () => {
+    mockTdPublic.current = {status: 'loading'};
+    const r = screen();
+    expect(r.getByText('— SOL')).toBeTruthy();
+    expect(r.queryByText('0 SOL')).toBeNull();
   });
 });

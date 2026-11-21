@@ -1,4 +1,5 @@
 import React from 'react';
+import {useSelectedAccount} from '../hooks/useSelectedAccount';
 import {createNativeStackNavigator} from '@react-navigation/native-stack';
 import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
 import {useNavigation, useRoute} from '@react-navigation/native';
@@ -410,13 +411,14 @@ function StakingScreenNav() {
 // no valid A0 receive address exists yet, and the v1 noc1… address it used to show is gone.
 function ReceiveScreenNav() {
   const publicKey = useWalletStore().publicKey;
+  const selected = useSelectedAccount();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const {mmkvPublic} = require('../store/mmkv/instances');
   const {MMKV_KEYS} = require('../constants/mmkvKeys');
-  // Prefer walletStore, fall back to mmkvPublic if zustand hasn't hydrated the publicKey yet
-  // (e.g., cold launch into a Receive deeplink).
-  const address = publicKey ?? mmkvPublic.getString(MMKV_KEYS.WALLET_PUBLIC_KEY) ?? '';
-  return <ReceiveScreen address={address} onBack={() => navigation.goBack()} />;
+  // M1d (spec §4.2, D1): the SELECTED account's address and its name. Before any account is known
+  // (a cold launch into a Receive deep link) the main key, from walletStore or mmkvPublic, as before.
+  const address = selected?.address ?? publicKey ?? mmkvPublic.getString(MMKV_KEYS.WALLET_PUBLIC_KEY) ?? '';
+  return <ReceiveScreen address={address} accountLabel={selected?.label} onBack={() => navigation.goBack()} />;
 }
 
 function TokenDetailScreenNav() {
