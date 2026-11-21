@@ -101,15 +101,24 @@ All four live under `src/components/private/`, except the copy module.
     - the honest relayed sentence stays visible;
   - Make private: the fee card keeps the visible "You'll make private" total; its Network fee, ZK proof fee and Deposit record rent rows go into Details;
   - CTAs as in §2.
+  - *(Amended 2026-11-21, owner phone pass 2.)*
+    - the card heading is **"Summary"** on both screens (it holds "You'll make private" / "Destination receives", which are not fees); "the fee card" above means this Summary card;
+    - the proof-fee row in Details is **"Proof fee"** ("None · made on this device") on both screens, the same name as #19 / #20;
+    - Make private's honest sentence, always visible: "Your main account signs this deposit. The amount, the time and your address are public on chain, and making it public later to your main account can link the two." (only an exit to the main account is linkable; an exit to a new account of this wallet is not);
+    - Make public: when a quote exists and the relayer fee is more than half the amount (fee × 2 > amount), "The fee is high for this amount." in the warning tone under the Summary rows; it never disables the CTA.
 - **#18 (stages):** title "Making public…" / "Making private…"; the stages keep their measured times, never a percentage; stage labels in plain words.
 - **#21 (result), unshield:**
-  - "Now public" with the check, and "The destination received {x} {sym}.";
-  - "Your change, {y} {sym}, stays private.";
+  - ~~"Now public" with the check, and "The destination received {x} {sym}."~~; ~~"Your change, {y} {sym}, stays private."~~ (superseded, see the amendment below);
   - Copy signature and Done;
   - TX HASH (with copy) and "Change #{n} in the pool" go into Details;
   - every honest outcome is unchanged in meaning: pending reads "Not confirmed yet", the not-sent result reads "Not sent", a verifier refusal is shown loudly, the decided captions stay;
   - the copy uses only the new terms.
+  - *(Amended 2026-11-21, owner phone pass 2.)* "Now public" with the check; directly under it "Your private balance is now {total} {sym}." — {total} is the wallet's private balance AFTER the exit from the dashboard's own source (`a0PrivateBalanceNow`), never arithmetic and never the spent note's change; no balance sentence when the total is not known (startup restore/reconcile not done). After "Check again" settles this transfer, the settled text comes first and the balance sentence follows on its own line. The card "DESTINATION RECEIVES {x} {sym}" and the relayer's SOL-grant line stay; "The destination received …" is dropped (it repeated the card). The spent note's change is a Details row, "Left in this note {y} {sym}", beside "Change #{n} in the pool".
 - **Deposit #19–#21:** the same word swap ("Now private"); "Your deposit is public on chain" and the explorer stay.
+  - *(Amended 2026-11-21, owner phone pass 2.)*
+    - **#19 Review (deposit only; transparent sends and dApp signing are unchanged):** plain words by default — "Simulation passed" (the compute units in Details); a passing program check reads "Only known programs" / "Noctura and Solana programs only" (the instruction count in Details); a passing approvals check reads "No one gets access to your tokens" / "No approval or authority change" (the instruction names in Details); "YOUR BALANCE CHANGES"; "Proof fee" "None · made on this device". Every check still runs and shows its PASS / CHECK / FAIL; a check that does not pass keeps its own words (technical line in mono) and is never put in Details; no Details is drawn when it would hold nothing.
+    - **#20 Confirm (deposit only):** "PROOF FEE" (was "ZK PROOF FEE"), value as #19.
+    - **#21 Now private**, laid out like Now public: title "Now private"; under it "Your private balance is now {total} {sym}." (same source and same rule as Now public; omitted when unknown); the card keeps "PRIVATE {amount}" and "Your deposit is public on chain."; on the confirmed result the TX HASH (with copy), the position ("#{n} in the pool") and the fees sit behind Details, collapsed, and "Confirmed on Solana devnet · your note is at position #n in the pool." is gone; while running and on the pending / failed outcomes the TX HASH stays visible outside Details, as before; the button reads "View on explorer" (same action). Pending and failed outcomes are unchanged in meaning.
 - **Import, smart account choice (decision B-6):** on `SelectAccountScreen`:
   - exactly one funded candidate: "We found your wallet", its address and balance, Continue, and a small "Use a different account" that reveals the full list;
   - more than one funded: a list of the funded ones only, plus "Use a different account";
