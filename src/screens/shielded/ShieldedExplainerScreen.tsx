@@ -11,7 +11,6 @@ import {useShieldedStore} from '../../store/zustand/shieldedStore';
 import {ScreenSecurityManager} from '../../modules/screenSecurity/screenSecurityModule';
 import type {RootStackParamList} from '../../types/navigation';
 import {MAKE_PUBLIC, PRIVATE_MARK} from '../../copy/modes';
-import {A0_RELAYED_COPY} from './unshield/unshieldCopy';
 
 const PRIVACY_URL = 'https://noc-tura.io/privacy';
 const ACCENT = '#5BE3C2';
@@ -74,7 +73,7 @@ export function ShieldedExplainerScreen({navigation}: Props) {
           Your private balance, three steps.
         </Text>
         <Text variant="body" className="text-fg-secondary mb-8 max-w-sm">
-          Make private moves your tokens into a pool, where they become your private balance. Moving
+          When you make tokens private, they move into a pool and become your private balance. Moving
           them in and out is public on chain.
         </Text>
 
@@ -91,7 +90,7 @@ export function ShieldedExplainerScreen({navigation}: Props) {
         <ExplainerStep
           n={3}
           title={MAKE_PUBLIC}
-          body={`Move your tokens back to a public address when you want. ${A0_RELAYED_COPY} Making them public to your main account links the exit to your deposit.`}
+          body={`Move your tokens back to a public address when you want. A relayer sends it for you for a small fee, so no key of yours signs it. Amounts and timing are public. Making them public to your main account links the exit to your deposit.`}
         />
       </ScrollView>
 

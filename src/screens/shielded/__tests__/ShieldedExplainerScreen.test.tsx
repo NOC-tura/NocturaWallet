@@ -46,7 +46,11 @@ describe('ShieldedExplainerScreen', () => {
     expect(r.getByText(/The deposit is public on chain and signed by your main account\./)).toBeTruthy();
     expect(r.getByText(/making them public to your main account links the exit to your deposit\./i)).toBeTruthy();
     expect(r.getByText(/Your phone makes the proof itself, on this device\./)).toBeTruthy();
-    expect(r.getByText(A0_RELAYED_COPY, {exact: false})).toBeTruthy();
+    // owner 2026-11-21 (friendlier #17): the exit says who sends it and that it costs a small fee, without "this transaction"
+    expect(r.getByText(/A relayer sends it for you for a small fee, so no key of yours signs it\. Amounts and timing are public\./)).toBeTruthy();
+    expect(r.queryByText(A0_RELAYED_COPY, {exact: false})).toBeNull();
+    // owner 2026-11-21: the intro no longer opens with "Make private moves…", which read as an imperative
+    expect(r.getByText(/^When you make tokens private, they move into a pool and become your private balance\. Moving them in and out is public on chain\.$/)).toBeTruthy();
   });
 
   it('final review I-1 negative: no "SOL" as a word, no "Send privately", no recipient, no "ZK" or "Groth16", no overclaim', () => {
