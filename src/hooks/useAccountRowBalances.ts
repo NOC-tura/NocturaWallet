@@ -26,7 +26,7 @@ export function useAccountRowBalances(addresses: readonly string[], active: bool
       gcTime: 5 * 60_000,
     })),
   });
-  const settled = results.slice(0, released).filter(r => r.isSuccess || r.isError).length;
+  const settled = results.slice(0, released).filter(r => !r.isFetching && (r.isSuccess || r.isError)).length;
   useEffect(() => {
     const next = Math.min(addresses.length, settled + ROW_WINDOW);
     if (next > released) {
@@ -36,10 +36,11 @@ export function useAccountRowBalances(addresses: readonly string[], active: bool
   const rows: Record<string, RowBalance> = {};
   addresses.forEach((address, i) => {
     const r = results[i];
-    if (r?.data) {
-      rows[address] = {state: 'ready', data: r.data, at: r.dataUpdatedAt};
-    } else if (r?.isError) {
+    if (r?.isError) {
+      // a failed (re-)read never shows the older figure as current: none beats a stale one
       rows[address] = {state: 'failed'};
+    } else if (r?.data) {
+      rows[address] = {state: 'ready', data: r.data, at: r.dataUpdatedAt};
     } else {
       rows[address] = {state: 'not-checked'};
     }

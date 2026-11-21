@@ -18,6 +18,7 @@ import {formatSide, publicSide} from '../../modules/accounts/valueLine';
 import type {TokenPrice} from '../../modules/prices/priceModule';
 import {isShieldedEnabled} from '../../constants/features';
 import {
+  ACCOUNTS_CLOSE_A11Y,
   ACCOUNTS_FOOTER,
   ACCOUNTS_TITLE,
   ACCOUNTS_UNREADABLE,
@@ -27,6 +28,7 @@ import {
   TAG_LINKED,
   TAG_MAIN,
   VALUE_HIDDEN,
+  rowA11y,
 } from '../../copy/accounts';
 
 export interface AccountsSheetProps {
@@ -66,7 +68,7 @@ export function AccountsSheet({visible, list, selectedScheme, hidden, onSelect, 
   const {prices, havePrices} = useResolvedPrices();
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable className="flex-1 bg-black/60 justify-end" onPress={onClose} accessibilityLabel="Close accounts">
+      <Pressable className="flex-1 bg-black/60 justify-end" onPress={onClose} accessibilityLabel={ACCOUNTS_CLOSE_A11Y}>
         {/* Inner press stops the backdrop tap from closing when tapping the sheet. */}
         <Pressable onPress={() => {}} className="bg-bg-surface-1 rounded-t-2xl pt-2 pb-8" testID="accounts-sheet">
           <View className="items-center py-2">
@@ -85,13 +87,14 @@ export function AccountsSheet({visible, list, selectedScheme, hidden, onSelect, 
               {list.accounts.map(a => {
                 const checked = a.scheme === selectedScheme;
                 const tags = tagsOf(a);
+                const balanceText = hidden ? VALUE_HIDDEN : rowBalanceText(rows[a.address], havePrices ? prices : null);
                 return (
                   <Pressable
                     key={a.scheme}
                     onPress={() => (checked ? onClose() : onSelect(a.scheme))}
                     accessibilityRole="radio"
                     accessibilityState={{checked}}
-                    accessibilityLabel={`${a.label}, ${tags.join(', ')}`}
+                    accessibilityLabel={rowA11y(a.label, tags, shortAccountAddress(a.address), balanceText)}
                     testID={`accounts-row-${a.scheme}`}
                     className="flex-row items-center px-5 py-3 min-h-touch-rec active:bg-bg-surface-2">
                     <View className="flex-1">
@@ -117,7 +120,7 @@ export function AccountsSheet({visible, list, selectedScheme, hidden, onSelect, 
                         {shortAccountAddress(a.address)}
                       </Text>
                       <Text variant="body-sm" numeral className="text-fg-secondary mt-0.5" testID={`accounts-row-${a.scheme}-balance`}>
-                        {hidden ? VALUE_HIDDEN : rowBalanceText(rows[a.address], havePrices ? prices : null)}
+                        {balanceText}
                       </Text>
                     </View>
                     {checked ? (

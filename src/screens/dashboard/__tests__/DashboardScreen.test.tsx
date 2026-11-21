@@ -16,8 +16,12 @@ import type {A0PoolNoteCount} from '../../../modules/shielded/a0/poolSize';
 const mockView: {current: A0ShieldedView} = {current: {kind: 'ready', unspent: 0n, pending: 0n, notes: 0}};
 const mockCheck = {disabled: false, checking: false, note: null as string | null, run: jest.fn()};
 const mockRefusal: {current: string | null} = {current: null};
+const mockA0Args: unknown[][] = [];
 jest.mock('../../../hooks/useA0Shielded', () => ({
-  useA0Shielded: () => ({view: mockView.current, refresh: jest.fn(), checkAgain: mockCheck, refusal: mockRefusal.current}),
+  useA0Shielded: (...args: unknown[]) => {
+    mockA0Args.push(args);
+    return {view: mockView.current, refresh: jest.fn(), checkAgain: mockCheck, refusal: mockRefusal.current};
+  },
 }));
 const mockPoolCount = jest.fn<Promise<A0PoolNoteCount>, []>();
 jest.mock('../../../modules/shielded/a0/poolSize', () => ({
@@ -66,6 +70,13 @@ jest.mock('../../../components/accounts/AccountsSheet', () => ({
     const {Text: RNText} = require('react-native');
     return require('react').createElement(RNText, {testID: 'mock-accounts-sheet'}, 'sheet');
   },
+}));
+
+// M1d (review r1 m6): whether the encrypted store is open, controlled here
+const mockSecure: {current: object | null} = {current: null};
+jest.mock('../../../store/mmkv/instances', () => ({
+  ...jest.requireActual('../../../store/mmkv/instances'),
+  mmkvSecure: () => mockSecure.current,
 }));
 
 // ── Navigation ──────────────────────────────────────────────────────────────
@@ -203,7 +214,11 @@ beforeEach(() => {
   mockSelected.current = MAIN_ACCOUNT; // M1d: the main account selected unless a row says otherwise
   mockPublic.current = READY_MAIN; // M1d: the same values the walletStore mock holds
   mockPublicArgs.length = 0;
-  mockSheetProps.length = 0; mockListUnreadable.current = false; mockUnlock.mockClear(); // M1d: the sheet stub and unlock reset
+  mockSheetProps.length = 0; // M1d: the sheet stub reset
+  mockListUnreadable.current = false; // M1d: a readable list unless a row says otherwise
+  mockUnlock.mockClear(); // M1d: the unlock count reset
+  mockSecure.current = null; // M1d: the encrypted store closed unless a row says otherwise
+  mockA0Args.length = 0; // M1d: the private-balance hook's recorded arguments
   mockFeatures.shielded = true; // M1d: the shielded build unless a row says otherwise
   mockResolved.current = {prices: {native: {usd: 150, change24h: 1.5}}, havePrices: true}; // M1d: priced SOL unless a row says otherwise
 });
@@ -673,17 +688,30 @@ describe('M1d — the numbered avatar opens the Accounts sheet (spec §4.1, D5)'
     expect(mockUnlock).not.toHaveBeenCalled(); // control: a readable list asks nothing
   });
 
-  it('Private mode: the same avatar and sheet; the private balance does not depend on the selection', async () => {
+  it('Private mode: the same avatar and sheet; the private balance is not keyed on the selection', async () => {
     mockMode.current = 'shielded';
     mockView.current = {kind: 'ready', unspent: 200_000_000n, pending: 0n, notes: 1};
     mockSelected.current = EXIT_ACCOUNT;
     const r = await renderDashboard();
     expect(r.getByTestId('dashboard-avatar')).toHaveTextContent('4');
     expect(r.getByTestId('dashboard-shielded-balance')).toHaveTextContent('0.2 TEST');
+    // review r1 m5: red if the private-balance hook were handed the selected account (it takes no arguments)
+    expect(mockA0Args.length).toBeGreaterThan(0);
+    expect(mockA0Args.every(a => a.length === 0)).toBe(true);
     await act(async () => {
       fireEvent.press(r.getByTestId('dashboard-avatar'));
     });
     expect(r.getByTestId('mock-accounts-sheet')).toBeTruthy();
-    expect(r.getByTestId('dashboard-shielded-balance')).toHaveTextContent('0.2 TEST'); // unchanged by the sheet
+    expect(mockA0Args.every(a => a.length === 0)).toBe(true);
+  });
+
+  it('review r1 m6: an unreadable list with the encrypted store already open asks for no unlock', async () => {
+    mockListUnreadable.current = true;
+    mockSecure.current = {};
+    const r = await renderDashboard();
+    await act(async () => {
+      fireEvent.press(r.getByTestId('dashboard-avatar'));
+    });
+    expect(mockUnlock).not.toHaveBeenCalled();
   });
 });

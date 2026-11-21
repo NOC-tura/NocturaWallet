@@ -50,6 +50,14 @@ export const WHO_SEES_RPC =
   'The RPC provider the app uses sees every request the app makes, including the balances of all your accounts.';
 export const WHO_SEES_CHAIN = 'On chain, amounts and timing are public.';
 
+/** The sheet's backdrop (close) accessibility label */
+export const ACCOUNTS_CLOSE_A11Y = 'Close accounts';
+
+/** A row's accessibility label: what a sighted user reads on it (review r1 m3) */
+export function rowA11y(label: string, tags: readonly string[], short: string, balance: string): string {
+  return `${label}, ${tags.join(', ')}, ${short}, ${balance}`;
+}
+
 /** The avatar's accessibility label (plan A19) */
 export function avatarA11y(label: string): string {
   return `${label}, switch account`;

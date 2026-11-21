@@ -50,3 +50,59 @@ it('at most 10 in flight; each settled row lets the next start; waiting rows rea
   expect(result.current.acc1).toEqual({state: 'failed'});
   expect(mockFetch.mock.calls.map(c => c[0])).toEqual(addrs); // every row, in order, once
 });
+
+const KEY = (a: string) => ['accountSnapshot', a];
+
+it('review r1 I1: cached rows older than staleTime are re-read inside the window — 10 in flight, not all', async () => {
+  const addrs = Array.from({length: 12}, (_, i) => `acc${i}`);
+  for (const a of addrs) qc.setQueryData(KEY(a), SNAP, {updatedAt: Date.now() - 60_000});
+  renderHook(() => useAccountRowBalances(addrs, true), {wrapper});
+  await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(10));
+  await act(async () => {});
+  expect(mockFetch).toHaveBeenCalledTimes(10);
+  await act(async () => {
+    pending.acc0!.resolve(SNAP);
+  });
+  await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(11));
+});
+
+it('review r1 I1: one stale cached row among many (the selected account on first open) — still 10 in flight', async () => {
+  const addrs = Array.from({length: 12}, (_, i) => `acc${i}`);
+  qc.setQueryData(KEY('acc0'), SNAP, {updatedAt: Date.now() - 60_000});
+  renderHook(() => useAccountRowBalances(addrs, true), {wrapper});
+  await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(10));
+  await act(async () => {});
+  expect(mockFetch).toHaveBeenCalledTimes(10);
+});
+
+it('review r1 m2: closing the sheet (unmount, or active -> false) stops the window', async () => {
+  const addrs = Array.from({length: 12}, (_, i) => `acc${i}`);
+  const a = renderHook(() => useAccountRowBalances(addrs, true), {wrapper});
+  await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(10));
+  a.unmount();
+  await act(async () => {
+    pending.acc0!.resolve(SNAP);
+  });
+  await act(async () => {});
+  expect(mockFetch).toHaveBeenCalledTimes(10);
+
+  mockFetch.mockClear();
+  const b = renderHook(({on}: {on: boolean}) => useAccountRowBalances(addrs.map(x => `b${x}`), on), {wrapper, initialProps: {on: true}});
+  await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(10));
+  b.rerender({on: false});
+  await act(async () => {
+    pending.bacc0!.resolve(SNAP);
+  });
+  await act(async () => {});
+  expect(mockFetch).toHaveBeenCalledTimes(10);
+});
+
+it('review r1 m7: a failed re-read is "failed", never the older figure as current', async () => {
+  qc.setQueryData(KEY('acc0'), SNAP, {updatedAt: Date.now() - 60_000});
+  const {result} = renderHook(() => useAccountRowBalances(['acc0'], true), {wrapper});
+  await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
+  await act(async () => {
+    pending.acc0!.reject(new Error('429'));
+  });
+  await waitFor(() => expect(result.current.acc0).toEqual({state: 'failed'}));
+});

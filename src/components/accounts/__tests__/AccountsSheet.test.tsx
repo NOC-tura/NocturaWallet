@@ -154,3 +154,11 @@ it('a closed sheet asks no balance', () => {
   sheet({visible: false});
   expect(mockRowArgs[mockRowArgs.length - 1]!.active).toBe(false);
 });
+
+it('review r1 m3: a row reads its label, tags, short address and balance to a screen reader', () => {
+  mockRows.current = {[A3]: {state: 'failed'}};
+  const {r} = sheet();
+  expect(r.getByTestId('accounts-row-slip10:3').props.accessibilityLabel).toBe('Account 4, exit, 3YqEpf…JXT94k, Balance unavailable');
+  const h = sheet({hidden: true}).r;
+  expect(h.getAllByTestId('accounts-row-slip10:3')[0]!.props.accessibilityLabel).toBe('Account 4, exit, 3YqEpf…JXT94k, •••');
+});

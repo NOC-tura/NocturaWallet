@@ -31,7 +31,7 @@ import {Text} from '../../components/ui';
 import {useWalletStore} from '../../store/zustand/walletStore';
 import {useAccountList, useRefreshAccounts, useSelectAccount, useSelectedAccount} from '../../hooks/useSelectedAccount';
 import {NO_PUBLIC_DATA, useAccountPublicData} from '../../hooks/useAccountPublicData';
-import {PUBLIC_LOADING, PUBLIC_UNAVAILABLE, VALUE_UNKNOWN, avatarA11y} from '../../copy/accounts';
+import {ACCOUNTS_TITLE, PUBLIC_LOADING, PUBLIC_UNAVAILABLE, VALUE_UNKNOWN, avatarA11y} from '../../copy/accounts';
 import {AccountsSheet} from '../../components/accounts/AccountsSheet';
 import {useShieldedStore} from '../../store/zustand/shieldedStore';
 import {usePublicSettingsStore} from '../../store/zustand/publicSettingsStore';
@@ -379,7 +379,7 @@ export function DashboardScreen({
   const usd = formatUsd(portfolio.totalUsd);
   const change24h = publicReady ? portfolio.change24hPct : null; // number | null (transparent only); M1d: none before the data is known
   const avatarText = selected ? String(selected.number) : getAddressInitial(publicKey);
-  const avatarLabel = selected ? avatarA11y(selected.label) : 'Accounts';
+  const avatarLabel = selected ? avatarA11y(selected.label) : ACCOUNTS_TITLE;
 
   return (
     <SafeAreaView
