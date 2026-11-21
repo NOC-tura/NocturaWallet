@@ -14,7 +14,7 @@ import {
   displayAmount,
   preparedA0Deposit,
 } from '../../modules/shielded/a0/screenSupport';
-import {PRIVATE_MARK, PROOF_FEE, PROOF_FEE_NONE, makePrivateCta} from '../../copy/modes';
+import {PRIVATE_MARK, PROOF_FEE, PROOF_FEE_NONE, makePrivateCta, DEPOSIT_RECORD_STORAGE} from '../../copy/modes';
 import type {ShieldIntent} from '../../types/shield';
 
 /**
@@ -142,7 +142,7 @@ export function ShieldConfirmScreen({intent, requestAuth, onAuthorized, onCancel
               {`${formatTokenAmount(A0_DEPOSIT_FEE_LAMPORTS, SOL_DECIMALS)} SOL`}
             </Text>
           </Row>
-          <Row label="Deposit record rent">
+          <Row label={DEPOSIT_RECORD_STORAGE}>
             <Text variant="body-sm" numeral className="text-fg-primary">
               {`≈ ${formatTokenAmount(A0_RHO_MARKER_RENT_LAMPORTS, SOL_DECIMALS)} SOL`}
             </Text>

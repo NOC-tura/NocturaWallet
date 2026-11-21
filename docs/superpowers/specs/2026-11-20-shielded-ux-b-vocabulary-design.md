@@ -99,7 +99,7 @@ All four live under `src/components/private/`, except the copy module.
     - `DestinationRow` (decision B-5);
     - the fee card shows "Relayer fee" and "Destination receives"; the Network fee row ("paid by the relayer"), the ZK proof fee row and the note explanation go into Details (decision B-3);
     - the honest relayed sentence stays visible;
-  - Make private: the fee card keeps the visible "You'll make private" total; its Network fee, ZK proof fee and Deposit record rent rows go into Details;
+  - Make private: the fee card keeps the visible "You'll make private" total; its Network fee, ZK proof fee and Deposit record storage (was "rent", owner 2026-11-21) rows go into Details;
   - CTAs as in §2.
   - *(Amended 2026-11-21, owner phone pass 2.)*
     - the card heading is **"Summary"** on both screens (it holds "You'll make private" / "Destination receives", which are not fees); "the fee card" above means this Summary card;

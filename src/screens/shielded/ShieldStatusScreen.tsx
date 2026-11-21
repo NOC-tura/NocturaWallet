@@ -158,7 +158,7 @@ export function ShieldStatusScreen({intent, onDone}: ShieldStatusScreenProps) {
       : base;
   const shortSig = signature ? shortSignature(signature) : signature;
 
-  const feesText = `${formatTokenAmount(A0_DEPOSIT_FEE_LAMPORTS, SOL_DECIMALS)} SOL + ≈ ${formatTokenAmount(A0_RHO_MARKER_RENT_LAMPORTS, SOL_DECIMALS)} SOL rent`;
+  const feesText = `${formatTokenAmount(A0_DEPOSIT_FEE_LAMPORTS, SOL_DECIMALS)} SOL + ≈ ${formatTokenAmount(A0_RHO_MARKER_RENT_LAMPORTS, SOL_DECIMALS)} SOL storage`;
 
   const copySig = () => {
     if (!signature) return;

@@ -32,6 +32,7 @@ import {
   SUMMARY,
   makePrivateCta,
   makePrivateCtaIdle,
+  DEPOSIT_RECORD_STORAGE,
 } from '../../copy/modes';
 import type {A0VerifyRefusal} from '../../modules/shielded/a0/landedVerifier';
 import type {A0UnshieldDestination} from '../../modules/shielded/a0/unshieldFlow';
@@ -284,7 +285,7 @@ export function ShieldUnshieldScreen({onBack, onShield, onUnshield, initialDirec
                 />
                 <FeeRow label={PROOF_FEE} value={hasAmount ? PROOF_FEE_NONE : '—'} zk />
                 <FeeRow
-                  label="Deposit record rent"
+                  label={DEPOSIT_RECORD_STORAGE}
                   value={hasAmount ? `≈ ${formatTokenAmount(A0_RHO_MARKER_RENT_LAMPORTS, SOL_DECIMALS)} SOL` : '—'}
                 />
                 {/* The pool's size — a number, never a yes/no (spec I4); a technical row (ambiguity A6) */}

@@ -31,6 +31,7 @@ import {
   PROOF_FEE_NONE,
   SIMULATION_PASSED,
   YOUR_BALANCE_CHANGES,
+  DEPOSIT_RECORD_STORAGE,
 } from '../../copy/modes';
 import {DetailsDisclosure} from '../../components/private';
 
@@ -238,7 +239,7 @@ export function ShieldSimulateScreen({intent, onContinue, onCancel}: ShieldSimul
               <DeltaRow label={PROOF_FEE} value={PROOF_FEE_NONE} zk />
               <DeltaRow label="Network fee" value={`− ${formatTokenAmount(A0_DEPOSIT_FEE_LAMPORTS, SOL_DECIMALS)} SOL`} />
               <DeltaRow
-                label="Deposit record rent"
+                label={DEPOSIT_RECORD_STORAGE}
                 value={`− ≈ ${formatTokenAmount(A0_RHO_MARKER_RENT_LAMPORTS, SOL_DECIMALS)} SOL`}
               />
             </Card>

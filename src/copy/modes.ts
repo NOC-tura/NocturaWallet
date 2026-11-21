@@ -27,6 +27,8 @@ export const MAKE_PUBLIC = 'Make public';
 
 /** The Make public warning's title (owner phone pass 2026-11-21); the relayed sentence sits under it. */
 export const WHAT_STAYS_PUBLIC = 'What stays public';
+/** The deposit's on-chain record costs SOL to store; "rent" is Solana jargon (owner 2026-11-21). */
+export const DEPOSIT_RECORD_STORAGE = 'Deposit record storage';
 /** Under WHAT_STAYS_PUBLIC on Make public: every exit's destination is public (phone-fix review I-1). */
 export const DESTINATION_IS_PUBLIC = 'The destination address is public on chain.';
 

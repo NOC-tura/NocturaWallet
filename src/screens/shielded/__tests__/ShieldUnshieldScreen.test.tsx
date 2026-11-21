@@ -78,7 +78,8 @@ describe('#16 shield side — the design', () => {
     // phone pass 2 fix round 1 (M-1): one name in the whole flow — "Proof fee", as #19 / #20
     expect(r.getByText('Proof fee')).toBeTruthy();
     expect(r.queryByText(/ZK proof fee/)).toBeNull();
-    expect(r.getByText('Deposit record rent')).toBeTruthy();
+    expect(r.getByText('Deposit record storage')).toBeTruthy(); // owner 2026-11-21: "rent" is jargon
+    expect(r.queryByText('Deposit record rent')).toBeNull();
     expect(ctaDisabled(r)).toBe(true);
     expect(r.getByText('Make TEST private')).toBeTruthy(); // part B: "Shield TEST" → "Make TEST private"
     expect(r.getByTestId('shield-cta').props.accessibilityLabel).toBe('Make TEST private');

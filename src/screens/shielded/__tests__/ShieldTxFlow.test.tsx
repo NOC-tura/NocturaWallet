@@ -100,6 +100,8 @@ describe('#19 ShieldSimulate', () => {
     expect(r.getByText('Your main account signs it. Its amount and time are visible on chain.')).toBeTruthy();
     expect(r.getByText('Only known programs')).toBeTruthy();
     expect(r.getByText('Noctura and Solana programs only')).toBeTruthy();
+    expect(r.getByText('Deposit record storage')).toBeTruthy(); // owner 2026-11-21: "rent" is jargon
+    expect(r.queryByText(/record rent/i)).toBeNull();
     expect(r.getByText('Noctura and Solana programs only').props.className ?? '').not.toContain('font-geist-mono'); // plain words, plain face (M-3 control)
     expect(r.getByText('No one gets access to your tokens')).toBeTruthy();
     expect(r.getByText('No approval or authority change')).toBeTruthy();
@@ -228,6 +230,8 @@ describe('#20 ShieldConfirm', () => {
     // owner phone pass 2, 2026-11-21, item 5: "ZK PROOF FEE" → "PROOF FEE" (the overline upper-cases it)
     expect(r.getByText('Proof fee')).toBeTruthy();
     expect(r.getByText('None · made on this device')).toBeTruthy();
+    expect(r.getByText('Deposit record storage')).toBeTruthy(); // owner 2026-11-21: "rent" is jargon
+    expect(r.queryByText(/record rent/i)).toBeNull();
     expect(r.queryByText(/ZK proof fee/)).toBeNull();
     await act(async () => {
       fireEvent.press(r.getByTestId('shield-confirm-send'));
@@ -319,7 +323,8 @@ describe('#21 ShieldStatus', () => {
     expect(r.getByText('#17 in the pool')).toBeTruthy();
     expect(r.getByText('5kAj9N…b81e')).toBeTruthy();
     expect(r.getByLabelText('Copy Tx hash')).toBeTruthy(); // the copy stays, inside Details
-    expect(r.getByText(/0\.000005 SOL \+ ≈ 0\.00069596 SOL rent/)).toBeTruthy();
+    expect(r.getByText(/0\.000005 SOL \+ ≈ 0\.00069596 SOL storage/)).toBeTruthy(); // owner 2026-11-21: "rent" is jargon
+    expect(r.queryByText(/SOL rent/)).toBeNull();
     expect(r.getByTestId('shield-status-details')).toBeTruthy(); // the explorer stays (a deposit is public by design)
     expect(r.getByText('View on explorer')).toBeTruthy();
     expect(r.getByTestId('shield-status-details').props.accessibilityLabel).toBe('View on explorer');
