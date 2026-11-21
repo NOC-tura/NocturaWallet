@@ -6,6 +6,8 @@ import {mmkvPublic} from '../../../store/mmkv/instances';
 import {MMKV_KEYS} from '../../../constants/mmkvKeys';
 import {useShieldedStore} from '../../../store/zustand/shieldedStore';
 import {BANNED_WORDS} from '../../../copy/__testing__/copyScan';
+import {MAKE_PUBLIC} from '../../../copy/modes';
+import {A0_RELAYED_COPY} from '../unshield/unshieldCopy';
 
 const mockReplace = jest.fn();
 const mockGoBack = jest.fn();
@@ -29,11 +31,36 @@ afterEach(() => {
 describe('ShieldedExplainerScreen', () => {
   it('renders H1, all 3 step titles, and footer note', () => {
     const {getByText} = render(<ShieldedExplainerScreen navigation={navigation} route={route} />);
-    expect(getByText('Private SOL, three steps.')).toBeTruthy();
+    // final review I-1: the title names the private balance, not "SOL" (the pool holds one SPL token; TEST on devnet)
+    expect(getByText('Your private balance, three steps.')).toBeTruthy();
     expect(getByText('Move into your private balance')).toBeTruthy(); // part B: Move into the vault → Move into your private balance
-    expect(getByText('Generate a ZK proof')).toBeTruthy();
-    expect(getByText('Send privately')).toBeTruthy();
+    // final review I-1: plain words, no "ZK" (spec §1, no technical term visible by default)
+    expect(getByText('Make the proof')).toBeTruthy();
+    // final review I-1: step 3 is the exit that exists (relayed Make public), not a private send (M2 does not exist yet)
+    expect(getByText(MAKE_PUBLIC)).toBeTruthy();
     expect(getByText('Screenshots disabled across this flow.')).toBeTruthy();
+  });
+
+  it('final review I-1: what the screen keeps — a public deposit signed by the main account, a linkable exit, a proof made on the phone, the relayed exit', () => {
+    const r = render(<ShieldedExplainerScreen navigation={navigation} route={route} />);
+    expect(r.getByText(/The deposit is public on chain and signed by your main account\./)).toBeTruthy();
+    expect(r.getByText(/making them public to your main account links the exit to your deposit\./i)).toBeTruthy();
+    expect(r.getByText(/Your phone makes the proof itself, on this device\./)).toBeTruthy();
+    expect(r.getByText(A0_RELAYED_COPY, {exact: false})).toBeTruthy();
+  });
+
+  it('final review I-1 negative: no "SOL" as a word, no "Send privately", no recipient, no "ZK" or "Groth16", no overclaim', () => {
+    const r = render(<ShieldedExplainerScreen navigation={navigation} route={route} />);
+    const said = r
+      .queryAllByText(/./)
+      .map(e => (Array.isArray(e.props.children) ? e.props.children.join('') : String(e.props.children)))
+      .join('\n');
+    expect(said).toMatch(/three steps/); // the scan read the screen's text (positive control)
+    expect(said).not.toMatch(/\bSOL\b/);
+    expect(said).not.toMatch(/Send privately/i);
+    expect(said).not.toMatch(/recipient/i);
+    expect(said).not.toMatch(/\bZK\b|Groth16|zero-knowledge/i);
+    expect(said).not.toMatch(/anonymous|untraceable|invisible|no one can see|not shown/i);
   });
 
   it('#15 overline is the module\'s PRIVATE_MARK, not an old word (Task 6 carry)', () => {

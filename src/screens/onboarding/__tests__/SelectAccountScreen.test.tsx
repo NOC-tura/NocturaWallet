@@ -28,6 +28,10 @@ jest.mock('../../../modules/keyDerivation/accountDetection', () => ({
 }));
 
 import {SelectAccountScreen, accountChoiceView} from '../SelectAccountScreen';
+import {ACCOUNT_BALANCES_UNCHECKED, ACCOUNT_CHECK_FAILED} from '../../../copy/modes';
+
+/** final review M-1: the full list's intro, which asks for a pick over balances that were checked */
+const INTRO = /We checked this recovery phrase/;
 
 const S = (account: number): TransparentScheme => ({kind: 'slip10', account});
 const CLI: TransparentScheme = {kind: 'cli'};
@@ -83,6 +87,7 @@ describe('the import\'s account choice (decision B-6)', () => {
     fireEvent.press(r.getByTestId('select-account-different'));
     expect(ids(r)).toHaveLength(6);
     expect(r.queryByText('We found your wallet')).toBeNull();
+    expect(r.getByText(INTRO)).toBeTruthy(); // final review M-1 positive control: the checked list keeps its intro
     fireEvent.press(r.getByTestId('account-candidate-slip10:0'));
     fireEvent.press(r.getByTestId('select-account-continue'));
     expect(onSelect).toHaveBeenCalledWith(S(0));
@@ -119,9 +124,11 @@ describe('the import\'s account choice (decision B-6)', () => {
   it('the balance RPC failed: today\'s warning, Retry, the FULL list; neither smart view', async () => {
     mockDetect.mockResolvedValue({candidates: all([]), balancesResolved: false, nocResolved: false});
     const r = await screen();
-    expect(r.getByText(/Couldn't check balances right now/)).toBeTruthy();
+    expect(r.getByText(ACCOUNT_BALANCES_UNCHECKED)).toBeTruthy();
     expect(r.getByTestId('select-account-retry')).toBeTruthy();
     expect(ids(r)).toHaveLength(6);
+    // final review M-1: the intro says the balances were checked; it is absent when they were not
+    expect(r.queryByText(INTRO)).toBeNull();
     expect(r.queryByText('We found your wallet')).toBeNull();
     expect(r.queryByText(/No funds found yet/)).toBeNull();
     expect(r.queryByTestId('select-account-different')).toBeNull();
@@ -162,7 +169,11 @@ describe('the import\'s account choice (decision B-6)', () => {
   it('detection threw: the warning and Retry; nothing selected, Continue disabled (fix round 1, review I-1 / M-2)', async () => {
     mockDetect.mockRejectedValue(new Error('boom'));
     const r = await screen();
-    expect(r.getByText(/Couldn't check balances right now/)).toBeTruthy();
+    // final review M-2: no candidates, so no "Pick the account" over an empty list — Try again or Back only
+    expect(ids(r)).toEqual([]);
+    expect(r.getByText(ACCOUNT_CHECK_FAILED)).toBeTruthy();
+    expect(r.queryByText(/Pick the account/)).toBeNull();
+    expect(r.queryByText(INTRO)).toBeNull(); // final review M-1
     expect(r.getByTestId('select-account-retry')).toBeTruthy();
     expect(continueDisabled(r)).toBe(true);
     fireEvent.press(r.getByTestId('select-account-continue'));
@@ -171,7 +182,11 @@ describe('the import\'s account choice (decision B-6)', () => {
 
   it('an empty mnemonic: the warning, nothing selected, Continue disabled (review M-2)', async () => {
     const r = render(<SelectAccountScreen mnemonic="" onSelect={onSelect} />);
-    await waitFor(() => expect(r.getByText(/Couldn't check balances right now/)).toBeTruthy());
+    await waitFor(() => expect(r.getByText(ACCOUNT_CHECK_FAILED)).toBeTruthy());
+    // final review M-2: the same one sentence as a throw; nothing to pick, so it never asks for a pick
+    expect(r.queryByText(/Pick the account/)).toBeNull();
+    expect(r.queryByText(INTRO)).toBeNull(); // final review M-1
+    expect(r.getByTestId('select-account-retry')).toBeTruthy();
     expect(continueDisabled(r)).toBe(true);
     expect(mockDetect).not.toHaveBeenCalled();
   });

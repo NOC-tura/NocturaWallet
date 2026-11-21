@@ -21,6 +21,7 @@ import {formatTokenAmount} from '../../utils/parseTokenAmount';
 import {cn} from '../../utils/cn';
 import {
   ACCOUNT_BALANCES_UNCHECKED,
+  ACCOUNT_CHECK_FAILED,
   ACCOUNT_DIFFERENT,
   ACCOUNT_FOUND,
   ACCOUNT_NONE_FUNDED,
@@ -248,17 +249,21 @@ export function SelectAccountScreen({
           </View>
         ) : (
           <>
-            <View className="px-5 mb-4">
-              <Text variant="body" className="text-fg-secondary">
-                We checked this recovery phrase for on-chain balances. Pick the
-                account you want to use.
-              </Text>
-            </View>
+            {/* Final review M-1: the intro says the balances were checked, so only when they were. */}
+            {!detectFailed ? (
+              <View className="px-5 mb-4">
+                <Text variant="body" className="text-fg-secondary">
+                  We checked this recovery phrase for on-chain balances. Pick the
+                  account you want to use.
+                </Text>
+              </View>
+            ) : null}
             <View className="px-5 gap-2">
               {detectFailed ? (
                 <View className="mb-2 p-4 rounded-md bg-bg-surface-2 border-l-2 border-l-warning gap-3">
                   <Text variant="body-sm" className="text-fg-primary">
-                    {ACCOUNT_BALANCES_UNCHECKED}
+                    {/* Final review M-2: no candidates (detection threw, or no phrase) → nothing to pick */}
+                    {candidates.length === 0 ? ACCOUNT_CHECK_FAILED : ACCOUNT_BALANCES_UNCHECKED}
                   </Text>
                   <Button
                     label="Try again"

@@ -107,3 +107,5 @@ export const ACCOUNT_NONE_FUNDED = 'No funds found yet. You can receive to this 
 export const ACCOUNT_DIFFERENT = 'Use a different account';
 /** The import's warning when a balance (SOL or NOC) could not be read: the person chooses, nothing is preselected (Task 7 fix round 1, review I-1). */
 export const ACCOUNT_BALANCES_UNCHECKED = "Couldn't check balances right now. Pick the account you want to use, or try again.";
+/** The import's one sentence when there is nothing to pick: detection threw, or the phrase was empty (final review M-2). */
+export const ACCOUNT_CHECK_FAILED = "Couldn't check this recovery phrase right now. Try again, or go back.";
