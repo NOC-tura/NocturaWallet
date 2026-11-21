@@ -12,7 +12,8 @@ import {PublicKey} from '@solana/web3.js';
 import {Text, Button, Card} from '../../components/ui';
 import {parseTokenAmount, formatTokenAmount} from '../../utils/parseTokenAmount';
 import {formatAddress} from '../../utils/formatAddress';
-import {useWalletStore} from '../../store/zustand/walletStore';
+import {fromLine} from '../../copy/accounts';
+import {shortAccountAddress} from '../../modules/accounts/accountList';
 import {cn} from '../../utils/cn';
 import type {TransferIntent} from '../../types/transfer';
 import type {TransferCheck} from '../../modules/solana/simulationChecks';
@@ -98,7 +99,9 @@ interface TxSimulateScreenProps {
 }
 
 export function TxSimulateScreen({intent, onContinue, onCancel}: TxSimulateScreenProps) {
-  const {publicKey, solBalance} = useWalletStore();
+  // M1d (spec §3.3, plan A8): the sender and its balance are the intent's source, captured at #12
+  const publicKey = intent.from.address;
+  const solBalance = intent.sourceBalances.solBalance;
 
   const [simState, setSimState] = useState<SimState>('simulating');
   const [retryCount, setRetryCount] = useState(0);
@@ -471,6 +474,9 @@ export function TxSimulateScreen({intent, onContinue, onCancel}: TxSimulateScree
               {formatAddress(intent.recipient)}
             </Text>
           </View>
+          <Text variant="caption" className="text-fg-tertiary mt-2" testID="tx-simulate-from">
+            {fromLine(intent.from.label, shortAccountAddress(intent.from.address), intent.from.isMain)}
+          </Text>
         </Card>
 
         {/* State-specific content */}

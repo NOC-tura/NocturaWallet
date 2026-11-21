@@ -25,6 +25,7 @@ describe('submitTransparentTransfer', () => {
       lamports: 1_000n,
       priorityFee: 0,
       scheme: {kind: 'cli'},
+      expectedSigner: 'EHqmfkN89RJ7Y33CXM6uCzhVeuywHoJXZZLszBHHZy7o', // M1d: the cli key of "abandon … about" (the vector file) — the signer check needs the account's address
     });
     expect(res.signature).toBe('SIG_ABC');
     expect(res.lastValidBlockHeight).toBe(1);

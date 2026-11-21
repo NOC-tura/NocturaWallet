@@ -56,6 +56,8 @@ const EXTRA_COPY = [
   // M1d: the accounts copy and the account labels ("Account N") — outside src/screens and src/components
   path.join(ROOT, 'src/copy/accounts.ts'),
   path.join(ROOT, 'src/modules/accounts/accountList.ts'),
+  // M1d (review r1 I2): the signer refusal #21 shows as it is
+  path.join(ROOT, 'src/modules/solana/sendTransaction.ts'),
 ];
 
 /**
@@ -130,6 +132,7 @@ describe('shielded screens make no unsupported privacy claim', () => {
         // M1d: the accounts copy module and the label module are in scope
         'src/copy/accounts.ts',
         'src/modules/accounts/accountList.ts',
+        'src/modules/solana/sendTransaction.ts',
       ]),
     );
     // part B Task 7 carry: each file is read once (EXTRA_COPY overlaps the walked directories)

@@ -20,6 +20,7 @@ const EXTRA = [
   // M1d: the accounts copy and the account labels
   'src/copy/accounts.ts',
   'src/modules/accounts/accountList.ts',
+  'src/modules/solana/sendTransaction.ts',
 ];
 
 function sources(): Array<{file: string; text: string}> {

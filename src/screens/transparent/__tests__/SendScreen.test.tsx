@@ -35,6 +35,24 @@ jest.mock('../../../store/zustand/walletStore', () => ({
   })),
 }));
 
+// M1d (spec §3.3): #12 sends from the account selected when it opened, with that account's balances
+const MAIN_SRC = {scheme: 'slip10:0', address: 'So11111111111111111111111111111111111111112', label: 'Account 1', number: 1, role: 'main', isMain: true, linked: false};
+const A3_SRC = {scheme: 'slip10:3', address: '3YqEpfo3c818GhvbQ1UmVY1nJxw16vtu4JB9peJXT94k', label: 'Account 4', number: 4, role: 'fresh-exit', isMain: false, linked: false};
+const READY_1_SOL = {status: 'ready', syncedAt: 1, solBalance: '1000000000', nocBalance: '0', tokens: [], tokenBalances: {}};
+const mockSendSelected: {current: unknown} = {current: MAIN_SRC};
+const mockSendList: {current: unknown} = {current: null};
+const mockSendRefresh = jest.fn();
+jest.mock('../../../hooks/useSelectedAccount', () => ({
+  useSelectedAccount: () => mockSendSelected.current,
+  useAccountList: () => mockSendList.current,
+  useRefreshAccounts: () => mockSendRefresh,
+}));
+const mockSendPublic: {current: unknown} = {current: READY_1_SOL};
+jest.mock('../../../hooks/useAccountPublicData', () => ({
+  NO_PUBLIC_DATA: {solBalance: '0', nocBalance: '0', tokenBalances: {}, tokens: []},
+  useAccountPublicData: () => ({data: mockSendPublic.current, refetch: () => undefined}),
+}));
+
 /**
  * Rewritten 2026-08-09. The previous suite was `describe.skip`'d against
  * Phase-2 chrome (placeholder-based queries, a "Review" CTA, token pills) that
@@ -118,5 +136,80 @@ describe('SendScreen', () => {
     );
     fireEvent.changeText(getByTestId('amount-input'), '0.1234567891');
     expect(getByTestId('review-button').props.accessibilityState?.disabled).toBe(true);
+  });
+});
+
+describe('M1d — #12 sends from the account selected when it opened (spec §3.3)', () => {
+  const FOREIGN = 'E48cosDiQZK1iDSsyUzhvW4WxJeoKuDk5qgcdkmANV4N';
+  beforeEach(() => {
+    mockSendSelected.current = MAIN_SRC;
+    mockSendList.current = null;
+    mockSendPublic.current = READY_1_SOL;
+  });
+  const fill = (r: ReturnType<typeof render>) => {
+    fireEvent.changeText(r.getByTestId('recipient-input'), FOREIGN);
+    fireEvent.changeText(r.getByTestId('amount-input'), '0.001');
+  };
+
+  it('the intent carries the source (scheme, address, label, main) and the source\'s balances', () => {
+    mockSendSelected.current = A3_SRC;
+    mockSendPublic.current = {status: 'ready', syncedAt: 1, solBalance: '3000000', nocBalance: '0', tokens: [], tokenBalances: {}};
+    const onReview = jest.fn();
+    const r = render(<SendScreen onReview={onReview} />);
+    fill(r);
+    fireEvent.press(r.getByTestId('review-button'));
+    expect(onReview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        recipient: FOREIGN,
+        from: {scheme: 'slip10:3', address: A3_SRC.address, label: 'Account 4', isMain: false},
+        sourceBalances: {solBalance: '3000000', tokenBalances: {}},
+      }),
+    );
+  });
+
+  it('Review Focus 2: a selection change after #12 opened does not move the Send', () => {
+    mockSendSelected.current = A3_SRC;
+    const onReview = jest.fn();
+    const r = render(<SendScreen onReview={onReview} />);
+    mockSendSelected.current = MAIN_SRC;
+    r.rerender(<SendScreen onReview={onReview} />);
+    fill(r);
+    fireEvent.press(r.getByTestId('review-button'));
+    expect(onReview.mock.calls[0]![0].from.scheme).toBe('slip10:3');
+  });
+
+  it('Review Focus 4: the source\'s data not loaded → Available "—", the CTA disabled', () => {
+    mockSendPublic.current = {status: 'loading'};
+    const r = render(<SendScreen onReview={jest.fn()} />);
+    fill(r);
+    expect(r.getByTestId('send-available')).toHaveTextContent('— SOL');
+    expect(r.getByTestId('review-button').props.accessibilityState?.disabled).toBe(true);
+  });
+
+  it('no account known (no wallet) → the CTA disabled', () => {
+    mockSendSelected.current = null;
+    const r = render(<SendScreen onReview={jest.fn()} />);
+    fill(r);
+    expect(r.getByTestId('review-button').props.accessibilityState?.disabled).toBe(true);
+  });
+
+  it('plan A11 (ruling C1): the source\'s pool token is in the picker and can be sent', () => {
+    const TEST_MINT = 'ERkpCFGaoWmeZPhKTUHumrqHTP1QmyHVhMJUnxbRPKCs';
+    mockSendSelected.current = A3_SRC;
+    mockSendPublic.current = {
+      status: 'ready',
+      syncedAt: 1,
+      solBalance: '3000000',
+      nocBalance: '0',
+      tokenBalances: {[TEST_MINT]: '1250000000'},
+      tokens: [{mint: TEST_MINT, symbol: 'TEST', name: 'Devnet test token', decimals: 9, trust: 'unknown'}],
+    };
+    const onReview = jest.fn();
+    const r = render(<SendScreen onReview={onReview} />);
+    fireEvent.press(r.getByTestId('token-picker'));
+    fireEvent.press(r.getByLabelText('Select TEST'));
+    fill(r);
+    fireEvent.press(r.getByTestId('review-button'));
+    expect(onReview).toHaveBeenCalledWith(expect.objectContaining({tokenMint: TEST_MINT, tokenSymbol: 'TEST', decimals: 9, amount: '0.001'}));
   });
 });

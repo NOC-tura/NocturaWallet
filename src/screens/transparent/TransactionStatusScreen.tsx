@@ -18,6 +18,7 @@ import {ERROR_CODES} from '../../constants/errors';
 import {parseTokenAmount, formatTokenAmount} from '../../utils/parseTokenAmount';
 import type {TransferIntent} from '../../types/transfer';
 import {CancelledError} from '../../modules/solana/landedSignature';
+import {parseA0Scheme} from '../../modules/shielded/a0/accountRegistry';
 
 // ── In-file constants ─────────────────────────────────────────────────────────
 const BASE_FEE_LAMPORTS = 5_000n;
@@ -27,9 +28,6 @@ const MAX_ATTEMPTS = 3;
 // ── Lazy imports — wrapped in try/catch so Jest/stub envs don't crash ─────────
 let submitTransparentTransfer:
   | typeof import('../../modules/solana/sendTransaction').submitTransparentTransfer
-  | null = null;
-let loadTransparentScheme:
-  | typeof import('../../modules/keyDerivation/derivationScheme').loadTransparentScheme
   | null = null;
 let getConnection:
   | typeof import('../../modules/solana/connection').getConnection
@@ -44,8 +42,6 @@ let findLandedSignature:
 try {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   submitTransparentTransfer = require('../../modules/solana/sendTransaction').submitTransparentTransfer;
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  loadTransparentScheme = require('../../modules/keyDerivation/derivationScheme').loadTransparentScheme;
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   getConnection = require('../../modules/solana/connection').getConnection;
   // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -118,14 +114,19 @@ export function TransactionStatusScreen({
       // Guard: in stub/test env all required modules may be null — exit gracefully
       if (
         !submitTransparentTransfer ||
-        !loadTransparentScheme ||
         !getConnection ||
         !findLandedSignature
       ) {
         return;
       }
 
-      const scheme = loadTransparentScheme();
+      // M1d (spec §3.3, plan A16): the source's scheme, parsed strictly — never the wallet default
+      const scheme = parseA0Scheme(intent.from.scheme);
+      if (scheme === null) {
+        setErrorMessage(`E_SEND_SCHEME: ${intent.from.scheme} is not an account this wallet can sign for; nothing was signed.`);
+        setStage('failed');
+        return;
+      }
 
       // Import PublicKey lazily inline to avoid top-level crash in test env
       // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -139,6 +140,7 @@ export function TransactionStatusScreen({
               lamports: parseTokenAmount(intent.amount, SOL_DECIMALS),
               priorityFee,
               scheme,
+              expectedSigner: intent.from.address,
             }
           : {
               kind: 'spl' as const,
@@ -149,6 +151,7 @@ export function TransactionStatusScreen({
               createAta: intent.createAta,
               priorityFee,
               scheme,
+              expectedSigner: intent.from.address,
             };
 
       const attemptSubmit = async (): Promise<SubmitOutcome> => {

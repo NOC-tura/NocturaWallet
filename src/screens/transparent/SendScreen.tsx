@@ -27,7 +27,9 @@ import {TokenLogo} from '../../components/TokenLogo';
 import {validateRecipientInput} from '../../utils/validateAddress';
 import {getTransferMarkupLamports} from '../../modules/solana/transactionBuilder';
 import {parseTokenAmount, formatTokenAmount} from '../../utils/parseTokenAmount';
-import {useWalletStore} from '../../store/zustand/walletStore';
+import {useSelectedAccount} from '../../hooks/useSelectedAccount';
+import {NO_PUBLIC_DATA, useAccountPublicData} from '../../hooks/useAccountPublicData';
+import {VALUE_UNKNOWN} from '../../copy/accounts';
 import {addressBook} from '../../modules/addressBook/addressBookModule';
 import type {Contact} from '../../modules/addressBook/types';
 import {formatAddress} from '../../utils/formatAddress';
@@ -114,7 +116,13 @@ export interface SendScreenProps {
  *   - Bottom-sheet token picker (TokenPickerSheet)
  */
 export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
-  const {solBalance, nocBalance, tokens: storeTokens, tokenBalances} = useWalletStore();
+  // M1d (spec §3.3, Review Focus 2): the source is the account selected when #12 OPENS — captured
+  // once; a later selection change never moves this Send. Its balances are that account's own.
+  const liveSelected = useSelectedAccount();
+  const [source] = useState(liveSelected);
+  const {data: publicData} = useAccountPublicData(source);
+  const publicReady = publicData.status === 'ready';
+  const {solBalance, nocBalance, tokens: storeTokens, tokenBalances} = publicData.status === 'ready' ? publicData : NO_PUBLIC_DATA;
   const rootNav = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
   // Default token list: ALWAYS include SOL + NOC even if not in the dynamic
@@ -284,6 +292,7 @@ export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
   }, [amount, insufficientBalance, selectedMint, selectedToken.decimals, selectedBalance, priorityLevel]);
 
   const canReview = useMemo(() => {
+    if (source === null || !publicReady) return false;
     if (!recipient.trim() || !amount.trim()) return false;
     if (insufficientBalance) return false;
     const validation = validateRecipientInput(recipient);
@@ -301,13 +310,13 @@ export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
       return false;
     }
     return true;
-  }, [recipient, amount, selectedToken.decimals, insufficientBalance]);
+  }, [source, publicReady, recipient, amount, selectedToken.decimals, insufficientBalance]);
 
   const handleReview = useCallback(() => {
     const now = Date.now();
     if (now - lastTapRef.current < 500) return;
     lastTapRef.current = now;
-    if (!canReview) return;
+    if (!canReview || source === null) return;
     onReview({
       mode: 'transparent',
       recipient,
@@ -317,8 +326,10 @@ export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
       decimals: selectedToken.decimals,
       priorityLevel,
       createAta: selectedMint !== SOL_MINT,
+      from: {scheme: source.scheme, address: source.address, label: source.label, isMain: source.isMain},
+      sourceBalances: {solBalance, tokenBalances},
     });
-  }, [canReview, recipient, amount, selectedMint, selectedToken.symbol, selectedToken.decimals, priorityLevel, onReview]);
+  }, [canReview, source, recipient, amount, selectedMint, selectedToken.symbol, selectedToken.decimals, priorityLevel, onReview, solBalance, tokenBalances]);
 
   const networkFeeDisplay = useMemo(() => {
     const feeSOL = formatTokenAmount(getTotalNetworkFee(priorityLevel), SOL_DECIMALS);
@@ -522,8 +533,8 @@ export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
                 <Text variant="body-sm" className="text-fg-secondary">
                   Available{' '}
                 </Text>
-                <Text variant="body-sm" numeral className="font-geist-semibold text-fg-primary">
-                  {formatTokenAmount(selectedBalance, selectedToken.decimals)} {selectedToken.symbol}
+                <Text variant="body-sm" numeral className="font-geist-semibold text-fg-primary" testID="send-available">
+                  {publicReady ? formatTokenAmount(selectedBalance, selectedToken.decimals) : VALUE_UNKNOWN} {selectedToken.symbol}
                 </Text>
               </View>
             </View>

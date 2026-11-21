@@ -8,7 +8,8 @@ import {Text, Button, Card} from '../../components/ui';
 import {formatAddress} from '../../utils/formatAddress';
 import {formatTokenAmount} from '../../utils/parseTokenAmount';
 import {addressBook} from '../../modules/addressBook/addressBookModule';
-import {useWalletStore} from '../../store/zustand/walletStore';
+import {accountWithAddress} from '../../copy/accounts';
+import {shortAccountAddress} from '../../modules/accounts/accountList';
 import {awaitUserAuth} from '../../modules/session/pendingAuth';
 import type {RootStackParamList} from '../../types/navigation';
 import type {TransferIntent} from '../../types/transfer';
@@ -45,7 +46,8 @@ interface TxConfirmScreenProps {
 }
 
 export function TxConfirmScreen({intent, onBroadcast, onCancel}: TxConfirmScreenProps) {
-  const {publicKey, solBalance, tokenBalances} = useWalletStore();
+  // M1d (plan A8): the high-value gate reads the SOURCE's balances, carried from #12
+  const {solBalance, tokenBalances} = intent.sourceBalances;
   const rootNav = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
   const [sending, setSending] = useState(false);
@@ -137,7 +139,11 @@ export function TxConfirmScreen({intent, onBroadcast, onCancel}: TxConfirmScreen
             label="Priority"
             value={`${formatTokenAmount(priorityLamports, SOL_DECIMALS)} SOL`}
           />
-          <DetailRow label="From" value={formatAddress(publicKey ?? '')} />
+          <DetailRow
+            label="From"
+            value={accountWithAddress(intent.from.label, shortAccountAddress(intent.from.address), intent.from.isMain)}
+            testID="tx-confirm-from"
+          />
           {/* To row rendered inline to use ChecksumAddress */}
           <View className="flex-row items-center justify-between">
             <Text variant="body-sm" className="text-fg-secondary">
@@ -226,13 +232,13 @@ export function TxConfirmScreen({intent, onBroadcast, onCancel}: TxConfirmScreen
 }
 
 // ── Private helpers ───────────────────────────────────────────────────────────
-function DetailRow({label, value}: {label: string; value: string}) {
+function DetailRow({label, value, testID}: {label: string; value: string; testID?: string}) {
   return (
     <View className="flex-row items-center justify-between">
       <Text variant="body-sm" className="text-fg-secondary">
         {label}
       </Text>
-      <Text variant="body-sm" className="text-fg-primary font-geist-medium">
+      <Text variant="body-sm" className="text-fg-primary font-geist-medium" testID={testID}>
         {value}
       </Text>
     </View>

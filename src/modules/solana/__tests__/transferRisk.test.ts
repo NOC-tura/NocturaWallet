@@ -10,6 +10,8 @@ const base: TransferIntent = {
   decimals: 9,
   priorityLevel: 'normal',
   createAta: false,
+  from: {scheme: 'slip10:0', address: 'GabcDEF123456789xxxxxxxxxxxxxxxxxxxxxxQMr9', label: 'Account 1', isMain: true}, // M1d: the intent carries its source (unused by isHighValueTransfer)
+  sourceBalances: {solBalance: '0', tokenBalances: {}}, // M1d: the source's balances travel too (the rows pass their own)
 };
 
 describe('isHighValueTransfer', () => {

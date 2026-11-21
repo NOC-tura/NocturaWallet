@@ -90,6 +90,8 @@ const intent = {
   decimals: 9,
   priorityLevel: 'normal' as const,
   createAta: false,
+  from: {scheme: 'slip10:0', address: 'So11111111111111111111111111111111111111112', label: 'Account 1', isMain: true}, // M1d: #21 signs from the intent's source (was loadTransparentScheme())
+  sourceBalances: {solBalance: '1000000000', tokenBalances: {}}, // M1d: part of the intent (unused by #21)
 };
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -231,5 +233,31 @@ describe('the chain the status names and links (S13)', () => {
     });
     fireEvent.press(getByTestId('tx-status-details'));
     expect(openURL).toHaveBeenCalledWith('https://solscan.io/tx/S');
+  });
+});
+
+describe('M1d — #21 signs from the intent\'s source (spec §3.3)', () => {
+  const A3 = '3YqEpfo3c818GhvbQ1UmVY1nJxw16vtu4JB9peJXT94k';
+  const render21 = (i: typeof intent) =>
+    render(withSafeArea(<TransactionStatusScreen intent={i} onDashboard={jest.fn()} onViewDetails={jest.fn()} />));
+
+  it('the scheme parsed from the intent and the expected signer = the source address', async () => {
+    mockSubmit.mockResolvedValueOnce({signature: 'S', lastValidBlockHeight: 1000});
+    render21({...intent, from: {scheme: 'slip10:3', address: A3, label: 'Account 4', isMain: false}});
+    await waitFor(() => expect(mockSubmit).toHaveBeenCalled());
+    expect(mockSubmit).toHaveBeenCalledWith(expect.objectContaining({scheme: {kind: 'slip10', account: 3}, expectedSigner: A3}));
+  });
+
+  it('Review Focus 2: the signer refusal is shown with its code (nothing was signed)', async () => {
+    mockSubmit.mockRejectedValueOnce(new Error(`E_SEND_SIGNER_MISMATCH: this account's key does not derive ${A3}; nothing was signed.`));
+    const r = render21({...intent, from: {scheme: 'slip10:3', address: A3, label: 'Account 4', isMain: false}});
+    await waitFor(() => expect(r.getByText(/E_SEND_SIGNER_MISMATCH/)).toBeTruthy());
+    expect(r.getByText('Transaction failed')).toBeTruthy();
+  });
+
+  it('plan A16: a scheme that does not parse strictly → E_SEND_SCHEME, the keychain never asked', async () => {
+    const r = render21({...intent, from: {scheme: 'slip10:01', address: A3, label: 'Account 2', isMain: false}});
+    await waitFor(() => expect(r.getByText(/E_SEND_SCHEME/)).toBeTruthy());
+    expect(mockSubmit).not.toHaveBeenCalled();
   });
 });

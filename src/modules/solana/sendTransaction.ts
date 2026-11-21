@@ -1,4 +1,5 @@
 import {Keypair, PublicKey, TransactionMessage, VersionedTransaction} from '@solana/web3.js';
+import {base58} from '@scure/base';
 import {getConnection} from './connection';
 import {
   buildTransferInstructions,
@@ -21,6 +22,8 @@ export type SendTransparentParams =
       lamports: bigint;
       priorityFee: number;
       scheme: TransparentScheme;
+      /** M1d (spec §3.3): the account's address — the key derived from `scheme` must be it, or nothing is signed */
+      expectedSigner: string;
     }
   | {
       kind: 'spl';
@@ -31,13 +34,23 @@ export type SendTransparentParams =
       createAta: boolean;
       priorityFee: number;
       scheme: TransparentScheme;
+      /** M1d (spec §3.3): the account's address — the key derived from `scheme` must be it, or nothing is signed */
+      expectedSigner: string;
     };
 
 const keychainManager = new KeychainManager();
 
+/** M1d (spec §3.3, plan A16): the derived key is not the account's — refused before any key object, build or signature. */
+export class SendSignerMismatchError extends Error {
+  readonly code = 'E_SEND_SIGNER_MISMATCH' as const;
+  constructor(expected: string) {
+    super(`E_SEND_SIGNER_MISMATCH: this account's key does not derive ${expected}; nothing was signed.`);
+    this.name = 'SendSignerMismatchError';
+  }
+}
+
 /**
- * Retrieve the seed (biometric / passcode gated), derive the signer with the
- * given scheme, build the transfer instructions, sign, and broadcast via sendRawTransaction.
+ * Retrieve the seed (biometric / passcode gated), derive the signer with the given scheme, refuse unless it is `expectedSigner` (M1d), build the transfer instructions, sign, and broadcast via sendRawTransaction.
  *
  * Returns the signature without waiting for confirmation. The 64-byte secret key
  * is zeroized in a finally block so it never outlives the broadcast.
@@ -47,10 +60,17 @@ export async function submitTransparentTransfer(
 ): Promise<{signature: string; lastValidBlockHeight: number}> {
   const mnemonic = await keychainManager.retrieveSeed();
   const seed = await mnemonicToSeed(mnemonic);
-  const {secretKey} = deriveTransparentKeypair(seed, params.scheme);
-  zeroize(seed);
+  let secretKey: Uint8Array | null = null;
   try {
-    const signer = Keypair.fromSecretKey(secretKey);
+    // review r1 m8: derived inside the try, so a throwing derivation still zero-fills the seed below
+    const derived = deriveTransparentKeypair(seed, params.scheme);
+    secretKey = derived.secretKey;
+    zeroize(seed);
+    // M1d (spec §3.3): the key must derive the account's own address before anything is built or signed
+    if (base58.encode(derived.publicKey) !== params.expectedSigner) {
+      throw new SendSignerMismatchError(params.expectedSigner);
+    }
+    const signer = Keypair.fromSecretKey(derived.secretKey);
     const sender = signer.publicKey;
     const priorityFee = params.priorityFee > 0 ? params.priorityFee : undefined;
     // SOL transfer = 2 SystemProgram.transfer (recipient + Noctura fee markup)
@@ -108,6 +128,7 @@ export async function submitTransparentTransfer(
     });
     return {signature, lastValidBlockHeight};
   } finally {
+    zeroize(seed);
     zeroize(secretKey);
   }
 }
