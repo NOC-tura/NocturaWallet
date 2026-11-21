@@ -132,8 +132,10 @@ jest.mock('../../../modules/prices/portfolio', () => ({
 }));
 
 // ── Constants ────────────────────────────────────────────────────────────────
+// M1d (plan A9): switchable — the combined line exists only in a build with private balances
+const mockFeatures = {shielded: true};
 jest.mock('../../../constants/features', () => ({
-  isShieldedEnabled: () => true,
+  isShieldedEnabled: () => mockFeatures.shielded,
 }));
 
 // ── Components ───────────────────────────────────────────────────────────────
@@ -186,6 +188,7 @@ beforeEach(() => {
   mockSelected.current = MAIN_ACCOUNT; // M1d: the main account selected unless a row says otherwise
   mockPublic.current = READY_MAIN; // M1d: the same values the walletStore mock holds
   mockPublicArgs.length = 0;
+  mockFeatures.shielded = true; // M1d: the shielded build unless a row says otherwise
 });
 
 describe('DashboardScreen — transparent mode', () => {
@@ -527,5 +530,40 @@ describe('M1d — Public mode follows the selected account (spec §3.4, D1/D2)',
   it('the account list is re-read on focus (an exit that landed appears)', async () => {
     await renderDashboard();
     expect(mockRefreshAccounts).toHaveBeenCalled();
+  });
+});
+
+describe('M1d — the combined line under the toggle (spec §4.5, D2–D4)', () => {
+  // the mocks: public 1 SOL (priced $150) + 2 NOC (unpriced here) → token form; private 0 TEST
+  it('Public mode: "Public 2 NOC, 1 SOL · Private 0 TEST"; the big figure below is unchanged', async () => {
+    const r = await renderDashboard();
+    expect(r.getByTestId('dashboard-combined-line')).toHaveTextContent('Public 2 NOC, 1 SOL · Private 0 TEST');
+    expect(r.getByTestId('dashboard-public-balance')).toHaveTextContent('$150.00');
+  });
+
+  it('Private mode: the same line (both modes, D3)', async () => {
+    mockMode.current = 'shielded';
+    mockView.current = {kind: 'ready', unspent: 1_003_800_000n, pending: 0n, notes: 1};
+    const r = await renderDashboard();
+    expect(r.getByTestId('dashboard-combined-line')).toHaveTextContent('Public 2 NOC, 1 SOL · Private 1.0038 TEST');
+  });
+
+  it('Review Focus 4: the selected account not loaded → "Public — · …"; the private restore not ready → "… · Private —"', async () => {
+    mockSelected.current = EXIT_ACCOUNT;
+    mockPublic.current = {status: 'loading'};
+    expect((await renderDashboard()).getByTestId('dashboard-combined-line')).toHaveTextContent('Public — · Private 0 TEST');
+    mockPublic.current = READY_MAIN;
+    mockView.current = {kind: 'running'};
+    expect((await renderDashboard()).getByTestId('dashboard-combined-line')).toHaveTextContent('Public 2 NOC, 1 SOL · Private —');
+  });
+
+  it('hidden balances → "Public ••• · Private •••"', async () => {
+    mockHide.current = true;
+    expect((await renderDashboard()).getByTestId('dashboard-combined-line')).toHaveTextContent('Public ••• · Private •••');
+  });
+
+  it('plan A9: a build without private balances shows no line', async () => {
+    mockFeatures.shielded = false;
+    expect((await renderDashboard()).queryByTestId('dashboard-combined-line')).toBeNull();
   });
 });

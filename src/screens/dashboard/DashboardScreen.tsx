@@ -40,6 +40,7 @@ import {forceSync} from '../../modules/backgroundSync/backgroundSyncModule';
 import {TokenManager} from '../../modules/tokens/tokenModule';
 import {NOC_MINT} from '../../constants/programs';
 import {isShieldedEnabled} from '../../constants/features';
+import {combinedValueLine, privateSide, publicSide} from '../../modules/accounts/valueLine';
 import {CHAIN} from '../../constants/chain';
 import {formatBalanceForDisplay} from '../../utils/parseTokenAmount';
 import {mmkvPublic} from '../../store/mmkv/instances';
@@ -345,6 +346,12 @@ export function DashboardScreen({
     return () => { alive = false; };
   }, []));
 
+  // M1d (spec §4.5, D2–D4, plan A9): "Public X · Private Y" — the selected account's public value and
+  // the wallet's private balance, never summed, "—" for an unknown side; only where private balances exist
+  const combined = isShieldedEnabled()
+    ? combinedValueLine(publicSide(publicData), privateSide(a0View), havePrices ? prices : null, hideBalances)
+    : null;
+
   const isShielded = mode === 'shielded';
   const usd = formatUsd(portfolio.totalUsd);
   const change24h = publicReady ? portfolio.change24hPct : null; // number | null (transparent only); M1d: none before the data is known
@@ -393,6 +400,7 @@ export function DashboardScreen({
             change24hPct={change24h}
             havePrices={havePrices}
             publicReady={publicReady}
+            combined={combined}
             anonymitySet={anon}
             shieldedView={a0View}
           />
@@ -476,6 +484,8 @@ interface DashboardHeaderProps {
   havePrices: boolean;
   /** M1d (Review Focus 4): the selected account's public data is known — every public figure waits for it */
   publicReady: boolean;
+  /** M1d (spec §4.5): the combined line, or null where the build has no private balances */
+  combined: string | null;
   /** Live on-chain anonymity set leaf count; null while loading or on RPC error. */
   anonymitySet: number | null;
   /** The A0 shielded balance view (shielded mode's hero). */
@@ -504,6 +514,7 @@ function DashboardHeader({
   change24hPct,
   havePrices,
   publicReady,
+  combined,
   anonymitySet,
   shieldedView,
 }: DashboardHeaderProps) {
@@ -576,6 +587,15 @@ function DashboardHeader({
           />
         </View>
       </View>
+
+      {/* M1d (spec §4.5, D3): one thin line directly under the toggle, in both modes; the big figure below is unchanged */}
+      {combined !== null ? (
+        <View className="px-5 -mt-2 mb-3">
+          <Text variant="body-sm" numeral className="text-fg-secondary text-center" testID="dashboard-combined-line">
+            {combined}
+          </Text>
+        </View>
+      ) : null}
 
       {/* Balance hero card */}
       <View className="px-5 mb-4">
