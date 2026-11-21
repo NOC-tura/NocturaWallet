@@ -65,12 +65,9 @@ export const SUMMARY = 'Summary';
 
 /**
  * The private balance after a run (owner phone pass 2, items 1 and 6): the TOTAL as the dashboard
- * reads it (`a0PrivateBalanceNow`), never arithmetic. Said only when that total is known.
+ * reads it (`a0PrivateBalanceNow`), never arithmetic. Said only when that total is known. ONE
+ * sentence for Now private and Now public, directly under the title (fix round 1, I-1).
  */
-export function privateBalanceNow(total: string, sym: string): string {
-  return `Private balance now ${total} ${sym}`;
-}
-
 export function yourPrivateBalanceIsNow(total: string, sym: string): string {
   return `Your private balance is now ${total} ${sym}.`;
 }

@@ -225,10 +225,11 @@ describe('#16 unshield — the design (states 2 and 5) and the A0 lines', () => 
     expect(text(r, 'unshield-destination-public')).toBe('The destination address is public on chain.');
     expect(r.queryByText('Privacy decreases on public withdraw')).toBeNull();
     expect(r.getByText('Relayer fee')).toBeTruthy();
-    expect(r.queryByText('ZK proof fee')).toBeNull(); // decision B-3: behind Details
+    expect(r.queryByText('Proof fee')).toBeNull(); // decision B-3: behind Details (phone pass 2 fix round 1, M-1: was "ZK proof fee")
     expect(r.queryByTestId('unshield-one-note')).toBeNull();
     fireEvent.press(r.getByTestId('unshield-details-toggle'));
-    expect(r.getByText('ZK proof fee')).toBeTruthy();
+    expect(r.getByText('Proof fee')).toBeTruthy();
+    expect(r.queryByText(/ZK proof fee/)).toBeNull();
     expect(r.getByText('Network fee')).toBeTruthy();
     expect(text(r, 'unshield-one-note')).toBe(
       'You can make up to 1.99999 TEST public from one note at a time; combining notes comes in a later version.',

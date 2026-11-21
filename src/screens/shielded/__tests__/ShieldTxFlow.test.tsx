@@ -100,6 +100,7 @@ describe('#19 ShieldSimulate', () => {
     expect(r.getByText('Your main account signs it. Its amount and time are visible on chain.')).toBeTruthy();
     expect(r.getByText('Only known programs')).toBeTruthy();
     expect(r.getByText('Noctura and Solana programs only')).toBeTruthy();
+    expect(r.getByText('Noctura and Solana programs only').props.className ?? '').not.toContain('font-geist-mono'); // plain words, plain face (M-3 control)
     expect(r.getByText('No one gets access to your tokens')).toBeTruthy();
     expect(r.getByText('No approval or authority change')).toBeTruthy();
     expect(r.getAllByText('PASS')).toHaveLength(2); // every check still shows its badge
@@ -135,6 +136,8 @@ describe('#19 ShieldSimulate', () => {
     const r = render(<ShieldSimulateScreen intent={intentFor(id)} onContinue={jest.fn()} onCancel={jest.fn()} />);
     await waitFor(() => expect(r.getByText('Interacts with an unknown contract')).toBeTruthy());
     expect(r.getByText('unrecognised program: Evi1Program1111111111111111111111111111111')).toBeTruthy();
+    // fix round 1 (M-3): a failing row's technical line keeps the mono face (a program id reads by its shape)
+    expect(r.getByText('unrecognised program: Evi1Program1111111111111111111111111111111').props.className).toContain('font-geist-mono');
     expect(r.getByText('Grants authority over your tokens')).toBeTruthy();
     expect(r.getByText('Approve — this is not part of a transfer')).toBeTruthy();
     expect(r.getAllByText('FAIL')).toHaveLength(2);
@@ -148,6 +151,9 @@ describe('#19 ShieldSimulate', () => {
     await waitFor(() => expect(r2.getByText("Couldn't inspect the transaction")).toBeTruthy());
     expect(r2.getByText('no instructions to check — do not read this as a pass')).toBeTruthy();
     expect(r2.getByText('CHECK')).toBeTruthy();
+    // fix round 1 (M-2): no compute units and no passing row → no "Details ▾" that opens to nothing
+    expect(r2.queryByTestId('shield-sim-details')).toBeNull();
+    expect(r2.queryByTestId('shield-sim-details-toggle')).toBeNull();
   });
 
   it('owner phone pass 2, 2026-11-21, item 4: only a PASSING row is plain-worded — the same title with warn / danger keeps its own words and its meta, nothing for Details', () => {
@@ -291,9 +297,7 @@ describe('#21 ShieldStatus', () => {
     await act(async () => ctl.stage('signing'));
     expect(sub(r)).toBe('Signing with your main account.');
     await act(async () => ctl.stage('recorded', SIG));
-    fireEvent.press(r.getByTestId('shield-status-meta-details-toggle')); // item 6: the hash lives in Details
-    expect(r.getByText('5kAj9N…b81e')).toBeTruthy(); // the signature from `recorded` on
-    fireEvent.press(r.getByTestId('shield-status-meta-details-toggle')); // collapse it again
+    expect(r.getByText('5kAj9N…b81e')).toBeTruthy(); // the signature from `recorded` on (fix round 1, M-6: outside Details until confirmed)
     await act(async () => ctl.stage('confirming', SIG));
     expect(r.queryByTestId('shield-status-public')).toBeNull(); // running: not landed yet
     expect(sub(r)).toBe('Submitted to Solana devnet · waiting for confirmation.');
@@ -347,7 +351,44 @@ describe('#21 ShieldStatus', () => {
     expect(mockBalance).not.toHaveBeenCalled();
   });
 
-  it('View details opens the deposit on the devnet explorer (?cluster=devnet — S13)', async () => {
+  it('fix round 1 (M-6): pending → TX HASH (with its copy) visible OUTSIDE Details, as before; no Details at all', async () => {
+    const id = holdPreparedA0Deposit(PREPARED);
+    const ctl = controlledSubmit();
+    const r = render(<ShieldStatusScreen intent={intentFor(id)} onDone={jest.fn()} />);
+    await waitFor(() => expect(mockSubmit).toHaveBeenCalledTimes(1));
+    await act(async () => ctl.stage('recorded', SIG));
+    expect(r.getByText('5kAj9N…b81e')).toBeTruthy(); // running: visible, as before
+    expect(r.queryByTestId('shield-status-meta-details-toggle')).toBeNull();
+    await act(async () => ctl.resolve({status: 'pending', signature: SIG, reason: 'not-confirmed'}));
+    expect(title(r)).toBe('Not confirmed yet');
+    expect(r.getByText('5kAj9N…b81e')).toBeTruthy();
+    expect(r.getByLabelText('Copy Tx hash')).toBeTruthy();
+    expect(r.queryByTestId('shield-status-meta-details-toggle')).toBeNull();
+  });
+
+  it('fix round 1 (M-6): a throw after the pending write ("Not confirmed yet") and dropped ("Not made private") → TX HASH visible outside Details', async () => {
+    const id = holdPreparedA0Deposit(PREPARED);
+    const ctl = controlledSubmit();
+    const r = render(<ShieldStatusScreen intent={intentFor(id)} onDone={jest.fn()} />);
+    await waitFor(() => expect(mockSubmit).toHaveBeenCalledTimes(1));
+    await act(async () => ctl.stage('recorded', SIG));
+    await act(async () => ctl.reject(Object.assign(new Error('E_A0_STORE_LOCKED: x'), {code: 'E_A0_STORE_LOCKED'})));
+    expect(title(r)).toBe('Not confirmed yet');
+    expect(r.getByText('5kAj9N…b81e')).toBeTruthy();
+    expect(r.getByLabelText('Copy Tx hash')).toBeTruthy();
+    expect(r.queryByTestId('shield-status-meta-details-toggle')).toBeNull();
+
+    const id2 = holdPreparedA0Deposit(PREPARED);
+    const ctl2 = controlledSubmit();
+    const r2 = render(<ShieldStatusScreen intent={intentFor(id2)} onDone={jest.fn()} />);
+    await waitFor(() => expect(mockSubmit).toHaveBeenCalledTimes(2));
+    await act(async () => ctl2.resolve({status: 'dropped', signature: SIG, reason: 'foreign', foreignSignature: 'F'.repeat(64)}));
+    expect(title(r2)).toBe('Not made private');
+    expect(r2.getByText('5kAj9N…b81e')).toBeTruthy();
+    expect(r2.queryByTestId('shield-status-meta-details-toggle')).toBeNull();
+  });
+
+  it('View on explorer opens the deposit on the devnet explorer (?cluster=devnet — S13)', async () => {
     const open = jest.spyOn(Linking, 'openURL').mockImplementation(() => Promise.resolve());
     const id = holdPreparedA0Deposit(PREPARED);
     const ctl = controlledSubmit();

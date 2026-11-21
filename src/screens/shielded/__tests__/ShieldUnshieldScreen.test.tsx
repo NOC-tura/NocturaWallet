@@ -75,7 +75,9 @@ describe('#16 shield side — the design', () => {
     expect(r.queryByText('Network fee')).toBeNull(); // decision B-3: behind Details
     fireEvent.press(r.getByTestId('shield-details-toggle'));
     expect(r.getByText('Network fee')).toBeTruthy();
-    expect(r.getByText('ZK proof fee')).toBeTruthy();
+    // phone pass 2 fix round 1 (M-1): one name in the whole flow — "Proof fee", as #19 / #20
+    expect(r.getByText('Proof fee')).toBeTruthy();
+    expect(r.queryByText(/ZK proof fee/)).toBeNull();
     expect(r.getByText('Deposit record rent')).toBeTruthy();
     expect(ctaDisabled(r)).toBe(true);
     expect(r.getByText('Make TEST private')).toBeTruthy(); // part B: "Shield TEST" → "Make TEST private"

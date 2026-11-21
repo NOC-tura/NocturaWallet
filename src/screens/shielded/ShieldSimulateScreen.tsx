@@ -228,16 +228,7 @@ export function ShieldSimulateScreen({intent, onContinue, onCancel}: ShieldSimul
               {sim.checks.map(depositCheckView).map((c, i) => (
                 <CheckRow key={i} check={c} />
               ))}
-              <DetailsDisclosure testID="shield-sim-details">
-                {sim.units !== null ? <DetailRow label={DETAIL_COMPUTE_UNITS} value={`${sim.units.toLocaleString('en-US')} CU`} /> : null}
-                {sim.checks
-                  .map(depositCheckView)
-                  .map(c => c.detail)
-                  .filter((d): d is {label: string; value: string} => d !== null)
-                  .map(d => (
-                    <DetailRow key={d.label} label={d.label} value={d.value} />
-                  ))}
-              </DetailsDisclosure>
+              <SimDetails units={sim.units} checks={sim.checks} />
             </Card>
             <Card padding="p-4">
               <Text variant="overline" className="mb-3">
@@ -352,7 +343,8 @@ function CheckRow({check}: {check: ShownCheck}) {
         <Text variant="body-sm" className="text-fg-primary">
           {check.title}
         </Text>
-        <Text variant="caption" className="text-fg-tertiary">
+        {/* a row shown as it is keeps the mono face of its technical line (fix round 1, M-3) */}
+        <Text variant="caption" mono={check.detail === null} className="text-fg-tertiary">
           {check.body}
         </Text>
       </View>
@@ -360,6 +352,22 @@ function CheckRow({check}: {check: ShownCheck}) {
         {badge}
       </Text>
     </View>
+  );
+}
+
+/** #19's Details: the compute units and the passing rows' technical lines — none at all when there is no row (fix round 1, M-2). */
+function SimDetails({units, checks}: {units: number | null; checks: TransferCheck[]}) {
+  const rows: {label: string; value: string}[] = [
+    ...(units !== null ? [{label: DETAIL_COMPUTE_UNITS, value: `${units.toLocaleString('en-US')} CU`}] : []),
+    ...checks.map(depositCheckView).flatMap(c => (c.detail ? [c.detail] : [])),
+  ];
+  if (rows.length === 0) return null;
+  return (
+    <DetailsDisclosure testID="shield-sim-details">
+      {rows.map(d => (
+        <DetailRow key={d.label} label={d.label} value={d.value} />
+      ))}
+    </DetailsDisclosure>
   );
 }
 

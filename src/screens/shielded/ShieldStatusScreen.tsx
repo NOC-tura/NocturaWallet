@@ -61,7 +61,8 @@ import {MAKE_PRIVATE, MAKING_PRIVATE, NOW_PRIVATE, PRIVATE_MARK, VIEW_ON_EXPLORE
  * sentence "Your private balance is now {total} {sym}." where {total} is the dashboard's own source
  * (`a0PrivateBalanceNow`, read once the deposit landed) — omitted when that total is not known; the
  * card keeps the amount and "Your deposit is public on chain."; the tx hash (with its copy), the
- * position and the fees sit behind "Details ▾", collapsed; the button says "View on explorer"
+ * position and the fees sit behind "Details ▾", collapsed — on the confirmed result only: while
+ * running and on every other outcome the tx hash stays visible as before (fix round 1, M-6); the button says "View on explorer"
  * (the same explorer link as before).
  *
  * Back is locked while the send runs (screen.md #21 "Predictive-back LOCKED"): leaving would not stop
@@ -157,6 +158,8 @@ export function ShieldStatusScreen({intent, onDone}: ShieldStatusScreenProps) {
       : base;
   const shortSig = signature ? shortSignature(signature) : signature;
 
+  const feesText = `${formatTokenAmount(A0_DEPOSIT_FEE_LAMPORTS, SOL_DECIMALS)} SOL + ≈ ${formatTokenAmount(A0_RHO_MARKER_RENT_LAMPORTS, SOL_DECIMALS)} SOL rent`;
+
   const copySig = () => {
     if (!signature) return;
     try {
@@ -222,16 +225,20 @@ export function ShieldStatusScreen({intent, onDone}: ShieldStatusScreenProps) {
 
         {signature ? (
           <View className="w-full bg-bg-surface-1 rounded-lg px-5 mt-3">
-            <DetailsDisclosure testID="shield-status-meta-details">
-              <MetaRow label="Tx hash" value={shortSig ?? ''} onCopy={copySig} />
-              {phase.kind === 'done' && phase.outcome.status === 'unspent' ? (
+            {/* fix round 1 (M-6): only the confirmed result puts these behind Details; while running and
+                for every other outcome the tx hash (and its copy) stays visible, as before */}
+            {phase.kind === 'done' && phase.outcome.status === 'unspent' ? (
+              <DetailsDisclosure testID="shield-status-meta-details">
+                <MetaRow label="Tx hash" value={shortSig ?? ''} onCopy={copySig} />
                 <MetaRow label="Position" value={`#${phase.outcome.leafIndex} in the pool`} />
-              ) : null}
-              <MetaRow
-                label="Fees"
-                value={`${formatTokenAmount(A0_DEPOSIT_FEE_LAMPORTS, SOL_DECIMALS)} SOL + ≈ ${formatTokenAmount(A0_RHO_MARKER_RENT_LAMPORTS, SOL_DECIMALS)} SOL rent`}
-              />
-            </DetailsDisclosure>
+                <MetaRow label="Fees" value={feesText} />
+              </DetailsDisclosure>
+            ) : (
+              <>
+                <MetaRow label="Tx hash" value={shortSig ?? ''} onCopy={copySig} />
+                <MetaRow label="Fees" value={feesText} />
+              </>
+            )}
           </View>
         ) : null}
       </ScrollView>

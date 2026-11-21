@@ -24,6 +24,8 @@ import {
   WHAT_STAYS_PUBLIC,
   DESTINATION_IS_PUBLIC,
   FEE_IS_HIGH,
+  PROOF_FEE,
+  PROOF_FEE_NONE,
   SUMMARY,
   makePublicCta,
   makePublicCtaIdle,
@@ -55,7 +57,7 @@ import {
  * is not offered (S9 cli, S11 no grant, an unreadable key scheme) NOTHING is preselected, as M1c
  * ruled ("To: Choose a destination" and the one-line reason; owner decision 2026-11-20, plan A1).
  * §11's warnings for the chosen destination show under the row, never behind Change or Details.
- * The network fee, the ZK proof fee and the one-note explanation sit behind "Details ▾"
+ * The network fee, the proof fee and the one-note explanation sit behind "Details ▾"
  * (decision B-3); `AmountLimitHint` replaces the max line (decision B-4).
  *
  * WHAT IT DECIDES: nothing about the unshield itself. The quote fetched here only feeds the
@@ -434,7 +436,7 @@ export function UnshieldSide({view, shieldedLine, onUnshield, focusKey = 0}: Uns
           <DetailsDisclosure testID="unshield-details">
             <View className="h-px bg-bg-surface-3 my-3" />
             <FeeRow label="Network fee" value={hasAmount ? 'Paid by the relayer' : '—'} />
-            <FeeRow label="ZK proof fee" value={hasAmount ? 'None · made on this device' : '—'} zk />
+            <FeeRow label={PROOF_FEE} value={hasAmount ? PROOF_FEE_NONE : '—'} zk />
             {source !== null ? (
               <Text variant="caption" className="text-fg-tertiary mt-1" testID="unshield-one-note">
                 {a0OneNoteLimit(max, A0_TOKEN.decimals, sym)}

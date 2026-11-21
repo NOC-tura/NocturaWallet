@@ -26,7 +26,7 @@ import {CheckAgainLink} from '../../../components/CheckAgainLink';
 import {A0_OWN_ACCOUNT_REFUSAL_COPY, a0RefusalLoudText, a0UnshieldRefusalSentence} from './unshieldCopy';
 import {MetaRow, ProofHeroRing, StageRow, StatusRing, shortSignature} from '../shieldedParts';
 import {DetailsDisclosure} from '../../../components/private';
-import {LEFT_IN_THIS_NOTE, MAKE_PUBLIC, MAKING_PUBLIC, NOW_PUBLIC, PRIVATE_MARK, privateBalanceNow} from '../../../copy/modes';
+import {LEFT_IN_THIS_NOTE, MAKE_PUBLIC, MAKING_PUBLIC, NOW_PUBLIC, PRIVATE_MARK, yourPrivateBalanceIsNow} from '../../../copy/modes';
 import type {StageRowStatus, StatusTone} from '../shieldedParts';
 
 /**
@@ -87,7 +87,9 @@ import type {StageRowStatus, StatusTone} from '../shieldedParts';
  * part B (spec 2026-11-20 §4): the header "PRIVATE · Make public"; the tx hash and the change position
  * behind "Details ▾"; the stage labels in plain words (plan A7).
  * Owner phone pass 2, 2026-11-21: "Now public" says the wallet's private balance AFTER the exit
- * ("Private balance now {total} {sym}", item 1) from the dashboard's own source
+ * ("Your private balance is now {total} {sym}.", item 1 — the deposit's sentence, directly under
+ * the title; after a "Check again" settle, on its own line under the settled text: fix round 1,
+ * I-1) from the dashboard's own source
  * (`a0PrivateBalanceNow`, read when the outcome is spent, or when "Check again" settled this note)
  * — never the spent note's change, which only shows in Details ("Left in this note"); no sentence
  * when the total is not known. The sub-line "The destination received …" is gone (item 7): the card
@@ -384,12 +386,13 @@ export function UnshieldRunScreen({request, onDone, onBack}: UnshieldRunScreenPr
   // N-3: a landed-unverified first outcome keeps its loud line after the decision
   const firstLoud = phase.kind === 'done' && phase.outcome.status === 'landed-unverified' ? a0RefusalLoudText(phase.outcome.code) : null;
   const shown = decided ? decidedView(decided, amountText, firstLoud) : statusView(phase, start.current, now);
-  // item 1: "Now public" (spent, or settled by "Check again") says the balance after it, when known
+  // item 1 + fix round 1 (I-1): "Now public" (spent, or settled by "Check again") says the balance
+  // after it, when known — as the sub when there is none (spent), else on its own line under it
   const landed = (phase.kind === 'done' && phase.outcome.status === 'spent' && !decided) || decided?.kind === 'settled';
-  const view =
-    landed && balanceAfter !== null
-      ? {...shown, lines: [...shown.lines, {id: 'balance', text: privateBalanceNow(displayAmount(balanceAfter, A0_TOKEN.decimals), sym)}]}
-      : shown;
+  const balanceSentence =
+    landed && balanceAfter !== null ? yourPrivateBalanceIsNow(displayAmount(balanceAfter, A0_TOKEN.decimals), sym) : null;
+  const view = shown.sub === '' && balanceSentence !== null ? {...shown, sub: balanceSentence} : shown;
+  const balanceLine = shown.sub !== '' ? balanceSentence : null;
   const pending = undecided && decided === null;
   // the caption: this note's decision; while it is undecided, a done check says "still not confirmed"
   // whatever it decided about other notes; an error / busy check says its own text
@@ -458,6 +461,11 @@ export function UnshieldRunScreen({request, onDone, onBack}: UnshieldRunScreenPr
           {view.sub ? (
             <Text variant="body-sm" className="text-center text-fg-secondary max-w-[320px]" testID="unshield-status-sub">
               {view.sub}
+            </Text>
+          ) : null}
+          {balanceLine ? (
+            <Text variant="body-sm" className="text-center text-fg-secondary max-w-[320px] -mt-3" testID="unshield-status-balance">
+              {balanceLine}
             </Text>
           ) : null}
         </View>

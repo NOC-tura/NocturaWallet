@@ -77,7 +77,8 @@ describe('src/copy/modes.ts — the §2 table', () => {
     );
     expect(modes.SUMMARY).toBe('Summary'); // item 3: the overline renders "SUMMARY"
     // item 1 / item 6: the balance after the run, same sentence forms the owner named
-    expect(modes.privateBalanceNow('1.00374', 'TEST')).toBe('Private balance now 1.00374 TEST');
+    // fix round 1 (I-1): ONE sentence for both results — the card-line form is gone
+    expect('privateBalanceNow' in modes).toBe(false);
     expect(modes.yourPrivateBalanceIsNow('1.00374', 'TEST')).toBe('Your private balance is now 1.00374 TEST.');
     expect(modes.LEFT_IN_THIS_NOTE).toBe('Left in this note'); // item 1: the change, in Details
     // item 4 / 5: #19 / #20 for a deposit

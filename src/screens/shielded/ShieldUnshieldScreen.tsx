@@ -26,6 +26,8 @@ import {
   DEPOSIT_PUBLIC_SENTENCE,
   MAKE_PRIVATE,
   MAKE_PUBLIC,
+  PROOF_FEE,
+  PROOF_FEE_NONE,
   PUBLIC_BALANCE,
   SUMMARY,
   makePrivateCta,
@@ -280,7 +282,7 @@ export function ShieldUnshieldScreen({onBack, onShield, onUnshield, initialDirec
                   label="Network fee"
                   value={hasAmount ? `${formatTokenAmount(A0_DEPOSIT_FEE_LAMPORTS, SOL_DECIMALS)} SOL` : '—'}
                 />
-                <FeeRow label="ZK proof fee" value={hasAmount ? 'None · made on this device' : '—'} zk />
+                <FeeRow label={PROOF_FEE} value={hasAmount ? PROOF_FEE_NONE : '—'} zk />
                 <FeeRow
                   label="Deposit record rent"
                   value={hasAmount ? `≈ ${formatTokenAmount(A0_RHO_MARKER_RENT_LAMPORTS, SOL_DECIMALS)} SOL` : '—'}
