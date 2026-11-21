@@ -12,6 +12,7 @@ import React from 'react';
 import {render, fireEvent, act, waitFor} from '@testing-library/react-native';
 import {StyleSheet} from 'react-native';
 import {ShieldUnshieldScreen} from '../../ShieldUnshieldScreen';
+import {A0} from '../../../../modules/shielded/a0/constants';
 import type {A0ShieldedView} from '../../../../hooks/useA0Shielded';
 import type {A0RelayerQuote} from '../../../../modules/shielded/a0/relayerClient';
 import type {A0Note} from '../../../../modules/shielded/a0/noteStore';
@@ -36,9 +37,11 @@ const OTHER = web3.Keypair.fromSeed(new Uint8Array(32).fill(2)).publicKey.toBase
 const OFF_CURVE = web3.PublicKey.findProgramAddressSync([Buffer.from('off-curve')], web3.SystemProgram.programId)[0].toBase58();
 
 jest.mock('../../../../store/zustand/walletStore', () => ({
-  useWalletStore: () => ({tokenBalances: {}, solBalance: '1000000000', publicKey: mockMain}),
+  useWalletStore: () => ({tokenBalances: mockTokenBalances, solBalance: '1000000000', publicKey: mockMain}),
 }));
 let mockMain: string | null = null;
+/** the main account's token balances — only the MAX-colour row (owner phone pass 2026-11-21) sets them */
+let mockTokenBalances: Record<string, string> = {};
 
 jest.mock('../../../../modules/shielded/a0/poolSize', () => ({
   readA0PoolNoteCount: () => Promise.resolve({status: 'ok', count: 3}),
@@ -100,6 +103,7 @@ beforeEach(() => {
   mockView = {kind: 'ready', unspent: 2_500_000_000n, pending: 0n, notes: 2};
   mockNotes = [note(2_000_000_000n, 4), note(500_000_000n, 7)]; // 2 TEST + 0.5 TEST
   mockMain = MAIN;
+  mockTokenBalances = {};
   mockScheme = {kind: 'slip10', account: 0};
   mockQuote.mockReset().mockResolvedValue(quote());
   onUnshield.mockReset();
@@ -131,30 +135,65 @@ const pick = (r: R, which: 'fresh' | 'main' | 'external') => {
 };
 const summary = (r: R) => text(r, 'unshield-dest-summary');
 
-describe('#16 — the direction tabs (spec §12: the unshield side is no longer hidden)', () => {
-  it('both tabs; "Make public" flips to the unshield side, "Make private" back to the shield side — no route; the relayer is asked only once the unshield side opens', async () => {
+describe('#16 — two screens, no tabs (owner phone pass 2026-11-21)', () => {
+  it('no direction opens Make private: no tab, no "Make public" control, and the relayer is never asked', async () => {
     const r = render(<ShieldUnshieldScreen onBack={jest.fn()} onShield={jest.fn()} onUnshield={onUnshield} />);
     await act(async () => {});
     expect(mockQuote).not.toHaveBeenCalled(); // the shield side makes no relayer request
-    expect(r.getByText('Make private')).toBeTruthy();
-    expect(r.getByText('Make public')).toBeTruthy();
-    expect(r.getByText('Private ⇄ Public')).toBeTruthy(); // part B
+    expect(r.getByTestId('shield-unshield-title').props.children).toBe('Make private');
+    expect(r.queryAllByRole('tab')).toHaveLength(0);
+    expect(r.queryByLabelText('Make public')).toBeNull();
     expect(r.getByTestId('shield-cta')).toBeTruthy();
     expect(r.queryByTestId('unshield-cta')).toBeNull();
-    fireEvent.press(r.getByLabelText('Make public'));
-    await act(async () => {});
-    expect(mockQuote).toHaveBeenCalledTimes(1);
-    expect(r.getByTestId('unshield-cta')).toBeTruthy();
-    expect(r.queryByTestId('shield-cta')).toBeNull();
-    fireEvent.press(r.getByLabelText('Make private'));
-    expect(r.getByTestId('shield-cta')).toBeTruthy();
   });
 
-  it('initialDirection "public" opens the unshield side; the quote is asked once, on the devnet Connection', async () => {
+  it('initialDirection "public" opens Make public: the title is the action, a header; no tab, no "Make private" control; the quote is asked once, on the devnet Connection', async () => {
     const r = await screen();
-    expect(r.getByLabelText('Make public').props.accessibilityState?.selected).toBe(true);
+    const title = r.getByTestId('shield-unshield-title');
+    expect(title.props.children).toBe('Make public');
+    expect(title.props.accessibilityRole).toBe('header');
+    expect(r.getAllByRole('header')).toHaveLength(1); // positive control: the role query sees roles
+    expect(r.queryAllByRole('tab')).toHaveLength(0);
+    expect(r.queryByLabelText('Make private')).toBeNull(); // the DirTab label pair is gone
+    expect(r.queryByLabelText('Make public')).toBeNull();
+    expect(r.queryByText('Make private')).toBeNull();
+    expect(r.queryByText('Private ⇄ Public')).toBeNull();
+    expect(r.getByTestId('unshield-cta')).toBeTruthy();
+    expect(r.queryByTestId('shield-cta')).toBeNull();
     expect(mockQuote).toHaveBeenCalledTimes(1);
     expect(mockQuote.mock.calls[0]![0]).toEqual({rpc: 'devnet'});
+  });
+
+  it('Make public stays Make public for the life of the screen: a later prop does not flip it', async () => {
+    const r = await screen();
+    r.rerender(<ShieldUnshieldScreen onBack={jest.fn()} onShield={jest.fn()} onUnshield={onUnshield} initialDirection="private" />);
+    await act(async () => {});
+    expect(r.getByTestId('shield-unshield-title').props.children).toBe('Make public');
+    expect(r.getByTestId('unshield-cta')).toBeTruthy();
+    expect(r.queryByTestId('shield-cta')).toBeNull();
+  });
+
+  it('one MAX colour: the Make public MAX chip has exactly the Make private chip\'s classes, enabled and disabled', async () => {
+    const chip = (r: R) => ({box: r.getByLabelText('Max').props.className, label: r.getByText('MAX').props.className});
+    // enabled on both: 2 TEST public, 2.5 TEST private
+    mockTokenBalances = {[A0.mint]: '2000000000'};
+    const priv = render(<ShieldUnshieldScreen onBack={jest.fn()} onShield={jest.fn()} onUnshield={onUnshield} />);
+    await act(async () => {});
+    const privOn = chip(priv as unknown as R);
+    priv.unmount();
+    const pubOn = chip(await screen());
+    expect(privOn.label).toContain('text-accent-shielded'); // non-vacuous: the shield side's colour
+    expect(pubOn).toEqual(privOn);
+    // disabled on both: no public balance, no private note
+    mockTokenBalances = {};
+    mockNotes = [];
+    const privOffR = render(<ShieldUnshieldScreen onBack={jest.fn()} onShield={jest.fn()} onUnshield={onUnshield} />);
+    await act(async () => {});
+    const privOff = chip(privOffR as unknown as R);
+    privOffR.unmount();
+    const pubOff = chip(await screen());
+    expect(privOff.label).toContain('text-fg-disabled');
+    expect(pubOff).toEqual(privOff);
   });
 });
 
@@ -181,7 +220,8 @@ describe('#16 unshield — the design (states 2 and 5) and the A0 lines', () => 
     expect(text(r, 'unshield-relayed')).toBe(
       'The relayer pays for and submits this transaction, so no key of yours signs it. Amounts and timing are public.',
     );
-    expect(r.getByText('Privacy decreases on public withdraw')).toBeTruthy();
+    expect(r.getByText('What stays public')).toBeTruthy(); // owner phone pass 2026-11-21: was "Privacy decreases on public withdraw"
+    expect(r.queryByText('Privacy decreases on public withdraw')).toBeNull();
     expect(r.getByText('Relayer fee')).toBeTruthy();
     expect(r.queryByText('ZK proof fee')).toBeNull(); // decision B-3: behind Details
     expect(r.queryByTestId('unshield-one-note')).toBeNull();

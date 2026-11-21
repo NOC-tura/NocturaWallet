@@ -410,7 +410,7 @@ describe('part B: the one vocabulary on the dashboard (spec §2, §4)', () => {
     expect(r.getByText('Private assets').props.className).toMatch(/\buppercase\b/); // Task 5 carry: through the overline variant
     expect(r.getByLabelText('Make private')).toBeTruthy();
     expect(r.getByLabelText('Make public')).toBeTruthy();
-    expect(r.getByText('Make private moves tokens in with a proof made on this device. Deposits are public on chain.')).toBeTruthy();
+    expect(r.getByText('When you make tokens private, a proof is made on this device. Deposits are public on chain.')).toBeTruthy(); // owner phone pass 2026-11-21
     expect(r.queryByText(/vault/i)).toBeNull();
   });
 

@@ -169,7 +169,7 @@ describe('UX-A 7: the dashboard\'s "Make public" opens #16 on the unshield side 
     expect(route?.name).toBe('ShieldUnshieldModal');
     expect(route?.params).toEqual({direction: 'public'});
     expect(route?.path).toBeUndefined();
-    expect(r.getByLabelText('Make public').props.accessibilityState).toMatchObject({selected: true});
+    expect(r.getByTestId('shield-unshield-title').props.children).toBe('Make public'); // owner phone pass 2026-11-21: the title, not a selected tab
     expect(r.queryByTestId('unshield-cta')).not.toBeNull();
     expect(mockQuoteCalls.length).toBeGreaterThan(0);
   });
@@ -223,8 +223,8 @@ describe('fix round 1 I-1: no deep link opens the unshield side', () => {
     await act(async () => {});
     await act(async () => {});
     expect((ref.getCurrentRoute() as {name?: string} | undefined)?.name).toBe('ShieldUnshieldModal'); // non-vacuous: the link landed on #16
-    expect(r.getByLabelText('Make private').props.accessibilityState).toMatchObject({selected: true});
-    expect(r.getByLabelText('Make public').props.accessibilityState).toMatchObject({selected: false});
+    expect(r.getByTestId('shield-unshield-title').props.children).toBe('Make private'); // owner phone pass 2026-11-21: the title, not a selected tab
+    expect(r.queryAllByRole('tab')).toHaveLength(0);
     expect(r.queryByTestId('shield-cta')).not.toBeNull();
     expect(r.queryByTestId('unshield-cta')).toBeNull();
     expect(mockQuoteCalls).toHaveLength(0);
@@ -252,7 +252,7 @@ describe('fix round 1 I-1: no deep link opens the unshield side', () => {
     await act(async () => {});
     await act(async () => {});
     expect((ref.getCurrentRoute() as {name?: string} | undefined)?.name).toBe('ShieldUnshieldModal');
-    expect(r.getByLabelText('Make private').props.accessibilityState).toMatchObject({selected: true});
+    expect(r.getByTestId('shield-unshield-title').props.children).toBe('Make private'); // owner phone pass 2026-11-21
     expect(r.queryByTestId('unshield-cta')).toBeNull();
     expect(mockQuoteCalls).toHaveLength(0);
   });
@@ -264,7 +264,21 @@ describe('fix round 1 I-1: no deep link opens the unshield side', () => {
       (ref.navigate as (n: string, p?: object) => void)('ShieldUnshieldModal', {direction: 'public'});
     });
     expect(r.queryByTestId('unshield-cta')).not.toBeNull();
+    expect(r.getByTestId('shield-unshield-title').props.children).toBe('Make public'); // owner phone pass 2026-11-21
     expect(mockQuoteCalls.length).toBeGreaterThan(0);
+  });
+
+  it('owner phone pass 2026-11-21: in-app navigation with NO direction opens Make private (today\'s default), no quote', async () => {
+    mockQuoteCalls.length = 0;
+    const {ref, r} = routeNames({shielded: true});
+    await act(async () => {
+      (ref.navigate as (n: string, p?: object) => void)('ShieldUnshieldModal');
+    });
+    expect((ref.getCurrentRoute() as {name?: string} | undefined)?.name).toBe('ShieldUnshieldModal'); // non-vacuous
+    expect(r.getByTestId('shield-unshield-title').props.children).toBe('Make private');
+    expect(r.queryByTestId('shield-cta')).not.toBeNull();
+    expect(r.queryByTestId('unshield-cta')).toBeNull();
+    expect(mockQuoteCalls).toHaveLength(0);
   });
 });
 

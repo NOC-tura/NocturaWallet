@@ -2,8 +2,9 @@
  * #16 shield side on the A0 pool: the amount (BigInt, from the main account's balance of the pool's
  * mint), the fee rows the design shows (with the ZK proof row) as what an A0 deposit costs, the
  * gating on the A0 startup step (the CTA only when the restore finished; every other state is a
- * state with a way out — Retry — never a spinner forever), and the direction tabs (M1c: the
- * unshield side is a tab; its own rows are in unshield/__tests__/UnshieldSide.test.tsx).
+ * state with a way out — Retry — never a spinner forever), and the direction fixed by the route
+ * (owner phone pass 2026-11-21: "Make private" and "Make public" are two screens, no tabs; the
+ * Make public side's own rows are in unshield/__tests__/UnshieldSide.test.tsx).
  */
 import React from 'react';
 import {render, fireEvent, act, waitFor, within} from '@testing-library/react-native';
@@ -63,8 +64,9 @@ describe('#16 shield side — the design', () => {
   it('idle: title, the "Make private" tab, ONE balance line ("Public balance" from the pool mint), MAX, "You\'ll make private", the fee rows behind Details, the disabled CTA', async () => {
     const r = screen();
     await waitFor(() => expect(mockPoolCount).toHaveBeenCalled());
-    expect(r.getByText('Private ⇄ Public')).toBeTruthy(); // part B: "Shield / Unshield" → "Private ⇄ Public"
-    expect(r.getByText('Make private')).toBeTruthy();
+    // owner phone pass 2026-11-21: the title is the action ("Private ⇄ Public" and its tabs left)
+    expect(r.getByTestId('shield-unshield-title').props.children).toBe('Make private');
+    expect(r.queryByText('Private ⇄ Public')).toBeNull();
     expect(r.getByText('Public balance')).toBeTruthy(); // part B: "Available" → "Public balance"
     expect(r.getByTestId('shield-balance-value').props.children).toBe('2 TEST'); // part B: by text "2 TEST" → the BalanceRow's value id
     expect(r.queryByText('Private balance')).toBeNull(); // decision B-2: one balance line per tab
@@ -321,19 +323,40 @@ describe('#16 — gated on the A0 startup step', () => {
   });
 });
 
-describe('#16 — M1c: the unshield side is a tab (its rows: unshield/__tests__/UnshieldSide.test.tsx)', () => {
-  it('opens on the shield side by default; the "Make public" tab exists and is not selected', () => {
-    const r = screen();
-    expect(r.getByLabelText('Make private').props.accessibilityState?.selected).toBe(true);
-    expect(r.getByLabelText('Make public').props.accessibilityState?.selected).toBe(false);
+describe('#16 — two screens, no tabs (owner phone pass 2026-11-21)', () => {
+  it('Make private: the title is the action, a header; no tab, no "Make public" control on the screen', () => {
+    const r = render(<ShieldUnshieldScreen onBack={onBack} onShield={onShield} initialDirection="private" />);
+    const title = r.getByTestId('shield-unshield-title');
+    expect(title.props.children).toBe('Make private');
+    expect(title.props.accessibilityRole).toBe('header');
+    expect(r.getAllByRole('header')).toHaveLength(1); // positive control: the role query sees roles
+    expect(r.queryAllByRole('tab')).toHaveLength(0);
+    expect(r.queryByLabelText('Make private')).toBeNull(); // the DirTab label pair is gone
+    expect(r.queryByLabelText('Make public')).toBeNull();
+    expect(r.queryByText('Make public')).toBeNull();
     expect(r.getByTestId('shield-cta')).toBeTruthy();
     expect(r.queryByTestId('unshield-cta')).toBeNull();
   });
 
-  it('an unknown initialDirection opens the shield side (only "public" opens the unshield side)', () => {
+  it('the direction is the route param for the life of the screen: a later prop does not flip it', () => {
+    const r = render(<ShieldUnshieldScreen onBack={onBack} onShield={onShield} initialDirection="private" />);
+    r.rerender(<ShieldUnshieldScreen onBack={onBack} onShield={onShield} initialDirection="public" />);
+    expect(r.getByTestId('shield-unshield-title').props.children).toBe('Make private');
+    expect(r.getByTestId('shield-cta')).toBeTruthy();
+    expect(r.queryByTestId('unshield-cta')).toBeNull();
+  });
+
+  it('a missing direction opens Make private (today\'s default)', () => {
+    const r = screen();
+    expect(r.getByTestId('shield-unshield-title').props.children).toBe('Make private');
+    expect(r.getByTestId('shield-cta')).toBeTruthy();
+    expect(r.queryByTestId('unshield-cta')).toBeNull();
+  });
+
+  it('an unknown initialDirection opens Make private (only "public" opens Make public)', () => {
     const props = {onBack, onShield, initialDirection: 'withdraw'} as unknown as React.ComponentProps<typeof ShieldUnshieldScreen>;
     const r = render(<ShieldUnshieldScreen {...props} />);
-    expect(r.getByLabelText('Make private').props.accessibilityState?.selected).toBe(true);
+    expect(r.getByTestId('shield-unshield-title').props.children).toBe('Make private');
     expect(r.queryByTestId('unshield-cta')).toBeNull();
   });
 });

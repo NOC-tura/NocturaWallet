@@ -1,7 +1,7 @@
 import React, {useCallback, useEffect, useRef, useState} from 'react';
 import {View, Pressable, TextInput, ScrollView} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
-import {ArrowLeft, ShieldCheck, AlertTriangle, Shield, RefreshCw, Eye} from 'lucide-react-native';
+import {ArrowLeft, AlertTriangle, Shield, RefreshCw} from 'lucide-react-native';
 import {Text} from '../../components/ui';
 import {AmountLimitHint, DetailsDisclosure, overLimit} from '../../components/private';
 import {useWalletStore} from '../../store/zustand/walletStore';
@@ -25,7 +25,6 @@ import {BalanceRow} from './shieldedParts';
 import {
   MAKE_PRIVATE,
   MAKE_PUBLIC,
-  PRIVATE_PUBLIC_TITLE,
   PUBLIC_BALANCE,
   makePrivateCta,
   makePrivateCtaIdle,
@@ -34,20 +33,26 @@ import type {A0VerifyRefusal} from '../../modules/shielded/a0/landedVerifier';
 import type {A0UnshieldDestination} from '../../modules/shielded/a0/unshieldFlow';
 
 /**
- * #16 "Private ⇄ Public" — mirror /home/user/Downloads/index.html §s16 (+ screen.md #16): both
- * sides on the A0 pool (spec §5 step 1, §6 steps 1–2, §11).
+ * #16 "Make private" / "Make public" — mirror /home/user/Downloads/index.html §s16 (+ screen.md #16):
+ * both sides on the A0 pool (spec §5 step 1, §6 steps 1–2, §11).
+ *
+ * TWO SCREENS, NO TABS (owner phone pass 2026-11-21, a loud departure from the design's two-tab pill
+ * and from spec 2026-11-20's "Private ⇄ Public" title): the dashboard's two buttons already make
+ * the choice, so the direction is fixed by the route param (`initialDirection`) for the life of the
+ * screen — nothing on it switches sides; the user goes Back and presses the other button. The
+ * top-bar title is the action (`MAKE_PRIVATE` / `MAKE_PUBLIC`), a header. A missing or unknown
+ * direction opens Make private.
  *
  * Shielded UX part B (spec 2026-11-20 §4): one vocabulary (`src/copy/modes.ts`); ONE balance line
- * per tab (decision B-2) — "Public balance" here, "Private balance" on Make public — so the old
+ * per side (decision B-2) — "Public balance" here, "Private balance" on Make public — so the old
  * private balance line above the card is now only the STATUS (the startup states, a refusal, the
  * pending sum and "Check again"); the technical fee rows and the pool-size row behind "Details ▾"
  * (decision B-3); the limit through `AmountLimitHint` (decision B-4).
  *
- * THE MAKE PUBLIC SIDE (M1c Task 8): the "Make public" tab and `./unshield/UnshieldSide.tsx`. The
- * route exists only in the devnet build and no deep link opens this side: `noctura://deposit`
- * opens "Make private" whatever its query says (`deepLinkConfig` pins `direction`; the Navigator
- * honours `initialDirection: 'public'` only on a route in-app navigation created — fix round 1,
- * I-1). The direction tabs flip the sub-region and push no route (the design).
+ * THE MAKE PUBLIC SIDE (M1c Task 8): `./unshield/UnshieldSide.tsx`. The route exists only in the
+ * devnet build and no deep link opens this side: `noctura://deposit` opens "Make private" whatever
+ * its query says (`deepLinkConfig` pins `direction`; the Navigator honours `initialDirection:
+ * 'public'` only on a route in-app navigation created — fix round 1, I-1).
  *
  * THE FEES ARE WHAT THE A0 DEPOSIT COSTS: the network fee (one signature, 0.000005 SOL), the ZK
  * proof fee — none: the proof is made on this device — and the rent of the deposit's rho marker
@@ -65,7 +70,7 @@ interface ShieldUnshieldScreenProps {
   onShield: (amountBaseUnits: string) => void;
   /** the Make public CTA → its run (#18 → #21), the amount in base units */
   onUnshield?: (request: {destination: A0UnshieldDestination; amount: string}) => void;
-  /** which side opens (default "Make private") */
+  /** which screen this is, fixed for its life (default "Make private"; owner phone pass 2026-11-21) */
   initialDirection?: 'private' | 'public';
   /** changes each time the screen regains focus (the Make public CTA's tap-disable ends there) */
   focusKey?: number;
@@ -97,7 +102,8 @@ function parseAmount(text: string): Parsed {
 
 export function ShieldUnshieldScreen({onBack, onShield, onUnshield, initialDirection, focusKey}: ShieldUnshieldScreenProps) {
   const {tokenBalances, solBalance} = useWalletStore();
-  const [direction, setDirection] = useState<Direction>(initialDirection === 'public' ? 'public' : 'private');
+  // fixed for the life of the screen: no setter, a later prop does not flip it (owner phone pass 2026-11-21)
+  const [direction] = useState<Direction>(initialDirection === 'public' ? 'public' : 'private');
   const {view, checkAgain, refusal} = useA0Shielded();
   const [amount, setAmount] = useState('');
   const [poolNotes, setPoolNotes] = useState<number | null>(null);
@@ -164,20 +170,12 @@ export function ShieldUnshieldScreen({onBack, onShield, onUnshield, initialDirec
           className="w-12 h-12 items-center justify-center -ml-2">
           <ArrowLeft size={22} color="#A8ACB5" strokeWidth={1.75} />
         </Pressable>
-        <Text variant="h2" className="ml-1 flex-1">
-          {PRIVATE_PUBLIC_TITLE}
+        <Text variant="h2" className="ml-1 flex-1" accessibilityRole="header" testID="shield-unshield-title">
+          {direction === 'public' ? MAKE_PUBLIC : MAKE_PRIVATE}
         </Text>
         <Text variant="caption" className="text-fg-tertiary">
           {sym}
         </Text>
-      </View>
-
-      {/* Direction tabs (the design): they flip the sub-region, no route is pushed */}
-      <View className="px-5 mb-4">
-        <View className="flex-row bg-bg-surface-2 rounded-pill p-1">
-          <DirTab label={MAKE_PRIVATE} Icon={ShieldCheck} active={direction === 'private'} onPress={() => setDirection('private')} />
-          <DirTab label={MAKE_PUBLIC} Icon={Eye} active={direction === 'public'} onPress={() => setDirection('public')} />
-        </View>
       </View>
 
       {direction === 'public' ? (
@@ -347,37 +345,6 @@ export function ShieldUnshieldScreen({onBack, onShield, onUnshield, initialDirec
   );
 }
 
-// ── Direction tab (the design's two-tab pill) ─────────────────────────────────
-
-function DirTab({
-  label,
-  Icon,
-  active,
-  onPress,
-}: {
-  label: string;
-  Icon: typeof ShieldCheck;
-  active: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="tab"
-      accessibilityLabel={label}
-      accessibilityState={{selected: active}}
-      className={cn(
-        'flex-1 flex-row items-center justify-center gap-2 py-2 rounded-pill min-h-touch-min',
-        active && 'bg-accent-shielded',
-      )}>
-      <Icon size={16} color={active ? '#0A0A0A' : '#A8ACB5'} strokeWidth={1.75} />
-      <Text variant="body-sm" className={cn('font-geist-semibold', active ? 'text-bg-base' : 'text-fg-secondary')}>
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
-
 // ── The private side's STATUS (undrawn: the A0 startup states, a refusal, the pending sum) ─────
 
 function ShieldedLine({
@@ -398,7 +365,7 @@ function ShieldedLine({
 }) {
   const sym = A0_TOKEN.symbol;
   if (view.kind === 'ready') {
-    // part B, decision B-2: the balance figure is each tab's BalanceRow; this is only the status
+    // part B, decision B-2: the balance figure is each side's BalanceRow; this is only the status
     if (!refusal && view.pending === 0n && !checkAgain.note) {
       return null;
     }

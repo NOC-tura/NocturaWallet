@@ -16,7 +16,10 @@ describe('src/copy/modes.ts — the §2 table', () => {
     expect(modes.MODE_PRIVATE).toBe('Private');
     expect(modes.MAKE_PRIVATE).toBe('Make private');
     expect(modes.MAKE_PUBLIC).toBe('Make public');
-    expect(modes.PRIVATE_PUBLIC_TITLE).toBe('Private ⇄ Public');
+    // owner phone pass 2026-11-21: #16 is two screens titled MAKE_PRIVATE / MAKE_PUBLIC — no "Private ⇄ Public"
+    expect('PRIVATE_PUBLIC_TITLE' in modes).toBe(false);
+    expect(SRC).not.toContain('⇄');
+    expect(modes.WHAT_STAYS_PUBLIC).toBe('What stays public'); // the Make public warning's title
     expect(modes.PRIVATE_BALANCE).toBe('Private balance');
     expect(modes.PUBLIC_BALANCE).toBe('Public balance');
     expect(modes.PRIVATE_ASSETS).toBe('Private assets'); // the overline variant renders "PRIVATE ASSETS"
@@ -63,8 +66,8 @@ describe('src/copy/modes.ts — the §2 table', () => {
     expect(modes.ACCOUNT_BALANCES_UNCHECKED).toBe("Couldn't check balances right now. Pick the account you want to use, or try again.");
   });
 
-  it('the Private balance card keeps the honest sentence (spec §2 "Kept as is")', () => {
-    expect(modes.PRIVATE_CARD_BODY).toBe('Make private moves tokens in with a proof made on this device. Deposits are public on chain.');
+  it('the Private balance card keeps the honest sentence (spec §2 "Kept as is"), in plain words (owner phone pass 2026-11-21)', () => {
+    expect(modes.PRIVATE_CARD_BODY).toBe('When you make tokens private, a proof is made on this device. Deposits are public on chain.');
   });
 });
 

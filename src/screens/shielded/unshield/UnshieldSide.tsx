@@ -21,6 +21,7 @@ import {BalanceRow} from '../shieldedParts';
 import {
   DESTINATION_FRESH_SCHEME_UNREADABLE,
   PRIVATE_BALANCE,
+  WHAT_STAYS_PUBLIC,
   makePublicCta,
   makePublicCtaIdle,
   makePublicLimit,
@@ -36,9 +37,10 @@ import {
 } from './unshieldCopy';
 
 /**
- * #16's "Make public" side — the A0 unshield (spec §6 steps 1–2, §11; M1c Task 8). Mirrors the
- * design's states 2 (Make public · idle: the one balance line, the nested MAX, the "Privacy
- * decreases on public withdraw" banner) and 5 (amount entered · fees · the withdraw warning), plus
+ * #16's "Make public" screen — the A0 unshield (spec §6 steps 1–2, §11; M1c Task 8). Mirrors the
+ * design's states 2 (Make public · idle: the one balance line, the nested MAX, the warning banner —
+ * titled "What stays public" since the owner phone pass 2026-11-21) and 5 (amount entered · fees ·
+ * the warning), plus
  * what the A0 unshield adds, UNDRAWN and built from the design system (listed for the owner's
  * visual pass): the relayer quote's states (asking / refused + Retry), the destination, the
  * one-note limit line and the amount line.
@@ -70,7 +72,7 @@ export type UnshieldChoice = DestinationChoice;
 
 export interface UnshieldSideProps {
   view: A0ShieldedView;
-  /** #16's private-side STATUS (startup states, a refusal, the pending sum, "Check again"), shared with the Make private tab */
+  /** #16's private-side STATUS (startup states, a refusal, the pending sum, "Check again"), shared with the Make private screen */
   shieldedLine: React.ReactNode;
   /** CTA → the unshield run (#18 → #21), the amount in base units */
   onUnshield: (request: {destination: A0UnshieldDestination; amount: string}) => void;
@@ -318,10 +320,11 @@ export function UnshieldSide({view, shieldedLine, onUnshield, focusKey = 0}: Uns
                 disabled={max <= 0n}
                 className={cn(
                   'px-3 py-1.5 rounded-pill',
-                  max > 0n ? 'bg-accent-transparent-tint active:opacity-80' : 'bg-bg-surface-3',
+                  max > 0n ? 'bg-[rgba(91,227,194,0.16)] active:opacity-80' : 'bg-bg-surface-3',
                 )}
               >
-                <Text variant="overline" className={max > 0n ? 'text-accent-transparent' : 'text-fg-disabled'}>
+                {/* one MAX colour (owner phone pass 2026-11-21): the Make private chip's classes, not the transparent accent */}
+                <Text variant="overline" className={max > 0n ? 'text-accent-shielded' : 'text-fg-disabled'}>
                   MAX
                 </Text>
               </Pressable>
@@ -430,7 +433,7 @@ export function UnshieldSide({view, shieldedLine, onUnshield, focusKey = 0}: Uns
           <AlertTriangle size={16} color="#F2B53B" strokeWidth={1.75} />
           <View className="flex-1 gap-1">
             <Text variant="body-sm" className="font-geist-semibold text-fg-primary">
-              Privacy decreases on public withdraw
+              {WHAT_STAYS_PUBLIC}
             </Text>
             <Text variant="caption" className="text-fg-secondary" testID="unshield-relayed">
               {A0_RELAYED_COPY}

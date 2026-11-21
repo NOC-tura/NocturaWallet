@@ -17,14 +17,18 @@
 export const MODE_PUBLIC = 'Public';
 export const MODE_PRIVATE = 'Private';
 
-/** The two actions: #16's tabs and the dashboard's quick actions (§2 row 2). */
+/**
+ * The two actions (§2 row 2): the dashboard's quick actions and #16's title — #16 is two screens,
+ * one per action, with no tabs (owner phone pass 2026-11-21; it replaced the old combined
+ * title and its two tabs).
+ */
 export const MAKE_PRIVATE = 'Make private';
 export const MAKE_PUBLIC = 'Make public';
 
-/** #16's title (§2 row 3). */
-export const PRIVATE_PUBLIC_TITLE = 'Private ⇄ Public';
+/** The Make public warning's title (owner phone pass 2026-11-21); the relayed sentence sits under it. */
+export const WHAT_STAYS_PUBLIC = 'What stays public';
 
-/** The balances (§2 row 4): "Public balance" is the Make private tab's one line (decision B-2). */
+/** The balances (§2 row 4): "Public balance" is the Make private screen's one line (decision B-2). */
 export const PRIVATE_BALANCE = 'Private balance';
 export const PUBLIC_BALANCE = 'Public balance';
 
@@ -44,7 +48,7 @@ export const MAKING_PRIVATE = 'Making private…';
 export const NOW_PRIVATE = 'Now private';
 
 /** The dashboard's Private balance card (§2 row 8): it keeps "Deposits are public on chain." */
-export const PRIVATE_CARD_BODY = 'Make private moves tokens in with a proof made on this device. Deposits are public on chain.';
+export const PRIVATE_CARD_BODY = 'When you make tokens private, a proof is made on this device. Deposits are public on chain.';
 
 /**
  * The native confirmation (§2 row 9). Android cannot import this module: the resource
