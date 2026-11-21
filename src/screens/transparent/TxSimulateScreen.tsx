@@ -148,8 +148,9 @@ export function TxSimulateScreen({intent, onContinue, onCancel}: TxSimulateScree
         !!_deriveTransferChecks;
 
       if (modulesLoaded && !publicKey) {
-        // Modules are present but wallet is not loaded — this is a real error,
-        // not a test/stub env. Do NOT fall through to the best-effort stub path.
+        // Review m5: publicKey is the intent's source address (M1d), so this is an empty-address
+        // guard — a malformed intent, a real error and not a test/stub env. Do NOT fall through to
+        // the best-effort stub path.
         if (cancelled) return;
         setSimState({kind: 'failed', reason: 'Wallet not loaded'});
         return;
@@ -312,7 +313,7 @@ export function TxSimulateScreen({intent, onContinue, onCancel}: TxSimulateScree
       } else {
         // Modules absent (test/stub env only) — set ready with best-effort delta.
         // NOTE: this branch is intentionally unreachable in production because the
-        // modulesLoaded && !publicKey guard above handles the wallet-not-loaded case.
+        // modulesLoaded && !publicKey guard above handles an empty source address.
         if (cancelled) return;
         let solBalanceBn: bigint;
         try {

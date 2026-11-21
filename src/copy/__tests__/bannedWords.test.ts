@@ -20,6 +20,7 @@ const EXTRA = [
   // M1d: the accounts copy and the account labels
   'src/copy/accounts.ts',
   'src/modules/accounts/accountList.ts',
+  // M1d (review r1 I2): the signer refusal #21 shows as it is
   'src/modules/solana/sendTransaction.ts',
 ];
 

@@ -132,6 +132,7 @@ describe('shielded screens make no unsupported privacy claim', () => {
         // M1d: the accounts copy module and the label module are in scope
         'src/copy/accounts.ts',
         'src/modules/accounts/accountList.ts',
+        // M1d (review r1 I2): the signer refusal #21 shows as it is
         'src/modules/solana/sendTransaction.ts',
       ]),
     );

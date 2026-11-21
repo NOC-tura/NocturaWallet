@@ -1,4 +1,4 @@
-import React, {useState, useCallback, useMemo, useRef} from 'react';
+import React, {useState, useCallback, useEffect, useMemo, useRef} from 'react';
 import {
   View,
   TextInput,
@@ -119,7 +119,14 @@ export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
   // M1d (spec §3.3, Review Focus 2): the source is the account selected when #12 OPENS — captured
   // once; a later selection change never moves this Send. Its balances are that account's own.
   const liveSelected = useSelectedAccount();
-  const [source] = useState(liveSelected);
+  const [source, setSource] = useState(liveSelected);
+  // review m2: an account not known yet on the first render is captured when it first resolves —
+  // only a null source is ever replaced, so a captured one never moves
+  useEffect(() => {
+    if (source === null && liveSelected !== null) {
+      setSource(liveSelected);
+    }
+  }, [source, liveSelected]);
   const {data: publicData} = useAccountPublicData(source);
   const publicReady = publicData.status === 'ready';
   const {solBalance, nocBalance, tokens: storeTokens, tokenBalances} = publicData.status === 'ready' ? publicData : NO_PUBLIC_DATA;

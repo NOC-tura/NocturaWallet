@@ -25,15 +25,7 @@ jest.mock('../../../modules/solana/transactionBuilder', () => ({
   ).getTransferMarkupLamports,
 }));
 
-// Mock the wallet store
-jest.mock('../../../store/zustand/walletStore', () => ({
-  useWalletStore: jest.fn(() => ({
-    publicKey: 'So11111111111111111111111111111111111111112',
-    solBalance: '1000000000',
-    tokens: [],
-    tokenBalances: {},
-  })),
-}));
+// M1d (review m7): the walletStore mock is gone — #12 no longer reads it; its 1 SOL is READY_1_SOL below
 
 // M1d (spec §3.3): #12 sends from the account selected when it opened, with that account's balances
 const MAIN_SRC = {scheme: 'slip10:0', address: 'So11111111111111111111111111111111111111112', label: 'Account 1', number: 1, role: 'main', isMain: true, linked: false};
@@ -184,6 +176,20 @@ describe('M1d — #12 sends from the account selected when it opened (spec §3.3
     fill(r);
     expect(r.getByTestId('send-available')).toHaveTextContent('— SOL');
     expect(r.getByTestId('review-button').props.accessibilityState?.disabled).toBe(true);
+  });
+
+  it('review m2: an account not known on the first render is captured when it resolves — and then never moves', () => {
+    mockSendSelected.current = null;
+    const onReview = jest.fn();
+    const r = render(<SendScreen onReview={onReview} />);
+    mockSendSelected.current = A3_SRC;
+    r.rerender(<SendScreen onReview={onReview} />);
+    mockSendSelected.current = MAIN_SRC;
+    r.rerender(<SendScreen onReview={onReview} />);
+    fill(r);
+    expect(r.getByTestId('review-button').props.accessibilityState?.disabled).toBe(false);
+    fireEvent.press(r.getByTestId('review-button'));
+    expect(onReview.mock.calls[0]![0].from.scheme).toBe('slip10:3');
   });
 
   it('no account known (no wallet) → the CTA disabled', () => {

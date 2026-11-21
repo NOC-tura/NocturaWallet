@@ -8,6 +8,7 @@
 import {Keypair, PublicKey} from '@solana/web3.js';
 import {SendSignerMismatchError, submitTransparentTransfer} from '../sendTransaction';
 import {KeychainManager} from '../../keychain/keychainModule';
+import {base58} from '@scure/base';
 
 const ABANDON = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const MAIN = 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk'; // slip10:0
@@ -18,6 +19,12 @@ const mockBlockhash = jest.fn(async () => ({blockhash: 'bh', lastValidBlockHeigh
 jest.mock('../connection', () => ({
   getConnection: () => ({getLatestBlockhash: mockBlockhash, sendRawTransaction: mockSendRaw}),
 }));
+// review I1: the SPL path resolves the holding account of the SIGNER (the source), never main's
+const mockResolveSource = jest.fn(async (..._args: unknown[]) => null);
+jest.mock('../transactionBuilder', () => {
+  const actual = jest.requireActual<typeof import('../transactionBuilder')>('../transactionBuilder');
+  return {...actual, resolveSourceTokenAccount: (...args: unknown[]) => mockResolveSource(...args)};
+});
 const mockSeeds: Uint8Array[] = [];
 jest.mock('../../keyDerivation/mnemonicUtils', () => {
   const actual = jest.requireActual<typeof import('../../keyDerivation/mnemonicUtils')>('../../keyDerivation/mnemonicUtils');
@@ -55,11 +62,24 @@ const sol = (account: number, expectedSigner: string) => ({
   scheme: {kind: 'slip10' as const, account},
   expectedSigner,
 });
+const TEST_MINT = 'ERkpCFGaoWmeZPhKTUHumrqHTP1QmyHVhMJUnxbRPKCs';
+const spl = (account: number, expectedSigner: string) => ({
+  kind: 'spl' as const,
+  recipient: new PublicKey(MAIN),
+  mint: new PublicKey(TEST_MINT),
+  amount: 1_000n,
+  decimals: 9,
+  createAta: false,
+  priorityFee: 0,
+  scheme: {kind: 'slip10' as const, account},
+  expectedSigner,
+});
 const allZero = (b: Uint8Array): boolean => b.every(x => x === 0);
 
 beforeEach(() => {
   mockSendRaw.mockClear();
   mockBlockhash.mockClear();
+  mockResolveSource.mockClear();
   (Keypair.fromSecretKey as jest.Mock).mockClear();
   mockSeeds.length = 0;
   mockSecrets.length = 0;
@@ -98,4 +118,27 @@ it('review r1 m8: a derivation that throws still zero-fills the seed; nothing is
   expect(mockSeeds).toHaveLength(1);
   expect(allZero(mockSeeds[0]!)).toBe(true);
   expect(mockSendRaw).not.toHaveBeenCalled();
+});
+
+describe('review I1: a token sent from a non-main account', () => {
+  it('a key that does not derive the address → E_SEND_SIGNER_MISMATCH on the SPL path too; no holding account resolved, nothing sent', async () => {
+    await expect(submitTransparentTransfer(spl(1, MAIN))).rejects.toMatchObject({code: 'E_SEND_SIGNER_MISMATCH'});
+    expect(Keypair.fromSecretKey).not.toHaveBeenCalled();
+    expect(mockResolveSource).not.toHaveBeenCalled();
+    expect(mockBlockhash).not.toHaveBeenCalled();
+    expect(mockSendRaw).not.toHaveBeenCalled();
+    expect(mockSeeds.every(allZero) && mockSecrets.every(allZero)).toBe(true);
+  });
+
+  it('a match spends from the SOURCE\'s holding account (owner = Hh8Q…, not main) and sends', async () => {
+    await expect(submitTransparentTransfer(spl(1, A1))).resolves.toEqual({signature: 'SIG', lastValidBlockHeight: 1});
+    expect(mockResolveSource).toHaveBeenCalledTimes(1);
+    const [, owner, mint, amount] = mockResolveSource.mock.calls[0]! as [unknown, PublicKey, PublicKey, bigint];
+    // the repo's web3.js mock names a byte-built key `mock-pubkey-…`, so the owner is compared by its bytes
+    expect(Buffer.from(owner.toBytes()).equals(Buffer.from(base58.decode(A1)))).toBe(true);
+    expect(Buffer.from(owner.toBytes()).equals(Buffer.from(base58.decode(MAIN)))).toBe(false);
+    expect(mint.toBase58()).toBe(TEST_MINT);
+    expect(amount).toBe(1_000n);
+    expect(mockSendRaw).toHaveBeenCalledTimes(1);
+  });
 });

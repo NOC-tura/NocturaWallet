@@ -253,11 +253,27 @@ describe('M1d — #21 signs from the intent\'s source (spec §3.3)', () => {
     const r = render21({...intent, from: {scheme: 'slip10:3', address: A3, label: 'Account 4', isMain: false}});
     await waitFor(() => expect(r.getByText(/E_SEND_SIGNER_MISMATCH/)).toBeTruthy());
     expect(r.getByText('Transaction failed')).toBeTruthy();
+    // review m1: the same key would refuse again — Done only, no Retry (the generic failure row above keeps its Retry)
+    expect(r.queryByTestId('tx-status-retry')).toBeNull();
+    expect(r.getByTestId('tx-status-done')).toBeTruthy();
+  });
+
+  it('review I1: a token from a non-main intent → the SPL branch carries the source\'s scheme and expected signer', async () => {
+    mockSubmit.mockResolvedValueOnce({signature: 'S', lastValidBlockHeight: 1000});
+    render21({
+      ...intent,
+      tokenMint: 'ERkpCFGaoWmeZPhKTUHumrqHTP1QmyHVhMJUnxbRPKCs',
+      tokenSymbol: 'TEST',
+      from: {scheme: 'slip10:3', address: A3, label: 'Account 4', isMain: false},
+    });
+    await waitFor(() => expect(mockSubmit).toHaveBeenCalled());
+    expect(mockSubmit).toHaveBeenCalledWith(expect.objectContaining({kind: 'spl', scheme: {kind: 'slip10', account: 3}, expectedSigner: A3}));
   });
 
   it('plan A16: a scheme that does not parse strictly → E_SEND_SCHEME, the keychain never asked', async () => {
     const r = render21({...intent, from: {scheme: 'slip10:01', address: A3, label: 'Account 2', isMain: false}});
     await waitFor(() => expect(r.getByText(/E_SEND_SCHEME/)).toBeTruthy());
     expect(mockSubmit).not.toHaveBeenCalled();
+    expect(r.queryByTestId('tx-status-retry')).toBeNull(); // review m1: not retryable
   });
 });

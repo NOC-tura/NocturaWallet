@@ -25,6 +25,12 @@ const BASE_FEE_LAMPORTS = 5_000n;
 const SOL_DECIMALS = 9;
 const MAX_ATTEMPTS = 3;
 
+/**
+ * Review m1: refusals made before anything is signed that a Retry would only repeat (the same scheme,
+ * the same key) — #21 offers Done, not Retry, for these.
+ */
+const NOT_RETRYABLE = /^E_SEND_(SCHEME|SIGNER_MISMATCH):/;
+
 // ── Lazy imports — wrapped in try/catch so Jest/stub envs don't crash ─────────
 let submitTransparentTransfer:
   | typeof import('../../modules/solana/sendTransaction').submitTransparentTransfer
@@ -439,17 +445,19 @@ export function TransactionStatusScreen({
           </View>
         ) : stage === 'failed' ? (
           <>
-            <Button
-              label="Retry"
-              variant="primary"
-              testID="tx-status-retry"
-              onPress={() => {
-                // Ignore repeat taps while a submit is still in flight — the
-                // effect cleanup cannot recall a broadcast already sent.
-                if (submitInFlight.current) return;
-                setRetryCount(c => c + 1);
-              }}
-            />
+            {errorMessage !== null && NOT_RETRYABLE.test(errorMessage) ? null : (
+              <Button
+                label="Retry"
+                variant="primary"
+                testID="tx-status-retry"
+                onPress={() => {
+                  // Ignore repeat taps while a submit is still in flight — the
+                  // effect cleanup cannot recall a broadcast already sent.
+                  if (submitInFlight.current) return;
+                  setRetryCount(c => c + 1);
+                }}
+              />
+            )}
             <Button
               label="Done"
               variant="secondary"

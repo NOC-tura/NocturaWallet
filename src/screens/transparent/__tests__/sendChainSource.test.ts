@@ -10,7 +10,8 @@ const read = (f: string): string => fs.readFileSync(path.resolve(__dirname, '..'
 
 it.each(['TxSimulateScreen.tsx', 'TxConfirmScreen.tsx', 'TransactionStatusScreen.tsx'])('%s imports neither the selection hooks nor walletStore', f => {
   const src = read(f);
-  expect(src).not.toMatch(/useSelectedAccount|selectedAccount|walletStore/);
+  // review m6: every way to the live selection or the wallet default, not only the hook's name
+  expect(src).not.toMatch(/useSelectedAccount|selectedAccount|walletStore|useAccounts|useAccountList|readAccountsState|loadTransparentScheme/);
   expect(src).toMatch(/intent\.from/);
 });
 
