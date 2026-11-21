@@ -88,7 +88,7 @@ import {
  *   - Private: mint accents, "Private balance" eyebrow, Make private action,
  *     Private balance card, "· private" tag on rows
  *   - Private, DEPARTURE (owner-approved 2026-11-20, UX-A 7): a "Make public" action (the eye of
- *     #16's tab) right after Make private, opening #16 on its unshield side. The design's private
+ *     #16's Make public screen) right after Make private, opening #16 as Make public. The design's private
  *     dashboard has Send / Receive / Make private / Buy; it is shown only when `onMakePublic` is passed,
  *     which the Navigator does only in the build that registers the unshield route.
  *

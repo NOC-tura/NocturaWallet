@@ -221,6 +221,8 @@ describe('#16 unshield — the design (states 2 and 5) and the A0 lines', () => 
       'The relayer pays for and submits this transaction, so no key of yours signs it. Amounts and timing are public.',
     );
     expect(r.getByText('What stays public')).toBeTruthy(); // owner phone pass 2026-11-21: was "Privacy decreases on public withdraw"
+    // phone-fix review I-1: under "What stays public" the list leads with a public thing and names the destination too
+    expect(text(r, 'unshield-destination-public')).toBe('The destination address is public on chain.');
     expect(r.queryByText('Privacy decreases on public withdraw')).toBeNull();
     expect(r.getByText('Relayer fee')).toBeTruthy();
     expect(r.queryByText('ZK proof fee')).toBeNull(); // decision B-3: behind Details

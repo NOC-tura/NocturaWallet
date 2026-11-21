@@ -22,6 +22,7 @@ import {
   DESTINATION_FRESH_SCHEME_UNREADABLE,
   PRIVATE_BALANCE,
   WHAT_STAYS_PUBLIC,
+  DESTINATION_IS_PUBLIC,
   makePublicCta,
   makePublicCtaIdle,
   makePublicLimit,
@@ -425,7 +426,7 @@ export function UnshieldSide({view, shieldedLine, onUnshield, focusKey = 0}: Uns
           </DetailsDisclosure>
         </View>
 
-        {/* The design's withdraw banner: the relayed sentence (the destination warnings sit under the row) */}
+        {/* The "What stays public" banner: the destination line and the relayed sentence (the destination warnings sit under the row) */}
         <View
           className="rounded-md bg-bg-surface-2 border-l-2 border-l-warning p-4 mb-4 flex-row gap-3"
           testID="unshield-warning"
@@ -434,6 +435,9 @@ export function UnshieldSide({view, shieldedLine, onUnshield, focusKey = 0}: Uns
           <View className="flex-1 gap-1">
             <Text variant="body-sm" className="font-geist-semibold text-fg-primary">
               {WHAT_STAYS_PUBLIC}
+            </Text>
+            <Text variant="caption" className="text-fg-secondary" testID="unshield-destination-public">
+              {DESTINATION_IS_PUBLIC}
             </Text>
             <Text variant="caption" className="text-fg-secondary" testID="unshield-relayed">
               {A0_RELAYED_COPY}

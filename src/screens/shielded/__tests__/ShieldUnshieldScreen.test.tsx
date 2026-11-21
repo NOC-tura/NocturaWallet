@@ -61,7 +61,7 @@ const screen = () => render(<ShieldUnshieldScreen onBack={onBack} onShield={onSh
 const ctaDisabled = (r: ReturnType<typeof screen>) => r.getByTestId('shield-cta').props.accessibilityState?.disabled;
 
 describe('#16 shield side — the design', () => {
-  it('idle: title, the "Make private" tab, ONE balance line ("Public balance" from the pool mint), MAX, "You\'ll make private", the fee rows behind Details, the disabled CTA', async () => {
+  it('idle: title "Make private", ONE balance line ("Public balance" from the pool mint), MAX, "You\'ll make private", the fee rows behind Details, the disabled CTA', async () => {
     const r = screen();
     await waitFor(() => expect(mockPoolCount).toHaveBeenCalled());
     // owner phone pass 2026-11-21: the title is the action ("Private ⇄ Public" and its tabs left)
@@ -69,7 +69,7 @@ describe('#16 shield side — the design', () => {
     expect(r.queryByText('Private ⇄ Public')).toBeNull();
     expect(r.getByText('Public balance')).toBeTruthy(); // part B: "Available" → "Public balance"
     expect(r.getByTestId('shield-balance-value').props.children).toBe('2 TEST'); // part B: by text "2 TEST" → the BalanceRow's value id
-    expect(r.queryByText('Private balance')).toBeNull(); // decision B-2: one balance line per tab
+    expect(r.queryByText('Private balance')).toBeNull(); // decision B-2: one balance line per screen
     expect(r.getByLabelText('Max')).toBeTruthy();
     expect(r.getByText("You'll make private")).toBeTruthy(); // part B: "You'll shield" → "You'll make private"
     expect(r.queryByText('Network fee')).toBeNull(); // decision B-3: behind Details

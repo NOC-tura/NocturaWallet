@@ -19,7 +19,7 @@ All of this must happen without the wallet claiming more privacy than it deliver
 
 Success criteria:
 - one word pair throughout the user interface;
-- one balance line per #16 tab;
+- one balance line per #16 screen (Make private / Make public);
 - no technical term visible by default;
 - the import never silently picks an empty account when a funded one exists;
 - the privacy-claims guard stays as strict as before and is green.
@@ -38,8 +38,8 @@ Only user-visible copy changes. Every term comes from one module, `src/copy/mode
 |---|---|
 | Dashboard toggle "Transparent / Shielded" | **Public / Private** |
 | Actions and CTAs "Shield" / "Unshield" / "Unshield TEST" | **Make private / Make public**; CTA "Make {amount} {sym} public" / "Make {amount} {sym} private" (disabled CTA: "Make {sym} public" / "Make {sym} private") |
-| #16 title "Shield / Unshield" | **Private ⇄ Public** |
-| "Shielded balance", "Vault balance", "SHIELDED · VAULT BALANCE" | **Private balance**; **Public balance** on the Make private tab |
+| #16 title "Shield / Unshield" | ~~Private ⇄ Public~~ → the action: **Make private** / **Make public** (amended 2026-11-21: two screens, no tabs) |
+| "Shielded balance", "Vault balance", "SHIELDED · VAULT BALANCE" | **Private balance**; **Public balance** on the Make private screen |
 | "SHIELDED ASSETS", "· shielded" | **PRIVATE ASSETS**, "· private" |
 | "Unshielding…" / "Unshielded" / header "SHIELDED Unshield" | **Making public…** / **Now public** / header "PRIVATE · Make public" |
 | Deposit run "Shielding…" / "Shielded" | **Making private…** / **Now private** |
@@ -91,7 +91,7 @@ All four live under `src/components/private/`, except the copy module.
     - "PRIVATE ASSETS";
     - the pending caption "{x} pending · not confirmed yet" with Check again, and the decided captions;
   - Public mode: only the toggle's label changes.
-- **#16 "Private ⇄ Public":** *(Amended 2026-11-21 by owner decision after the phone pass: two separate screens with no tabs; the dashboard button fixes the direction, the title is the action "Make private" / "Make public", the other direction is reached by going back. The bullets below apply to each screen.)*
+- **#16 "Make private" / "Make public" (was "Private ⇄ Public"):** *(Amended 2026-11-21 by owner decision after the phone pass: two separate screens with no tabs; the dashboard button fixes the direction, the title is the action "Make private" / "Make public", the other direction is reached by going back. The bullets below apply to each screen.)*
   - ~~tabs Make private / Make public~~ (superseded, see the amendment);
   - one balance line: Public balance on Make private, Private balance on Make public (decision B-2);
   - the amount with MAX and `AmountLimitHint` (decision B-4);

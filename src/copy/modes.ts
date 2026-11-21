@@ -27,6 +27,8 @@ export const MAKE_PUBLIC = 'Make public';
 
 /** The Make public warning's title (owner phone pass 2026-11-21); the relayed sentence sits under it. */
 export const WHAT_STAYS_PUBLIC = 'What stays public';
+/** Under WHAT_STAYS_PUBLIC on Make public: every exit's destination is public (phone-fix review I-1). */
+export const DESTINATION_IS_PUBLIC = 'The destination address is public on chain.';
 
 /** The balances (§2 row 4): "Public balance" is the Make private screen's one line (decision B-2). */
 export const PRIVATE_BALANCE = 'Private balance';
