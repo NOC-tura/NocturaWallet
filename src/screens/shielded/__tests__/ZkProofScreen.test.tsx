@@ -116,10 +116,10 @@ describe('#18 — the real stage sequence', () => {
     expect(ctl.args![2]).toBe(5_000_000_000n);
 
     await stage(ctl, 'checking');
-    expect(r.getByTestId('zk-hero').props.children).toBe('Building witness');
-    expect(status(r, 1)).toBe('Build witness: active');
+    expect(r.getByTestId('zk-hero').props.children).toBe('Preparing'); // part B: "Building witness" → "Preparing"
+    expect(status(r, 1)).toBe('Prepare: active'); // part B: "Build witness" → "Prepare"
     expect(meta(r, 1)).toBe('checking the network and your account · 0.0 s');
-    expect(status(r, 2)).toBe('Prove: pending');
+    expect(status(r, 2)).toBe('Make the proof: pending'); // part B: "Prove" → "Make the proof"
     noPercent(r);
 
     await stage(ctl, 'keyFiles', 1000);
@@ -128,27 +128,27 @@ describe('#18 — the real stage sequence', () => {
     expect(meta(r, 1)).toMatch(/^checking the deposit counter on chain · 1\.5 s$/);
     await stage(ctl, 'precheck', 300); // a hit repeats precheck — still row 1
     await stage(ctl, 'commitment', 300);
-    expect(status(r, 1)).toBe('Build witness: active');
-    expect(status(r, 2)).toBe('Prove: pending');
+    expect(status(r, 1)).toBe('Prepare: active'); // part B: "Build witness" → "Prepare"
+    expect(status(r, 2)).toBe('Make the proof: pending'); // part B: "Prove" → "Make the proof"
 
     // no timer advances a row: 60 s without a stage leaves everything where it is
     await act(async () => {
       jest.advanceTimersByTime(60_000);
     });
-    expect(status(r, 2)).toBe('Prove: pending');
-    expect(r.getByTestId('zk-hero').props.children).toBe('Building witness');
+    expect(status(r, 2)).toBe('Make the proof: pending'); // part B: "Prove" → "Make the proof"
+    expect(r.getByTestId('zk-hero').props.children).toBe('Preparing'); // part B: "Building witness" → "Preparing"
     expect(meta(r, 1)).toBe('computing the note commitment · 62.1 s');
 
     await stage(ctl, 'proving');
-    expect(r.getByTestId('zk-hero').props.children).toBe('Proving');
-    expect(status(r, 1)).toBe('Build witness: done');
+    expect(r.getByTestId('zk-hero').props.children).toBe('Making the proof'); // part B: "Proving" → "Making the proof"
+    expect(status(r, 1)).toBe('Prepare: done'); // part B: "Build witness" → "Prepare"
     expect(meta(r, 1)).toBe('done · 62.1 s');
-    expect(status(r, 2)).toBe('Prove: active');
+    expect(status(r, 2)).toBe('Make the proof: active'); // part B: "Prove" → "Make the proof"
 
     await stage(ctl, 'verifying', 12_100);
-    expect(r.getByTestId('zk-hero').props.children).toBe('Verifying');
+    expect(r.getByTestId('zk-hero').props.children).toBe('Checking the proof'); // part B: "Verifying" → "Checking the proof"
     expect(meta(r, 2)).toBe('done · 12.1 s');
-    expect(status(r, 3)).toBe('Verify locally: active');
+    expect(status(r, 3)).toBe('Check the proof: active'); // part B: "Verify locally" → "Check the proof"
     noPercent(r);
 
     await act(async () => {
@@ -200,6 +200,18 @@ describe('#18 — the real stage sequence', () => {
     await flush();
     expect(mockPrepare).toHaveBeenCalledTimes(1);
   });
+
+  it('part B: the header says "Private" and "Making private…"; no old word on #18, in any stage', async () => {
+    const ctl = controlledPrepare();
+    const r = render(<ZkProofScreen amount={AMOUNT} onReady={onReady} onCancel={onCancel} />);
+    expect(r.getByTestId('zk-title').props.children).toBe('Making private…');
+    expect(r.getByText('Private')).toBeTruthy();
+    await flush();
+    for (const s of ['checking', 'proving', 'verifying'] as const) {
+      await stage(ctl, s, 100);
+      expect(r.queryByText(/SHIELDED|Groth16|witness/)).toBeNull();
+    }
+  });
 });
 
 describe('#18 — failures show the E_A0 reason on the row it happened in', () => {
@@ -219,7 +231,7 @@ describe('#18 — failures show the E_A0 reason on the row it happened in', () =
     expect(r.getByTestId('zk-hero-sub').props.children).toBe(
       'E_A0_DEPOSIT_PRECHECK_UNSYNCED · counter 0: its rho PDA exists',
     );
-    expect(status(r, 1)).toBe('Build witness: errored');
+    expect(status(r, 1)).toBe('Prepare: errored'); // part B: "Build witness" → "Prepare"
     expect(meta(r, 1)).toBe('failed · E_A0_DEPOSIT_PRECHECK_UNSYNCED');
     for (const n of [2, 3, 4]) {
       expect(meta(r, n)).toBe('— · skipped');
@@ -237,9 +249,9 @@ describe('#18 — failures show the E_A0 reason on the row it happened in', () =
       ctl.reject(new Error('E_A0_KEYS_DIGEST: zkey digest mismatch'));
     });
     await flush();
-    expect(status(r, 1)).toBe('Build witness: done');
+    expect(status(r, 1)).toBe('Prepare: done'); // part B: "Build witness" → "Prepare"
     expect(meta(r, 1)).toBe('done · 2.0 s');
-    expect(status(r, 2)).toBe('Prove: errored');
+    expect(status(r, 2)).toBe('Make the proof: errored'); // part B: "Prove" → "Make the proof"
     expect(meta(r, 2)).toBe('failed · E_A0_KEYS_DIGEST');
   });
 
@@ -250,7 +262,7 @@ describe('#18 — failures show the E_A0 reason on the row it happened in', () =
     await flush();
     expect(mockPrepare).not.toHaveBeenCalled();
     expect(r.getByTestId('zk-hero-sub').props.children).toBe('User canceled the operation.');
-    expect(status(r, 1)).toBe('Build witness: errored');
+    expect(status(r, 1)).toBe('Prepare: errored'); // part B: "Build witness" → "Prepare"
   });
 
   it('one action: "Retry on this device" — no hosted prover anywhere — and it runs a new prepare', async () => {

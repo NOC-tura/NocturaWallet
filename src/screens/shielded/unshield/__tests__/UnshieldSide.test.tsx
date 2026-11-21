@@ -12,6 +12,7 @@ import React from 'react';
 import {render, fireEvent, act, waitFor} from '@testing-library/react-native';
 import {StyleSheet} from 'react-native';
 import {ShieldUnshieldScreen} from '../../ShieldUnshieldScreen';
+import {A0} from '../../../../modules/shielded/a0/constants';
 import type {A0ShieldedView} from '../../../../hooks/useA0Shielded';
 import type {A0RelayerQuote} from '../../../../modules/shielded/a0/relayerClient';
 import type {A0Note} from '../../../../modules/shielded/a0/noteStore';
@@ -36,9 +37,11 @@ const OTHER = web3.Keypair.fromSeed(new Uint8Array(32).fill(2)).publicKey.toBase
 const OFF_CURVE = web3.PublicKey.findProgramAddressSync([Buffer.from('off-curve')], web3.SystemProgram.programId)[0].toBase58();
 
 jest.mock('../../../../store/zustand/walletStore', () => ({
-  useWalletStore: () => ({tokenBalances: {}, solBalance: '1000000000', publicKey: mockMain}),
+  useWalletStore: () => ({tokenBalances: mockTokenBalances, solBalance: '1000000000', publicKey: mockMain}),
 }));
 let mockMain: string | null = null;
+/** the main account's token balances — only the MAX-colour row (owner phone pass 2026-11-21) sets them */
+let mockTokenBalances: Record<string, string> = {};
 
 jest.mock('../../../../modules/shielded/a0/poolSize', () => ({
   readA0PoolNoteCount: () => Promise.resolve({status: 'ok', count: 3}),
@@ -59,9 +62,12 @@ jest.mock('../../../../modules/shielded/a0/noteStore', () => ({
     return {nextDepositIndex: 2n, notes: mockNotes};
   },
 }));
-let mockScheme: TransparentScheme = {kind: 'slip10', account: 0};
+let mockScheme: TransparentScheme | null = {kind: 'slip10', account: 0};
 jest.mock('../../../../modules/keyDerivation/derivationScheme', () => ({
-  loadTransparentScheme: () => mockScheme,
+  loadTransparentScheme: () => {
+    if (mockScheme === null) throw new Error('scheme unreadable'); // fix round 1: an unreadable scheme
+    return mockScheme;
+  },
 }));
 
 /** The live devnet quote's terms (facts file: minFee 10000, gasGrantLamports "3000000"). */
@@ -97,6 +103,7 @@ beforeEach(() => {
   mockView = {kind: 'ready', unspent: 2_500_000_000n, pending: 0n, notes: 2};
   mockNotes = [note(2_000_000_000n, 4), note(500_000_000n, 7)]; // 2 TEST + 0.5 TEST
   mockMain = MAIN;
+  mockTokenBalances = {};
   mockScheme = {kind: 'slip10', account: 0};
   mockQuote.mockReset().mockResolvedValue(quote());
   onUnshield.mockReset();
@@ -120,30 +127,73 @@ type R = Awaited<ReturnType<typeof screen>>;
 const disabled = (r: R, id: string) => r.getByTestId(id).props.accessibilityState?.disabled;
 const selected = (r: R, id: string) => r.getByTestId(id).props.accessibilityState?.selected;
 const text = (r: R, id: string) => r.getByTestId(id).props.children;
+/** part B (spec §3.3): the options live behind "Change"; a pick closes them. */
+const openDest = (r: R) => fireEvent.press(r.getByTestId('unshield-dest-change'));
+const pick = (r: R, which: 'fresh' | 'main' | 'external') => {
+  openDest(r);
+  fireEvent.press(r.getByTestId(`unshield-dest-${which}`));
+};
+const summary = (r: R) => text(r, 'unshield-dest-summary');
 
-describe('#16 — the direction tabs (spec §12: the unshield side is no longer hidden)', () => {
-  it('both tabs; "Make public" flips to the unshield side, "Make private" back to the shield side — no route; the relayer is asked only once the unshield side opens', async () => {
+describe('#16 — two screens, no tabs (owner phone pass 2026-11-21)', () => {
+  it('no direction opens Make private: no tab, no "Make public" control, and the relayer is never asked', async () => {
     const r = render(<ShieldUnshieldScreen onBack={jest.fn()} onShield={jest.fn()} onUnshield={onUnshield} />);
     await act(async () => {});
     expect(mockQuote).not.toHaveBeenCalled(); // the shield side makes no relayer request
-    expect(r.getByText('Make private')).toBeTruthy();
-    expect(r.getByText('Make public')).toBeTruthy();
+    expect(r.getByTestId('shield-unshield-title').props.children).toBe('Make private');
+    expect(r.queryAllByRole('tab')).toHaveLength(0);
+    expect(r.queryByLabelText('Make public')).toBeNull();
     expect(r.getByTestId('shield-cta')).toBeTruthy();
     expect(r.queryByTestId('unshield-cta')).toBeNull();
-    fireEvent.press(r.getByLabelText('Make public'));
-    await act(async () => {});
-    expect(mockQuote).toHaveBeenCalledTimes(1);
-    expect(r.getByTestId('unshield-cta')).toBeTruthy();
-    expect(r.queryByTestId('shield-cta')).toBeNull();
-    fireEvent.press(r.getByLabelText('Make private'));
-    expect(r.getByTestId('shield-cta')).toBeTruthy();
   });
 
-  it('initialDirection "public" opens the unshield side; the quote is asked once, on the devnet Connection', async () => {
+  it('initialDirection "public" opens Make public: the title is the action, a header; no tab, no "Make private" control; the quote is asked once, on the devnet Connection', async () => {
     const r = await screen();
-    expect(r.getByLabelText('Make public').props.accessibilityState?.selected).toBe(true);
+    const title = r.getByTestId('shield-unshield-title');
+    expect(title.props.children).toBe('Make public');
+    expect(title.props.accessibilityRole).toBe('header');
+    expect(r.getAllByRole('header')).toHaveLength(1); // positive control: the role query sees roles
+    expect(r.queryAllByRole('tab')).toHaveLength(0);
+    expect(r.queryByLabelText('Make private')).toBeNull(); // the DirTab label pair is gone
+    expect(r.queryByLabelText('Make public')).toBeNull();
+    expect(r.queryByText('Make private')).toBeNull();
+    expect(r.queryByText('Private ⇄ Public')).toBeNull();
+    expect(r.getByTestId('unshield-cta')).toBeTruthy();
+    expect(r.queryByTestId('shield-cta')).toBeNull();
     expect(mockQuote).toHaveBeenCalledTimes(1);
     expect(mockQuote.mock.calls[0]![0]).toEqual({rpc: 'devnet'});
+  });
+
+  it('Make public stays Make public for the life of the screen: a later prop does not flip it', async () => {
+    const r = await screen();
+    r.rerender(<ShieldUnshieldScreen onBack={jest.fn()} onShield={jest.fn()} onUnshield={onUnshield} initialDirection="private" />);
+    await act(async () => {});
+    expect(r.getByTestId('shield-unshield-title').props.children).toBe('Make public');
+    expect(r.getByTestId('unshield-cta')).toBeTruthy();
+    expect(r.queryByTestId('shield-cta')).toBeNull();
+  });
+
+  it('one MAX colour: the Make public MAX chip has exactly the Make private chip\'s classes, enabled and disabled', async () => {
+    const chip = (r: R) => ({box: r.getByLabelText('Max').props.className, label: r.getByText('MAX').props.className});
+    // enabled on both: 2 TEST public, 2.5 TEST private
+    mockTokenBalances = {[A0.mint]: '2000000000'};
+    const priv = render(<ShieldUnshieldScreen onBack={jest.fn()} onShield={jest.fn()} onUnshield={onUnshield} />);
+    await act(async () => {});
+    const privOn = chip(priv as unknown as R);
+    priv.unmount();
+    const pubOn = chip(await screen());
+    expect(privOn.label).toContain('text-accent-shielded'); // non-vacuous: the shield side's colour
+    expect(pubOn).toEqual(privOn);
+    // disabled on both: no public balance, no private note
+    mockTokenBalances = {};
+    mockNotes = [];
+    const privOffR = render(<ShieldUnshieldScreen onBack={jest.fn()} onShield={jest.fn()} onUnshield={onUnshield} />);
+    await act(async () => {});
+    const privOff = chip(privOffR as unknown as R);
+    privOffR.unmount();
+    const pubOff = chip(await screen());
+    expect(privOff.label).toContain('text-fg-disabled');
+    expect(pubOff).toEqual(privOff);
   });
 });
 
@@ -162,43 +212,57 @@ describe('#16 unshield — the design (states 2 and 5) and the A0 lines', () => 
     expect(text(r, 'unshield-amount-symbol')).toBe('TEST');
   });
 
-  it('idle: Vault balance, the one-note limit, the relayed copy, the fee rows empty, CTA "Unshield TEST" disabled', async () => {
+  it('idle: ONE balance line ("Private balance"), the relayed copy, the relayer fee visible, the rest and the one-note limit behind Details, CTA "Make TEST public" disabled', async () => {
     const r = await screen();
-    expect(text(r, 'unshield-vault')).toBe('2.5 TEST');
-    expect(text(r, 'unshield-one-note')).toBe(
-      'You can unshield up to 1.99999 TEST from one note at a time; combining notes comes in a later version.',
-    );
+    expect(r.getByText('Private balance')).toBeTruthy(); // part B: "Vault balance" → "Private balance"
+    expect(text(r, 'unshield-vault-value')).toBe('2.5 TEST'); // part B: "unshield-vault" → its BalanceRow value "unshield-vault-value"
+    expect(r.queryByText('Public balance')).toBeNull(); // decision B-2
     expect(text(r, 'unshield-relayed')).toBe(
       'The relayer pays for and submits this transaction, so no key of yours signs it. Amounts and timing are public.',
     );
-    expect(r.getByText('Privacy decreases on public withdraw')).toBeTruthy();
+    expect(r.getByText('What stays public')).toBeTruthy(); // owner phone pass 2026-11-21: was "Privacy decreases on public withdraw"
+    // phone-fix review I-1: under "What stays public" the list leads with a public thing and names the destination too
+    expect(text(r, 'unshield-destination-public')).toBe('The destination address is public on chain.');
+    expect(r.queryByText('Privacy decreases on public withdraw')).toBeNull();
     expect(r.getByText('Relayer fee')).toBeTruthy();
-    expect(r.getByText('ZK proof fee')).toBeTruthy();
-    expect(r.getByText('Unshield TEST')).toBeTruthy();
+    expect(r.queryByText('Proof fee')).toBeNull(); // decision B-3: behind Details (phone pass 2 fix round 1, M-1: was "ZK proof fee")
+    expect(r.queryByTestId('unshield-one-note')).toBeNull();
+    fireEvent.press(r.getByTestId('unshield-details-toggle'));
+    expect(r.getByText('Proof fee')).toBeTruthy();
+    expect(r.queryByText(/ZK proof fee/)).toBeNull();
+    expect(r.getByText('Network fee')).toBeTruthy();
+    expect(text(r, 'unshield-one-note')).toBe(
+      'You can make up to 1.99999 TEST public from one note at a time; combining notes comes in a later version.',
+    ); // part B: "You can unshield up to" → "You can make up to … public"
+    expect(r.getByText('Make TEST public')).toBeTruthy(); // part B: "Unshield TEST" → "Make TEST public"
+    expect(r.getByTestId('unshield-cta').props.accessibilityLabel).toBe('Make TEST public');
     expect(disabled(r, 'unshield-cta')).toBe(true);
   });
 
-  it('amount entered: the relayer fee (token), the network fee paid by the relayer, the exact amount line', async () => {
+  it('amount entered: the relayer fee (token), the exact amount line; the network fee paid by the relayer behind Details', async () => {
     const r = await screen();
     fireEvent.changeText(r.getByTestId('unshield-amount-input'), '1.25');
     expect(r.getByText('0.00001 TEST')).toBeTruthy();
-    expect(r.getByText('Paid by the relayer')).toBeTruthy();
-    expect(r.getByText('None · made on this device')).toBeTruthy();
     expect(text(r, 'unshield-net')).toBe('1.25 TEST');
     expect(text(r, 'unshield-amount-line')).toBe(
-      'The destination receives exactly 1.25 TEST. The relayer fee of 0.00001 TEST comes out of your shielded balance.',
-    );
-    expect(r.getByText('Unshield 1.25 TEST')).toBeTruthy();
+      'The destination receives exactly 1.25 TEST. The relayer fee of 0.00001 TEST comes out of your private balance.',
+    ); // part B: "shielded balance" → "private balance"
+    fireEvent.press(r.getByTestId('unshield-details-toggle'));
+    expect(r.getByText('Paid by the relayer')).toBeTruthy();
+    expect(r.getByText('None · made on this device')).toBeTruthy();
+    expect(r.getByText('Make 1.25 TEST public')).toBeTruthy(); // part B: "Unshield 1.25 TEST" → "Make 1.25 TEST public"
     expect(disabled(r, 'unshield-cta')).toBe(false); // the fresh account is preselected
   });
 
-  it('MAX = the largest note minus the fee (§6 step 2), exact; one base unit more → the helper, CTA disabled', async () => {
+  it('Review Focus 3: MAX = the largest note minus the fee, exact; exactly MAX → no hint, enabled; one base unit more → the hint, CTA disabled', async () => {
     const r = await screen();
     fireEvent.press(r.getByLabelText('Max'));
     expect(r.getByTestId('unshield-amount-input').props.value).toBe('1.99999');
+    expect(r.queryByTestId('unshield-over-max')).toBeNull();
     expect(disabled(r, 'unshield-cta')).toBe(false);
     fireEvent.changeText(r.getByTestId('unshield-amount-input'), '1.999990001');
-    expect(text(r, 'unshield-over-max')).toBe('Max per unshield: 1.99999 TEST (your largest note, minus the relayer fee)');
+    expect(text(r, 'unshield-over-max')).toBe('You can make up to 1.99999 TEST public at once.'); // part B: AmountLimitHint
+    expect(r.queryByTestId('unshield-details-body')).toBeNull(); // Review Focus 2: the hint is visible with Details collapsed
     expect(disabled(r, 'unshield-cta')).toBe(true);
     fireEvent.press(r.getByTestId('unshield-cta'));
     expect(onUnshield).not.toHaveBeenCalled();
@@ -207,15 +271,43 @@ describe('#16 unshield — the design (states 2 and 5) and the A0 lines', () => 
   it('no note can pay the fee → said, CTA disabled (a pending note is never a source)', async () => {
     mockNotes = [note(10_000n, 1), note(5_000_000_000n, 2, 'pending')];
     const r = await screen();
-    expect(text(r, 'unshield-no-note')).toBe('No shielded note can pay the relayer fee of 0.00001 TEST.');
+    expect(text(r, 'unshield-no-note')).toBe('No private note can pay the relayer fee of 0.00001 TEST.'); // part B: "No shielded note" → "No private note"
     fireEvent.changeText(r.getByTestId('unshield-amount-input'), '0.000000001');
     expect(disabled(r, 'unshield-cta')).toBe(true);
   });
+
+  it('Review Focus 2: a refused quote, "no private note can pay" and the relayed sentence are all visible with Details collapsed', async () => {
+    mockNotes = [note(10_000n, 1)];
+    mockQuote.mockRejectedValueOnce(Object.assign(new Error('E_A0_QUOTE_FEE_PAYER: x'), {code: 'E_A0_QUOTE_FEE_PAYER'}));
+    const r = await screen();
+    expect(r.queryByTestId('unshield-details-body')).toBeNull();
+    expect(r.getByText(/The relayer's quote was refused · E_A0_QUOTE_FEE_PAYER/)).toBeTruthy();
+    expect(r.getByTestId('unshield-relayed')).toBeTruthy();
+    await act(async () => {
+      fireEvent.press(r.getByTestId('unshield-quote-retry'));
+    });
+    expect(text(r, 'unshield-no-note')).toBe('No private note can pay the relayer fee of 0.00001 TEST.');
+    expect(r.queryByTestId('unshield-details-body')).toBeNull();
+  });
+
+  it.each([
+    ['running', {kind: 'running'} as A0ShieldedView],
+    ['idle', {kind: 'idle'} as A0ShieldedView],
+    ['error', {kind: 'error', code: 'E_A0_SYNC_RPC', message: 'x'} as A0ShieldedView],
+    ['unsupported', {kind: 'unsupported'} as A0ShieldedView],
+  ])('review I-4: startup %s → the one balance line says "—", never a figure', async (_n, view) => {
+    mockView = view;
+    const r = await screen();
+    expect(text(r, 'unshield-vault-value')).toBe('—');
+  });
 });
 
-describe('#16 unshield — the destination choice (undrawn; spec §11, S3 / S9 / S11, ruling 4)', () => {
-  it('a granting quote: "A new account" PRESELECTED with the §11 default and the grant in SOL', async () => {
+describe('#16 unshield — the destination row (part B, spec §3.3; M1c S3 / S9 / S11, ruling 4)', () => {
+  it('a granting quote: collapsed "To: A new account (recommended) · Change"; the fresh account PRESELECTED with the §11 default and the grant in SOL', async () => {
     const r = await screen();
+    expect(summary(r)).toBe('To: A new account (recommended)'); // part B: the selection read from the collapsed row
+    expect(r.queryByTestId('unshield-dest-options')).toBeNull();
+    openDest(r);
     expect(selected(r, 'unshield-dest-fresh')).toBe(true);
     expect(selected(r, 'unshield-dest-main')).toBe(false);
     expect(text(r, 'unshield-dest-fresh-sub')).toBe(
@@ -223,9 +315,15 @@ describe('#16 unshield — the destination choice (undrawn; spec §11, S3 / S9 /
     );
   });
 
-  it('S11 (ruling 4, the Jest proof of "visible, disabled"): a quote WITHOUT a grant → fresh disabled with its reason, nothing preselected, the CTA disabled until a choice', async () => {
+  it('Review Focus 1 / S11 (M1c\'s row, its assertions kept; owner decision A1): a quote WITHOUT a grant → "To: Choose a destination", the reason visible, fresh disabled, NOTHING preselected, the CTA disabled until a choice; main → its warning, then {kind: "main"} only on a tap', async () => {
     mockQuote.mockResolvedValue(quote({gasGrantLamports: null, grantFloorLamports: null}));
     const r = await screen();
+    expect(summary(r)).toBe('To: Choose a destination'); // part B: the collapsed row (owner decision A1)
+    expect(text(r, 'unshield-dest-fresh-reason')).toBe(
+      'A new account is not available yet: the relayer cannot send it SOL for its own fees, and funding it from your other accounts would link them.',
+    );
+    openDest(r); // part B: the options sit behind Change
+    expect(summary(r)).toBe('To: Choose a destination'); // carry 1a: opening Change chooses nothing
     expect(disabled(r, 'unshield-dest-fresh')).toBe(true);
     expect(text(r, 'unshield-dest-fresh-sub')).toBe(
       'A new account is not available yet: the relayer cannot send it SOL for its own fees, and funding it from your other accounts would link them.',
@@ -237,26 +335,44 @@ describe('#16 unshield — the destination choice (undrawn; spec §11, S3 / S9 /
     expect(disabled(r, 'unshield-cta')).toBe(true);
     fireEvent.press(r.getByTestId('unshield-dest-fresh')); // a tap on the disabled row selects nothing
     expect(selected(r, 'unshield-dest-fresh')).toBe(false);
+    expect(r.queryByTestId('unshield-warning-main')).toBeNull();
     fireEvent.press(r.getByTestId('unshield-dest-main'));
     expect(disabled(r, 'unshield-cta')).toBe(false);
+    expect(text(r, 'unshield-warning-main')).toBe('This links your exit to your deposit: your main account made the deposit.');
+    expect(onUnshield).not.toHaveBeenCalled(); // never sent without the tap
+    fireEvent.press(r.getByTestId('unshield-cta'));
+    expect(onUnshield).toHaveBeenCalledWith({destination: {kind: 'main'}, amount: '1000000000'});
   });
 
-  it('S9: a cli wallet → fresh disabled with the cli reason, even when the quote grants', async () => {
+  it('S9 / Review Focus 1 (M1c\'s row, its assertions kept): a cli wallet → fresh disabled with the cli reason and not selected, nothing preselected, even when the quote grants', async () => {
     mockScheme = {kind: 'cli'};
     const r = await screen();
+    expect(summary(r)).toBe('To: Choose a destination'); // part B: the collapsed row (owner decision A1)
+    expect(text(r, 'unshield-dest-fresh-reason')).toBe(
+      'This wallet uses the Solana CLI key scheme, which has a single account, so no new account can be created for this exit.',
+    );
+    openDest(r);
+    expect(summary(r)).toBe('To: Choose a destination'); // carry 1a: opening Change chooses nothing
     expect(disabled(r, 'unshield-dest-fresh')).toBe(true);
-    expect(selected(r, 'unshield-dest-fresh')).toBe(false);
+    for (const id of ['unshield-dest-fresh', 'unshield-dest-main', 'unshield-dest-external']) {
+      expect(selected(r, id)).toBe(false); // carry 1a: nothing preselected (owner decision A1)
+    }
     expect(text(r, 'unshield-dest-fresh-sub')).toBe(
       'This wallet uses the Solana CLI key scheme, which has a single account, so no new account can be created for this exit.',
     );
+    fireEvent.changeText(r.getByTestId('unshield-amount-input'), '1');
+    expect(disabled(r, 'unshield-cta')).toBe(true);
   });
 
-  it('"My main account" → the link warning (§11 verbatim) and the main address; the request carries {kind: "main"}', async () => {
+  it('"My main account" → the link warning (§11 verbatim) under the row and the main address in its option; the request carries {kind: "main"}', async () => {
     const r = await screen();
     expect(r.queryByTestId('unshield-warning-main')).toBeNull();
-    fireEvent.press(r.getByTestId('unshield-dest-main'));
+    pick(r, 'main'); // part B: the options sit behind Change (pick = open + tap)
+    expect(summary(r)).toBe('To: My main account'); // part B: the selection read from the collapsed row
     expect(text(r, 'unshield-warning-main')).toBe('This links your exit to your deposit: your main account made the deposit.');
+    openDest(r);
     expect(text(r, 'unshield-dest-main-sub')).toBe(`${MAIN.slice(0, 6)}…${MAIN.slice(-6)}`);
+    fireEvent.press(r.getByTestId('unshield-dest-main'));
     fireEvent.changeText(r.getByTestId('unshield-amount-input'), '0.5');
     fireEvent.press(r.getByTestId('unshield-cta'));
     expect(onUnshield).toHaveBeenCalledWith({destination: {kind: 'main'}, amount: '500000000'});
@@ -264,7 +380,7 @@ describe('#16 unshield — the destination choice (undrawn; spec §11, S3 / S9 /
 
   it('UX-A 2: the "Another address" input shows the WHOLE address — multiline (2 lines), monospace; Enter submits instead of breaking the line', async () => {
     const r = await screen();
-    fireEvent.press(r.getByTestId('unshield-dest-external'));
+    pick(r, 'external'); // part B: the options sit behind Change (pick = open + tap)
     const input = r.getByTestId('unshield-external-input');
     expect(input.props.multiline).toBe(true); // wraps: a single-line input scrolls the start out of view
     expect(input.props.numberOfLines).toBe(2);
@@ -274,10 +390,11 @@ describe('#16 unshield — the destination choice (undrawn; spec §11, S3 / S9 /
     expect(r.getByTestId('unshield-external-input').props.value).toBe(OTHER); // the full text, nothing cut
   });
 
-  it('"Another address" → the payment warning (§11 verbatim), the input; a valid wallet address → {kind: "external", owner}', async () => {
+  it('"Another address" → the payment warning (one word swapped) under the row, the input; a valid wallet address → {kind: "external", owner}', async () => {
     const r = await screen();
-    fireEvent.press(r.getByTestId('unshield-dest-external'));
-    expect(text(r, 'unshield-warning-external')).toBe('This is a payment from your shielded balance. The recipient sees the amount.');
+    pick(r, 'external'); // part B: the options sit behind Change (pick = open + tap)
+    expect(summary(r)).toBe('To: Another address'); // part B: the selection read from the collapsed row
+    expect(text(r, 'unshield-warning-external')).toBe('This is a payment from your private balance. The recipient sees the amount.'); // part B: "shielded balance" → "private balance"
     fireEvent.changeText(r.getByTestId('unshield-amount-input'), '1.000000001');
     expect(disabled(r, 'unshield-cta')).toBe(true); // no address yet
     fireEvent.changeText(r.getByTestId('unshield-external-input'), `  ${OTHER} `);
@@ -292,7 +409,7 @@ describe('#16 unshield — the destination choice (undrawn; spec §11, S3 / S9 /
     ['the main account', MAIN, 'This is your main account: choose "My main account" instead.'],
   ])('"Another address" refuses %s: the helper, CTA disabled', async (_n, addr, helper) => {
     const r = await screen();
-    fireEvent.press(r.getByTestId('unshield-dest-external'));
+    pick(r, 'external'); // part B: the options sit behind Change (pick = open + tap)
     fireEvent.changeText(r.getByTestId('unshield-amount-input'), '1');
     fireEvent.changeText(r.getByTestId('unshield-external-input'), addr);
     expect(text(r, 'unshield-external-problem')).toBe(helper);
@@ -304,16 +421,36 @@ describe('#16 unshield — the destination choice (undrawn; spec §11, S3 / S9 /
   it('the preselection happens once: the user\'s own pick survives every later render (and a quote that arrives after a Retry still preselects)', async () => {
     mockQuote.mockRejectedValueOnce(Object.assign(new Error('E_A0_QUOTE_UNAVAILABLE: no answer'), {code: 'E_A0_QUOTE_UNAVAILABLE'}));
     const r = await screen();
-    expect(selected(r, 'unshield-dest-fresh')).toBe(false); // no quote, no offer
+    expect(summary(r)).toBe('To: Choose a destination'); // no quote, no offer
+    expect(disabled(r, 'unshield-dest-change')).toBe(true);
     await act(async () => {
       fireEvent.press(r.getByTestId('unshield-quote-retry'));
     });
-    expect(selected(r, 'unshield-dest-fresh')).toBe(true);
-    fireEvent.press(r.getByTestId('unshield-dest-main'));
+    expect(summary(r)).toBe('To: A new account (recommended)'); // part B: selected(fresh) → the collapsed row
+    pick(r, 'main'); // part B: the options sit behind Change (pick = open + tap)
     fireEvent.changeText(r.getByTestId('unshield-amount-input'), '1'); // re-renders
     fireEvent.changeText(r.getByTestId('unshield-amount-input'), '1.5');
-    expect(selected(r, 'unshield-dest-main')).toBe(true);
-    expect(selected(r, 'unshield-dest-fresh')).toBe(false);
+    expect(summary(r)).toBe('To: My main account'); // part B: selected(main) → the collapsed row
+  });
+});
+
+describe('#16 unshield — an unreadable key scheme (fix round 1, review Minor 6)', () => {
+  it('the collapsed row says why there is no new account (not a bare "Choose a destination"); nothing preselected; main still works', async () => {
+    mockScheme = null;
+    const r = await screen();
+    expect(summary(r)).toBe('To: Choose a destination');
+    expect(text(r, 'unshield-dest-fresh-reason')).toBe(
+      'A new account is not available: this wallet\'s account type could not be read.',
+    );
+    openDest(r);
+    expect(disabled(r, 'unshield-dest-fresh')).toBe(true);
+    for (const id of ['unshield-dest-fresh', 'unshield-dest-main', 'unshield-dest-external']) {
+      expect(selected(r, id)).toBe(false);
+    }
+    fireEvent.press(r.getByTestId('unshield-dest-main'));
+    fireEvent.changeText(r.getByTestId('unshield-amount-input'), '1');
+    fireEvent.press(r.getByTestId('unshield-cta'));
+    expect(onUnshield).toHaveBeenCalledWith({destination: {kind: 'main'}, amount: '1000000000'});
   });
 });
 
@@ -333,7 +470,7 @@ describe('#16 unshield — the quote', () => {
     // final review M-4: the code + a fixed sentence, never the message beside a code
     expect(r.queryByText(/not the pinned relayer/)).toBeNull();
     expect(r.getByText(/Ask the relayer again in a moment\./)).toBeTruthy();
-    expect(disabled(r, 'unshield-dest-main')).toBe(true);
+    expect(disabled(r, 'unshield-dest-change')).toBe(true); // part B: the options sit behind Change, disabled without a quote
     fireEvent.changeText(r.getByTestId('unshield-amount-input'), '1');
     expect(disabled(r, 'unshield-cta')).toBe(true);
     await act(async () => {
@@ -364,7 +501,7 @@ describe('#16 unshield — the CTA (cardinal rule 6; Task 7: the startup state)'
     mockView = view;
     const r = await screen();
     fireEvent.changeText(r.getByTestId('unshield-amount-input'), '1');
-    expect(selected(r, 'unshield-dest-fresh')).toBe(true);
+    expect(summary(r)).toBe('To: A new account (recommended)'); // part B: read from the collapsed row
     expect(disabled(r, 'unshield-cta')).toBe(true);
     fireEvent.press(r.getByTestId('unshield-cta'));
     expect(onUnshield).not.toHaveBeenCalled();
@@ -422,5 +559,45 @@ describe('#16 unshield — the note read (fix round 1, M-9)', () => {
       <ShieldUnshieldScreen onBack={jest.fn()} onShield={jest.fn()} onUnshield={onUnshield} initialDirection="public" focusKey={1} />,
     );
     expect(mockNoteReads.n).toBeGreaterThan(before);
+  });
+});
+
+describe('#16 unshield — owner phone pass 2, 2026-11-21', () => {
+  it('item 3: the card heading is "Summary" (it holds "Destination receives", not only fees); the fee row keeps its name', async () => {
+    const r = await screen();
+    expect(r.getByText('Summary')).toBeTruthy();
+    expect(r.queryByText('Fees')).toBeNull();
+    expect(r.getByText('Relayer fee')).toBeTruthy();
+    expect(r.getByText('Destination receives')).toBeTruthy();
+  });
+
+  // item 8: the quote's fee is 10_000 base units = 0.00001 TEST; the hint shows when fee * 2 > amount
+  it.each([
+    ['fee = amount → shown', '0.00001', true],
+    ['fee * 2 > amount (0.000015) → shown', '0.000015', true],
+    ['fee * 2 == amount → not shown', '0.00002', false],
+    ['fee * 2 < amount → not shown', '1', false],
+  ])('item 8: the high-fee hint, %s; it never disables the CTA', async (_n, typed, shown) => {
+    const r = await screen();
+    fireEvent.changeText(r.getByTestId('unshield-amount-input'), typed);
+    if (shown) {
+      expect(text(r, 'unshield-fee-high')).toBe('The fee is high for this amount.');
+      expect(r.getByTestId('unshield-fee-high').props.className).toContain('text-warning');
+    } else {
+      expect(r.queryByTestId('unshield-fee-high')).toBeNull();
+    }
+    expect(disabled(r, 'unshield-cta')).toBe(false);
+  });
+
+  it('item 8: no quote → no hint, whatever the amount', async () => {
+    mockQuote.mockRejectedValueOnce(Object.assign(new Error('E_A0_QUOTE_UNAVAILABLE: no answer'), {code: 'E_A0_QUOTE_UNAVAILABLE'}));
+    const r = await screen();
+    fireEvent.changeText(r.getByTestId('unshield-amount-input'), '0.00001');
+    expect(r.queryByTestId('unshield-fee-high')).toBeNull();
+  });
+
+  it('item 8: no amount typed → no hint (a quote alone says nothing about this amount)', async () => {
+    const r = await screen();
+    expect(r.queryByTestId('unshield-fee-high')).toBeNull();
   });
 });

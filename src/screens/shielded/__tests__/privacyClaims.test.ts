@@ -18,14 +18,12 @@ const UNSUPPORTED = [
   /Plonk/i,
 ];
 
-const SCREENS = path.resolve(__dirname, '..');
 const ROOT = path.resolve(__dirname, '../../../..');
 
 /**
- * M1c Task 8 (spec §11 "The guard … its scope grows to every file carrying M1 copy"): every
- * `.ts` / `.tsx` under `src/screens/shielded/` at ANY depth (the new `unshield/` directory: #16's
- * unshield side, the destination choice and its warnings, the unshield run #18 → #21, the copy
- * module), outside `__tests__`; plus the M1 copy that lives outside it (the "Check again" link).
+ * Every `.ts` / `.tsx` at ANY depth under `src/screens/` and `src/components/`, outside `__tests__`
+ * (part B Task 6 widened it from M1c's `src/screens/shielded/` + the "Check again" link), plus the
+ * EXTRA_COPY files below whose strings reach a screen as they are. Each file is read once.
  */
 function walk(dir: string): string[] {
   return fs.readdirSync(dir, {withFileTypes: true}).flatMap(e => {
@@ -40,10 +38,34 @@ const EXTRA_COPY = [
   // Shielded UX part A: the dashboard carries shielded copy too (its "Make public" action, the
   // "pending · not confirmed yet" caption, the shielded asset lines).
   path.join(ROOT, 'src/screens/dashboard/DashboardScreen.tsx'),
+  // Shielded UX part B (spec §2 "Widened"): the one vocabulary module.
+  path.join(ROOT, 'src/copy/modes.ts'),
+  // part B: copy a screen shows as it is (the "Check again" captions, the unavailable message, #10's recipient)
+  path.join(ROOT, 'src/modules/shielded/a0/unshieldCheck.ts'),
+  path.join(ROOT, 'src/hooks/useA0Shielded.ts'),
+  path.join(ROOT, 'src/app/Navigator.tsx'),
+  // part B: every file that changed copy
+  path.join(ROOT, 'src/screens/transparent/ReceiveScreen.tsx'),
+  path.join(ROOT, 'src/screens/transparent/SendScreen.tsx'),
+  path.join(ROOT, 'src/screens/transparent/TransactionHistoryScreen.tsx'),
+  path.join(ROOT, 'src/screens/transparent/TxSimulateScreen.tsx'),
+  path.join(ROOT, 'src/screens/onboarding/SuccessScreen.tsx'),
+  path.join(ROOT, 'src/screens/portfolio/PortfolioScreen.tsx'),
+  path.join(ROOT, 'src/constants/errors.ts'),
+  path.join(ROOT, 'src/modules/geoFence/geoFenceModule.ts'),
 ];
 
+/**
+ * Shielded UX part B Task 6 (controller carry): the scope is ALL of `src/screens/**` and
+ * `src/components/**` outside `__tests__` (it was `screens/shielded` + `components/private`), so a
+ * claim added to any screen or shared component is read. The regexes above are unchanged.
+ */
+const ALL_SCREENS = path.join(ROOT, 'src/screens');
+const ALL_COMPONENTS = path.join(ROOT, 'src/components');
+
 function screenSources(): Array<{file: string; text: string}> {
-  return [...walk(SCREENS), ...EXTRA_COPY].map(p => ({
+  // part B Task 7 carry: an EXTRA_COPY file already under screens/components is read once, not twice
+  return [...new Set([...walk(ALL_SCREENS), ...walk(ALL_COMPONENTS), ...EXTRA_COPY])].map(p => ({
     file: path.relative(ROOT, p),
     text: fs.readFileSync(p, 'utf8'),
   }));
@@ -90,9 +112,24 @@ describe('shielded screens make no unsupported privacy claim', () => {
         'src/screens/shielded/unshield/UnshieldRunScreen.tsx',
         'src/screens/shielded/unshield/unshieldCopy.ts',
         'src/components/CheckAgainLink.tsx',
+        'src/components/private/DestinationRow.tsx',
         'src/screens/dashboard/DashboardScreen.tsx',
+        'src/copy/modes.ts',
+        'src/modules/shielded/a0/unshieldCheck.ts',
+        'src/hooks/useA0Shielded.ts',
+        'src/app/Navigator.tsx',
+        'src/screens/transparent/ReceiveScreen.tsx',
+        // part B Task 6: the widened scope reaches screens outside the shielded directory
+        'src/screens/settings/WipeWalletScreen.tsx',
+        'src/screens/staking/StakingScreen.tsx',
+        // part B Task 7: the import's account choice is new copy
+        'src/screens/onboarding/SelectAccountScreen.tsx',
       ]),
     );
+    // part B Task 7 carry: each file is read once (EXTRA_COPY overlaps the walked directories)
+    expect(new Set(files).size).toBe(files.length);
+    // the scope is wide, not just the shielded directory
+    expect(files.length).toBeGreaterThan(40);
     // the dashboard is read as text: its shielded caption is in what the guard sees
     const dash = screenSources().find(s => s.file === 'src/screens/dashboard/DashboardScreen.tsx')!;
     expect(dash.text).toContain('pending · not confirmed yet');
@@ -100,6 +137,14 @@ describe('shielded screens make no unsupported privacy claim', () => {
     // the copy module is read as text: §11's relayed-unshield sentence is in what the guard sees
     const copy = screenSources().find(s => s.file.endsWith('unshield/unshieldCopy.ts'))!;
     expect(copy.text).toContain('so no key of yours signs it. Amounts and timing are public.');
+    // part B: the vocabulary module is read as text; its honest sentence is in what the guard sees
+    const vocab = screenSources().find(s => s.file === 'src/copy/modes.ts')!;
+    expect(vocab.text).toContain('Deposits are public on chain.');
+    // owner phone pass 2, 2026-11-21, item 2: the deposit sentence now lives in the vocabulary module
+    // (DEPOSIT_PUBLIC_SENTENCE) — the guard reads it there, and the screen no longer holds a copy
+    expect(vocab.text).toContain('making it public later to your main account can link the two.');
+    const side = screenSources().find(s => s.file === 'src/screens/shielded/ShieldUnshieldScreen.tsx')!;
+    expect(side.text).toContain('DEPOSIT_PUBLIC_SENTENCE');
   });
 
   it('M1c: the scope reaches every Android string resource (the Kotlin strings.xml and the dialog resource)', () => {
@@ -141,10 +186,10 @@ describe('shielded screens make no unsupported privacy claim', () => {
     const xml = fs.readFileSync(NATIVE_STRINGS, 'utf8');
     // positive control: this is the dialog's resource, not an empty file
     expect(xml).toContain('name="a0_confirm_amount_line"');
-    expect(xml).toContain('taken from your shielded balance');
+    expect(xml).toContain('taken from your private balance'); // part B: the wording, not the guard, changed
     expect(unsupportedClaims(xml)).toEqual([]);
     // negative control: a planted claim in the same resource is flagged
-    const planted = xml.replace('Confirm unshield', 'Confirm your unlinkable unshield');
+    const planted = xml.replace('Confirm making public', 'Confirm your unlinkable exit');
     expect(planted).not.toBe(xml);
     expect(unsupportedClaims(planted)).toEqual(['unlinkable']);
   });

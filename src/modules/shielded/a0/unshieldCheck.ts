@@ -61,8 +61,8 @@ export function a0CheckCaption(d: A0UnshieldCheck): string {
     case 'pending':
       return 'Still not confirmed · checked just now.';
     case 'settled':
-      return d.verified ? 'Confirmed · unshielded.' : 'Settled from the chain · unshielded.';
+      return d.verified ? 'Confirmed · now public.' : 'Settled from the chain · now public.';
     case 'reverted':
-      return 'Not sent · your note is back in your shielded balance.';
+      return 'Not sent · your note is back in your private balance.';
   }
 }

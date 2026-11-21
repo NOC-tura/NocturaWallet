@@ -46,7 +46,7 @@ describe('ReceiveScreen', () => {
 
   it('renders mode strip eyebrow', () => {
     const {getByText} = renderScreen({address: MOCK_ADDRESS});
-    expect(getByText('Transparent · public address')).toBeTruthy();
+    expect(getByText('Public · address')).toBeTruthy(); // part B: Transparent · public address → Public · address
   });
 
   it('copies address to clipboard when address card tapped', () => {
@@ -82,10 +82,16 @@ describe('ReceiveScreen', () => {
   describe('shielded variant (#13.shielded)', () => {
     const NOC = 'noc1qqqqqqqqqqqqqqexampleshieldedpaymentcodexxxxxxxxxxxxxxxxx';
 
+    it('owner decision A10 (2026-11-20): the M2 banner makes no "stay private on-chain" claim', () => {
+      const {queryByText} = renderScreen({address: NOC, shielded: true});
+      expect(queryByText(/stay private on-chain/)).toBeNull();
+      expect(queryByText(/must support Noctura/)).toBeTruthy(); // positive control: the banner is rendered
+    });
+
     it('renders the shielded mode strip + payment-code title', () => {
       const {getByText} = renderScreen({address: NOC, shielded: true});
-      expect(getByText('Shielded · payment code')).toBeTruthy();
-      expect(getByText('Shielded payment code')).toBeTruthy();
+      expect(getByText('Private · payment code')).toBeTruthy(); // part B: Shielded · payment code → Private · payment code
+      expect(getByText('Private payment code')).toBeTruthy(); // part B: Shielded payment code → Private payment code
     });
 
     it('renders "Receive private" title + "Copy code" CTA', () => {
@@ -109,14 +115,14 @@ describe('ReceiveScreen', () => {
       fireEvent.press(getByText('Share'));
       expect(shareSpy).toHaveBeenCalledWith({
         message: NOC,
-        title: 'My Noctura shielded payment code',
+        title: 'My Noctura private payment code', // part B: shielded → private
       });
       shareSpy.mockRestore();
     });
 
     it('shows the shielded empty-state when the noc1 address is missing', () => {
       const {getByText} = renderScreen({address: '', shielded: true});
-      expect(getByText('No shielded address')).toBeTruthy();
+      expect(getByText('No private address')).toBeTruthy(); // part B: No shielded address → No private address
     });
   });
 });

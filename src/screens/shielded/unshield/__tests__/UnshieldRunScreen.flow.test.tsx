@@ -169,7 +169,7 @@ describe('the devnet submit hold through the screen (M1c Task 9: the hold only v
     try {
       armA0SubmitHold(true);
       const r = await runScreen();
-      expect(title(r)).toBe('Unshielded');
+      expect(title(r)).toBe('Now public'); // part B: "Unshielded" → "Now public"
     } finally {
       restore();
     }

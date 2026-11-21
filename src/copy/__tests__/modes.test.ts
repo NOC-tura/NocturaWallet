@@ -1,0 +1,132 @@
+/**
+ * Shielded UX part B, spec §2 (decision B-1): the one vocabulary, verbatim, and its honesty rows.
+ * Every expected string is the spec's text typed out here, never read back from the module.
+ */
+import * as fs from 'fs';
+import * as path from 'path';
+import * as modes from '../modes';
+import {bannedStrings, forbiddenClaims, userVisibleStrings} from '../__testing__/copyScan';
+
+const FILE = path.resolve(__dirname, '../modes.ts');
+const SRC = fs.readFileSync(FILE, 'utf8');
+
+describe('src/copy/modes.ts — the §2 table', () => {
+  it('the terms, verbatim', () => {
+    expect(modes.MODE_PUBLIC).toBe('Public');
+    expect(modes.MODE_PRIVATE).toBe('Private');
+    expect(modes.MAKE_PRIVATE).toBe('Make private');
+    expect(modes.MAKE_PUBLIC).toBe('Make public');
+    // owner phone pass 2026-11-21: #16 is two screens titled MAKE_PRIVATE / MAKE_PUBLIC — no "Private ⇄ Public"
+    expect('PRIVATE_PUBLIC_TITLE' in modes).toBe(false);
+    expect(SRC).not.toContain('⇄');
+    expect(modes.WHAT_STAYS_PUBLIC).toBe('What stays public'); // the Make public warning's title
+    expect(modes.PRIVATE_BALANCE).toBe('Private balance');
+    expect(modes.PUBLIC_BALANCE).toBe('Public balance');
+    expect(modes.PRIVATE_ASSETS).toBe('Private assets'); // the overline variant renders "PRIVATE ASSETS"
+    expect(modes.PRIVATE_SUFFIX).toBe(' · private');
+    expect(modes.PRIVATE_MARK).toBe('Private'); // the overline renders "PRIVATE"
+    expect(modes.MAKING_PUBLIC).toBe('Making public…');
+    expect(modes.NOW_PUBLIC).toBe('Now public');
+    expect(modes.MAKING_PRIVATE).toBe('Making private…');
+    expect(modes.NOW_PRIVATE).toBe('Now private');
+    expect(modes.NATIVE_CONFIRM_TITLE).toBe('Confirm making public');
+    expect(modes.NATIVE_PROMPT_TITLE).toBe('Approve making this public');
+    expect(modes.NATIVE_PROMPT_SUBTITLE).toBe('Confirm it is you to authorize this one transfer to public');
+    expect(modes.NATIVE_FEE_LINE).toBe('Relayer fee %1$s %2$s, taken from your private balance');
+    expect(modes.DETAILS).toBe('Details');
+    expect(modes.DESTINATION_FRESH).toBe('A new account');
+    expect(modes.DESTINATION_MAIN).toBe('My main account');
+    expect(modes.DESTINATION_EXTERNAL).toBe('Another address');
+    expect(modes.DESTINATION_EXTERNAL_SUB).toBe('A wallet address outside this wallet');
+    expect(modes.RECOMMENDED).toBe(' (recommended)');
+    expect(modes.CHANGE).toBe('Change');
+    expect(modes.CHANGE_DESTINATION).toBe('Change destination'); // Task 3 carry 1b: Change's accessibility label
+    expect(modes.DESTINATION_NONE).toBe('Choose a destination'); // owner decision A1
+    expect(modes.DESTINATION_FRESH_SCHEME_UNREADABLE).toBe("A new account is not available: this wallet's account type could not be read."); // Task 3 fix round 1 (review Minor 6)
+  });
+
+  it('the CTAs: with an amount, and the disabled form without one', () => {
+    expect(modes.makePublicCta('1.25', 'TEST')).toBe('Make 1.25 TEST public');
+    expect(modes.makePrivateCta('1.25', 'TEST')).toBe('Make 1.25 TEST private');
+    expect(modes.makePublicCtaIdle('TEST')).toBe('Make TEST public');
+    expect(modes.makePrivateCtaIdle('TEST')).toBe('Make TEST private');
+  });
+
+  it('AmountLimitHint and DestinationRow lines (spec §3.3, §3.4)', () => {
+    expect(modes.makePublicLimit('1.99999', 'TEST')).toBe('You can make up to 1.99999 TEST public at once.');
+    expect(modes.destinationSummary('A new account (recommended)')).toBe('To: A new account (recommended)');
+    expect(modes.destinationSummary(null)).toBe('To: Choose a destination'); // owner decision A1: nothing preselected
+  });
+
+  it("the import's account choice (decision B-6, part B Task 7)", () => {
+    expect(modes.ACCOUNT_FOUND).toBe('We found your wallet');
+    expect(modes.ACCOUNT_NONE_FUNDED).toBe('No funds found yet. You can receive to this address.');
+    expect(modes.ACCOUNT_DIFFERENT).toBe('Use a different account');
+    // fix round 1 (review I-1): no "switch later" promise — the app has no later switch
+    expect(modes.ACCOUNT_BALANCES_UNCHECKED).toBe("Couldn't check balances right now. Pick the account you want to use, or try again.");
+  });
+
+  it('the Private balance card keeps the honest sentence (spec §2 "Kept as is"), in plain words (owner phone pass 2026-11-21)', () => {
+    expect(modes.PRIVATE_CARD_BODY).toBe('When you make tokens private, a proof is made on this device. Deposits are public on chain.');
+  });
+
+  it('owner phone pass 2, 2026-11-21: the new words, verbatim', () => {
+    // item 2: only an exit to the MAIN account is linkable to a deposit (memory: shielded privacy guarantee)
+    expect(modes.DEPOSIT_PUBLIC_SENTENCE).toBe(
+      'Your main account signs this deposit. The amount, the time and your address are public on chain, and making it public later to your main account can link the two.',
+    );
+    expect(modes.SUMMARY).toBe('Summary'); // item 3: the overline renders "SUMMARY"
+    // item 1 / item 6: the balance after the run, same sentence forms the owner named
+    // fix round 1 (I-1): ONE sentence for both results — the card-line form is gone
+    expect('privateBalanceNow' in modes).toBe(false);
+    expect(modes.yourPrivateBalanceIsNow('1.00374', 'TEST')).toBe('Your private balance is now 1.00374 TEST.');
+    expect(modes.LEFT_IN_THIS_NOTE).toBe('Left in this note'); // item 1: the change, in Details
+    // item 4 / 5: #19 / #20 for a deposit
+    expect(modes.SIMULATION_PASSED).toBe('Simulation passed');
+    expect(modes.CHECK_KNOWN_PROGRAMS_TITLE).toBe('Only known programs');
+    expect(modes.CHECK_KNOWN_PROGRAMS_BODY).toBe('Noctura and Solana programs only');
+    expect(modes.CHECK_NO_ACCESS_TITLE).toBe('No one gets access to your tokens');
+    expect(modes.CHECK_NO_ACCESS_BODY).toBe('No approval or authority change');
+    expect(modes.YOUR_BALANCE_CHANGES).toBe('Your balance changes'); // the overline renders "YOUR BALANCE CHANGES"
+    expect(modes.PROOF_FEE).toBe('Proof fee'); // the #20 overline renders "PROOF FEE"
+    expect(modes.PROOF_FEE_NONE).toBe('None · made on this device');
+    expect(modes.DETAIL_COMPUTE_UNITS).toBe('Compute units');
+    expect(modes.DETAIL_PROGRAMS).toBe('Programs');
+    expect(modes.DETAIL_APPROVALS).toBe('Approvals');
+    // item 6
+    expect(modes.VIEW_ON_EXPLORER).toBe('View on explorer');
+    // item 8
+    expect(modes.FEE_IS_HIGH).toBe('The fee is high for this amount.');
+  });
+});
+
+describe('src/copy/modes.ts — honesty', () => {
+  it('the scan reads the module (positive control: it is not empty)', () => {
+    expect(userVisibleStrings('src/copy/modes.ts', SRC).length).toBeGreaterThanOrEqual(25);
+  });
+
+  it('no string of the module carries a banned word', () => {
+    expect(bannedStrings('src/copy/modes.ts', SRC)).toEqual([]);
+  });
+
+  it('spec §2 "Forbidden": nothing the module says implies anonymous, untraceable, invisible, fully private, no one can see', () => {
+    expect(forbiddenClaims('src/copy/modes.ts', SRC)).toEqual([]);
+  });
+
+  it('negative controls: each forbidden phrase is caught in a string; an honest one and a comment are not', () => {
+    expect(forbiddenClaims('f.ts', "const a = 'Your transfer is anonymous';")).toEqual(['anonymous']);
+    expect(forbiddenClaims('f.ts', "const a = 'Untraceable by design';")).toEqual(['untraceable']);
+    expect(forbiddenClaims('f.ts', "const a = 'Invisible on chain';")).toEqual(['invisible']);
+    expect(forbiddenClaims('f.ts', "const a = 'It is fully private';")).toEqual(['fully private']);
+    expect(forbiddenClaims('f.ts', "const a = 'No one can see it';")).toEqual(['no one can see']);
+    // review M-2 / I-5: what IMPLIES it, too
+    expect(forbiddenClaims('f.ts', 'const a = "It can\'t be traced";')).toHaveLength(1);
+    expect(forbiddenClaims('f.ts', "const a = 'It cannot be traced';")).toHaveLength(1);
+    expect(forbiddenClaims('f.ts', "const a = 'Hidden from everyone';")).toEqual(['hidden from everyone']);
+    expect(forbiddenClaims('f.ts', "const a = 'Amounts and parties stay private on-chain.';")).toEqual(['stays? private on-?chain']);
+    expect(forbiddenClaims('f.ts', "const a = 'It can\u2019t be traced';")).toHaveLength(1);
+    expect(forbiddenClaims('f.tsx', 'const a = <Text>It can&apos;t be traced</Text>;')).toHaveLength(1);
+    expect(forbiddenClaims('f.ts', "const a = 'Nobody can see it';")).toEqual(['nobody can see']);
+    expect(forbiddenClaims('f.ts', "// anonymous, in a comment\nconst a = 'Deposits are public on chain.';")).toEqual([]);
+  });
+});

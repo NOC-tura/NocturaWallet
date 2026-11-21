@@ -49,7 +49,7 @@ describe('TransactionHistoryScreen', () => {
     mockTxData = [];
   });
 
-  it('Shows filter tabs (All/Sent/Received/Shielded/Staking)', () => {
+  it('Shows filter tabs (All/Sent/Received/Private/Staking)', () => {
     const {getByTestId, getByText} = render(
       <TransactionHistoryScreen onSelectTx={onSelectTx} onBack={onBack} />,
     );
@@ -57,7 +57,7 @@ describe('TransactionHistoryScreen', () => {
     expect(getByText('All')).toBeTruthy();
     expect(getByText('Sent')).toBeTruthy();
     expect(getByText('Received')).toBeTruthy();
-    expect(getByText('Shielded')).toBeTruthy();
+    expect(getByText('Private')).toBeTruthy(); // part B: Shielded → Private
     expect(getByText('Staking')).toBeTruthy();
   });
 

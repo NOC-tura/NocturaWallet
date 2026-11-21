@@ -59,6 +59,17 @@ import type {A0VerifyRefusal} from '../../modules/shielded/a0/landedVerifier';
 import {readA0PoolNoteCount} from '../../modules/shielded/a0/poolSize';
 import {A0_TOKEN, displayAmount} from '../../modules/shielded/a0/screenSupport';
 import {getConnection} from '../../modules/solana/connection';
+import {DetailsDisclosure} from '../../components/private';
+import {
+  MAKE_PRIVATE,
+  MAKE_PUBLIC,
+  MODE_PRIVATE,
+  MODE_PUBLIC,
+  PRIVATE_ASSETS,
+  PRIVATE_BALANCE,
+  PRIVATE_CARD_BODY,
+  PRIVATE_SUFFIX,
+} from '../../copy/modes';
 
 
 /**
@@ -66,19 +77,19 @@ import {getConnection} from '../../modules/solana/connection';
  *
  * Sections:
  *   - Top row · avatar (initial) + bell + scan
- *   - Mode toggle · Transparent / Shielded segmented pill
+ *   - Mode toggle · Public / Private segmented pill
  *   - Balance hero · overline, eye toggle, balance + cents, change line, sub-balance
- *   - Quick actions · Send · Receive · Swap|Shield · Buy (4-button grid)
+ *   - Quick actions · Send · Receive · Swap|Make private · Buy (4-button grid)
  *   - Tokens section · header + token rows
- *   - Banner · presale (transparent) or "Privacy is on" (shielded)
+ *   - Banner · presale (Public) or the Private balance card (Private)
  *
  * Mode-aware:
- *   - Transparent: violet accents, "Total balance" eyebrow, Swap action, presale banner
- *   - Shielded: mint accents, "SHIELDED · vault balance" eyebrow, Shield action,
- *     privacy banner, "· shielded" tag on rows
- *   - Shielded, DEPARTURE (owner-approved 2026-11-20, UX-A 7): a "Make public" action (the eye of
- *     #16's tab) right after Shield, opening #16 on its unshield side. The design's shielded
- *     dashboard has Send / Receive / Shield / Buy; it is shown only when `onMakePublic` is passed,
+ *   - Public: violet accents, "Total balance" eyebrow, Swap action, presale banner
+ *   - Private: mint accents, "Private balance" eyebrow, Make private action,
+ *     Private balance card, "· private" tag on rows
+ *   - Private, DEPARTURE (owner-approved 2026-11-20, UX-A 7): a "Make public" action (the eye of
+ *     #16's Make public screen) right after Make private, opening #16 as Make public. The design's private
+ *     dashboard has Send / Receive / Make private / Buy; it is shown only when `onMakePublic` is passed,
  *     which the Navigator does only in the build that registers the unshield route.
  *
  * Privacy hide-ladder (per design D · "Hide-balance privacy completeness"):
@@ -518,13 +529,13 @@ function DashboardHeader({
       <View className="px-5 mb-4">
         <View className="flex-row bg-bg-surface-2 rounded-pill p-1">
           <ModeButton
-            label="Transparent"
+            label={MODE_PUBLIC}
             isActive={!isShielded}
             mode="transparent"
             onPress={() => onModeToggle('transparent')}
           />
           <ModeButton
-            label="Shielded"
+            label={MODE_PRIVATE}
             isActive={isShielded}
             mode="shielded"
             onPress={() => onModeToggle('shielded')}
@@ -544,7 +555,7 @@ function DashboardHeader({
                 <ShieldCheck size={14} color="#5BE3C2" strokeWidth={1.75} />
               ) : null}
               <Text variant="overline">
-                {isShielded ? 'Shielded · vault balance' : 'Total balance'}
+                {isShielded ? PRIVATE_BALANCE : 'Total balance'}
               </Text>
             </View>
             <Pressable
@@ -613,12 +624,14 @@ function DashboardHeader({
             </Text>
           ) : isShielded ? (
             anonymitySet != null ? (
-              <View className="flex-row items-center gap-2 mb-3">
-                <Shield size={14} color="#5BE3C2" strokeWidth={1.75} />
-                <Text variant="body-sm" numeral className="text-accent-shielded">
-                  {`Anonymity set · ${anonymitySet.toLocaleString()}`}
-                </Text>
-              </View>
+              <DetailsDisclosure testID="dashboard-details">
+                <View className="flex-row items-center gap-2 mb-3">
+                  <Shield size={14} color="#5BE3C2" strokeWidth={1.75} />
+                  <Text variant="body-sm" numeral className="text-accent-shielded">
+                    {`Anonymity set · ${anonymitySet.toLocaleString()}`}
+                  </Text>
+                </View>
+              </DetailsDisclosure>
             ) : null
           ) : (
             change24hPct == null ? null : (
@@ -695,7 +708,7 @@ function DashboardHeader({
           {isShielded ? (
             <QuickAction
               Icon={ShieldCheck}
-              label="Shield"
+              label={MAKE_PRIVATE}
               onPress={onShield}
               mode={mode}
             />
@@ -707,12 +720,12 @@ function DashboardHeader({
               mode={mode}
             />
           )}
-          {/* DEPARTURE (owner-approved, UX-A 7): "Make public" next to Shield — not in the design's
+          {/* DEPARTURE (owner-approved, UX-A 7): "Make public" next to Make private — not in the design's
               shielded dashboard; offered only where the unshield route exists (onMakePublic). */}
           {isShielded && onMakePublic ? (
             <QuickAction
               Icon={Eye}
-              label="Make public"
+              label={MAKE_PUBLIC}
               onPress={onMakePublic}
               mode={mode}
             />
@@ -732,7 +745,7 @@ function DashboardHeader({
       {/* Tokens section header */}
       <View className="flex-row items-center justify-between px-5 mb-2">
         <Text variant="overline">
-          {isShielded ? 'Shielded assets' : 'Tokens'}
+          {isShielded ? PRIVATE_ASSETS : 'Tokens'}
         </Text>
       </View>
     </View>
@@ -890,7 +903,7 @@ function TokenListRow({
           numeral={!hidden}
           className={hidden ? 'text-fg-tertiary' : 'text-fg-secondary'}>
           {formattedBalance}
-          {isShielded ? ' · shielded' : ''}
+          {isShielded ? PRIVATE_SUFFIX : ''}
         </Text>
       </View>
       {!hidden && usdValue != null ? (
@@ -970,12 +983,12 @@ function ShieldedAssetsBody({view, hidden, checkAgain}: Omit<ShieldedAssetsSecti
   if (view.kind !== 'ready') {
     const text =
       view.kind === 'running'
-        ? 'Your shielded notes are being restored from the chain.'
+        ? 'Your private balance is being restored from the chain.'
         : view.kind === 'error'
-          ? `Your shielded notes could not be restored (${view.code ?? 'error'}). Open Shield to retry.`
+          ? `Your private balance could not be restored (${view.code ?? 'error'}). Open Make private to retry.`
           : view.kind === 'idle'
-            ? 'Your shielded notes are not loaded yet. Open Shield to load them.'
-            : 'Shielding needs the on-device prover, which this device does not have.';
+            ? 'Your private balance is not loaded yet. Open Make private to load it.'
+            : 'Your private balance needs the on-device prover, which this device does not have.';
     return (
       <View className="px-5 py-10 items-center" testID="shielded-assets-state">
         <Text variant="body-sm" className="text-fg-tertiary text-center">
@@ -988,17 +1001,17 @@ function ShieldedAssetsBody({view, hidden, checkAgain}: Omit<ShieldedAssetsSecti
     return (
       <View className="px-5 py-10 items-center">
         <Text variant="body-lg" className="text-fg-secondary text-center">
-          Nothing shielded yet
+          Nothing private yet
         </Text>
         <Text variant="body-sm" className="text-fg-tertiary text-center mt-1">
-          Tap Shield to make a token private
+          Tap Make private to move a token in
         </Text>
       </View>
     );
   }
   const amount = hidden
     ? `•••••• ${A0_TOKEN.symbol}`
-    : `${displayAmount(view.unspent, A0_TOKEN.decimals)} · shielded`;
+    : `${displayAmount(view.unspent, A0_TOKEN.decimals)}${PRIVATE_SUFFIX}`;
   return (
     <View className="flex-row items-center px-5 py-3" testID="shielded-assets-row">
       <TokenLogo symbol={A0_TOKEN.symbol} isNoc={false} />
@@ -1050,10 +1063,10 @@ function DashboardFooter({mode, onPresale, onSeeAllTokens, presalePaused}: Dashb
           </View>
           <View className="flex-1">
             <Text variant="body-lg" className="text-fg-primary">
-              Shielded vault
+              {PRIVATE_BALANCE}
             </Text>
             <Text variant="body-sm" className="text-fg-secondary">
-              Shield moves tokens in with a proof made on this device. Deposits are public on chain.
+              {PRIVATE_CARD_BODY}
             </Text>
           </View>
         </View>

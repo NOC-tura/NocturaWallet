@@ -19,12 +19,14 @@ import {A0_TOKEN, SOL_DECIMALS, a0ErrorText, displayAmount} from '../../../modul
 import {keychainManager} from '../../../modules/keychain/keychainModule';
 import {mnemonicToSeed} from '../../../modules/keyDerivation/mnemonicUtils';
 import {getConnection} from '../../../modules/solana/connection';
-import {useA0Shielded} from '../../../hooks/useA0Shielded';
+import {a0PrivateBalanceNow, useA0Shielded} from '../../../hooks/useA0Shielded';
 import {a0CheckCaption, a0UnshieldDecisionFor} from '../../../modules/shielded/a0/unshieldCheck';
 import type {A0UnshieldCheck} from '../../../modules/shielded/a0/unshieldCheck';
 import {CheckAgainLink} from '../../../components/CheckAgainLink';
 import {A0_OWN_ACCOUNT_REFUSAL_COPY, a0RefusalLoudText, a0UnshieldRefusalSentence} from './unshieldCopy';
 import {MetaRow, ProofHeroRing, StageRow, StatusRing, shortSignature} from '../shieldedParts';
+import {DetailsDisclosure} from '../../../components/private';
+import {LEFT_IN_THIS_NOTE, MAKE_PUBLIC, MAKING_PUBLIC, NOW_PUBLIC, PRIVATE_MARK, yourPrivateBalanceIsNow} from '../../../copy/modes';
 import type {StageRowStatus, StatusTone} from '../shieldedParts';
 
 /**
@@ -35,9 +37,9 @@ import type {StageRowStatus, StatusTone} from '../shieldedParts';
  *   - #18's layout (mirror index.html §s18, the deposit's #18 as built in M1b) while the stage is
  *     before the submit — four rows driven by the flow's `onStage`, each with its MEASURED time
  *     ("running · 2.1 s", "done · 4.2 s"), never a percentage:
- *       Sync the pool ← sync · Relayer quote ← quote · Your approval ← approval (the NATIVE
+ *       Check the pool ← sync · Relayer fee ← quote · Your approval ← approval (the NATIVE
  *       confirmation dialog, Kotlin, Task 6 — it is the human's step, so its row says "waiting for
- *       you", and its time is the time the human took) · Prove ← proof;
+ *       you", and its time is the time the human took) · Make the proof ← proof;
  *   - #21's layout (mirror index.html §s21) from the submit on: the spinner while the relayer
  *     submits ("submit") and the wallet reads the landed tx back and verifies it ("confirm"), then
  *     the outcome.
@@ -46,7 +48,7 @@ import type {StageRowStatus, StatusTone} from '../shieldedParts';
  * 64-root ring) also restarts the proof, and the hero says a new confirmation is needed (at most 3).
  *
  * THE OUTCOMES, said as what they are:
- *   - spent → "Unshielded": the destination got the amount, the change note's position; the grant
+ *   - spent → "Now public": the destination got the amount, the change note's position; the grant
  *     the new account received, or LOUDLY "no SOL" (`destinationWithoutSol`);
  *   - landed-unverified → LOUD, danger: "Landed, but failed verification: <code> · <what the code
  *     means>" (`a0LandedUnverifiedText` fed from the CODE only — the verifier's `detail` names keys
@@ -57,7 +59,7 @@ import type {StageRowStatus, StatusTone} from '../shieldedParts';
  *     reconciliation decides from the chain; never "failed") — EVERY pending reason, a
  *     signature-less `relay_failed` / `unknown` included (carry 2); only the outcome `not-sent`
  *     says not sent;
- *   - not-sent → "Not sent": the relayer's outcome, nothing left the shielded balance;
+ *   - not-sent → "Not sent": the relayer's outcome, nothing left the private balance;
  *   - a throw → its code (`a0ErrorText`). A throw once the round reached `submit` (or the re-sync
  *     that follows a submit, before the flow's revert is proven by a NEW approval) is "Not
  *     confirmed yet" + "Check again", whatever its code (carry 9; E_A0_STORE_CHANGED is "Not in
@@ -66,7 +68,7 @@ import type {StageRowStatus, StatusTone} from '../shieldedParts';
  *     account of this wallet as the flow's own refusal naming its role (carry 3, from the error's
  *     `ownAccount` field). Where a code exists the screen says the code and a fixed sentence, never
  *     the error's message (final review M-4); a message only when there is no code;
- *   - "Check again" decided (final review I-1) → an undecided outcome above becomes "Unshielded",
+ *   - "Check again" decided (final review I-1) → an undecided outcome above becomes "Now public",
  *     "Not sent" (reverted: the note is back) or the loud refusal, and PENDING / "Check again" go.
  *
  * DEPARTURES FROM THE DESIGN (listed for the owner's visual pass): no #19 / #20 for the unshield
@@ -82,6 +84,16 @@ import type {StageRowStatus, StatusTone} from '../shieldedParts';
  * the public explorer — loading the unshield's tx in it from this device would tell the
  * explorer's RPC which exit is ours. The deposit's #21 (ShieldStatusScreen) keeps its explorer
  * link: a deposit is signed by the main account and public by design.
+ * part B (spec 2026-11-20 §4): the header "PRIVATE · Make public"; the tx hash and the change position
+ * behind "Details ▾"; the stage labels in plain words (plan A7).
+ * Owner phone pass 2, 2026-11-21: "Now public" says the wallet's private balance AFTER the exit
+ * ("Your private balance is now {total} {sym}.", item 1 — the deposit's sentence, directly under
+ * the title; after a "Check again" settle, on its own line under the settled text: fix round 1,
+ * I-1) from the dashboard's own source
+ * (`a0PrivateBalanceNow`, read when the outcome is spent, or when "Check again" settled this note)
+ * — never the spent note's change, which only shows in Details ("Left in this note"); no sentence
+ * when the total is not known. The sub-line "The destination received …" is gone (item 7): the card
+ * says it.
  */
 
 /** how long "Copied" replaces "Copy signature" */
@@ -97,20 +109,21 @@ const ORDER: readonly A0UnshieldStage[] = ['sync', 'quote', 'approval', 'proof',
 const PROOF_ROWS: readonly A0UnshieldStage[] = ['sync', 'quote', 'approval', 'proof'];
 const BEFORE_SUBMIT = new Set<A0UnshieldStage>(PROOF_ROWS);
 
+/** part B (spec §4 "#18 … stage labels in plain words"; plan A7) — each row keeps its measured time */
 const ROW_TITLE: Record<A0UnshieldStage, string> = {
-  sync: 'Sync the pool',
-  quote: 'Relayer quote',
+  sync: 'Check the pool',
+  quote: 'Relayer fee',
   approval: 'Your approval',
-  proof: 'Prove',
+  proof: 'Make the proof',
   submit: 'Submit',
   confirm: 'Confirm',
 };
 
 const ROW_ACTIVE: Record<A0UnshieldStage, string> = {
-  sync: "verifying the pool's tree from the chain",
+  sync: 'checking the pool on the chain',
   quote: 'asking the relayer for its fee',
   approval: 'waiting for you in the confirmation dialog',
-  proof: 'running the Groth16 prover on this device',
+  proof: 'making the proof on this device',
   submit: 'the relayer is submitting it',
   confirm: 'reading it back from the chain',
 };
@@ -164,12 +177,18 @@ export function UnshieldRunScreen({request, onDone, onBack}: UnshieldRunScreenPr
   // settled) or decides another pending note never changes what this #21 says
   const [ownRho, setOwnRho] = useState<string | null>(null);
   const [ownDecision, setOwnDecision] = useState<A0UnshieldCheck | null>(null);
+  /** owner phone pass 2, item 1: the private balance after this exit (the dashboard's source), null = not known */
+  const [balanceAfter, setBalanceAfter] = useState<bigint | null>(null);
   const checkReport = checkAgain.report;
   useEffect(() => {
     if (ownRho === null || !checkReport) return;
     const d = a0UnshieldDecisionFor(checkReport, ownRho);
     if (d !== null && d.kind !== 'pending') setOwnDecision(prev => prev ?? d);
   }, [checkReport, ownRho]);
+  // "Check again" settled THIS note: the store is reconciled, so the balance is read again then
+  useEffect(() => {
+    if (ownDecision?.kind === 'settled') setBalanceAfter(readBalanceNow());
+  }, [ownDecision]);
 
   let amount: bigint | null = null;
   try {
@@ -242,6 +261,8 @@ export function UnshieldRunScreen({request, onDone, onBack}: UnshieldRunScreenPr
         const current = at.stage;
         if (current !== null && done.current[current] === undefined) done.current[current] = t;
         setNow(t);
+        // spent: the change note is stored and the note spent before the flow returns — read the total now
+        if (outcome.status === 'spent') setBalanceAfter(readBalanceNow());
         setPhase({kind: 'done', outcome});
       } catch (e) {
         const err = a0ErrorText(e);
@@ -275,7 +296,7 @@ export function UnshieldRunScreen({request, onDone, onBack}: UnshieldRunScreenPr
   const handleBack = useCallback(() => {
     if (running) {
       Alert.alert(
-        'Unshield in progress',
+        MAKING_PUBLIC,
         'Leaving does not stop it. Close the confirmation dialog to cancel before you approve; after that the result is recorded on this device either way.',
       );
       return true;
@@ -309,7 +330,10 @@ export function UnshieldRunScreen({request, onDone, onBack}: UnshieldRunScreenPr
           <View className="flex-row items-center gap-2">
             <ShieldCheck size={12} color={ACCENT} strokeWidth={2} />
             <Text variant="overline" className="text-accent-shielded">
-              SHIELDED
+              {PRIVATE_MARK}
+            </Text>
+            <Text variant="body-sm" className="font-geist-semibold text-fg-primary" testID="unshield-proof-title">
+              {MAKING_PUBLIC}
             </Text>
           </View>
           <Text variant="overline" className="text-fg-tertiary">
@@ -326,7 +350,7 @@ export function UnshieldRunScreen({request, onDone, onBack}: UnshieldRunScreenPr
               {hero.sub}
             </Text>
             <Text variant="caption" numeral className="mt-2 text-fg-tertiary">
-              {`Unshield ${amountText}`}
+              {amountText}
             </Text>
           </View>
           <View className="mt-6 gap-3">
@@ -361,7 +385,14 @@ export function UnshieldRunScreen({request, onDone, onBack}: UnshieldRunScreenPr
   const decided = undecided && ownDecision !== null && ownDecision.kind !== 'pending' ? ownDecision : null;
   // N-3: a landed-unverified first outcome keeps its loud line after the decision
   const firstLoud = phase.kind === 'done' && phase.outcome.status === 'landed-unverified' ? a0RefusalLoudText(phase.outcome.code) : null;
-  const view = decided ? decidedView(decided, amountText, firstLoud) : statusView(phase, amountText, start.current, now);
+  const shown = decided ? decidedView(decided, amountText, firstLoud) : statusView(phase, start.current, now);
+  // item 1 + fix round 1 (I-1): "Now public" (spent, or settled by "Check again") says the balance
+  // after it, when known — as the sub when there is none (spent), else on its own line under it
+  const landed = (phase.kind === 'done' && phase.outcome.status === 'spent' && !decided) || decided?.kind === 'settled';
+  const balanceSentence =
+    landed && balanceAfter !== null ? yourPrivateBalanceIsNow(displayAmount(balanceAfter, A0_TOKEN.decimals), sym) : null;
+  const view = shown.sub === '' && balanceSentence !== null ? {...shown, sub: balanceSentence} : shown;
+  const balanceLine = shown.sub !== '' ? balanceSentence : null;
   const pending = undecided && decided === null;
   // the caption: this note's decision; while it is undecided, a done check says "still not confirmed"
   // whatever it decided about other notes; an error / busy check says its own text
@@ -391,10 +422,13 @@ export function UnshieldRunScreen({request, onDone, onBack}: UnshieldRunScreenPr
       <View className="flex-row items-center px-4 py-3 gap-2">
         <ShieldCheck size={12} color={ACCENT} strokeWidth={2} />
         <Text variant="overline" className="text-accent-shielded">
-          Shielded
+          {PRIVATE_MARK}
         </Text>
-        <Text variant="h2" className="flex-1">
-          {running ? 'Unshielding…' : 'Unshield'}
+        <Text variant="overline" className="text-fg-tertiary">
+          ·
+        </Text>
+        <Text variant="h2" className="flex-1" testID="unshield-status-header">
+          {running ? MAKING_PUBLIC : MAKE_PUBLIC}
         </Text>
         {view.badge ? (
           <Text
@@ -424,9 +458,16 @@ export function UnshieldRunScreen({request, onDone, onBack}: UnshieldRunScreenPr
             )}>
             {view.title}
           </Text>
-          <Text variant="body-sm" className="text-center text-fg-secondary max-w-[320px]" testID="unshield-status-sub">
-            {view.sub}
-          </Text>
+          {view.sub ? (
+            <Text variant="body-sm" className="text-center text-fg-secondary max-w-[320px]" testID="unshield-status-sub">
+              {view.sub}
+            </Text>
+          ) : null}
+          {balanceLine ? (
+            <Text variant="body-sm" className="text-center text-fg-secondary max-w-[320px] -mt-3" testID="unshield-status-balance">
+              {balanceLine}
+            </Text>
+          ) : null}
         </View>
 
         {view.loud ? (
@@ -456,10 +497,16 @@ export function UnshieldRunScreen({request, onDone, onBack}: UnshieldRunScreenPr
 
         {signature ? (
           <View className="w-full bg-bg-surface-1 rounded-lg px-5 mt-3">
-            <MetaRow label="Tx hash" value={shortSignature(signature)} onCopy={copySig} />
-            {phase.kind === 'done' && phase.outcome.status === 'spent' ? (
-              <MetaRow label="Change" value={`#${phase.outcome.changeLeafIndex} in the pool`} />
-            ) : null}
+            <DetailsDisclosure testID="unshield-details">
+              <MetaRow label="Tx hash" value={shortSignature(signature)} onCopy={copySig} />
+              {phase.kind === 'done' && phase.outcome.status === 'spent' ? (
+                <>
+                  <MetaRow label="Change" value={`#${phase.outcome.changeLeafIndex} in the pool`} />
+                  {/* item 1: the spent note's change, as a plain row — not the balance */}
+                  <MetaRow label={LEFT_IN_THIS_NOTE} value={`${displayAmount(phase.outcome.changeAmount, A0_TOKEN.decimals)} ${sym}`} />
+                </>
+              ) : null}
+            </DetailsDisclosure>
           </View>
         ) : null}
 
@@ -504,10 +551,10 @@ export function UnshieldRunScreen({request, onDone, onBack}: UnshieldRunScreenPr
                 testID="unshield-status-back"
                 onPress={onBack}
                 accessibilityRole="button"
-                accessibilityLabel="Back to unshield"
+                accessibilityLabel={`Back to ${MAKE_PUBLIC}`}
                 className="flex-1 min-h-touch-rec rounded-pill items-center justify-center bg-bg-surface-1">
                 <Text variant="body-lg" className="font-geist-semibold text-fg-primary">
-                  Back to unshield
+                  {`Back to ${MAKE_PUBLIC}`}
                 </Text>
               </Pressable>
             ) : null}
@@ -529,6 +576,15 @@ export function UnshieldRunScreen({request, onDone, onBack}: UnshieldRunScreenPr
   );
 }
 
+/** The dashboard's total (null = not known); a throw is "not known" too, never a screen error. */
+function readBalanceNow(): bigint | null {
+  try {
+    return a0PrivateBalanceNow();
+  } catch {
+    return null;
+  }
+}
+
 // ── #18: the proof part ──────────────────────────────────────────────────────
 
 function proofHero(stage: A0UnshieldStage | null, round: number): {label: string; sub: string} {
@@ -536,9 +592,9 @@ function proofHero(stage: A0UnshieldStage | null, round: number): {label: string
     round > 1 ? ` The relayer's terms changed or the pool moved on, so this is a new confirmation (${round} of 3).` : '';
   switch (stage) {
     case null:
-      return {label: 'Preparing unshield', sub: 'Unlock with your fingerprint or passcode. The proof is generated on this device.'};
+      return {label: 'Preparing', sub: 'Unlock with your fingerprint or passcode. The proof is generated on this device.'};
     case 'sync':
-      return {label: 'Syncing the pool', sub: "Verifying the pool's tree from the chain and your note's place in it."};
+      return {label: 'Checking the pool', sub: "Checking the pool on the chain and your note's place in it."};
     case 'quote':
       return {label: 'Asking the relayer', sub: 'The relayer pays for and submits the transaction; it states its fee first.'};
     case 'approval':
@@ -547,7 +603,7 @@ function proofHero(stage: A0UnshieldStage | null, round: number): {label: string
         sub: `Check the destination and the amounts the dialog shows, then confirm it is you.${again}`,
       };
     default:
-      return {label: 'Proving', sub: `Running the Groth16 prover on this device.${again}`};
+      return {label: 'Making the proof', sub: `Making the proof on this device.${again}`};
   }
 }
 
@@ -606,7 +662,6 @@ const PENDING_WHY: Record<'unconfirmed' | 'already_spent' | 'relay_failed' | 'un
 
 function statusView(
   phase: Phase,
-  amountText: string,
   start: Partial<Record<A0UnshieldStage, number>>,
   now: number,
 ): StatusView {
@@ -629,7 +684,7 @@ function statusView(
         return {
           ...base,
           title: 'Not in this wallet',
-          sub: 'E_A0_STORE_CHANGED · The wallet on this device was replaced while this unshield was in flight. It was sent from the earlier wallet; restoring that wallet from its recovery phrase recovers its result.',
+          sub: 'E_A0_STORE_CHANGED · The wallet on this device was replaced while this transfer to public was in flight. It was sent from the earlier wallet; restoring that wallet from its recovery phrase recovers its result.',
           tone: 'warn',
         };
       }
@@ -679,11 +734,12 @@ function statusView(
               warn: true,
             });
           }
-          lines.push({id: 'change', text: `Your change, ${displayAmount(o.changeAmount, A0_TOKEN.decimals)} ${A0_TOKEN.symbol}, stays shielded.`});
+          // item 1: the change line is gone (it is the note's, not the balance — in Details now); item 7:
+          // no sub-line — the card already says what the destination receives
           return {
             ...base,
-            title: 'Unshielded',
-            sub: `Landed on Solana devnet and verified · the destination received ${amountText}.`,
+            title: NOW_PUBLIC,
+            sub: '',
             tone: 'ok',
             badge: 'CONFIRMED',
             lines,
@@ -713,7 +769,7 @@ function statusView(
           return {
             ...base,
             title: 'Landed, but failed verification',
-            sub: 'The relayer landed a transaction for this unshield that does not match what you approved. It is not retried.',
+            sub: 'The relayer landed a transaction for this transfer to public that does not match what you approved. It is not retried.',
             tone: 'bad',
             badge: 'UNVERIFIED',
             // carry 4: from the CODE only — the verifier's detail names keys of this seed; the outcome does not carry it (M-3)
@@ -734,7 +790,7 @@ function statusView(
           return {
             ...base,
             title: 'Not sent',
-            sub: `The relayer did not send it (${o.outcome}). Nothing left your shielded balance.`,
+            sub: `The relayer did not send it (${o.outcome}). Nothing left your private balance.`,
             tone: 'bad',
           };
       }
@@ -754,14 +810,14 @@ function decidedView(decided: Exclude<A0UnshieldCheck, {kind: 'pending'}>, amoun
       return decided.verified
         ? {
             ...base,
-            title: 'Unshielded',
+            title: NOW_PUBLIC,
             sub: `Checked again: it landed on Solana devnet and was verified · the destination received ${amountText}.`,
             tone: 'ok',
             badge: 'CONFIRMED',
           }
         : {
             ...base,
-            title: 'Unshielded',
+            title: NOW_PUBLIC,
             sub: "Checked again: it landed on Solana devnet · settled from the chain's record; this device held no approved terms to check it against.",
             tone: 'ok',
           };
@@ -769,14 +825,14 @@ function decidedView(decided: Exclude<A0UnshieldCheck, {kind: 'pending'}>, amoun
       return {
         ...base,
         title: 'Not sent',
-        sub: 'Checked again: it did not land in time, so it can no longer land. Your note is back in your shielded balance.',
+        sub: 'Checked again: it did not land in time, so it can no longer land. Your note is back in your private balance.',
         tone: 'bad',
       };
     case 'unverified':
       return {
         ...base,
         title: 'Landed, but failed verification',
-        sub: 'Checked again: the relayer landed a transaction for this unshield that does not match what you approved. It is not retried.',
+        sub: 'Checked again: the relayer landed a transaction for this transfer to public that does not match what you approved. It is not retried.',
         tone: 'bad',
         badge: 'UNVERIFIED',
         loud: [firstLoud, a0RefusalLoudText(decided.code)].filter((x): x is string => x !== null).join('\n'),

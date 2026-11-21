@@ -216,7 +216,7 @@ export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
     if (result.type === 'invalid' || result.type === 'non_solana') {
       setRecipientError(result.error ?? 'Invalid recipient address');
     } else if (result.type === 'shielded') {
-      setRecipientError('Use Shielded Transfer for private addresses');
+      setRecipientError('Use a private transfer for private addresses');
     } else {
       setRecipientError('');
       if (result.type === 'solana_pay' && result.address) {

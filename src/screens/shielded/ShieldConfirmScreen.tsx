@@ -14,16 +14,17 @@ import {
   displayAmount,
   preparedA0Deposit,
 } from '../../modules/shielded/a0/screenSupport';
+import {PRIVATE_MARK, PROOF_FEE, PROOF_FEE_NONE, makePrivateCta, DEPOSIT_RECORD_STORAGE} from '../../copy/modes';
 import type {ShieldIntent} from '../../types/shield';
 
 /**
  * #20 tx-confirm for the A0 deposit — mirror /home/user/Downloads/index.html §s20, its SHIELDED
  * variant (state 4: "SHIELDED Confirm", the "You are about to send privately" card, From / To /
- * Anonymity / Network rows, Fees with the ZK proof row, the mint CTA with the shield glyph).
+ * Anonymity / Network rows, Fees with the proof-fee row, the mint CTA with the shield glyph).
  *
- * Adapted to what a deposit is (D27 copy): "You are about to shield"; From = your main account
+ * Adapted to what a deposit is (D27 copy; part B words): "You are about to make this private"; From = your main account
  * (checksum first-6 / last-6 highlighted, screen.md's convention) — it signs and pays; To = the
- * shielded pool (its address, devnet); Network = Solana devnet; fees = network fee, deposit record
+ * pool ("Pool · 8VMe…", its address, devnet); Network = Solana devnet; fees = network fee, deposit record
  * rent, ZK proof none. The design's "Anonymity · Pool of N notes" row is #16's measured number and is
  * not repeated here; "PRIVATE" / "SHIELDED" pills are not drawn on a public deposit.
  *
@@ -45,7 +46,9 @@ export function ShieldConfirmScreen({intent, requestAuth, onAuthorized, onCancel
   const [busy, setBusy] = useState(false);
   const lastTapRef = useRef(0);
   const held = preparedA0Deposit(intent.preparedId) !== null;
-  const amount = `${displayAmount(BigInt(intent.amount), intent.decimals)} ${intent.tokenSymbol}`;
+  const figure = displayAmount(BigInt(intent.amount), intent.decimals);
+  const amount = `${figure} ${intent.tokenSymbol}`;
+  const headline = makePrivateCta(figure, intent.tokenSymbol);
 
   const handleShield = useCallback(async () => {
     const now = Date.now();
@@ -74,7 +77,7 @@ export function ShieldConfirmScreen({intent, requestAuth, onAuthorized, onCancel
         <View className="flex-row items-center gap-2 flex-1 ml-1">
           <ShieldCheck size={12} color="#5BE3C2" strokeWidth={2} />
           <Text variant="overline" className="text-accent-shielded">
-            Shielded
+            {PRIVATE_MARK}
           </Text>
           <Text variant="h2">Confirm</Text>
         </View>
@@ -85,12 +88,12 @@ export function ShieldConfirmScreen({intent, requestAuth, onAuthorized, onCancel
 
       <ScrollView contentContainerClassName="p-5 pb-4 gap-4">
         <Text variant="h1" className="text-center" testID="shield-confirm-headline">
-          {`Shield ${amount}`}
+          {headline}
         </Text>
 
         <View className="rounded-lg p-5 border border-[rgba(91,227,194,0.45)] bg-bg-surface-1">
           <Text variant="overline" className="text-accent-shielded mb-2">
-            You are about to shield
+            You are about to make this private
           </Text>
           <Text variant="balance-lg" numeral className="text-fg-primary">
             {amount}
@@ -100,7 +103,7 @@ export function ShieldConfirmScreen({intent, requestAuth, onAuthorized, onCancel
         {!held ? (
           <View className="rounded-lg p-4 bg-bg-surface-2 border-l-2 border-l-warning" testID="shield-confirm-missing">
             <Text variant="body-sm" className="text-fg-secondary">
-              This deposit is no longer prepared. Go back and start the shield again.
+              This deposit is no longer prepared. Go back and start again.
             </Text>
           </View>
         ) : null}
@@ -111,7 +114,7 @@ export function ShieldConfirmScreen({intent, requestAuth, onAuthorized, onCancel
           </Row>
           <Row label="To">
             <Text variant="body-sm" className="text-accent-shielded">
-              {`Shielded pool · ${A0.pool.slice(0, 4)}…${A0.pool.slice(-4)}`}
+              {`Pool · ${A0.pool.slice(0, 4)}…${A0.pool.slice(-4)}`}
             </Text>
           </Row>
           <Row label="Signs">
@@ -128,9 +131,10 @@ export function ShieldConfirmScreen({intent, requestAuth, onAuthorized, onCancel
 
         <Card className="gap-3">
           <Text variant="overline">Fees</Text>
-          <Row label="ZK proof fee" zk>
+          {/* owner phone pass 2, 2026-11-21, item 5: "ZK PROOF FEE" → "PROOF FEE", the value as #19's */}
+          <Row label={PROOF_FEE} zk>
             <Text variant="body-sm" className="text-fg-primary">
-              None · on this device
+              {PROOF_FEE_NONE}
             </Text>
           </Row>
           <Row label="Network fee">
@@ -138,7 +142,7 @@ export function ShieldConfirmScreen({intent, requestAuth, onAuthorized, onCancel
               {`${formatTokenAmount(A0_DEPOSIT_FEE_LAMPORTS, SOL_DECIMALS)} SOL`}
             </Text>
           </Row>
-          <Row label="Deposit record rent">
+          <Row label={DEPOSIT_RECORD_STORAGE}>
             <Text variant="body-sm" numeral className="text-fg-primary">
               {`≈ ${formatTokenAmount(A0_RHO_MARKER_RENT_LAMPORTS, SOL_DECIMALS)} SOL`}
             </Text>
@@ -158,7 +162,7 @@ export function ShieldConfirmScreen({intent, requestAuth, onAuthorized, onCancel
           disabled={busy || !held}
           accessibilityRole="button"
           accessibilityState={{disabled: busy || !held}}
-          accessibilityLabel={`Shield ${amount}`}
+          accessibilityLabel={headline}
           testID="shield-confirm-send"
           className={cn(
             'min-h-touch-rec rounded-pill items-center justify-center flex-row gap-2',
@@ -166,7 +170,7 @@ export function ShieldConfirmScreen({intent, requestAuth, onAuthorized, onCancel
           )}>
           <Shield size={18} color={busy || !held ? '#6E727A' : '#0A0A0A'} strokeWidth={2} />
           <Text variant="body-lg" className={cn('font-geist-semibold', busy || !held ? 'text-fg-disabled' : 'text-bg-base')}>
-            {`Shield ${amount}`}
+            {headline}
           </Text>
         </Pressable>
         <Button label="Cancel" variant="tertiary" disabled={busy} testID="shield-confirm-cancel" onPress={onCancel} />

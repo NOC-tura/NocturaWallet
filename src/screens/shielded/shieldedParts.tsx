@@ -162,3 +162,21 @@ export function MetaRow({label, value, onCopy}: {label: string; value: string; o
     </View>
   );
 }
+
+/**
+ * #16's one balance line (Shielded UX part B, decision B-2): "Public balance" on Make private,
+ * "Private balance" on Make public. UX-A 1's layout: the label keeps its width, the value takes the
+ * rest of the row, right-aligned, and wraps rather than running into the label.
+ */
+export function BalanceRow({label, value, testID}: {label: string; value: string; testID: string}) {
+  return (
+    <View className="flex-row items-start justify-between gap-3 mb-3" testID={testID}>
+      <Text variant="body-sm" className="text-fg-secondary shrink-0">
+        {label}
+      </Text>
+      <Text variant="body-sm" numeral className="flex-1 text-right font-geist-semibold text-fg-primary" testID={`${testID}-value`}>
+        {value}
+      </Text>
+    </View>
+  );
+}

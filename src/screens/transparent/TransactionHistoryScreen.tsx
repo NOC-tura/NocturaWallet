@@ -13,9 +13,9 @@ import {formatAddress} from '../../utils/formatAddress';
 import type {ParsedTransaction} from '../../modules/solana/types';
 import {parseTokenAmount} from '../../utils/parseTokenAmount';
 
-type FilterTab = 'All' | 'Sent' | 'Received' | 'Shielded' | 'Staking';
+type FilterTab = 'All' | 'Sent' | 'Received' | 'Private' | 'Staking';
 
-const FILTER_TABS: FilterTab[] = ['All', 'Sent', 'Received', 'Shielded', 'Staking'];
+const FILTER_TABS: FilterTab[] = ['All', 'Sent', 'Received', 'Private', 'Staking'];
 
 interface Props {
   onSelectTx: (signature: string) => void;

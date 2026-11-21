@@ -74,7 +74,7 @@ export class GeoFenceManager {
           countryCode,
           reason: 'vpn_detected',
           transparentAllowed: true,
-          message: 'VPN or proxy detected. Shielded features may be limited.',
+          message: 'VPN or proxy detected. Private features may be limited.',
         };
       }
 
@@ -88,7 +88,7 @@ export class GeoFenceManager {
         reason: 'ambiguous',
         transparentAllowed: true,
         message:
-          'Jurisdiction check unavailable. Shielded features temporarily limited.',
+          'Jurisdiction check unavailable. Private features temporarily limited.',
       };
     }
   }

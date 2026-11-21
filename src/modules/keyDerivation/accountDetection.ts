@@ -15,6 +15,12 @@ export interface AccountCandidate {
 export interface DetectionResult {
   candidates: AccountCandidate[];
   balancesResolved: boolean; // false → the balance RPC failed; addresses are still valid for manual pick
+  /**
+   * false → at least one per-owner NOC lookup failed (or none ran because SOL failed), so a
+   * NOC-only account may read as empty. Shielded UX part B Task 7 fix round 1 (review I-2): the
+   * import's smart views trust `funded` only when this and `balancesResolved` are both true.
+   */
+  nocResolved: boolean;
 }
 
 const SLIP10_ACCOUNTS_TO_SCAN = 5; // accounts 0..4
@@ -38,7 +44,8 @@ function candidateSchemes(): TransparentScheme[] {
  * RPC is unavailable — `balancesResolved` is set false so the UI can surface the
  * failure and offer a retry, rather than silently treating every account as
  * empty (which would auto-select the wrong account). NOC enrichment is
- * best-effort and never flips `balancesResolved`. Funded candidates sort first.
+ * best-effort and never flips `balancesResolved`; a failed NOC lookup sets
+ * `nocResolved` false instead. Funded candidates sort first.
  */
 export async function detectFundedAccounts(
   seed: Uint8Array,
@@ -59,6 +66,7 @@ export async function detectFundedAccounts(
   }));
 
   let balancesResolved = false;
+  let nocResolved = false;
   try {
     // PRIMARY signal: one batched SOL-balance call. If this throws, the RPC is
     // unavailable — surface it rather than pretending every account is empty.
@@ -70,7 +78,9 @@ export async function detectFundedAccounts(
       c.lamports = lamports[i] ?? 0n;
     });
     // Best-effort NOC enrichment (per-owner). A NOC lookup failure does NOT flip
-    // balancesResolved — SOL is the primary signal and is already resolved.
+    // balancesResolved — SOL is the primary signal and is already resolved — but
+    // it does flip nocResolved, so the UI does not read a missing NOC as "empty".
+    let nocFailed = false;
     await Promise.all(
       derived.map(async (d, i) => {
         try {
@@ -81,7 +91,8 @@ export async function detectFundedAccounts(
           }
           candidates[i].nocAmount = noc;
         } catch {
-          // best-effort; leave nocAmount at 0n
+          // best-effort; leave nocAmount at 0n and say so
+          nocFailed = true;
         }
       }),
     );
@@ -89,11 +100,12 @@ export async function detectFundedAccounts(
       c.funded = c.lamports > 0n || c.nocAmount > 0n;
     });
     balancesResolved = true;
+    nocResolved = !nocFailed;
   } catch {
     // RPC unavailable: keep the derived addresses, mark balances unresolved.
     balancesResolved = false;
   }
 
   candidates.sort((a, b) => (a.funded === b.funded ? 0 : a.funded ? -1 : 1));
-  return {candidates, balancesResolved};
+  return {candidates, balancesResolved, nocResolved};
 }

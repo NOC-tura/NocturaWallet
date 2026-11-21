@@ -12,6 +12,7 @@ import {mnemonicToSeed} from '../../modules/keyDerivation/mnemonicUtils';
 import {getConnection} from '../../modules/solana/connection';
 import type {ShieldIntent} from '../../types/shield';
 import {ProofHeroRing, StageRow} from './shieldedParts';
+import {MAKING_PRIVATE, PRIVATE_MARK} from '../../copy/modes';
 import type {StageRowStatus} from './shieldedParts';
 
 /**
@@ -20,11 +21,11 @@ import type {StageRowStatus} from './shieldedParts';
  *
  * REAL STAGES, NO FIXED PERCENTAGES. The four rows of the design are driven by
  * `prepareA0Deposit`'s `onStage` — nothing is timed or animated to look like progress:
- *   1 Build witness   ← checking (amount, prover, store, cluster, token account) → keyFiles
+ *   1 Prepare         ← checking (amount, prover, store, cluster, token account) → keyFiles
  *                        (the pinned A0 key files) → precheck (the deposit counter's rho PDA; repeats
  *                        on a hit) → commitment (Rust's commitment(amount, rho));
- *   2 Prove           ← proving (the Groth16 prover in the Rust core, on this device);
- *   3 Verify locally  ← verifying (the proof's four public inputs against this deposit's values);
+ *   2 Make the proof  ← proving (the Groth16 prover in the Rust core, on this device);
+ *   3 Check the proof ← verifying (the proof's four public inputs against this deposit's values);
  *   4 Ready           ← the prepared deposit returned.
  * Each row shows its MEASURED time ("running · 2.1 s" from a clock while it runs, "done · 4.2 s"
  * after), not a percentage: no stage reports a fraction, so the design's "42 %" is not drawn
@@ -65,7 +66,7 @@ const SUBSTEP: Record<A0PrepareStage, string> = {
   keyFiles: 'loading the proving key files',
   precheck: 'checking the deposit counter on chain',
   commitment: 'computing the note commitment',
-  proving: 'running the Groth16 prover',
+  proving: 'making the proof',
   verifying: 'comparing the public inputs',
 };
 
@@ -75,7 +76,8 @@ type Phase =
   | {kind: 'ready'}
   | {kind: 'failed'; row: Row; code: string | null; message: string};
 
-const TITLES: Record<Row, string> = {1: 'Build witness', 2: 'Prove', 3: 'Verify locally', 4: 'Ready'};
+/** part B (spec §4 "#18 … stage labels in plain words"; plan A7) */
+const TITLES: Record<Row, string> = {1: 'Prepare', 2: 'Make the proof', 3: 'Check the proof', 4: 'Ready'};
 
 function seconds(ms: number): string {
   return `${(ms / 1000).toFixed(1)} s`;
@@ -208,7 +210,10 @@ export function ZkProofScreen({amount, onReady, onCancel}: ZkProofScreenProps) {
         <View className="flex-row items-center gap-2">
           <ShieldCheck size={12} color={ACCENT} strokeWidth={2} />
           <Text variant="overline" className="text-accent-shielded">
-            SHIELDED
+            {PRIVATE_MARK}
+          </Text>
+          <Text variant="body-sm" className="font-geist-semibold text-fg-primary" testID="zk-title">
+            {MAKING_PRIVATE}
           </Text>
         </View>
         <Text variant="overline" className="text-fg-tertiary">
@@ -280,10 +285,10 @@ function heroOf(phase: Phase): {label: string; sub: string} {
       };
     case 'running': {
       const row = ROW_OF[phase.stage];
-      const label = row === 1 ? 'Building witness' : row === 2 ? 'Proving' : 'Verifying';
+      const label = row === 1 ? 'Preparing' : row === 2 ? 'Making the proof' : 'Checking the proof';
       const sub =
         row === 2
-          ? 'Running the Groth16 prover on this device.'
+          ? 'Making the proof on this device.'
           : row === 3
             ? "Checking the proof's public inputs against this deposit."
             : `Building the deposit: ${SUBSTEP[phase.stage]}.`;

@@ -34,17 +34,17 @@ export const A0_FRESH_UNAVAILABLE_COPY: Record<A0FreshUnavailable, string> = {
 /** "My main account" (§11, verbatim). */
 export const A0_MAIN_ACCOUNT_WARNING = 'This links your exit to your deposit: your main account made the deposit.';
 
-/** "Another address" (§11, verbatim). */
-export const A0_EXTERNAL_WARNING = 'This is a payment from your shielded balance. The recipient sees the amount.';
+/** "Another address" (§11; part B swaps one word: the honest meaning is unchanged). */
+export const A0_EXTERNAL_WARNING = 'This is a payment from your private balance. The recipient sees the amount.';
 
-/** The amount line (§11; the token's symbol for "NOC"). */
+/** The amount line (§11; the token's symbol for "NOC"; part B: one word swapped). */
 export function a0AmountLine(amount: bigint, fee: bigint, decimals: number, symbol: string): string {
-  return `The destination receives exactly ${displayAmount(amount, decimals)} ${symbol}. The relayer fee of ${displayAmount(fee, decimals)} ${symbol} comes out of your shielded balance.`;
+  return `The destination receives exactly ${displayAmount(amount, decimals)} ${symbol}. The relayer fee of ${displayAmount(fee, decimals)} ${symbol} comes out of your private balance.`;
 }
 
-/** The one-note limit (§11; the token's symbol for "NOC"). */
+/** The one-note limit (§11; part B: in #16's Details, the new vocabulary). */
 export function a0OneNoteLimit(max: bigint, decimals: number, symbol: string): string {
-  return `You can unshield up to ${displayAmount(max, decimals)} ${symbol} from one note at a time; combining notes comes in a later version.`;
+  return `You can make up to ${displayAmount(max, decimals)} ${symbol} public from one note at a time; combining notes comes in a later version.`;
 }
 
 /**
@@ -59,7 +59,7 @@ export const A0_VERIFY_REFUSAL_COPY: Record<A0VerifyRefusal, string> = {
   E_A0_VERIFY_SEED_SIGNER: 'a key of this wallet signed it',
   E_A0_VERIFY_SIGNERS: 'it was not signed by the relayer alone',
   E_A0_VERIFY_FEE_PAYER: "its fee payer is not the relayer's",
-  E_A0_VERIFY_PROGRAMS: 'it calls a program outside the relayed unshield',
+  E_A0_VERIFY_PROGRAMS: 'it calls a program outside the relayed exit',
   E_A0_VERIFY_WITHDRAW: 'it is not exactly one withdrawal from the pool',
   E_A0_VERIFY_NULLIFIER: "its spend is not this note's",
   E_A0_VERIFY_CHANGE_LEAF: 'its change note is not the one you approved',
@@ -83,12 +83,12 @@ export const A0_VERIFY_REFUSAL_COPY: Record<A0VerifyRefusal, string> = {
  * when there is no code at all.
  */
 export const A0_UNSHIELD_REFUSAL_COPY: Record<A0UnshieldErrorCode, string> = {
-  E_A0_UNSHIELD_BUSY: 'Another unshield is still running on this device.',
+  E_A0_UNSHIELD_BUSY: 'Another transfer to public is still running on this device.',
   E_A0_UNSHIELD_AMOUNT: 'This note cannot pay that amount with the relayer fee on top.',
   E_A0_UNSHIELD_UNSUPPORTED: 'This device has no on-device prover.',
-  E_A0_UNSHIELD_NOT_READY: 'Your shielded notes are not restored yet.',
+  E_A0_UNSHIELD_NOT_READY: 'Your private balance is not restored yet.',
   E_A0_UNSHIELD_CLUSTER: 'The network is not Solana devnet.',
-  E_A0_UNSHIELD_NO_NOTE: 'No shielded note can pay the relayer fee.',
+  E_A0_UNSHIELD_NO_NOTE: 'No private note can pay the relayer fee.',
   E_A0_UNSHIELD_NOTE_LEAF: "Your note's place in the pool could not be verified.",
   E_A0_UNSHIELD_DESTINATION:
     "That destination cannot be used: a new account needs the relayer's SOL grant, and another address must be a wallet address outside this wallet.",
@@ -99,7 +99,7 @@ export const A0_UNSHIELD_REFUSAL_COPY: Record<A0UnshieldErrorCode, string> = {
 };
 
 /** Any other code (the keychain, the sync, the prover, the relayer client). */
-export const A0_STOPPED_ON_DEVICE = 'The unshield stopped on this device.';
+export const A0_STOPPED_ON_DEVICE = 'The transfer to public stopped on this device.';
 
 /** The own-account refusal, by the role the flow names in its error's field (carry 3, M-7: never by the message). */
 export const A0_OWN_ACCOUNT_REFUSAL_COPY: Record<A0OwnAccountRefused, string> = {

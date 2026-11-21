@@ -3,8 +3,8 @@
  * the unshield run all draw them, so their states are held here once.
  */
 import React from 'react';
-import {render} from '@testing-library/react-native';
-import {ProofHeroRing, StageRow, shortSignature} from '../shieldedParts';
+import {render, within} from '@testing-library/react-native';
+import {BalanceRow, ProofHeroRing, StageRow, shortSignature} from '../shieldedParts';
 
 describe('the shared shielded parts', () => {
   it('StageRow: a done row shows the check in its disc, never its number; a pending or active row shows the number', () => {
@@ -28,5 +28,19 @@ describe('the shared shielded parts', () => {
   it('shortSignature: first 6 + last 4; a short string unchanged', () => {
     expect(shortSignature('4Hq7MbX1n2sV9pLr6TzKc3uYdW8eFa5G')).toBe('4Hq7Mb…Fa5G');
     expect(shortSignature('abc')).toBe('abc');
+  });
+});
+
+describe('BalanceRow (part B, decision B-2: #16\'s one balance line)', () => {
+  it('UX-A 1 kept: label and value are separate elements in a row WITH A GAP; the value takes the rest, right-aligned; the label never shrinks', () => {
+    const r = render(<BalanceRow label="Public balance" value="0.00498 TEST" testID="row" />);
+    const row = r.getByTestId('row');
+    expect(row.props.className).toMatch(/(^|\s)gap-\d/);
+    const label = within(row).getByText('Public balance');
+    const value = r.getByTestId('row-value');
+    expect(value.props.children).toBe('0.00498 TEST');
+    expect(value.props.className).toMatch(/(^|\s)flex-1(\s|$)/);
+    expect(value.props.className).toMatch(/(^|\s)text-right(\s|$)/);
+    expect(label.props.className).toMatch(/(^|\s)shrink-0(\s|$)/);
   });
 });

@@ -15,7 +15,7 @@ export const ERROR_CODES = {
   INSUFFICIENT_SOL: {code: 'E010', message: 'Not enough SOL', action: 'You need more SOL to cover network fees'},
   INSUFFICIENT_TOKEN: {code: 'E011', message: 'Not enough tokens', action: 'Reduce the amount or add more tokens'},
   INSUFFICIENT_RENT: {code: 'E012', message: 'Account needs rent deposit', action: 'Keep at least 0.00203 SOL for rent'},
-  INSUFFICIENT_NOC_FEE: {code: 'E013', message: 'Not enough NOC for privacy fee', action: 'You need NOC tokens for shielded transactions'},
+  INSUFFICIENT_NOC_FEE: {code: 'E013', message: 'Not enough NOC for privacy fee', action: 'You need NOC tokens for private transactions'},
 
   // ─── Transaction ──────────────────────────────────────────────────────
   TX_SIMULATION_FAILED: {code: 'E020', message: 'Transaction would fail', action: 'Try a different amount or check recipient address'},
@@ -35,13 +35,13 @@ export const ERROR_CODES = {
   SESSION_EXPIRED: {code: 'E042', message: 'Session expired', action: 'Please unlock your wallet again'},
 
   // ─── Geo / Compliance ─────────────────────────────────────────────────
-  GEO_BLOCKED: {code: 'E050', message: 'Privacy mode not available in your region', action: 'Transparent mode is fully functional'},
+  GEO_BLOCKED: {code: 'E050', message: 'Privacy mode not available in your region', action: 'Public mode is fully functional'},
   GEO_VPN_DETECTED: {code: 'E051', message: 'VPN detected', action: 'Set your country manually in Settings for accurate access'},
 
   // ─── Backup ───────────────────────────────────────────────────────────
   BACKUP_FAILED: {code: 'E060', message: 'Backup failed', action: 'Check cloud storage space and try again'},
   RESTORE_FAILED: {code: 'E061', message: 'Restore failed', action: 'Make sure you are using the correct wallet seed phrase'},
-  RESTORE_NO_BACKUP: {code: 'E062', message: 'No backup found', action: 'Your wallet was restored from seed phrase. Shielded history is not available.'},
+  RESTORE_NO_BACKUP: {code: 'E062', message: 'No backup found', action: 'Your wallet was restored from seed phrase. Private history is not available.'},
 
   // ─── Staking ──────────────────────────────────────────────────────────
   STAKE_LOCKED: {code: 'E070', message: 'Stake is still locked', action: 'Your stake unlocks on [date]'},
@@ -63,7 +63,7 @@ export const ERROR_CODES = {
   CLAIM_TX_FAILED: {code: 'E106', message: 'Claim transaction failed', action: 'Please try again. Your allocation is safe.'},
 
   // ─── Shielded Address ─────────────────────────────────────────────────
-  INVALID_SHIELDED_ADDR: {code: 'E110', message: 'Invalid private address', action: 'Shielded addresses start with noc1. Check and try again.'},
+  INVALID_SHIELDED_ADDR: {code: 'E110', message: 'Invalid private address', action: 'Private addresses start with noc1. Check and try again.'},
 
   // ─── PIN ──────────────────────────────────────────────────────────────
   PIN_COOLDOWN: {code: 'E120', message: 'Too many incorrect attempts', action: 'Wait [X] seconds before trying again'},

@@ -14,7 +14,7 @@ import org.w3c.dom.Element
  * What the dialog shows (spec §4 step 3): Rust's `parseUnshield` answer read strictly, rendered
  * with the REAL format strings of `res/values/a0_confirm_strings.xml` — the full owner, the token
  * account labelled as such, "Destination receives exactly …" with the base units, the relayer fee
- * "taken from your shielded balance" (I7), the pool. Addresses and amounts come from the offline
+ * "taken from your private balance" (I7; part B wording), the pool. Addresses and amounts come from the offline
  * ATA vectors (scripts/a0-vectors/gen-ata-vectors.mjs, web3.js) — never from the code under test.
  * The token's symbol (M1c Task 8): Kotlin's own from BuildConfig.A0_NETWORK, TEST on devnet, NOC
  * otherwise — one row per network, and a source row that the controller takes it from nowhere else.
@@ -69,7 +69,7 @@ class A0ConfirmTextTest {
             "Destination receives exactly ${a.getString("human")} NOC (${a.getString("units")} base units)",
             t.amountLine,
         )
-        assertEquals("Relayer fee 0.00001 NOC, taken from your shielded balance", t.feeLine)
+        assertEquals("Relayer fee 0.00001 NOC, taken from your private balance", t.feeLine)
         assertEquals(pool, t.pool)
         assertEquals("Pool", t.poolLabel)
     }
@@ -81,7 +81,7 @@ class A0ConfirmTextTest {
         val p = A0ParsedUnshield.from(rust("1250000000", "1.25", f.getString("units"), f.getString("human")))!!
         val t = render(p, network = "devnet")
         assertEquals("Destination receives exactly 1.25 TEST (1250000000 base units)", t.amountLine)
-        assertEquals("Relayer fee 0.00001 TEST, taken from your shielded balance", t.feeLine)
+        assertEquals("Relayer fee 0.00001 TEST, taken from your private balance", t.feeLine)
     }
 
     @Test
@@ -90,7 +90,7 @@ class A0ConfirmTextTest {
         val p = A0ParsedUnshield.from(rust("1250000000", "1.25", f.getString("units"), f.getString("human")))!!
         val t = render(p, network = "mainnet-beta") // .env.production's NETWORK
         assertEquals("Destination receives exactly 1.25 NOC (1250000000 base units)", t.amountLine)
-        assertEquals("Relayer fee 0.00001 NOC, taken from your shielded balance", t.feeLine)
+        assertEquals("Relayer fee 0.00001 NOC, taken from your private balance", t.feeLine)
     }
 
     @Test
@@ -127,6 +127,19 @@ class A0ConfirmTextTest {
         assertTrue(names.size >= 9)
         for (n in names) assertTrue("missing string $n", strings.containsKey(n))
         assertEquals(names, strings.keys) // and nothing unused
+    }
+
+    @Test
+    fun theDialogSpeaksTheOneVocabulary() {
+        // Shielded UX part B (spec 2026-11-20 §2 row 9): the four user-facing strings, verbatim
+        assertEquals("Confirm making public", strings.getValue("a0_confirm_title"))
+        assertEquals("Relayer fee %1\$s %2\$s, taken from your private balance", strings.getValue("a0_confirm_fee_line"))
+        assertEquals("Approve making this public", strings.getValue("a0_prompt_title"))
+        assertEquals("Confirm it is you to authorize this one transfer to public", strings.getValue("a0_prompt_subtitle"))
+        // none of the words part B removed, in any string of the resource (positive control: all ten are read)
+        assertEquals(10, strings.size)
+        val banned = Regex("(?i)(?<![\\w+/-])(un)?shield(ed|ing|s)?(?![\\w-])|(?<![\\w+/-])(transparent|vaults?)(?![\\w-])")
+        for ((name, v) in strings) assertTrue("banned word in $name: '$v'", !banned.containsMatchIn(v))
     }
 
     @Test

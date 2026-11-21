@@ -10,6 +10,7 @@ import {MMKV_KEYS} from '../../constants/mmkvKeys';
 import {useShieldedStore} from '../../store/zustand/shieldedStore';
 import {ScreenSecurityManager} from '../../modules/screenSecurity/screenSecurityModule';
 import type {RootStackParamList} from '../../types/navigation';
+import {MAKE_PUBLIC, PRIVATE_MARK} from '../../copy/modes';
 
 const PRIVACY_URL = 'https://noc-tura.io/privacy';
 const ACCENT = '#5BE3C2';
@@ -57,7 +58,7 @@ export function ShieldedExplainerScreen({navigation}: Props) {
         </Pressable>
         <View className="flex-row items-center gap-2">
           <ShieldCheck size={12} color={ACCENT} strokeWidth={2} />
-          <Text variant="overline" className="text-accent-shielded">SHIELDED</Text>
+          <Text variant="overline" className="text-accent-shielded">{PRIVATE_MARK}</Text>
         </View>
         <Text variant="overline" className="text-fg-tertiary">1 / 1</Text>
       </View>
@@ -66,27 +67,30 @@ export function ShieldedExplainerScreen({navigation}: Props) {
         style={{flex: 1}}
         contentContainerStyle={{paddingHorizontal: 20, paddingBottom: 24}}>
         <VaultHero />
+        {/* Final review I-1: only what the wallet does today — one SPL token (TEST on devnet), so no
+            asset symbol; no private send (M2 does not exist yet), so step 3 is the relayed exit. */}
         <Text variant="h1" className="mb-3 mt-6">
-          Private SOL, three steps.
+          Your private balance, three steps.
         </Text>
         <Text variant="body" className="text-fg-secondary mb-8 max-w-sm">
-          Shielded mode moves SOL into a ZK pool. Inside the pool, recipients and amounts are not shown on-chain. Deposits and withdrawals are public and can be linked to your address.
+          When you make tokens private, they move into a pool and become your private balance. Moving
+          them in and out is public on chain.
         </Text>
 
         <ExplainerStep
           n={1}
-          title="Move into the vault"
-          body="Deposit SOL from your public address. The deposit is visible on-chain, and so is a withdrawal back to a public address."
+          title="Move into your private balance"
+          body="Deposit tokens from your public address. The deposit is public on chain and signed by your main account."
         />
         <ExplainerStep
           n={2}
-          title="Generate a ZK proof"
-          body="For every shielded action, your phone produces a zero-knowledge proof (Groth16) locally. The proof shows you own the funds without revealing which note you're spending."
+          title="Make the proof"
+          body="Each move into or out of your private balance needs a proof. Your phone makes the proof itself, on this device."
         />
         <ExplainerStep
           n={3}
-          title="Send privately"
-          body="Settled on Solana with the proof attached. Validators verify the proof; the recipient and the amount inside the pool are not shown on-chain."
+          title={MAKE_PUBLIC}
+          body={`Move your tokens back to a public address when you want. A relayer sends it for you for a small fee, so no key of yours signs it. Amounts and timing are public. Making them public to your main account links the exit to your deposit.`}
         />
       </ScrollView>
 
