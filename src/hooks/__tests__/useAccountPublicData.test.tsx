@@ -16,12 +16,20 @@ const MAIN = 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk';
 const A3 = '3YqEpfo3c818GhvbQ1UmVY1nJxw16vtu4JB9peJXT94k';
 const SNAP = {solBalance: '3000000', nocBalance: '0', tokenBalances: {}, tokens: []};
 
+// One client per test, created outside the wrapper so a rerender keeps the same cache (a new client per
+// render would make every switch row read "loading" for the wrong reason); cleared after each test so the
+// hook's 5-minute gcTime leaves no timer behind and a single-file run exits.
+let qc: QueryClient;
 function wrapper({children}: {children: React.ReactNode}) {
-  const qc = new QueryClient({defaultOptions: {queries: {retry: false}}});
   return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
 }
 
+afterEach(() => {
+  qc.clear();
+});
+
 beforeEach(() => {
+  qc = new QueryClient({defaultOptions: {queries: {retry: false}}});
   mockFetch.mockReset();
   mockFeatures.shielded = true;
   useWalletStore.setState({publicKey: MAIN, solBalance: '1000000000', nocBalance: '7', tokenBalances: {}, tokens: [], lastSyncedAt: 123});
