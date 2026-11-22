@@ -33,7 +33,7 @@ beforeEach(() => {
   qc = new QueryClient({defaultOptions: {queries: {retry: false}}});
   mockFetch.mockReset();
   mockFeatures.shielded = true;
-  useWalletStore.setState({publicKey: MAIN, solBalance: '1000000000', nocBalance: '7', tokenBalances: {}, tokens: [], lastSyncedAt: 123});
+  useWalletStore.setState({publicKey: MAIN, solBalance: '1000000000', nocBalance: '7', tokenBalances: {}, tokens: [], lastSyncedAt: 123, lastSyncFailedAt: null});
 });
 
 it('main → walletStore\'s values, ready, no request (forceSync owns that slot)', () => {
@@ -42,10 +42,11 @@ it('main → walletStore\'s values, ready, no request (forceSync owns that slot)
   expect(mockFetch).not.toHaveBeenCalled();
 });
 
-it('plan A12: main never synced → syncedAt null', () => {
+// post-M1d controller ruling 2026-11-22: a never-read main is never ready
+it('main never synced → loading (was: ready with syncedAt null)', () => {
   useWalletStore.setState({lastSyncedAt: null});
   const {result} = renderHook(() => useAccountPublicData({address: MAIN, isMain: true}), {wrapper});
-  expect(result.current.data).toMatchObject({status: 'ready', syncedAt: null});
+  expect(result.current.data).toEqual({status: 'loading'});
 });
 
 it('another account → loading, then its own snapshot (by its address)', async () => {
@@ -107,18 +108,87 @@ it('review I2: a switch never shows the previous account\'s data (another → an
   expect(result.current.data).toEqual({status: 'loading'}); // not the main values
 });
 
-it('review r1 N1: a failed re-read of a non-main account is error, not the old figure as current; a successful one shows the fresh figure', async () => {
+it('post-M1d §3.1: another account — read then failed → stale with the old figure and its age; read again → ready', async () => {
   const OLD = {...SNAP, solBalance: '111'};
   const NEW = {...SNAP, solBalance: '222'};
-  qc.setQueryData([ACCOUNT_SNAPSHOT_KEY, A3], OLD, {updatedAt: Date.now() - 60_000});
+  const readAt = Date.now() - 60_000;
+  qc.setQueryData([ACCOUNT_SNAPSHOT_KEY, A3], OLD, {updatedAt: readAt});
   mockFetch.mockRejectedValueOnce(new Error('429'));
   const {result} = renderHook(() => useAccountPublicData({address: A3, isMain: false}), {wrapper});
-  await waitFor(() => expect(result.current.data).toEqual({status: 'error'}));
+  await waitFor(() => expect(result.current.data.status).toBe('stale')); // post-M1d §3.1 / R5 (was: error)
+  expect(result.current.data).toMatchObject({status: 'stale', solBalance: '111', syncedAt: readAt, failedAt: expect.any(Number)});
   mockFetch.mockResolvedValueOnce(NEW);
   await act(async () => {
     await result.current.refetch();
   });
   await waitFor(() => expect(result.current.data).toMatchObject({status: 'ready', solBalance: '222'}));
+});
+
+it('R5: another account never read in this session + a failed read → error (no figure exists)', async () => {
+  mockFetch.mockRejectedValue(new Error('429'));
+  const {result} = renderHook(() => useAccountPublicData({address: A3, isMain: false}), {wrapper});
+  await waitFor(() => expect(result.current.data).toEqual({status: 'error'}));
+});
+
+it('post-M1d §3.1: main — read then failed → stale, the age from lastSyncedAt; a good sync → ready', () => {
+  useWalletStore.setState({lastSyncedAt: 123, lastSyncFailedAt: 456});
+  const {result} = renderHook(() => useAccountPublicData({address: MAIN, isMain: true}), {wrapper});
+  expect(result.current.data).toEqual({status: 'stale', solBalance: '1000000000', nocBalance: '7', tokenBalances: {}, tokens: [], syncedAt: 123, failedAt: 456});
+  act(() => {
+    useWalletStore.getState().updateBalances('5', '7', {});
+  });
+  expect(result.current.data).toMatchObject({status: 'ready', solBalance: '5'});
+  expect(mockFetch).not.toHaveBeenCalled();
+});
+
+// review r1-1: 'ready' here made every screen show the store's default 0 as a current balance
+it("post-M1d §3.1: main — never read + the sync failed → error: no figure, never the store's default 0", () => {
+  useWalletStore.setState({solBalance: '0', nocBalance: '0', lastSyncedAt: null, lastSyncFailedAt: 456});
+  const {result} = renderHook(() => useAccountPublicData({address: MAIN, isMain: true}), {wrapper});
+  expect(result.current.data).toEqual({status: 'error'});
+  expect(mockFetch).not.toHaveBeenCalled();
+});
+
+it('post-M1d §3.1: main — that state, then a good sync → ready with the read figure', () => {
+  useWalletStore.setState({lastSyncedAt: null, lastSyncFailedAt: 456});
+  const {result} = renderHook(() => useAccountPublicData({address: MAIN, isMain: true}), {wrapper});
+  act(() => {
+    useWalletStore.getState().updateBalances('5', '7', {});
+  });
+  expect(result.current.data).toMatchObject({status: 'ready', solBalance: '5', syncedAt: expect.any(Number)});
+});
+
+// controller ruling 2026-11-22: a never-read main is never 'ready' — the store's defaults are not a balance
+it('main — never read and no sync of this session has failed → loading (as a non-main account before its first read)', () => {
+  useWalletStore.setState({solBalance: '0', nocBalance: '0', lastSyncedAt: null, lastSyncFailedAt: null});
+  const {result} = renderHook(() => useAccountPublicData({address: MAIN, isMain: true}), {wrapper});
+  expect(result.current.data).toEqual({status: 'loading'});
+  expect(mockFetch).not.toHaveBeenCalled();
+});
+
+it('main — the three states in order: loading → (the sync fails) error → (a sync succeeds) ready', () => {
+  useWalletStore.setState({lastSyncedAt: null, lastSyncFailedAt: null});
+  const {result} = renderHook(() => useAccountPublicData({address: MAIN, isMain: true}), {wrapper});
+  expect(result.current.data.status).toBe('loading');
+  act(() => {
+    useWalletStore.getState().markSyncFailed();
+  });
+  expect(result.current.data).toEqual({status: 'error'});
+  act(() => {
+    useWalletStore.getState().updateBalances('5', '7', {});
+  });
+  expect(result.current.data).toMatchObject({status: 'ready', solBalance: '5', syncedAt: expect.any(Number)});
+});
+
+it('main is never ready with syncedAt null (property over the four store states)', () => {
+  for (const [syncedAt, failedAt] of [[null, null], [null, 9], [5, null], [5, 9]] as const) {
+    useWalletStore.setState({lastSyncedAt: syncedAt, lastSyncFailedAt: failedAt});
+    const {result, unmount} = renderHook(() => useAccountPublicData({address: MAIN, isMain: true}), {wrapper});
+    const d = result.current.data;
+    expect(d.status === 'ready' && d.syncedAt === null).toBe(false);
+    expect(d.status).toBe(syncedAt === null ? (failedAt === null ? 'loading' : 'error') : failedAt === null ? 'ready' : 'stale');
+    unmount();
+  }
 });
 
 it('review r1 N1: the main account is unchanged by a failing snapshot read (walletStore, no request)', () => {

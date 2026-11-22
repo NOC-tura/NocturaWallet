@@ -30,6 +30,40 @@ export const SEND_BALANCE_RETRY = 'Balance unavailable · tap to retry';
 /** #12: shown while that re-read runs */
 export const SEND_BALANCE_CHECKING = 'Checking balance…';
 
+/**
+ * post-M1d §3.3: a balance that failed to refresh is shown as the last known figure, marked with its age.
+ * The age (R16) is recomputed on render and every 60 s while the screen is focused.
+ */
+export function relativeAge(fromMs: number, nowMs: number): string {
+  const mins = Math.floor(Math.max(0, nowMs - fromMs) / 60_000); // a clock that moved backwards is "just now"
+  if (mins < 1) {
+    return 'just now';
+  }
+  if (mins < 60) {
+    return `${mins} min ago`;
+  }
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) {
+    return `${hours} h ago`;
+  }
+  return `${Math.floor(hours / 24)} d ago`;
+}
+/** #11, under the hero */
+export function staleLine(age: string): string {
+  return `Not updated · ${age} · pull to refresh`;
+}
+/** A screen that has no pull-to-refresh (the token detail's holding) */
+export function staleNote(age: string): string {
+  return `Not updated · ${age}`;
+}
+/** The Accounts sheet: a row whose last figure could not be refreshed */
+export const STALE_ROW_SUFFIX = 'not updated';
+export function staleRow(figure: string): string {
+  return `${figure} · ${STALE_ROW_SUFFIX}`;
+}
+/** #12: a stale balance is not usable for sending — the tap re-reads */
+export const SEND_BALANCE_STALE = 'Not updated · tap to retry';
+
 /** The dashboard header button that opens #26 */
 export const HISTORY_A11Y = 'Transaction history';
 /** #26: the read is running, failed (the tap re-reads), or finished with nothing */
@@ -105,10 +139,11 @@ export function moreAssets(n: number): string {
 export const SPLIT_UNKNOWN_A11Y = 'not known yet';
 
 /** A column's accessibility label: what it shows (already "•••" when hidden), and what a tap does */
-export function splitA11y(sideName: string, value: string, isActive: boolean): string {
+export function splitA11y(sideName: string, value: string, isActive: boolean, stale = false): string {
   // review Task 5 m8: a screen reader says nothing for "—"; it hears "not known yet"
   const spoken = value === VALUE_UNKNOWN ? SPLIT_UNKNOWN_A11Y : value;
-  return isActive ? `${sideName}, ${spoken}` : `${sideName}, ${spoken}, switch to ${sideName}`;
+  const said = stale ? `${spoken}, ${STALE_ROW_SUFFIX}` : spoken; // post-M1d §3.2
+  return isActive ? `${sideName}, ${said}` : `${sideName}, ${said}, switch to ${sideName}`;
 }
 
 /** #21's refusals (M5): nothing was signed. The code leads the line (the screen keys no-Retry on it). */

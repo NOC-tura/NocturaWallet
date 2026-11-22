@@ -56,8 +56,8 @@ export function rowBalanceText(row: RowBalance | undefined, prices: Record<strin
   if (!row || row.state === 'not-checked') {
     return ROW_NOT_CHECKED;
   }
-  if (row.state === 'failed') {
-    return ROW_UNAVAILABLE;
+  if (row.state === 'failed' || row.state === 'stale') {
+    return ROW_UNAVAILABLE; // 'stale' is drawn (dimmed, " · not updated") from post-M1d Task 3 on
   }
   return formatSide(publicSide({status: 'ready', ...row.data, syncedAt: row.at}), prices, ' · ');
 }

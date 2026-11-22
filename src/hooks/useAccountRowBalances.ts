@@ -3,8 +3,8 @@
  * ROW_WINDOW (the extension's FRESH_ROWS) in flight: each settled row lets the next one start, so
  * every row is read. A row with nothing cached that is in flight or waiting is "not checked yet"; a
  * row with a cached figure that is being re-read keeps showing that figure until the read ends —
- * including the retry backoff (the app's `retry: 2`) — and then turns to the fresh figure, or to
- * "Balance unavailable" if the re-read failed. The query key is the dashboard's (`['accountSnapshot', address]`), so a row and
+ * including the retry backoff (the app's `retry: 2`) — and then turns to the fresh figure, or — if
+ * the re-read failed — to that same figure marked stale (post-M1d), "Balance unavailable" only when none was read. The query key is the dashboard's (`['accountSnapshot', address]`), so a row and
  * the dashboard share one read.
  */
 import {useEffect, useState} from 'react';
@@ -15,7 +15,8 @@ import {ACCOUNT_SNAPSHOT_KEY} from './useAccountPublicData';
 
 export const ROW_WINDOW = 10;
 
-export type RowBalance = {state: 'not-checked'} | {state: 'failed'} | {state: 'ready'; data: AccountSnapshot; at: number};
+export type RowBalance = {state: 'not-checked'} | {state: 'failed'} | {state: 'ready'; data: AccountSnapshot; at: number}
+  | {state: 'stale'; data: AccountSnapshot; at: number};
 
 export function useAccountRowBalances(addresses: readonly string[], active: boolean): Record<string, RowBalance> {
   const [released, setReleased] = useState(ROW_WINDOW);
@@ -39,8 +40,8 @@ export function useAccountRowBalances(addresses: readonly string[], active: bool
   addresses.forEach((address, i) => {
     const r = results[i];
     if (r?.isError) {
-      // a failed (re-)read never shows the older figure as current: none beats a stale one
-      rows[address] = {state: 'failed'};
+      // post-M1d §3.1 / R5: a failed re-read keeps this session's figure, marked stale; with none, "failed"
+      rows[address] = r.data ? {state: 'stale', data: r.data, at: r.dataUpdatedAt} : {state: 'failed'};
     } else if (r?.data) {
       rows[address] = {state: 'ready', data: r.data, at: r.dataUpdatedAt};
     } else {

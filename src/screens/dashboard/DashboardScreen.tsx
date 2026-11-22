@@ -480,9 +480,9 @@ export function DashboardScreen({
               <Text variant="body-sm" className="text-fg-tertiary text-center" testID="dashboard-public-empty">
                 {publicData.status === 'loading'
                   ? PUBLIC_LOADING
-                  : publicData.status === 'error'
-                    ? PUBLIC_UNAVAILABLE
-                    : 'No tokens yet · pull to refresh'}
+                  : publicData.status === 'ready'
+                    ? 'No tokens yet · pull to refresh'
+                    : PUBLIC_UNAVAILABLE}
               </Text>
             </View>
           )

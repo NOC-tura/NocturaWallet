@@ -250,6 +250,38 @@ describe('DashboardScreen — transparent mode', () => {
     const {queryByText} = await renderDashboard();
     expect(queryByText('Nothing private yet')).toBeNull(); // part B: Nothing shielded yet → Nothing private yet
   });
+
+  it('post-M1d (between Tasks 2 and 3): a stale status never reads "No tokens yet"', async () => {
+    mockPublic.current = {status: 'stale', syncedAt: 1, failedAt: 2, solBalance: '1000000000', nocBalance: '0', tokens: [], tokenBalances: {}};
+    const r = await renderDashboard();
+    expect(r.queryByText('No tokens yet · pull to refresh')).toBeNull();
+    // review r1-4: publicSide does not accept 'stale' until Task 3 — the split never shows it undimmed
+    expect(r.getAllByTestId('dashboard-split-public-line').map(l => l.props.children)).toEqual(['—']);
+  });
+
+  // controller ruling 2026-11-22 — pin: the MAIN account in 'loading' takes the same branch a non-main account does
+  it('main never read, no failed sync yet (the hook\'s "loading") → "—" and "Loading balances…", never $0.00 or "No tokens yet"', async () => {
+    mockSelected.current = MAIN_ACCOUNT;
+    mockPublic.current = {status: 'loading'};
+    const r = await renderDashboard();
+    expect(r.getByTestId('dashboard-public-balance')).toHaveTextContent('—');
+    expect(r.getByTestId('dashboard-public-empty')).toHaveTextContent('Loading balances…');
+    expect(r.getByTestId('dashboard-sub-sol')).toHaveTextContent('—');
+    expect(r.getAllByTestId('dashboard-split-public-line').map(l => l.props.children)).toEqual(['—']);
+    expect(r.queryByText(/\$0\.00/)).toBeNull();
+    expect(r.queryByText('No tokens yet · pull to refresh')).toBeNull();
+  });
+
+  // review r1-1 — pin: the real state is pinned in useAccountPublicData.test.tsx
+  it('post-M1d §3.1: main never read + a failed sync (the hook\'s "error") → "—" and "Balance unavailable", never $0.00', async () => {
+    mockPublic.current = {status: 'error'};
+    const r = await renderDashboard();
+    expect(r.getByTestId('dashboard-public-balance')).toHaveTextContent('—');
+    expect(r.getByTestId('dashboard-public-empty')).toHaveTextContent('Balance unavailable · pull to refresh');
+    expect(r.getByTestId('dashboard-sub-sol')).toHaveTextContent('—');
+    expect(r.queryByText(/\$0\.00/)).toBeNull();
+    expect(r.queryByText(/^0 SOL$/)).toBeNull();
+  });
 });
 
 describe('DashboardScreen — shielded mode, empty state', () => {
