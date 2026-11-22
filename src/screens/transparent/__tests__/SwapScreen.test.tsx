@@ -5,8 +5,9 @@ import {SwapScreen} from '../SwapScreen';
 
 // ── Module mocks (jest.mock is hoisted above all imports) ─────────────────────
 
+const mockQuote: {current: {outAmount: string} | undefined} = {current: undefined};
 jest.mock('../../../hooks/useSwapQuote', () => ({
-  useSwapQuote: () => ({data: undefined, isLoading: false, isError: false}),
+  useSwapQuote: () => ({data: mockQuote.current, isLoading: false, isError: false}),
 }));
 
 // M1d (spec §4.3): this screen stays on the main account and says so while another account is selected
@@ -88,5 +89,17 @@ describe('SwapScreen', () => {
     expect(render(withSafeArea(<SwapScreen onBack={() => {}} onDone={() => {}} />)).getByTestId('swap-main-account')).toHaveTextContent('From: Account 1 (main)');
     mockLineSelected.current = LINE_MAIN;
     expect(render(withSafeArea(<SwapScreen onBack={() => {}} onDone={() => {}} />)).queryByTestId('swap-main-account')).toBeNull();
+  });
+
+  it('r1-10: a sub-precision quote reads "<0.0001" with no "≈" in front; a normal one keeps "≈"', () => {
+    mockQuote.current = {outAmount: '1'};
+    const tiny = render(withSafeArea(<SwapScreen onBack={() => {}} onDone={() => {}} />));
+    expect(tiny.getByText('<0.0001')).toBeTruthy();
+    expect(tiny.queryByText('≈ <0.0001')).toBeNull();
+    tiny.unmount();
+    mockQuote.current = {outAmount: '1500000'};
+    const normal = render(withSafeArea(<SwapScreen onBack={() => {}} onDone={() => {}} />));
+    expect(normal.getByText('≈ 1.5')).toBeTruthy();
+    mockQuote.current = undefined;
   });
 });

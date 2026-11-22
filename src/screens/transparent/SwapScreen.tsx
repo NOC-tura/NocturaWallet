@@ -83,6 +83,12 @@ export interface SwapScreenProps {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
+/** "≈ 1.5", but a sub-precision amount reads "<0.0001" — "≈ <0.0001" would say it twice. */
+function quoteOutText(outAmount: string, decimals: number): string {
+  const formatted = formatBalanceForDisplay(outAmount, decimals);
+  return formatted.startsWith('<') ? formatted : `≈ ${formatted}`;
+}
+
 export function SwapScreen({initialFromMint, onBack, onDone}: SwapScreenProps) {
   const {solBalance, tokenBalances} = useWalletStore();
 
@@ -433,9 +439,7 @@ export function SwapScreen({initialFromMint, onBack, onDone}: SwapScreenProps) {
                     'text-fg-primary',
                     quote.data ? 'font-geist-semibold' : 'text-fg-tertiary',
                   )}>
-                  {quote.data
-                    ? `≈ ${formatBalanceForDisplay(quote.data.outAmount, to.decimals)}`
-                    : '—'}
+                  {quote.data ? quoteOutText(quote.data.outAmount, to.decimals) : '—'}
                 </Text>
               )}
               {!quote.isLoading ? (

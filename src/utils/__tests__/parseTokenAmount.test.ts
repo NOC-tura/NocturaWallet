@@ -94,8 +94,24 @@ describe('formatBalanceForDisplay', () => {
     expect(formatBalanceForDisplay('1500000', 6)).toBe('1.5');
   });
 
-  it("uses scientific notation for sub-display amounts: '100' / 9 (1e-7) → '1.00e-7'", () => {
-    expect(formatBalanceForDisplay('100', 9)).toBe('1.00e-7');
+  it("reads a sub-display amount as '<0.0001': '100' / 9 (1e-7)", () => {
+    expect(formatBalanceForDisplay('100', 9)).toBe('<0.0001');
+  });
+
+  it("reads 10 raw units of a 6-decimal token as '<0.0001'", () => {
+    expect(formatBalanceForDisplay('10', 6)).toBe('<0.0001');
+  });
+
+  it("0.0001 exactly is not below the threshold: '100' / 6 → '0.0001'", () => {
+    expect(formatBalanceForDisplay('100', 6)).toBe('0.0001');
+  });
+
+  it("follows maxDecimals: '1' / 9 / 2 → '<0.01'", () => {
+    expect(formatBalanceForDisplay('1', 9, 2)).toBe('<0.01');
+  });
+
+  it("zero stays '0'", () => {
+    expect(formatBalanceForDisplay('0', 9)).toBe('0');
   });
 
   it('respects custom maxDecimals override', () => {
