@@ -37,6 +37,7 @@ import {mnemonicToSeed} from '../../keyDerivation/mnemonicUtils';
 import {keychainManager} from '../../keychain/keychainModule';
 
 beforeEach(() => {
+  mockDrain.mockImplementation(() => 0); // review nit: a failing throwing-drain test never leaks into the next
   jest.clearAllMocks();
 });
 
