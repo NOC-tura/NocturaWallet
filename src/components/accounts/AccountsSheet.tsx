@@ -12,6 +12,7 @@ import {cn} from '../../utils/cn';
 import {useAccountRowBalances} from '../../hooks/useAccountRowBalances';
 import type {RowBalance} from '../../hooks/useAccountRowBalances';
 import {useWalletStore} from '../../store/zustand/walletStore';
+import {mainBalanceIsStale, mainBalanceIsUnknown} from '../../modules/accounts/staleness';
 import {withPoolToken} from '../../modules/accounts/poolToken';
 import {useResolvedPrices} from '../../hooks/useResolvedPrices';
 import {shortAccountAddress} from '../../modules/accounts/accountList';
@@ -72,6 +73,7 @@ export function AccountsSheet({visible, list, selectedScheme, hidden, onSelect, 
   const tokenBalances = useWalletStore(s => s.tokenBalances);
   const tokens = useWalletStore(s => s.tokens);
   const lastSyncedAt = useWalletStore(s => s.lastSyncedAt);
+  const lastSyncFailedAt = useWalletStore(s => s.lastSyncFailedAt);
   const others = list.accounts.filter(a => !a.isMain);
   const otherRows = useAccountRowBalances(
     others.map(a => a.address),
@@ -81,13 +83,20 @@ export function AccountsSheet({visible, list, selectedScheme, hidden, onSelect, 
     const out: Record<string, RowBalance> = {...otherRows};
     for (const a of list.accounts) {
       if (a.isMain) {
-        out[a.address] = lastSyncedAt
-          ? {state: 'ready', data: withPoolToken({solBalance, nocBalance, tokenBalances, tokens}), at: lastSyncedAt}
-          : {state: 'not-checked'};
+        // post-M1d interim rule (R10; Task 3 draws the dimmed figure instead): a failed sync never leaves
+        // the old figure, nor the store's default 0, looking current
+        const failedSync = mainBalanceIsStale(lastSyncedAt, lastSyncFailedAt) || mainBalanceIsUnknown(lastSyncedAt, lastSyncFailedAt);
+        if (failedSync) {
+          out[a.address] = {state: 'failed'};
+        } else if (lastSyncedAt) {
+          out[a.address] = {state: 'ready', data: withPoolToken({solBalance, nocBalance, tokenBalances, tokens}), at: lastSyncedAt};
+        } else {
+          out[a.address] = {state: 'not-checked'};
+        }
       }
     }
     return out;
-  }, [otherRows, list.accounts, solBalance, nocBalance, tokenBalances, tokens, lastSyncedAt]);
+  }, [otherRows, list.accounts, solBalance, nocBalance, tokenBalances, tokens, lastSyncedAt, lastSyncFailedAt]);
   const {prices, havePrices} = useResolvedPrices();
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>

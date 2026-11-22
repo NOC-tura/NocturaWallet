@@ -269,6 +269,12 @@ describe('M1d — the holding is the selected account\'s (plan A6)', () => {
     mockTdPublic.current = {status: 'ready', syncedAt: 1, solBalance: '3000000', nocBalance: '0', tokenBalances: {}, tokens: []};
     expect(screen().getByText('0.003 SOL')).toBeTruthy();
   });
+  it('post-M1d Task 2: a stale status → "— SOL", never the old figure as current', () => {
+    mockTdPublic.current = {status: 'stale', syncedAt: 1, failedAt: 2, solBalance: '1000000000', nocBalance: '0', tokenBalances: {}, tokens: []};
+    const r = screen();
+    expect(r.getByText('— SOL')).toBeTruthy();
+    expect(r.queryByText('1 SOL')).toBeNull();
+  });
   it('Review Focus 4: not loaded → "— SOL", never 0', () => {
     mockTdPublic.current = {status: 'loading'};
     const r = screen();

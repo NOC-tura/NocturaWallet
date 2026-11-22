@@ -4,7 +4,8 @@
  * every row is read. A row with nothing cached that is in flight or waiting is "not checked yet"; a
  * row with a cached figure that is being re-read keeps showing that figure until the read ends —
  * including the retry backoff (the app's `retry: 2`) — and then turns to the fresh figure, or — if
- * the re-read failed — to that same figure marked stale (post-M1d), "Balance unavailable" only when none was read. The query key is the dashboard's (`['accountSnapshot', address]`), so a row and
+ * the re-read failed — to that same figure marked stale (post-M1d); "Balance unavailable" only when
+ * none was read. The query key is the dashboard's (`['accountSnapshot', address]`), so a row and
  * the dashboard share one read.
  */
 import {useEffect, useState} from 'react';

@@ -211,6 +211,16 @@ describe('M1d — #12 sends from the account selected when it opened (spec §3.3
     expect(mockSendRefetch).toHaveBeenCalledTimes(2); // review 2A m4: the guard is released after a read settles
   });
 
+  it('post-M1d Task 2: a stale source → Available "—", CTA and MAX disabled, no "Insufficient balance" (never usable as current)', () => {
+    mockSendPublic.current = {status: 'stale', syncedAt: 1, failedAt: 2, solBalance: '1000000000', nocBalance: '0', tokenBalances: {}, tokens: []};
+    const r = render(<SendScreen onReview={jest.fn()} />);
+    fill(r);
+    expect(r.getByTestId('send-available')).toHaveTextContent('— SOL');
+    expect(r.getByTestId('review-button').props.accessibilityState?.disabled).toBe(true);
+    expect(r.getByTestId('max-button').props.accessibilityState?.disabled).toBe(true);
+    expect(r.queryByText(/Insufficient balance/)).toBeNull();
+  });
+
   it('review 2A I1: while loading, MAX does not fill a 0 and no "short by" is shown', () => {
     mockSendPublic.current = {status: 'loading'};
     const r = render(<SendScreen onReview={jest.fn()} />);

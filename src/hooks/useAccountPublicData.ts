@@ -72,6 +72,7 @@ export function useAccountPublicData(account: {address: string; isMain: boolean}
     }
     const main = withPoolToken({solBalance, nocBalance, tokenBalances, tokens});
     // post-M1d §3.1: this session's last sync failed and an older good read exists → the figure is stale
+    // (the `!== null` only narrows lastSyncFailedAt to number for the type; mainBalanceIsStale is not a type guard)
     if (lastSyncFailedAt !== null && mainBalanceIsStale(lastSyncedAt, lastSyncFailedAt)) {
       return {status: 'stale', ...main, syncedAt: lastSyncedAt, failedAt: lastSyncFailedAt};
     }

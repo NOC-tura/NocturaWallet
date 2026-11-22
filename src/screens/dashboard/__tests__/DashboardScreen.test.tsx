@@ -254,6 +254,8 @@ describe('DashboardScreen — transparent mode', () => {
   it('post-M1d (between Tasks 2 and 3): a stale status never reads "No tokens yet"', async () => {
     mockPublic.current = {status: 'stale', syncedAt: 1, failedAt: 2, solBalance: '1000000000', nocBalance: '0', tokens: [], tokenBalances: {}};
     const r = await renderDashboard();
+    expect(r.getByTestId('dashboard-public-balance')).toHaveTextContent('—');
+    expect(r.getByTestId('dashboard-sub-sol')).toHaveTextContent('—');
     expect(r.queryByText('No tokens yet · pull to refresh')).toBeNull();
     // review r1-4: publicSide does not accept 'stale' until Task 3 — the split never shows it undimmed
     expect(r.getAllByTestId('dashboard-split-public-line').map(l => l.props.children)).toEqual(['—']);

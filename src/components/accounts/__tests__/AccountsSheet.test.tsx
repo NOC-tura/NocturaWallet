@@ -19,7 +19,7 @@ jest.mock('../../../hooks/useResolvedPrices', () => ({useResolvedPrices: () => m
 const mockFeatures = {shielded: true};
 jest.mock('../../../constants/features', () => ({isShieldedEnabled: () => mockFeatures.shielded}));
 
-import {AccountsSheet} from '../AccountsSheet';
+import {AccountsSheet, rowBalanceText} from '../AccountsSheet';
 import {useWalletStore} from '../../../store/zustand/walletStore';
 
 const MAIN = 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk';
@@ -186,4 +186,25 @@ it('the list is at most 60% of the window high and shows its scrollbar (r1-5)', 
   expect(sv.props.style).toEqual(expect.objectContaining({maxHeight: 1200}));
   expect(sv.props.showsVerticalScrollIndicator).toBe(true);
   expect(sv.props.persistentScrollbar).toBe(true);
+});
+
+// post-M1d Task 2 fix round 1: the interim honesty rule (Task 3 replaces it with the dimmed figure)
+it('main row: read earlier, last sync failed (stale) → "Balance unavailable", never the old figure as current', () => {
+  useWalletStore.setState({solBalance: '20000000', lastSyncedAt: 1, lastSyncFailedAt: 2});
+  expect(sheet().r.getByTestId('accounts-row-slip10:0-balance')).toHaveTextContent('Balance unavailable');
+});
+
+it('main row: never read + the sync failed (unknown) → "Balance unavailable"', () => {
+  useWalletStore.setState({solBalance: '0', lastSyncedAt: null, lastSyncFailedAt: 2});
+  expect(sheet().r.getByTestId('accounts-row-slip10:0-balance')).toHaveTextContent('Balance unavailable');
+});
+
+it('main row: read, no failed sync → the figure (control)', () => {
+  useWalletStore.setState({solBalance: '20000000', lastSyncedAt: 1, lastSyncFailedAt: null});
+  expect(sheet().r.getByTestId('accounts-row-slip10:0-balance')).toHaveTextContent('0.02 SOL');
+});
+
+it('rowBalanceText: a stale row is "Balance unavailable" until Task 3 draws it', () => {
+  const snap = {solBalance: '20000000', nocBalance: '0', tokenBalances: {}, tokens: []};
+  expect(rowBalanceText({state: 'stale', data: snap, at: 1}, null)).toBe('Balance unavailable');
 });
