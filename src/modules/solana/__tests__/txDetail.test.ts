@@ -245,3 +245,81 @@ it('the memo: a string `parsed` is the memo; an object is never put on screen as
   ixs[ixs.length - 1] = {program: 'spl-memo', parsed: {info: {text: 'hello'}}}; // an unexpected shape
   expect(parseTxDetail(tx, 'SIG', symbolOf).memo).toBeNull();
 });
+
+describe('fix round 1', () => {
+  type Ix = {program?: string; parsed?: {type: string; info: Record<string, unknown>}};
+  const ixsOf = (tx: RawParsedTx) => tx.transaction!.message!.instructions as Ix[];
+
+  /**
+   * Important: the wrap step of a SOL→X swap. Derived from the real 5i53q9tR… response: its transferChecked is
+   * REPLACED by a system transfer of 100000000 lamports from 9Y7Ftt… to its own token account 3Wzwve… (index 1,
+   * whose postTokenBalances owner is 9Y7Ftt…). Nothing else is changed.
+   */
+  function wrap(): RawParsedTx {
+    const tx = clone(load('tx-test-to-outside.json'));
+    const ixs = ixsOf(tx);
+    const i = ixs.findIndex(x => x.parsed?.type === 'transferChecked');
+    ixs[i] = {program: 'system', parsed: {type: 'transfer', info: {source: ACC_9Y, destination: SRC_TA, lamports: 100000000}}};
+    return tx;
+  }
+
+  it('a SOL transfer INTO a token account names its owner wallet and the token account apart — never the token account as a wallet', () => {
+    const d = parseTxDetail(wrap(), 'SIG', symbolOf);
+    expect(d.transfer).toEqual({
+      mint: 'native', symbol: 'SOL', amount: '0.1',
+      from: ACC_9Y, authority: null, fromTokenAccount: null,
+      to: ACC_9Y, toIsTokenAccount: false, toTokenAccount: SRC_TA,
+    });
+    expect(txDirection(d, ACC_9Y)).toBe('sent'); // a transfer to oneself reads "sent"
+    expect(txDirection(d, SRC_TA)).toBe('received'); // the destination token account, as for SPL
+  });
+
+  it('a SOL transfer into a token account whose entry names no owner → the token account, flagged', () => {
+    const tx = wrap();
+    for (const b of [...(tx.meta!.postTokenBalances ?? []), ...(tx.meta!.preTokenBalances ?? [])]) {
+      delete b.owner; // removed: `owner`
+    }
+    const d = parseTxDetail(tx, 'SIG', symbolOf);
+    expect(d.transfer).toMatchObject({to: SRC_TA, toIsTokenAccount: true, toTokenAccount: SRC_TA, from: ACC_9Y});
+  });
+
+  it('a SOL transfer to a plain wallet (no token-balance entry) is unchanged: toTokenAccount null', () => {
+    expect(parseTxDetail(load('tx-sol-transfer.json'), 'SIG', symbolOf).transfer).toMatchObject({to: OUTSIDE, toIsTokenAccount: false, toTokenAccount: null});
+  });
+
+  it('the POST owner wins over the PRE owner (changed: the pre entries\' owners only)', () => {
+    const tx = clone(load('tx-test-to-outside.json'));
+    for (const b of tx.meta!.preTokenBalances ?? []) {
+      b.owner = 'PREOWNERxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'; // changed: the pre owner differs from the post one
+    }
+    const d = parseTxDetail(tx, 'SIG', symbolOf);
+    expect(d.transfer).toMatchObject({from: ACC_9Y, to: OUTSIDE});
+  });
+
+  it('a transfer to the fee treasury is skipped as markup only when another transfer exists', () => {
+    const tx = clone(load('tx-sol-transfer.json'));
+    const ix = ixsOf(tx).find(x => x.parsed?.type === 'transfer')!;
+    ix.parsed!.info.destination = NOCTURA_FEE_TREASURY; // changed: the only transfer goes to the treasury
+    const only = parseTxDetail(tx, 'SIG', symbolOf);
+    expect(only.transfer).toMatchObject({to: NOCTURA_FEE_TREASURY, from: SOL_SENDER, amount: '0.000005'});
+    expect(txDirection(only, SOL_SENDER)).toBe('sent');
+    // with a real transfer AFTER it, the treasury leg is the markup and the real one is shown
+    ixsOf(tx).push({program: 'system', parsed: {type: 'transfer', info: {source: SOL_SENDER, destination: OUTSIDE, lamports: 5000}}});
+    expect(parseTxDetail(tx, 'SIG', symbolOf).transfer).toMatchObject({to: OUTSIDE});
+  });
+
+  it('Token-2022: the same transferChecked under program "spl-token-2022" is read (changed: the program name only)', () => {
+    const tx = clone(load('tx-test-to-outside.json'));
+    ixsOf(tx).find(x => x.parsed?.type === 'transferChecked')!.program = 'spl-token-2022';
+    expect(parseTxDetail(tx, 'SIG', symbolOf).transfer).toMatchObject({mint: TEST_MINT, symbol: 'TEST', amount: '0.0005', from: ACC_9Y, to: OUTSIDE, toTokenAccount: OUTSIDE_TA});
+  });
+
+  it('Token-2022: a plain `transfer` under "spl-token-2022" is read too', () => {
+    const tx = clone(load('tx-test-to-outside.json'));
+    const ix = ixsOf(tx).find(x => x.parsed?.type === 'transferChecked')!;
+    ix.program = 'spl-token-2022';
+    ix.parsed!.type = 'transfer';
+    ix.parsed!.info = {amount: '500000', authority: ACC_9Y, destination: OUTSIDE_TA, source: SRC_TA};
+    expect(parseTxDetail(tx, 'SIG', symbolOf).transfer).toMatchObject({mint: TEST_MINT, amount: '0.0005', to: OUTSIDE});
+  });
+});

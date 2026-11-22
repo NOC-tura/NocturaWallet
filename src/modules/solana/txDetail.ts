@@ -36,14 +36,16 @@ export interface TxTransfer {
   to: string;
   /** true when `to` is a token account (the response named no owner): the screen labels it "token account" */
   toIsTokenAccount: boolean;
-  /** SPL only: the destination token account */
+  /** the destination token account: always for SPL; for SOL only when the token balances name the destination
+   *  (SOL sent into a token account — a wrap). null otherwise. */
   toTokenAccount: string | null;
 }
 
 export interface TxDetail {
   signature: string;
   status: 'confirmed' | 'finalized' | 'failed';
-  /** the first SOL or SPL transfer that is not the Noctura fee markup; null when the transaction has none */
+  /** the first top-level SOL or SPL (Token or Token-2022) transfer that is not the Noctura fee markup — a
+   *  treasury transfer is markup only when another transfer exists; null when the transaction has none */
   transfer: TxTransfer | null;
   /** accountKeys[0] — shown as "Fee payer" only when there is no transfer; never as "From" */
   feePayer: string;
@@ -132,7 +134,13 @@ export function parseTxDetail(tx: RawParsedTx, signature: string, symbolOf: (min
     return postBalances.find(b => b.accountIndex === index) ?? preBalances.find(b => b.accountIndex === index);
   };
 
+  /**
+   * The first top-level transfer is read. A transfer to the Noctura fee treasury is the fee markup and is
+   * skipped only when another transfer exists; on its own it is a deliberate transfer and is shown
+   * (Task 8 fix round 1).
+   */
   let transfer: TxTransfer | null = null;
+  let treasuryTransfer: TxTransfer | null = null;
   let memo: string | null = null;
 
   for (const ix of (tx.transaction?.message?.instructions ?? []) as RawInstruction[]) {
@@ -146,23 +154,31 @@ export function parseTxDetail(tx: RawParsedTx, signature: string, symbolOf: (min
     const parsed = typeof ix.parsed === 'object' && ix.parsed !== null ? ix.parsed : undefined;
     const info = parsed?.info ?? {};
     const destination = str(info.destination);
-    if (destination === null || destination === NOCTURA_FEE_TREASURY) {
+    if (destination === null) {
       continue;
     }
+    let read: TxTransfer | null = null;
     if (ix.program === 'system' && parsed?.type === 'transfer') {
       const lamports = toBaseUnits(info.lamports);
-      transfer = {
+      // fix round 1: SOL sent INTO a token account (the wrap step of a SOL→X swap) — the destination is a
+      // token account when the token balances name it; it is read exactly as an SPL destination is
+      const destEntry = balanceOf(destination);
+      const owner = destEntry !== undefined ? str(destEntry.owner) : null;
+      read = {
         mint: 'native',
         symbol: symbolOf('native'),
         amount: lamports !== null ? formatTokenAmount(lamports, SOL_DECIMALS) : null,
         from: str(info.source),
         authority: null,
         fromTokenAccount: null,
-        to: destination,
-        toIsTokenAccount: false,
-        toTokenAccount: null,
+        to: owner ?? destination,
+        toIsTokenAccount: destEntry !== undefined && owner === null,
+        toTokenAccount: destEntry !== undefined ? destination : null,
       };
-    } else if (ix.program === 'spl-token' && (parsed?.type === 'transferChecked' || parsed?.type === 'transfer')) {
+    } else if (
+      (ix.program === 'spl-token' || ix.program === 'spl-token-2022') &&
+      (parsed?.type === 'transferChecked' || parsed?.type === 'transfer')
+    ) {
       const source = str(info.source);
       const dest = balanceOf(destination);
       const src = balanceOf(source);
@@ -175,7 +191,7 @@ export function parseTxDetail(tx: RawParsedTx, signature: string, symbolOf: (min
       const decimals = typeof decimalsRaw === 'number' && Number.isInteger(decimalsRaw) && decimalsRaw >= 0 ? decimalsRaw : null;
       const baseUnits = toBaseUnits(tokenAmount?.amount ?? info.amount);
       const owner = str(dest?.owner);
-      transfer = {
+      read = {
         mint,
         symbol: mint !== null ? symbolOf(mint) : '',
         // never a raw figure: without the decimals there is no human amount
@@ -190,7 +206,16 @@ export function parseTxDetail(tx: RawParsedTx, signature: string, symbolOf: (min
         toTokenAccount: destination,
       };
     }
+    if (read === null) {
+      continue;
+    }
+    if (destination === NOCTURA_FEE_TREASURY) {
+      treasuryTransfer = treasuryTransfer ?? read;
+    } else {
+      transfer = read;
+    }
   }
+  transfer = transfer ?? treasuryTransfer;
 
   return {
     signature,
