@@ -77,8 +77,8 @@ node scripts/m1d-checkpoint/m1d-checkpoint.mjs verify --fresh <fresh address> --
   --external <outside address> [--unshield <the fresh unshield's signature>]
 ```
 
-Wait about 30 s after step 6 first: the signature lists are read at `finalized`, so a send not yet finalized shows as
-missing (D1) — run again.
+Run it a few seconds after backing out of step 6, not before: the signature lists are read at `confirmed` (the most
+inclusive), so a send to the main account that did go out is on the list and fails D1 and D6.
 
 Expected: `PASS` on M1d.D0 … M1d.D6 and `M1d desk: every line PASSED` (exit 0); `build/m1d-checkpoint/verify.json`
 is the record.

@@ -57,7 +57,8 @@ export function txKeys(result) {
     ok: result.meta !== null && typeof result.meta === 'object' && result.meta.err === null,
     pre: (result.meta && result.meta.preBalances) || [],
     post: (result.meta && result.meta.postBalances) || [],
-    // owners of every token account the transaction touched (json encoding): any token account of a seed key, canonical or not
+    // owners of every token account the transaction touched (json encoding),
+    // so a token account of a seed key counts at any address
     tokenOwners: [...((result.meta && result.meta.preTokenBalances) || []), ...((result.meta && result.meta.postTokenBalances) || [])].map(b => b.owner).filter(Boolean),
   };
 }

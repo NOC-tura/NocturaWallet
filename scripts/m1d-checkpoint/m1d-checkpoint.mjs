@@ -63,16 +63,17 @@ async function devnet(url, calls) {
   const one = async (method, params) => {
     for (let attempt = 1; ; attempt++) {
       let res;
+      let body;
       try {
         res = await fetch(url, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, ...(params ? { params } : {}) }),
         });
+        body = res.status === 429 ? null : res.ok ? await res.json() : die(`RPC ${new URL(url).hostname} answered HTTP ${res.status} to ${method}`);
       } catch (e) {
         die(`RPC ${new URL(url).hostname}: ${method} failed (${e instanceof Error ? e.message : String(e)}) — check the network and run again`);
       }
-      const body = res.status === 429 ? null : res.ok ? await res.json() : die(`RPC ${new URL(url).hostname} answered HTTP ${res.status} to ${method}`);
       if (body && body.error?.code !== 429) {
         if (body.error) {
           die(`${method}: ${JSON.stringify(body.error)}`);
@@ -128,7 +129,7 @@ async function verify() {
   }
   const url = opt('rpc', DEFAULT_RPC);
   const TX = { encoding: 'json', maxSupportedTransactionVersion: 0, commitment: 'confirmed' };
-  const LIST = { limit: 1000, commitment: 'finalized' };
+  const LIST = { limit: 1000, commitment: 'confirmed' };
   const [owner, ata, u, s] = await devnet(url, [
     { method: 'getSignaturesForAddress', params: [fresh, LIST] },
     { method: 'getSignaturesForAddress', params: [ataOf(fresh), LIST] },

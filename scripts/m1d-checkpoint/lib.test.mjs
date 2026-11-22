@@ -24,8 +24,18 @@ const tx = ({ sig, keys, signers, pre, post, err = null }) => ({
   transaction: { signatures: [sig], message: { accountKeys: keys, header: { numRequiredSignatures: signers } } },
   meta: { err, preBalances: pre, postBalances: post, loadedAddresses: { writable: [], readonly: [] } },
 });
+// token balances as devnet's json answers carry them: the pool's vault (owner not in the seed) and the fresh account's TEST account
+const tb = (accountIndex, owner, amount) => ({ accountIndex, mint: 'TESTmint', owner, uiTokenAmount: { amount } });
+const withTokens = (t, balances) => {
+  t.meta.preTokenBalances = balances.map(([i, o, a]) => tb(i, o, a));
+  t.meta.postTokenBalances = balances.map(([i, o, a]) => tb(i, o, a));
+  return t;
+};
 const UNSHIELD = () =>
-  tx({ sig: U_SIG, keys: [RELAYER_FEE_PAYER, POOL, ataOf(FRESH), FRESH, SYS], signers: 1, pre: [9_000_000, 1, 0, 0, 1], post: [3_960_000, 1, 2_039_280, 3_000_000, 1] });
+  withTokens(
+    tx({ sig: U_SIG, keys: [RELAYER_FEE_PAYER, POOL, ataOf(FRESH), FRESH, SYS], signers: 1, pre: [9_000_000, 1, 0, 0, 1], post: [3_960_000, 1, 2_039_280, 3_000_000, 1] }),
+    [[1, POOL, '9000'], [2, FRESH, '1000']],
+  );
 const SEND = () => tx({ sig: S_SIG, keys: [FRESH, EXT, SYS], signers: 1, pre: [3_000_000, 5, 1], post: [1_995_000, 1_000_005, 1] });
 const base = () => ({
   fresh: FRESH,
@@ -91,7 +101,10 @@ test('D3: a send paid by the main account, or a failed send, fails', () => {
 test('the checkpoint\'s TEST send (plan A11): fresh token account → the recipient\'s token account, fee from the grant — every line passes', () => {
   const TOKEN = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
   const b = base();
-  b.txs.send = tx({ sig: S_SIG, keys: [FRESH, ataOf(FRESH), ataOf(EXT), TOKEN], signers: 1, pre: [3_000_000, 2_039_280, 2_039_280, 1], post: [2_995_000, 2_039_280, 2_039_280, 1] });
+  b.txs.send = withTokens(
+    tx({ sig: S_SIG, keys: [FRESH, ataOf(FRESH), ataOf(EXT), TOKEN], signers: 1, pre: [3_000_000, 2_039_280, 2_039_280, 1], post: [2_995_000, 2_039_280, 2_039_280, 1] }),
+    [[1, FRESH, '1000'], [2, EXT, '500']],
+  );
   b.history.ata.push({ signature: S_SIG });
   assert.deepEqual(failing(judgeM1d(b)), []);
   // control: neither the recipient nor its token account in the send → D3 fails
