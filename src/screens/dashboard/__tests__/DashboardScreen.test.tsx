@@ -8,7 +8,7 @@
  */
 import React from 'react';
 import {Alert, RefreshControl} from 'react-native';
-import {render, act, fireEvent} from '@testing-library/react-native';
+import {render, act, fireEvent, within} from '@testing-library/react-native';
 import {SafeAreaProvider} from 'react-native-safe-area-context';
 import type {A0ShieldedView} from '../../../hooks/useA0Shielded';
 import type {A0PoolNoteCount} from '../../../modules/shielded/a0/poolSize';
@@ -93,6 +93,8 @@ jest.mock('@react-navigation/native', () => ({
 
 // ── Stores ──────────────────────────────────────────────────────────────────
 const mockMode = {current: 'transparent' as 'transparent' | 'shielded'};
+// M1d Task 5: stable, so a tap on a split column is observable
+const mockSetMode = jest.fn();
 
 jest.mock('../../../store/zustand/walletStore', () => ({
   useWalletStore: () => ({
@@ -105,7 +107,7 @@ jest.mock('../../../store/zustand/walletStore', () => ({
 }));
 
 jest.mock('../../../store/zustand/shieldedStore', () => ({
-  useShieldedStore: () => ({mode: mockMode.current, setMode: jest.fn()}),
+  useShieldedStore: () => ({mode: mockMode.current, setMode: mockSetMode}),
 }));
 
 const mockHide = {current: false};
@@ -123,7 +125,7 @@ jest.mock('../../../hooks/useAccent', () => ({
   useAccentColor: () => '#B084FC',
 }));
 
-// M1d: switchable — the combined line's USD form depends on the prices the dashboard hands it
+// M1d: switchable — the split row's USD form depends on the prices the dashboard hands it
 const mockResolved = {
   current: {prices: {native: {usd: 150, change24h: 1.5}} as Record<string, {usd: number; change24h: number | null}>, havePrices: true},
 };
@@ -159,7 +161,7 @@ jest.mock('../../../modules/prices/portfolio', () => ({
 }));
 
 // ── Constants ────────────────────────────────────────────────────────────────
-// M1d (plan A9): switchable — the combined line exists only in a build with private balances
+// M1d (plan A9): switchable — the split row exists only in a build with private balances
 const mockFeatures = {shielded: true};
 jest.mock('../../../constants/features', () => ({
   isShieldedEnabled: () => mockFeatures.shielded,
@@ -324,9 +326,10 @@ describe('DashboardScreen — shielded mode, with balance (the A0 store, ready)'
   });
 
   it('the hero is the shielded balance in the token, not a USD figure', async () => {
-    const {getByTestId, getByText, queryByText} = await renderDashboard();
+    const {getByTestId, queryByText} = await renderDashboard();
     expect(getByTestId('dashboard-shielded-balance')).toBeTruthy();
-    expect(getByText('0.2 TEST')).toBeTruthy();
+    expect(within(getByTestId('dashboard-shielded-balance')).getByText('0.2 TEST')).toBeTruthy(); // Task 5: the split's Private column reads it too
+    expect(getByTestId('dashboard-split-private')).toHaveTextContent('Private0.2 TEST');
     expect(queryByText('$150')).toBeNull(); // the transparent USD total is not the shielded hero
   });
 
@@ -470,8 +473,10 @@ describe('part B: the one vocabulary on the dashboard (spec §2, §4)', () => {
     for (const m of ['transparent', 'shielded'] as const) {
       mockMode.current = m;
       const r = await renderDashboard();
-      expect(r.getByText('Public')).toBeTruthy();
-      expect(r.getByText('Private')).toBeTruthy();
+      // Task 5: the split row's labels read the same words, so the toggle is read through its tabs
+      expect(r.getAllByRole('tab').map(t => within(t).getByText(/^(Public|Private)/).props.children)).toEqual(['Public', 'Private']);
+      expect(within(r.getByTestId('dashboard-split-public')).getByText('Public')).toBeTruthy();
+      expect(within(r.getByTestId('dashboard-split-private')).getByText('Private')).toBeTruthy();
       expect(r.queryByText(/^(Transparent|Shielded)$/)).toBeNull();
       r.unmount();
     }
@@ -574,49 +579,111 @@ describe('M1d — Public mode follows the selected account (spec §3.4, D1/D2)',
   });
 });
 
-describe('M1d — the combined line under the toggle (spec §4.5, D2–D4)', () => {
+describe('M1d — the Public | Private split inside the balance card (spec §4.5, 2026-11-22 addendum; plan r1-3)', () => {
+  const pub = (r: Awaited<ReturnType<typeof renderDashboard>>) => r.getByTestId('dashboard-split-public');
+  const priv = (r: Awaited<ReturnType<typeof renderDashboard>>) => r.getByTestId('dashboard-split-private');
+
   // the mocks: public 1 SOL (priced $150) + 2 NOC (unpriced here) → token form; private 0 TEST
-  it('Public mode: "Public 2 NOC, 1 SOL · Private 0 TEST"; the big figure below is unchanged', async () => {
+  it('Public mode: Public "2 NOC" / "1 SOL", Private "0 TEST"; the old line is gone; the big figure is unchanged', async () => {
     const r = await renderDashboard();
-    expect(r.getByTestId('dashboard-combined-line')).toHaveTextContent('Public 2 NOC, 1 SOL · Private 0 TEST');
+    expect(r.queryByTestId('dashboard-combined-line')).toBeNull();
+    expect(pub(r)).toHaveTextContent('Public2 NOC1 SOL');
+    expect(r.getAllByTestId('dashboard-split-public-line').map(l => l.props.children)).toEqual(['2 NOC', '1 SOL']);
+    expect(priv(r)).toHaveTextContent('Private0 TEST');
     expect(r.getByTestId('dashboard-public-balance')).toHaveTextContent('$150.00');
+    expect(pub(r).props.accessibilityState).toEqual({selected: true});
+    expect(priv(r).props.accessibilityState).toEqual({selected: false});
+    expect(pub(r).props.accessibilityLabel).toBe('Public, 2 NOC, 1 SOL');
+    expect(priv(r).props.accessibilityLabel).toBe('Private, 0 TEST, switch to Private');
   });
 
-  it('Private mode: the same line (both modes, D3)', async () => {
+  it('Private mode: the same split (both modes)', async () => {
     mockMode.current = 'shielded';
     mockView.current = {kind: 'ready', unspent: 1_003_800_000n, pending: 0n, notes: 1};
     const r = await renderDashboard();
-    expect(r.getByTestId('dashboard-combined-line')).toHaveTextContent('Public 2 NOC, 1 SOL · Private 1.0038 TEST');
+    expect(r.queryByTestId('dashboard-combined-line')).toBeNull();
+    expect(pub(r)).toHaveTextContent('Public2 NOC1 SOL');
+    expect(priv(r)).toHaveTextContent('Private1.0038 TEST');
+    expect(priv(r).props.accessibilityState).toEqual({selected: true});
+    expect(pub(r).props.accessibilityState).toEqual({selected: false});
   });
 
-  it('Review Focus 4: the selected account not loaded → "Public — · …"; the private restore not ready → "… · Private —"', async () => {
+  it('Review Focus 2/4: the selected account not loaded → Public "—" (one line); the private restore not ready → Private "—"', async () => {
     mockSelected.current = EXIT_ACCOUNT;
     mockPublic.current = {status: 'loading'};
-    expect((await renderDashboard()).getByTestId('dashboard-combined-line')).toHaveTextContent('Public — · Private 0 TEST');
+    let r = await renderDashboard();
+    expect(r.getAllByTestId('dashboard-split-public-line').map(l => l.props.children)).toEqual(['—']);
+    expect(priv(r)).toHaveTextContent('Private0 TEST');
     mockPublic.current = READY_MAIN;
     mockView.current = {kind: 'running'};
-    expect((await renderDashboard()).getByTestId('dashboard-combined-line')).toHaveTextContent('Public 2 NOC, 1 SOL · Private —');
+    r = await renderDashboard();
+    expect(pub(r)).toHaveTextContent('Public2 NOC1 SOL');
+    expect(r.getAllByTestId('dashboard-split-private-line').map(l => l.props.children)).toEqual(['—']);
   });
 
-  it('hidden balances → "Public ••• · Private •••"', async () => {
+  it('Review Focus 1: hidden balances → "•••" in both columns, one line each, and no digit in either a11y label', async () => {
     mockHide.current = true;
-    expect((await renderDashboard()).getByTestId('dashboard-combined-line')).toHaveTextContent('Public ••• · Private •••');
+    mockMode.current = 'shielded';
+    mockView.current = {kind: 'ready', unspent: 1_003_800_000n, pending: 0n, notes: 1};
+    const r = await renderDashboard();
+    expect(r.getAllByTestId('dashboard-split-public-line').map(l => l.props.children)).toEqual(['•••']);
+    expect(r.getAllByTestId('dashboard-split-private-line').map(l => l.props.children)).toEqual(['•••']);
+    for (const col of [pub(r), priv(r)]) {
+      expect(col.props.accessibilityLabel).toContain('•••');
+      expect(col.props.accessibilityLabel).not.toMatch(/\d/);
+      expect(col).not.toHaveTextContent(/\d/);
+    }
   });
 
-  it('I1: only priced assets held and prices known → the USD form "Public $150.00 · Private 0 TEST"', async () => {
+  it('I1: only priced assets held and prices known → the USD form, Public "$150.00"', async () => {
     mockPublic.current = {...READY_MAIN, nocBalance: '0', tokenBalances: {}};
-    expect((await renderDashboard()).getByTestId('dashboard-combined-line')).toHaveTextContent('Public $150.00 · Private 0 TEST');
+    const r = await renderDashboard();
+    expect(r.getAllByTestId('dashboard-split-public-line').map(l => l.props.children)).toEqual(['$150.00']);
+    expect(priv(r)).toHaveTextContent('Private0 TEST');
   });
 
   it('I1: havePrices false (prices not empty) → the token form, never a USD figure from half-loaded prices', async () => {
     mockPublic.current = {...READY_MAIN, nocBalance: '0', tokenBalances: {}};
     mockResolved.current = {prices: {native: {usd: 150, change24h: 1.5}}, havePrices: false};
-    expect((await renderDashboard()).getByTestId('dashboard-combined-line')).toHaveTextContent('Public 1 SOL · Private 0 TEST');
+    const r = await renderDashboard();
+    expect(r.getAllByTestId('dashboard-split-public-line').map(l => l.props.children)).toEqual(['1 SOL']);
+    expect(priv(r)).toHaveTextContent('Private0 TEST');
   });
 
-  it('plan A9: a build without private balances shows no line', async () => {
+  it('r1-4: each value line fits on one line (shrinks, never wraps)', async () => {
+    const r = await renderDashboard();
+    for (const l of [...r.getAllByTestId('dashboard-split-public-line'), ...r.getAllByTestId('dashboard-split-private-line')]) {
+      expect(l.props.numberOfLines).toBe(1);
+      expect(l.props.adjustsFontSizeToFit).toBe(true);
+      expect(l.props.minimumFontScale).toBe(0.75);
+    }
+  });
+
+  it('a tap on the inactive column switches the mode; a tap on the active one does nothing (Public mode)', async () => {
+    const r = await renderDashboard();
+    fireEvent.press(pub(r));
+    expect(mockSetMode).not.toHaveBeenCalled();
+    fireEvent.press(priv(r));
+    expect(mockSetMode).toHaveBeenCalledTimes(1);
+    expect(mockSetMode).toHaveBeenCalledWith('shielded');
+  });
+
+  it('a tap on the inactive column switches the mode; a tap on the active one does nothing (Private mode)', async () => {
+    mockMode.current = 'shielded';
+    const r = await renderDashboard();
+    fireEvent.press(priv(r));
+    expect(mockSetMode).not.toHaveBeenCalled();
+    fireEvent.press(pub(r));
+    expect(mockSetMode).toHaveBeenCalledTimes(1);
+    expect(mockSetMode).toHaveBeenCalledWith('transparent');
+  });
+
+  it('plan A9: a build without private balances shows no split (and no old line)', async () => {
     mockFeatures.shielded = false;
-    expect((await renderDashboard()).queryByTestId('dashboard-combined-line')).toBeNull();
+    const r = await renderDashboard();
+    expect(r.queryByTestId('dashboard-split-public')).toBeNull();
+    expect(r.queryByTestId('dashboard-split-private')).toBeNull();
+    expect(r.queryByTestId('dashboard-combined-line')).toBeNull();
   });
 });
 

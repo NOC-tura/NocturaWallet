@@ -2,7 +2,7 @@
  * M1d (spec docs/superpowers/specs/2026-11-21-shielded-m1d-accounts-design.md §4; M1 spec §10,
  * §11 R11): every user-visible string of the accounts surfaces — the Accounts sheet and the
  * avatar, "From:" on #19/#20, the linking warning on #12, the main-only lines, #21's "Received by",
- * the combined line and #17's "Who sees what". The screens import these.
+ * the dashboard's Public | Private split row and #17's "Who sees what". The screens import these.
  *
  * Honesty: nothing here may promise more than the wallet delivers (copyScan FORBIDDEN_NEW; the
  * privacy-claims guard reads this file). The linking warning says what the chain shows; the R11
@@ -47,7 +47,7 @@ export const USES_MAIN_ACCOUNT = 'Uses your main account';
 /** #21 Now public, Details (§4.3) */
 export const RECEIVED_BY = 'Received by';
 
-/** The combined line (§4.5): an unknown side, and a hidden one */
+/** The split row (§4.5, 2026-11-22 addendum) and the sheet rows: an unknown side, and a hidden one */
 export const VALUE_UNKNOWN = '—';
 export const VALUE_HIDDEN = '•••';
 /** A held, priced side worth under half a cent (never "$0.00" for a non-empty side) */
@@ -89,9 +89,21 @@ export function fromMainLine(mainLabel: string): string {
   return `From: ${mainLabel} (main)`;
 }
 
-/** "Public X · Private Y" — the two sides already formatted, never summed (§4.5, D4) */
-export function combinedLine(pub: string, priv: string): string {
-  return `${MODE_PUBLIC} ${pub} · ${MODE_PRIVATE} ${priv}`;
+/**
+ * The dashboard's split row inside the balance card (§4.5, 2026-11-22 addendum: the owner replaced
+ * D3's line under the toggle). The column labels are the mode words; the two sides are never summed.
+ */
+export const SPLIT_PUBLIC = MODE_PUBLIC;
+export const SPLIT_PRIVATE = MODE_PRIVATE;
+
+/** A column's third line when it holds more than two assets */
+export function moreAssets(n: number): string {
+  return `+${n} more`;
+}
+
+/** A column's accessibility label: what it shows (already "•••" when hidden), and what a tap does */
+export function splitA11y(sideName: string, value: string, isActive: boolean): string {
+  return isActive ? `${sideName}, ${value}` : `${sideName}, ${value}, switch to ${sideName}`;
 }
 
 /** #21's refusals (M5): nothing was signed. The code leads the line (the screen keys no-Retry on it). */

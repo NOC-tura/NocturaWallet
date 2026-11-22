@@ -32,7 +32,7 @@ import {Text} from '../../components/ui';
 import {useWalletStore} from '../../store/zustand/walletStore';
 import {useAccountList, useRefreshAccounts, useSelectAccount, useSelectedAccount} from '../../hooks/useSelectedAccount';
 import {NO_PUBLIC_DATA, useAccountPublicData} from '../../hooks/useAccountPublicData';
-import {ACCOUNTS_TITLE, HISTORY_A11Y, PUBLIC_LOADING, REFRESH_ACCOUNT_FAILED, REFRESH_FAILED_TITLE, PUBLIC_UNAVAILABLE, VALUE_UNKNOWN, avatarA11y} from '../../copy/accounts';
+import {ACCOUNTS_TITLE, HISTORY_A11Y, PUBLIC_LOADING, REFRESH_ACCOUNT_FAILED, REFRESH_FAILED_TITLE, PUBLIC_UNAVAILABLE, SPLIT_PRIVATE, SPLIT_PUBLIC, VALUE_UNKNOWN, avatarA11y, splitA11y} from '../../copy/accounts';
 import {AccountsSheet} from '../../components/accounts/AccountsSheet';
 import {useShieldedStore} from '../../store/zustand/shieldedStore';
 import {usePublicSettingsStore} from '../../store/zustand/publicSettingsStore';
@@ -42,7 +42,7 @@ import {forceSync} from '../../modules/backgroundSync/backgroundSyncModule';
 import {TokenManager} from '../../modules/tokens/tokenModule';
 import {NOC_MINT} from '../../constants/programs';
 import {isShieldedEnabled} from '../../constants/features';
-import {combinedValueLine, privateSide, publicSide} from '../../modules/accounts/valueLine';
+import {privateSide, publicSide, splitValue, type SplitValue} from '../../modules/accounts/valueLine';
 import {CHAIN} from '../../constants/chain';
 import {formatBalanceForDisplay} from '../../utils/parseTokenAmount';
 import {mmkvPublic} from '../../store/mmkv/instances';
@@ -83,9 +83,12 @@ import {
  * #11 Dashboard — Phase B migration · mirror /home/user/Downloads/index.html §s11
  *
  * Sections:
- *   - Top row · avatar (initial) + bell + scan
+ *   - Top row · avatar (the selected account's number) + history + bell + scan
  *   - Mode toggle · Public / Private segmented pill
- *   - Balance hero · overline, eye toggle, balance + cents, change line, sub-balance
+ *   - Balance hero · overline, eye toggle, balance + cents, change line, sub-balance, and (only
+ *     where private balances exist) the Public | Private split row at the card's bottom: each
+ *     side's value, never summed, "—" unknown, "•••" hidden; a tap on the other column switches
+ *     the mode (owner 2026-11-22: it replaced M1d D3's thin line under the toggle)
  *   - Quick actions · Send · Receive · Swap|Make private · Buy (4-button grid)
  *   - Tokens section · header + token rows
  *   - Banner · presale (Public) or the Private balance card (Private)
@@ -380,10 +383,11 @@ export function DashboardScreen({
     return () => { alive = false; };
   }, []));
 
-  // M1d (spec §4.5, D2–D4, plan A9): "Public X · Private Y" — the selected account's public value and
-  // the wallet's private balance, never summed, "—" for an unknown side; only where private balances exist
-  const combined = isShieldedEnabled()
-    ? combinedValueLine(publicSide(publicData), privateSide(a0View), havePrices ? prices : null, hideBalances)
+  // M1d (spec §4.5 + 2026-11-22 addendum, D2/D4, plan A9): the split row — the selected account's public
+  // value and the wallet's private balance, never summed, "—" for an unknown side, "•••" hidden; only
+  // where private balances exist
+  const split = isShieldedEnabled()
+    ? splitValue(publicSide(publicData), privateSide(a0View), havePrices ? prices : null, hideBalances)
     : null;
 
   const isShielded = mode === 'shielded';
@@ -437,7 +441,7 @@ export function DashboardScreen({
             change24hPct={change24h}
             havePrices={havePrices}
             publicReady={publicReady}
-            combined={combined}
+            split={split}
             anonymitySet={anon}
             shieldedView={a0View}
           />
@@ -535,8 +539,8 @@ interface DashboardHeaderProps {
   havePrices: boolean;
   /** M1d (Review Focus 4): the selected account's public data is known — every public figure waits for it */
   publicReady: boolean;
-  /** M1d (spec §4.5): the combined line, or null where the build has no private balances */
-  combined: string | null;
+  /** M1d (spec §4.5, 2026-11-22 addendum): the split row's two columns, or null where the build has no private balances */
+  split: SplitValue | null;
   /** Live on-chain anonymity set leaf count; null while loading or on RPC error. */
   anonymitySet: number | null;
   /** The A0 shielded balance view (shielded mode's hero). */
@@ -567,7 +571,7 @@ function DashboardHeader({
   change24hPct,
   havePrices,
   publicReady,
-  combined,
+  split,
   anonymitySet,
   shieldedView,
 }: DashboardHeaderProps) {
@@ -649,15 +653,6 @@ function DashboardHeader({
           />
         </View>
       </View>
-
-      {/* M1d (spec §4.5, D3): one thin line directly under the toggle, in both modes; the big figure below is unchanged */}
-      {combined !== null ? (
-        <View className="px-5 -mt-2 mb-3">
-          <Text variant="body-sm" numeral numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} className="text-fg-secondary text-center" testID="dashboard-combined-line">
-            {combined}
-          </Text>
-        </View>
-      ) : null}
 
       {/* Balance hero card */}
       <View className="px-5 mb-4">
@@ -786,6 +781,31 @@ function DashboardHeader({
               />
             </View>
           )}
+
+          {/* M1d (2026-11-22 addendum): the Public | Private split, both modes, only where private balances exist */}
+          {split !== null ? (
+            <>
+              <View className="h-px bg-bg-surface-3 my-4" />
+              <View className="flex-row gap-4">
+                <SplitColumn
+                  label={SPLIT_PUBLIC}
+                  lines={split.publicLines}
+                  isActive={!isShielded}
+                  dotClass="bg-accent-transparent"
+                  onSelect={() => onModeToggle('transparent')}
+                  testID="dashboard-split-public"
+                />
+                <SplitColumn
+                  label={SPLIT_PRIVATE}
+                  lines={split.privateLines}
+                  isActive={isShielded}
+                  dotClass="bg-accent-shielded"
+                  onSelect={() => onModeToggle('shielded')}
+                  testID="dashboard-split-private"
+                />
+              </View>
+            </>
+          ) : null}
         </View>
       </View>
 
@@ -910,6 +930,53 @@ export function ModeButton({label, isActive, mode, onPress, withShieldIcon, comi
         )}>
         {comingSoon ? `${label} · soon` : label}
       </Text>
+    </Pressable>
+  );
+}
+
+// ── Split column (M1d, 2026-11-22 addendum) ────────────────────────────────
+
+interface SplitColumnProps {
+  label: string;
+  /** Already formatted by `splitValue`: "•••" when hidden, "—" when unknown — one line each */
+  lines: string[];
+  isActive: boolean;
+  /** The mode's accent: Public #B084FC, Private #5BE3C2 */
+  dotClass: 'bg-accent-transparent' | 'bg-accent-shielded';
+  /** Not named onPress: a test's press must reach the Pressable's own handler, never bubble to this prop */
+  onSelect: () => void;
+  testID: string;
+}
+
+function SplitColumn({label, lines, isActive, dotClass, onSelect, testID}: SplitColumnProps) {
+  return (
+    <Pressable
+      // the active column is the mode already shown: a tap does nothing
+      onPress={isActive ? undefined : onSelect}
+      accessibilityRole="button"
+      accessibilityState={{selected: isActive}}
+      accessibilityLabel={splitA11y(label, lines.join(', '), isActive)}
+      testID={testID}
+      className="flex-1 active:opacity-80">
+      <View className="flex-row items-center gap-2 mb-1">
+        <View className={cn('w-[6px] h-[6px] rounded-pill', dotClass)} />
+        <Text variant="overline" className={isActive ? 'text-fg-primary' : 'text-fg-tertiary'}>
+          {label}
+        </Text>
+      </View>
+      {lines.map((line, i) => (
+        <Text
+          key={i}
+          variant="body-sm"
+          numeral
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.75}
+          className="text-fg-secondary"
+          testID={`${testID}-line`}>
+          {line}
+        </Text>
+      ))}
     </Pressable>
   );
 }

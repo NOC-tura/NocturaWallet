@@ -50,11 +50,15 @@ describe('src/copy/accounts.ts — the M1d strings', () => {
     expect(c.avatarA11y('Account 3')).toBe('Account 3, switch account');
   });
 
-  it('the combined line (spec §4.5)', () => {
-    expect(c.combinedLine('$12.40', '1.0038 TEST')).toBe('Public $12.40 · Private 1.0038 TEST');
+  it('the split row (spec §4.5, 2026-11-22 addendum): the mode words, "+N more", the a11y label', () => {
+    expect(c.SPLIT_PUBLIC).toBe('Public');
+    expect(c.SPLIT_PRIVATE).toBe('Private');
     expect(c.VALUE_UNKNOWN).toBe('—');
     expect(c.VALUE_HIDDEN).toBe('•••');
-    expect(c.combinedLine(c.VALUE_HIDDEN, c.VALUE_HIDDEN)).toBe('Public ••• · Private •••');
+    expect(c.moreAssets(1)).toBe('+1 more');
+    expect(c.splitA11y('Public', '$12.40', true)).toBe('Public, $12.40');
+    expect(c.splitA11y('Private', '1.0038 TEST', false)).toBe('Private, 1.0038 TEST, switch to Private');
+    expect('combinedLine' in c).toBe(false); // r1-7: the old line's copy is gone
   });
 
   it('#17 who sees what (M1 spec §11 R11; plan A15: only the banned word is reworded)', () => {

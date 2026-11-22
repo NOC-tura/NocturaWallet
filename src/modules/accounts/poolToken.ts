@@ -2,7 +2,7 @@
  * M1d plan A11 (controller ruling on review r1 C1): where private balances exist
  * (`isShieldedEnabled()`), the pool token (A0_TOKEN, "TEST" on devnet) is a listed token of EVERY
  * account that holds it — the funds a fresh exit received must be visible (the sheet, the dashboard's
- * list, the combined line) and sendable from #12. Display layer only: walletStore and forceSync are
+ * list, the split row) and sendable from #12. Display layer only: walletStore and forceSync are
  * untouched. The production build (no private balances) is unchanged. Pure.
  */
 import {isShieldedEnabled} from '../../constants/features';

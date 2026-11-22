@@ -1,5 +1,5 @@
-/** M1d spec §4.5 (D2–D4; plan A9–A12): the combined line's formatter. BigInt amounts; USD is display only. */
-import {combinedValueLine, formatSide, LISTED_ASSETS, privateSide, publicSide} from '../valueLine';
+/** M1d spec §4.5 (D2–D4; plan A9–A12; 2026-11-22 addendum): the split row's and the sheet rows' formatter. BigInt amounts; USD is display only. */
+import {formatSide, LISTED_ASSETS, privateSide, publicSide, sideLines, splitValue} from '../valueLine';
 import type {SideAsset, SideValue} from '../valueLine';
 import {NOC_MINT} from '../../../constants/programs';
 import {A0_TOKEN} from '../../shielded/a0/screenSupport';
@@ -75,7 +75,7 @@ describe('formatSide — large values, wide decimals, small USD (review M1, M3)'
     const pub = known([sol(1_000_000_000n)]);
     const priv = known([tst(2_000_000_000n)], 'TEST');
     const prices = {...PRICES, [A0_TOKEN.mint]: {usd: 0.5, change24h: null}};
-    expect(combinedValueLine(pub, priv, prices, false)).toBe('Public $150.00 · Private $1.00');
+    expect(splitValue(pub, priv, prices, false)).toEqual({publicLines: ['$150.00'], privateLines: ['$1.00']});
   });
   it('re-review N3: a NaN / Infinity price falls to the token form, never "<$0.01" or a made-up USD', () => {
     expect(formatSide(known([sol(1_000_000_000n)]), {native: {usd: NaN, change24h: null}}, ', ')).toBe('1 SOL');
@@ -144,18 +144,49 @@ describe('the sides', () => {
   });
 });
 
-describe('combinedValueLine (spec §4.5)', () => {
-  it('"Public X · Private Y", the two sides never summed', () => {
-    const pub = known([sol(1_000_000_000n)]);
+describe('sideLines — the split row\'s columns (plan 2026-11-22 Task 5)', () => {
+  it('a USD side → one line', () => {
+    expect(sideLines(known([sol(1_000_000_000n)]), PRICES)).toEqual(['$150.00']);
+    expect(sideLines(known([sol(1_000n)]), PRICES)).toEqual(['<$0.01']);
+  });
+  it('a token side with two assets → one line each, largest first', () => {
+    expect(sideLines(known([sol(3_000_000n), tst(1_000_000n)]), null)).toEqual(['0.003 SOL', '0.001 TEST']);
+  });
+  it('three assets → two, then "+1 more" (replaces the sheet\'s "+N")', () => {
+    const s = known([sol(469_300_000n), tst(8_995_000_000n), {mint: USDC, symbol: 'USDC', amountRaw: 100_000n, decimals: 6}]);
+    expect(sideLines(s, null)).toEqual(['8.995 TEST', '0.4693 SOL', '+1 more']);
+    expect(formatSide(s, null, ' · ')).toBe('8.995 TEST · 0.4693 SOL +1'); // r1-6: the sheet row keeps "+N"
+  });
+  it('nothing held → one line "0 {zeroSymbol}"', () => {
+    expect(sideLines(known([sol(0n)]), PRICES)).toEqual(['0 SOL']);
+    expect(sideLines(known([tst(0n)], 'TEST'), null)).toEqual(['0 TEST']);
+  });
+  it('unknown → exactly one line "—"', () => {
+    expect(sideLines({kind: 'unknown'}, PRICES)).toEqual(['—']);
+  });
+  it('a malformed amount → unknown → "—" (kept)', () => {
+    const s = publicSide({status: 'ready', syncedAt: 1, solBalance: '1.5', nocBalance: '0', tokenBalances: {}, tokens: []});
+    expect(sideLines(s, PRICES)).toEqual(['—']);
+  });
+  it('r1-9: a tiny amount with prices = null → "<0.0001 TEST", never 0 or scientific notation', () => {
+    expect(sideLines(known([tst(1n)], 'TEST'), null)).toEqual(['<0.0001 TEST']);
+  });
+});
+
+describe('splitValue (spec §4.5, 2026-11-22 addendum)', () => {
+  const many = known([sol(1_000_000_000n), tst(3_000_000_000n), {mint: USDC, symbol: 'USDC', amountRaw: 2_000_000n, decimals: 6}]);
+  it('the two sides formatted apart, never summed', () => {
     const priv = privateSide({kind: 'ready', unspent: 1_003_800_000n, pending: 0n, notes: 1});
-    expect(combinedValueLine(pub, priv, PRICES, false)).toBe('Public $150.00 · Private 1.0038 TEST');
-    expect(combinedValueLine(known([sol(20_000_000n), tst(8_990_000_000n)]), priv, null, false)).toBe('Public 8.99 TEST, 0.02 SOL · Private 1.0038 TEST');
+    expect(splitValue(known([sol(1_000_000_000n)]), priv, PRICES, false)).toEqual({publicLines: ['$150.00'], privateLines: ['1.0038 TEST']});
+    expect(splitValue(many, priv, null, false)).toEqual({publicLines: ['3 TEST', '2 USDC', '+1 more'], privateLines: ['1.0038 TEST']});
   });
-  it('an unknown side is "—" on its own side only', () => {
-    expect(combinedValueLine({kind: 'unknown'}, known([tst(0n)], 'TEST'), null, false)).toBe('Public — · Private 0 TEST');
-    expect(combinedValueLine(known([sol(1_000_000_000n)]), {kind: 'unknown'}, null, false)).toBe('Public 1 SOL · Private —');
+  it('an unknown side is "—" on its own side only, one line', () => {
+    expect(splitValue({kind: 'unknown'}, known([tst(0n)], 'TEST'), null, false)).toEqual({publicLines: ['—'], privateLines: ['0 TEST']});
+    expect(splitValue(many, {kind: 'unknown'}, null, false)).toEqual({publicLines: ['3 TEST', '2 USDC', '+1 more'], privateLines: ['—']});
   });
-  it('hidden balances → "Public ••• · Private •••" whatever is known', () => {
-    expect(combinedValueLine(known([sol(1n)]), {kind: 'unknown'}, PRICES, true)).toBe('Public ••• · Private •••');
+  it('r1-8: hidden → exactly one "•••" per column, whatever is known (never "+N more", never a digit)', () => {
+    const r = splitValue(many, known([tst(5n)], 'TEST'), PRICES, true);
+    expect(r).toEqual({publicLines: ['•••'], privateLines: ['•••']});
+    expect(JSON.stringify(r)).not.toMatch(/\d/);
   });
 });

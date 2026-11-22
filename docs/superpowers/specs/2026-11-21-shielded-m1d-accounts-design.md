@@ -34,7 +34,7 @@ verification or reconciliation; private send (M2).
 |---|---|---|
 | D1 | Which actions follow the selected account | **A:** Send, Receive, transaction history and the dashboard's public balance. Make private (deposit), Swap, presale and referral stay on the main account. |
 | D2 | What "Public X" means | **A:** the selected account's public balance. |
-| D3 | Where the combined line sits | **A:** one thin line directly under the Public \| Private toggle, in both modes; the big figure below is unchanged. |
+| D3 | Where the combined line sits | ~~**A:** one thin line directly under the Public \| Private toggle, in both modes; the big figure below is unchanged.~~ **2026-11-22 owner (phone pass): replaced** by a Public \| Private split row inside the balance card, both modes; see the §4.5 addendum. |
 | D4 | Units | **A:** USD where a price is known, otherwise the token amount; the two sides are never summed. |
 | D5 | How the switcher opens | **A:** the avatar (top-left of #11) opens a bottom sheet; the avatar shows the selected account's number; Profile stays on its tab. |
 | D6 | Adding accounts by hand | **A:** no. Accounts come only from the main account and fresh exits. |
@@ -136,6 +136,12 @@ verification or reconciliation; private send (M2).
   TEST".
 - Unknown value (not loaded, failed, private restore not ready): "—" for that side, never 0.
 - Hidden balances (the eye toggle): "Public ••• · Private •••".
+- **2026-11-22 owner: D3 replaced — the split row inside the balance card, see plan 2026-11-22-shielded-m1d-phone-pass-fixes.**
+  The line under the toggle is gone. At the bottom of the hero card (both modes, only where private balances exist): a
+  divider, then two equal columns, Public and Private, each a dot + the mode word + its value lines (USD as one line;
+  otherwise one line per asset, largest first, at most two, then "+N more"; "—" unknown and "•••" hidden, one line
+  each). A tap on the other column switches the mode; a tap on the active one does nothing. The Accounts sheet's rows
+  keep the one-string form with "+N". Everything else above stands (D2, D4, never summed).
 
 ### 4.6 #17 explainer — who sees what (R11)
 
