@@ -58,6 +58,14 @@ jest.mock('../../../../hooks/useA0Shielded', () => ({
   },
 }));
 
+// M1d (spec §4.3, plan A14): "Received by" — the pending intent's scheme at onPending, then the registry's fresh-exit
+const mockPendingScheme = jest.fn<string | null, [string]>(() => null);
+const mockFreshExit = jest.fn<{label: string; address: string} | null, [string | null]>(() => null);
+jest.mock('../../../../modules/accounts/receivedBy', () => ({
+  pendingFreshSchemeOf: (rho: string) => mockPendingScheme(rho),
+  freshExitAccountOf: (s: string | null) => mockFreshExit(s),
+}));
+
 jest.setTimeout(30_000);
 
 const SIG = '4Hq7MbX1n2sV9pLr6TzKc3uYdW8eFa5GjN1oPq2RsTuVwXyZ3aBcDeFgHiJkLmNoPqRsTuVwXyZ1a2b3c4d5e6f';
@@ -89,6 +97,8 @@ function controlled() {
 
 beforeEach(() => {
   mockUnshield.mockReset();
+  mockPendingScheme.mockReset().mockReturnValue(null);
+  mockFreshExit.mockReset().mockReturnValue(null);
   mockRetrieve.mockReset().mockResolvedValue('words');
   mockCheck.run.mockReset();
   Object.assign(mockCheck, {disabled: false, checking: false, note: null, unshield: null, report: null});
@@ -878,5 +888,57 @@ describe('Task 6 carry: the reworded refusal sentences and the plain stage rows,
     expect(String(meta(r, 'sync'))).toMatch(/^checking the pool on the chain · /);
     await step(ctl, 'quote', 10);
     expect(String(meta(r, 'sync'))).toMatch(/^done · /); // the row's second sub: finished, with its measured time
+  });
+});
+
+describe('M1d — #21 Now public names the new account it landed on (spec §4.3)', () => {
+  const SPENT = {status: 'spent' as const, signature: SIG, changeLeafIndex: 42, changeAmount: 749_990_000n, grantLamports: 3_000_000n, destinationWithoutSol: false};
+  const A3 = '3YqEpfo3c818GhvbQ1UmVY1nJxw16vtu4JB9peJXT94k';
+
+  it('a fresh exit that landed → Details: "Received by · Account 4 · 3YqEpf…JXT94k"', async () => {
+    mockPendingScheme.mockReturnValue('slip10:3');
+    mockFreshExit.mockReturnValue({label: 'Account 4', address: A3});
+    const {r, ctl} = await run();
+    act(() => ctl.pending('rho-1'));
+    await act(async () => ctl.resolve(SPENT));
+    expect(mockPendingScheme).toHaveBeenCalledWith('rho-1');
+    fireEvent.press(r.getByTestId('unshield-details-toggle'));
+    expect(r.getByText('Received by')).toBeTruthy();
+    expect(r.getByText('Account 4 · 3YqEpf…JXT94k')).toBeTruthy();
+    expect(mockFreshExit).toHaveBeenCalledWith('slip10:3');
+  });
+
+  it.each<[string, UnshieldRunRequest['destination']]>([
+    ['the main account', {kind: 'main'}],
+    ['another address', {kind: 'external', owner: 'E48cosDiQZK1iDSsyUzhvW4WxJeoKuDk5qgcdkmANV4N'}],
+  ])('to %s → no "Received by" (and the note store is not asked)', async (_n, destination) => {
+    mockPendingScheme.mockReturnValue('slip10:3');
+    mockFreshExit.mockReturnValue({label: 'Account 4', address: A3});
+    const {r, ctl} = await run({destination, amount: '1250000000'});
+    act(() => ctl.pending('rho-2'));
+    await act(async () => ctl.resolve(SPENT));
+    fireEvent.press(r.getByTestId('unshield-details-toggle'));
+    expect(r.queryByText('Received by')).toBeNull();
+    expect(mockPendingScheme).not.toHaveBeenCalled();
+  });
+
+  it('the registry does not (yet) hold it as fresh-exit → no row, never a guess', async () => {
+    mockPendingScheme.mockReturnValue('slip10:3');
+    mockFreshExit.mockReturnValue(null);
+    const {r, ctl} = await run();
+    act(() => ctl.pending('rho-3'));
+    await act(async () => ctl.resolve(SPENT));
+    fireEvent.press(r.getByTestId('unshield-details-toggle'));
+    expect(r.queryByText('Received by')).toBeNull();
+  });
+
+  it('a pending outcome (not landed) → no row', async () => {
+    mockPendingScheme.mockReturnValue('slip10:3');
+    mockFreshExit.mockReturnValue({label: 'Account 4', address: A3});
+    const {r, ctl} = await run();
+    act(() => ctl.pending('rho-4'));
+    await act(async () => ctl.resolve({status: 'pending', signature: SIG, reason: 'unconfirmed'}));
+    expect(r.queryByText('Received by')).toBeNull();
+    expect(mockFreshExit).not.toHaveBeenCalled(); // M1d: review m2 — the reader is not even asked for a run that has not landed
   });
 });

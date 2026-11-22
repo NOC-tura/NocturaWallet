@@ -11,6 +11,7 @@ import {useShieldedStore} from '../../store/zustand/shieldedStore';
 import {ScreenSecurityManager} from '../../modules/screenSecurity/screenSecurityModule';
 import type {RootStackParamList} from '../../types/navigation';
 import {MAKE_PUBLIC, PRIVATE_MARK} from '../../copy/modes';
+import {WHO_SEES_CHAIN, WHO_SEES_RELAYER, WHO_SEES_RPC, WHO_SEES_WHAT} from '../../copy/accounts';
 
 const PRIVACY_URL = 'https://noc-tura.io/privacy';
 const ACCENT = '#5BE3C2';
@@ -92,6 +93,21 @@ export function ShieldedExplainerScreen({navigation}: Props) {
           title={MAKE_PUBLIC}
           body={`Move your tokens back to a public address when you want. A relayer sends it for you for a small fee, so no key of yours signs it. Amounts and timing are public. Making them public to your main account links the exit to your deposit.`}
         />
+        {/* M1d (M1 spec §11 R11): who sees what — every party that sees a request, nothing softened */}
+        <View className="mt-2 mb-2" testID="explainer-who-sees-what">
+          <Text variant="h3" className="mb-2">
+            {WHO_SEES_WHAT}
+          </Text>
+          <Text variant="body-sm" className="text-fg-secondary mb-2">
+            {WHO_SEES_RELAYER}
+          </Text>
+          <Text variant="body-sm" className="text-fg-secondary mb-2">
+            {WHO_SEES_RPC}
+          </Text>
+          <Text variant="body-sm" className="text-fg-secondary">
+            {WHO_SEES_CHAIN}
+          </Text>
+        </View>
       </ScrollView>
 
       {/* Footer note — pulled OUT of scroll so the trust signal is always

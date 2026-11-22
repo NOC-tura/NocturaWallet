@@ -97,6 +97,8 @@ const intent = {
   decimals: 9,
   priorityLevel: 'normal' as const,
   createAta: false,
+  from: {scheme: 'slip10:0', address: 'GabcDEFGHIJKLMNOPQRSTUVWXYZ1234567890ABCDEF', label: 'Account 1', isMain: true}, // M1d: the sender is the intent's source (was the walletStore mock's publicKey)
+  sourceBalances: {solBalance: '1000000000', tokenBalances: {}}, // M1d: "After" from the source's balances (was the walletStore mock's)
 };
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -174,4 +176,31 @@ it('while simulating, the eyebrow names the build\'s chain: devnet RPC on devnet
     r.unmount();
   }
   mockNetwork.current = 'mainnet-beta';
+});
+
+it('M1d (spec §3.3, §4.2, plan A8): the SOURCE is the sender, its balance gives "After", #19 says "From: Account 4 · …"', async () => {
+  const {buildTransferTx} = require('../../../modules/solana/transactionBuilder') as {buildTransferTx: jest.Mock};
+  buildTransferTx.mockClear();
+  const from = {scheme: 'slip10:3', address: '3YqEpfo3c818GhvbQ1UmVY1nJxw16vtu4JB9peJXT94k', label: 'Account 4', isMain: false};
+  const r = render(
+    withSafeArea(
+      <TxSimulateScreen intent={{...intent, from, sourceBalances: {solBalance: '3000000', tokenBalances: {}}}} onContinue={jest.fn()} onCancel={jest.fn()} />,
+    ),
+  );
+  expect(r.getByTestId('tx-simulate-from')).toHaveTextContent('From: Account 4 · 3YqEpf…JXT94k');
+  await waitFor(() => expect(buildTransferTx).toHaveBeenCalled());
+  expect((buildTransferTx.mock.calls[0]![0] as {sender: {toBase58(): string}}).sender.toBase58()).toBe(from.address);
+  // 3,000,000 − 1,000,000 sent − 5,000 base fee − 0 priority = 1,995,000 lamports
+  await waitFor(() => expect(r.getByText('0.001995 SOL')).toBeTruthy());
+});
+
+it('M1d: the main account reads "From: Account 1 (main) · …"', () => {
+  const r = render(withSafeArea(<TxSimulateScreen intent={intent} onContinue={jest.fn()} onCancel={jest.fn()} />));
+  expect(r.getByTestId('tx-simulate-from')).toHaveTextContent('From: Account 1 (main) · GabcDE…ABCDEF');
+});
+
+it('M1d review M10: the recipient uses the same 6…6 short form as the From line', () => {
+  const to = 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk';
+  const r = render(withSafeArea(<TxSimulateScreen intent={{...intent, recipient: to}} onContinue={jest.fn()} onCancel={jest.fn()} />));
+  expect(r.getByText('HAgk14…3DKpqk')).toBeTruthy();
 });

@@ -17,6 +17,13 @@ const EXTRA = [
   'src/app/Navigator.tsx',
   'src/constants/errors.ts',
   'src/modules/geoFence/geoFenceModule.ts',
+  // M1d: the accounts copy and the account labels
+  'src/copy/accounts.ts',
+  'src/modules/accounts/accountList.ts',
+  // M1d (review r1 I2): the signer refusal #21 shows as it is
+  'src/modules/solana/sendTransaction.ts',
+  // M1d (review r1 I2): the balance-card split's and the sheet rows' formatter
+  'src/modules/accounts/valueLine.ts',
 ];
 
 function sources(): Array<{file: string; text: string}> {

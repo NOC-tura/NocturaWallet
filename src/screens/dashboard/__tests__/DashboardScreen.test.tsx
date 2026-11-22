@@ -7,7 +7,8 @@
  * test.
  */
 import React from 'react';
-import {render, act, fireEvent} from '@testing-library/react-native';
+import {Alert, RefreshControl} from 'react-native';
+import {render, act, fireEvent, within} from '@testing-library/react-native';
 import {SafeAreaProvider} from 'react-native-safe-area-context';
 import type {A0ShieldedView} from '../../../hooks/useA0Shielded';
 import type {A0PoolNoteCount} from '../../../modules/shielded/a0/poolSize';
@@ -16,14 +17,68 @@ import type {A0PoolNoteCount} from '../../../modules/shielded/a0/poolSize';
 const mockView: {current: A0ShieldedView} = {current: {kind: 'ready', unspent: 0n, pending: 0n, notes: 0}};
 const mockCheck = {disabled: false, checking: false, note: null as string | null, run: jest.fn()};
 const mockRefusal: {current: string | null} = {current: null};
+const mockA0Args: unknown[][] = [];
 jest.mock('../../../hooks/useA0Shielded', () => ({
-  useA0Shielded: () => ({view: mockView.current, refresh: jest.fn(), checkAgain: mockCheck, refusal: mockRefusal.current}),
+  useA0Shielded: (...args: unknown[]) => {
+    mockA0Args.push(args);
+    return {view: mockView.current, refresh: jest.fn(), checkAgain: mockCheck, refusal: mockRefusal.current};
+  },
 }));
 const mockPoolCount = jest.fn<Promise<A0PoolNoteCount>, []>();
 jest.mock('../../../modules/shielded/a0/poolSize', () => ({
   readA0PoolNoteCount: () => mockPoolCount(),
 }));
 jest.mock('../../../modules/solana/connection', () => ({getConnection: () => ({})}));
+
+// ── M1d: the selected account and its public data (spec §3.4) ────────────────
+import type {WalletAccount} from '../../../modules/accounts/accountList';
+import type {AccountPublicData} from '../../../hooks/useAccountPublicData';
+const MAIN_ACCOUNT: WalletAccount = {scheme: 'slip10:0', address: 'AbCdEfAbCdEf', label: 'Account 1', number: 1, role: 'main', isMain: true, linked: false};
+const EXIT_ACCOUNT: WalletAccount = {scheme: 'slip10:3', address: '3YqEpfo3c818GhvbQ1UmVY1nJxw16vtu4JB9peJXT94k', label: 'Account 4', number: 4, role: 'fresh-exit', isMain: false, linked: false};
+const mockSelected: {current: WalletAccount | null} = {current: MAIN_ACCOUNT};
+const mockRefreshAccounts = jest.fn();
+const mockSelect = jest.fn(() => true);
+const mockListUnreadable = {current: false};
+jest.mock('../../../hooks/useSelectedAccount', () => ({
+  useSelectedAccount: () => mockSelected.current,
+  useAccountList: () => (mockSelected.current ? {accounts: [mockSelected.current], seed: [], walletKind: 'slip10', unreadable: mockListUnreadable.current} : null),
+  useAccounts: () => null,
+  useSelectAccount: () => mockSelect,
+  useRefreshAccounts: () => mockRefreshAccounts,
+}));
+const READY_MAIN: AccountPublicData = {status: 'ready', solBalance: '1000000000', nocBalance: '2000000000', tokens: [], tokenBalances: {}, syncedAt: 1};
+const mockPublic: {current: AccountPublicData} = {current: READY_MAIN};
+const mockPublicArgs: unknown[] = [];
+const mockRefetchPublic = jest.fn(() => Promise.resolve());
+jest.mock('../../../hooks/useAccountPublicData', () => ({
+  NO_PUBLIC_DATA: {solBalance: '0', nocBalance: '0', tokenBalances: {}, tokens: []},
+  ACCOUNT_SNAPSHOT_KEY: 'accountSnapshot',
+  useAccountPublicData: (a: unknown) => {
+    mockPublicArgs.push(a);
+    return {data: mockPublic.current, refetch: mockRefetchPublic};
+  },
+}));
+
+// M1d (review r1 m7): opening the encrypted store when the registry is unreadable, controlled here
+const mockUnlock = jest.fn(() => Promise.resolve());
+jest.mock('../../../modules/session/secureStorageSession', () => ({unlockSecureStorage: () => mockUnlock()}));
+
+// M1d (spec §4.1): the Accounts sheet, stubbed — records its props, renders a marker
+const mockSheetProps: Array<Record<string, unknown>> = [];
+jest.mock('../../../components/accounts/AccountsSheet', () => ({
+  AccountsSheet: (p: Record<string, unknown>) => {
+    mockSheetProps.push(p);
+    const {Text: RNText} = require('react-native');
+    return require('react').createElement(RNText, {testID: 'mock-accounts-sheet'}, 'sheet');
+  },
+}));
+
+// M1d (review r1 m6): whether the encrypted store is open, controlled here
+const mockSecure: {current: object | null} = {current: null};
+jest.mock('../../../store/mmkv/instances', () => ({
+  ...jest.requireActual('../../../store/mmkv/instances'),
+  mmkvSecure: () => mockSecure.current,
+}));
 
 // ── Navigation ──────────────────────────────────────────────────────────────
 jest.mock('@react-navigation/native', () => ({
@@ -38,6 +93,8 @@ jest.mock('@react-navigation/native', () => ({
 
 // ── Stores ──────────────────────────────────────────────────────────────────
 const mockMode = {current: 'transparent' as 'transparent' | 'shielded'};
+// M1d Task 5: stable, so a tap on a split column is observable
+const mockSetMode = jest.fn();
 
 jest.mock('../../../store/zustand/walletStore', () => ({
   useWalletStore: () => ({
@@ -50,7 +107,7 @@ jest.mock('../../../store/zustand/walletStore', () => ({
 }));
 
 jest.mock('../../../store/zustand/shieldedStore', () => ({
-  useShieldedStore: () => ({mode: mockMode.current, setMode: jest.fn()}),
+  useShieldedStore: () => ({mode: mockMode.current, setMode: mockSetMode}),
 }));
 
 const mockHide = {current: false};
@@ -68,11 +125,12 @@ jest.mock('../../../hooks/useAccent', () => ({
   useAccentColor: () => '#B084FC',
 }));
 
+// M1d: switchable — the split row's USD form depends on the prices the dashboard hands it
+const mockResolved = {
+  current: {prices: {native: {usd: 150, change24h: 1.5}} as Record<string, {usd: number; change24h: number | null}>, havePrices: true},
+};
 jest.mock('../../../hooks/useResolvedPrices', () => ({
-  useResolvedPrices: () => ({
-    prices: {'native': {usd: 150, change24h: 1.5}},
-    havePrices: true,
-  }),
+  useResolvedPrices: () => mockResolved.current,
 }));
 
 jest.mock('../../../hooks/usePresaleSync', () => ({
@@ -103,8 +161,10 @@ jest.mock('../../../modules/prices/portfolio', () => ({
 }));
 
 // ── Constants ────────────────────────────────────────────────────────────────
+// M1d (plan A9): switchable — the split row exists only in a build with private balances
+const mockFeatures = {shielded: true};
 jest.mock('../../../constants/features', () => ({
-  isShieldedEnabled: () => true,
+  isShieldedEnabled: () => mockFeatures.shielded,
 }));
 
 // ── Components ───────────────────────────────────────────────────────────────
@@ -154,17 +214,35 @@ beforeEach(() => {
   Object.assign(mockCheck, {disabled: false, checking: false, note: null});
   mockRefusal.current = null;
   mockHide.current = false;
+  mockSelected.current = MAIN_ACCOUNT; // M1d: the main account selected unless a row says otherwise
+  mockPublic.current = READY_MAIN; // M1d: the same values the walletStore mock holds
+  mockPublicArgs.length = 0;
+  mockSheetProps.length = 0; // M1d: the sheet stub reset
+  mockListUnreadable.current = false; // M1d: a readable list unless a row says otherwise
+  mockUnlock.mockClear(); // M1d: the unlock count reset
+  mockSecure.current = null; // M1d: the encrypted store closed unless a row says otherwise
+  mockA0Args.length = 0; // M1d: the private-balance hook's recorded arguments
+  mockFeatures.shielded = true; // M1d: the shielded build unless a row says otherwise
+  mockResolved.current = {prices: {native: {usd: 150, change24h: 1.5}}, havePrices: true}; // M1d: priced SOL unless a row says otherwise
 });
 
 describe('DashboardScreen — transparent mode', () => {
+  it('M1d: in transparent mode the History button calls onHistory', async () => {
+    const onHistory = jest.fn();
+    const r = await renderDashboard({onHistory});
+    expect(r.getByTestId('dashboard-history').props.accessibilityLabel).toBe('Transaction history');
+    fireEvent.press(r.getByTestId('dashboard-history'));
+    expect(onHistory).toHaveBeenCalledTimes(1);
+  });
+
   it('renders the dashboard root', async () => {
     const {getByTestId} = await renderDashboard();
     expect(getByTestId('dashboard-screen')).toBeTruthy();
   });
 
-  it('shows "Total balance" overline in transparent mode', async () => {
+  it('shows "Public balance" overline in transparent mode', async () => {
     const {getByText} = await renderDashboard();
-    expect(getByText('Total balance')).toBeTruthy();
+    expect(getByText('Public balance')).toBeTruthy();
   });
 
   it('does NOT render shielded empty state in transparent mode', async () => {
@@ -248,9 +326,10 @@ describe('DashboardScreen — shielded mode, with balance (the A0 store, ready)'
   });
 
   it('the hero is the shielded balance in the token, not a USD figure', async () => {
-    const {getByTestId, getByText, queryByText} = await renderDashboard();
+    const {getByTestId, queryByText} = await renderDashboard();
     expect(getByTestId('dashboard-shielded-balance')).toBeTruthy();
-    expect(getByText('0.2 TEST')).toBeTruthy();
+    expect(within(getByTestId('dashboard-shielded-balance')).getByText('0.2 TEST')).toBeTruthy(); // Task 5: the split's Private column reads it too
+    expect(getByTestId('dashboard-split-private')).toHaveTextContent('Private0.2 TEST');
     expect(queryByText('$150')).toBeNull(); // the transparent USD total is not the shielded hero
   });
 
@@ -394,8 +473,10 @@ describe('part B: the one vocabulary on the dashboard (spec §2, §4)', () => {
     for (const m of ['transparent', 'shielded'] as const) {
       mockMode.current = m;
       const r = await renderDashboard();
-      expect(r.getByText('Public')).toBeTruthy();
-      expect(r.getByText('Private')).toBeTruthy();
+      // Task 5: the split row's labels read the same words, so the toggle is read through its tabs
+      expect(r.getAllByRole('tab').map(t => within(t).getByText(/^(Public|Private)/).props.children)).toEqual(['Public', 'Private']);
+      expect(within(r.getByTestId('dashboard-split-public')).getByText('Public')).toBeTruthy();
+      expect(within(r.getByTestId('dashboard-split-private')).getByText('Private')).toBeTruthy();
       expect(r.queryByText(/^(Transparent|Shielded)$/)).toBeNull();
       r.unmount();
     }
@@ -414,10 +495,10 @@ describe('part B: the one vocabulary on the dashboard (spec §2, §4)', () => {
     expect(r.queryByText(/vault/i)).toBeNull();
   });
 
-  it('Public mode: only the toggle changed — "Total balance", Send, Receive, Swap, "Tokens"', async () => {
+  it('Public mode: only the toggle changed — "Public balance", Send, Receive, Swap, "Tokens"', async () => {
     mockMode.current = 'transparent';
     const r = await renderDashboard({onReceive: jest.fn()});
-    expect(r.getByText('Total balance')).toBeTruthy();
+    expect(r.getByText('Public balance')).toBeTruthy();
     expect(r.getByText('Send')).toBeTruthy();
     expect(r.getByText('Receive')).toBeTruthy();
     expect(r.getByLabelText('Swap')).toBeTruthy();
@@ -440,5 +521,311 @@ describe('part B: the one vocabulary on the dashboard (spec §2, §4)', () => {
     const r = await renderDashboard();
     expect(r.getByText('0.05 pending · not confirmed yet')).toBeTruthy();
     expect(r.getByTestId('dashboard-check-again')).toBeTruthy();
+  });
+});
+
+describe('M1d — Public mode follows the selected account (spec §3.4, D1/D2)', () => {
+  it('the public data is asked for the SELECTED account', async () => {
+    mockSelected.current = EXIT_ACCOUNT;
+    await renderDashboard();
+    expect(mockPublicArgs[mockPublicArgs.length - 1]).toEqual(EXIT_ACCOUNT);
+  });
+
+  it('Review Focus 4: loading → "—" hero and sub-balances, "Loading balances…", no token row', async () => {
+    mockSelected.current = EXIT_ACCOUNT;
+    mockPublic.current = {status: 'loading'};
+    const r = await renderDashboard();
+    expect(r.getByTestId('dashboard-public-balance')).toHaveTextContent('—');
+    expect(r.getByTestId('dashboard-sub-sol')).toHaveTextContent('—');
+    expect(r.getByTestId('dashboard-sub-noc')).toHaveTextContent('—');
+    expect(r.getByTestId('dashboard-public-empty')).toHaveTextContent('Loading balances…');
+    expect(r.queryByText('$150')).toBeNull();
+    expect(r.queryByText(/· 24h/)).toBeNull();
+  });
+
+  it('Review Focus 4: failed → "Balance unavailable · pull to refresh"', async () => {
+    mockSelected.current = EXIT_ACCOUNT;
+    mockPublic.current = {status: 'error'};
+    const r = await renderDashboard();
+    expect(r.getByTestId('dashboard-public-empty')).toHaveTextContent('Balance unavailable · pull to refresh');
+  });
+
+  it('control: ready → the figures show (the same mocks as the other rows)', async () => {
+    const r = await renderDashboard();
+    expect(r.getByTestId('dashboard-public-balance')).toHaveTextContent('$150.00');
+    expect(r.getByTestId('dashboard-sub-sol')).toHaveTextContent('1');
+  });
+
+  it('review I1: a READY non-main dataset is what the dashboard shows — not walletStore\'s figures', async () => {
+    mockSelected.current = EXIT_ACCOUNT;
+    mockPublic.current = {status: 'ready', solBalance: '3000000', nocBalance: '0', tokens: [], tokenBalances: {}, syncedAt: 1};
+    const r = await renderDashboard();
+    expect(r.getByTestId('dashboard-sub-sol')).toHaveTextContent('0.003');
+    expect(r.getByTestId('dashboard-sub-noc')).toHaveTextContent('0');
+    expect(r.getByTestId('dashboard-sub-sol')).not.toHaveTextContent('1'); // walletStore's SOL is 1
+  });
+
+  it('plan A6: forceSync still runs with another account selected (the main slot stays fresh for main-only screens)', async () => {
+    const {forceSync} = jest.requireMock('../../../modules/backgroundSync/backgroundSyncModule') as {forceSync: jest.Mock};
+    mockSelected.current = EXIT_ACCOUNT;
+    await renderDashboard();
+    expect(forceSync).toHaveBeenCalled();
+    expect(mockRefetchPublic).toHaveBeenCalled(); // and the selected account's own data is refreshed with it
+  });
+
+  it('the account list is re-read on focus (an exit that landed appears)', async () => {
+    await renderDashboard();
+    expect(mockRefreshAccounts).toHaveBeenCalled();
+  });
+});
+
+describe('M1d — the Public | Private split inside the balance card (spec §4.5, 2026-11-22 addendum; plan r1-3)', () => {
+  const pub = (r: Awaited<ReturnType<typeof renderDashboard>>) => r.getByTestId('dashboard-split-public');
+  const priv = (r: Awaited<ReturnType<typeof renderDashboard>>) => r.getByTestId('dashboard-split-private');
+
+  // the mocks: public 1 SOL (priced $150) + 2 NOC (unpriced here) → token form; private 0 TEST
+  it('Public mode: Public "2 NOC" / "1 SOL", Private "0 TEST"; the old line is gone; the big figure is unchanged', async () => {
+    const r = await renderDashboard();
+    expect(r.queryByTestId('dashboard-combined-line')).toBeNull();
+    expect(pub(r)).toHaveTextContent('Public2 NOC1 SOL');
+    expect(r.getAllByTestId('dashboard-split-public-line').map(l => l.props.children)).toEqual(['2 NOC', '1 SOL']);
+    expect(priv(r)).toHaveTextContent('Private0 TEST');
+    expect(r.getByTestId('dashboard-public-balance')).toHaveTextContent('$150.00');
+    expect(pub(r).props.accessibilityState).toEqual({selected: true});
+    expect(priv(r).props.accessibilityState).toEqual({selected: false});
+    expect(pub(r).props.accessibilityLabel).toBe('Public, 2 NOC, 1 SOL');
+    expect(priv(r).props.accessibilityLabel).toBe('Private, 0 TEST, switch to Private');
+  });
+
+  it('Private mode: the same split (both modes)', async () => {
+    mockMode.current = 'shielded';
+    mockView.current = {kind: 'ready', unspent: 1_003_800_000n, pending: 0n, notes: 1};
+    const r = await renderDashboard();
+    expect(r.queryByTestId('dashboard-combined-line')).toBeNull();
+    expect(pub(r)).toHaveTextContent('Public2 NOC1 SOL');
+    expect(priv(r)).toHaveTextContent('Private1.0038 TEST');
+    expect(priv(r).props.accessibilityState).toEqual({selected: true});
+    expect(pub(r).props.accessibilityState).toEqual({selected: false});
+  });
+
+  it('Review Focus 2/4: the selected account not loaded → Public "—" (one line); the private restore not ready → Private "—"', async () => {
+    mockSelected.current = EXIT_ACCOUNT;
+    mockPublic.current = {status: 'loading'};
+    let r = await renderDashboard();
+    expect(r.getAllByTestId('dashboard-split-public-line').map(l => l.props.children)).toEqual(['—']);
+    expect(priv(r)).toHaveTextContent('Private0 TEST');
+    mockPublic.current = READY_MAIN;
+    mockView.current = {kind: 'running'};
+    r = await renderDashboard();
+    expect(pub(r)).toHaveTextContent('Public2 NOC1 SOL');
+    expect(r.getAllByTestId('dashboard-split-private-line').map(l => l.props.children)).toEqual(['—']);
+  });
+
+  it.each(['transparent', 'shielded'] as const)('Review Focus 1: hidden balances (%s mode) → "•••" in both columns, one line each, and no digit in either a11y label', async mode => {
+    mockHide.current = true;
+    mockMode.current = mode; // review Task 5 I1: both modes, not only Private
+    mockView.current = {kind: 'ready', unspent: 1_003_800_000n, pending: 0n, notes: 1};
+    const r = await renderDashboard();
+    expect(r.getAllByTestId('dashboard-split-public-line').map(l => l.props.children)).toEqual(['•••']);
+    expect(r.getAllByTestId('dashboard-split-private-line').map(l => l.props.children)).toEqual(['•••']);
+    for (const col of [pub(r), priv(r)]) {
+      expect(col.props.accessibilityLabel).toContain('•••');
+      expect(col.props.accessibilityLabel).not.toMatch(/\d/);
+      expect(col).not.toHaveTextContent(/\d/);
+    }
+  });
+
+  it('I1: only priced assets held and prices known → the USD form, Public "$150.00"', async () => {
+    mockPublic.current = {...READY_MAIN, nocBalance: '0', tokenBalances: {}};
+    const r = await renderDashboard();
+    expect(r.getAllByTestId('dashboard-split-public-line').map(l => l.props.children)).toEqual(['$150.00']);
+    expect(priv(r)).toHaveTextContent('Private0 TEST');
+  });
+
+  it('I1: havePrices false (prices not empty) → the token form, never a USD figure from half-loaded prices', async () => {
+    mockPublic.current = {...READY_MAIN, nocBalance: '0', tokenBalances: {}};
+    mockResolved.current = {prices: {native: {usd: 150, change24h: 1.5}}, havePrices: false};
+    const r = await renderDashboard();
+    expect(r.getAllByTestId('dashboard-split-public-line').map(l => l.props.children)).toEqual(['1 SOL']);
+    expect(priv(r)).toHaveTextContent('Private0 TEST');
+  });
+
+  it('r1-4: each value line fits on one line (shrinks, never wraps)', async () => {
+    const r = await renderDashboard();
+    for (const l of [...r.getAllByTestId('dashboard-split-public-line'), ...r.getAllByTestId('dashboard-split-private-line')]) {
+      expect(l.props.numberOfLines).toBe(1);
+      expect(l.props.adjustsFontSizeToFit).toBe(true);
+      expect(l.props.minimumFontScale).toBe(0.75);
+    }
+  });
+
+  it('a tap on the inactive column switches the mode; a tap on the active one does nothing (Public mode)', async () => {
+    const r = await renderDashboard();
+    fireEvent.press(pub(r));
+    expect(mockSetMode).not.toHaveBeenCalled();
+    fireEvent.press(priv(r));
+    expect(mockSetMode).toHaveBeenCalledTimes(1);
+    expect(mockSetMode).toHaveBeenCalledWith('shielded');
+  });
+
+  it('a tap on the inactive column switches the mode; a tap on the active one does nothing (Private mode)', async () => {
+    mockMode.current = 'shielded';
+    const r = await renderDashboard();
+    fireEvent.press(priv(r));
+    expect(mockSetMode).not.toHaveBeenCalled();
+    fireEvent.press(pub(r));
+    expect(mockSetMode).toHaveBeenCalledTimes(1);
+    expect(mockSetMode).toHaveBeenCalledWith('transparent');
+  });
+
+  it('plan A9: a build without private balances shows no split (and no old line)', async () => {
+    mockFeatures.shielded = false;
+    const r = await renderDashboard();
+    expect(r.queryByTestId('dashboard-split-public')).toBeNull();
+    expect(r.queryByTestId('dashboard-split-private')).toBeNull();
+    expect(r.queryByTestId('dashboard-combined-line')).toBeNull();
+  });
+});
+
+describe('M1d — the numbered avatar opens the Accounts sheet (spec §4.1, D5)', () => {
+  it('the avatar shows the selected account\'s number and says what it does', async () => {
+    mockSelected.current = EXIT_ACCOUNT;
+    const r = await renderDashboard();
+    expect(r.getByTestId('dashboard-avatar')).toHaveTextContent('4');
+    expect(r.getByTestId('dashboard-avatar').props.accessibilityLabel).toBe('Account 4, switch account');
+    mockSelected.current = MAIN_ACCOUNT;
+    expect((await renderDashboard()).getByTestId('dashboard-avatar')).toHaveTextContent('1');
+  });
+
+  it('a tap opens the sheet (re-reading the list) with the selection checked — never Profile', async () => {
+    mockSelected.current = EXIT_ACCOUNT;
+    const r = await renderDashboard();
+    expect(r.queryByTestId('mock-accounts-sheet')).toBeNull();
+    mockRefreshAccounts.mockClear();
+    await act(async () => {
+      fireEvent.press(r.getByTestId('dashboard-avatar'));
+    });
+    expect(r.getByTestId('mock-accounts-sheet')).toBeTruthy();
+    expect(mockRefreshAccounts).toHaveBeenCalled();
+    expect(mockSheetProps[mockSheetProps.length - 1]).toMatchObject({visible: true, selectedScheme: 'slip10:3'});
+  });
+
+  it('selecting a row selects it, closes the sheet and refreshes the dashboard', async () => {
+    const {forceSync} = jest.requireMock('../../../modules/backgroundSync/backgroundSyncModule') as {forceSync: jest.Mock};
+    const r = await renderDashboard();
+    await act(async () => {
+      fireEvent.press(r.getByTestId('dashboard-avatar'));
+    });
+    forceSync.mockClear();
+    await act(async () => {
+      (mockSheetProps[mockSheetProps.length - 1]!.onSelect as (s: string) => void)('slip10:3');
+    });
+    expect(mockSelect).toHaveBeenCalledWith('slip10:3');
+    expect(r.queryByTestId('mock-accounts-sheet')).toBeNull();
+    expect(forceSync).toHaveBeenCalled();
+  });
+
+  it('review r1 m11: a switch does not re-read the account just left (the new one\'s query starts by itself)', async () => {
+    const r = await renderDashboard();
+    await act(async () => {
+      fireEvent.press(r.getByTestId('dashboard-avatar'));
+    });
+    mockRefetchPublic.mockClear();
+    await act(async () => {
+      (mockSheetProps[mockSheetProps.length - 1]!.onSelect as (s: string) => void)('slip10:3');
+    });
+    expect(mockRefetchPublic).not.toHaveBeenCalled();
+  });
+
+  it('review r1 m4: the sheet gets the eye\'s state', async () => {
+    mockHide.current = true;
+    const r = await renderDashboard();
+    await act(async () => {
+      fireEvent.press(r.getByTestId('dashboard-avatar'));
+    });
+    expect(mockSheetProps[mockSheetProps.length - 1]).toMatchObject({hidden: true});
+  });
+
+  it('review r1 m7: an unreadable registry with the encrypted store closed → the store is opened, then the list re-read', async () => {
+    mockListUnreadable.current = true;
+    const r = await renderDashboard();
+    mockRefreshAccounts.mockClear();
+    await act(async () => {
+      fireEvent.press(r.getByTestId('dashboard-avatar'));
+    });
+    expect(mockUnlock).toHaveBeenCalledTimes(1);
+    expect(mockRefreshAccounts).toHaveBeenCalledTimes(2); // on open, and after the store opened
+    mockListUnreadable.current = false;
+    mockUnlock.mockClear();
+    const r2 = await renderDashboard();
+    await act(async () => {
+      fireEvent.press(r2.getByTestId('dashboard-avatar'));
+    });
+    expect(mockUnlock).not.toHaveBeenCalled(); // control: a readable list asks nothing
+  });
+
+  it('Private mode: the same avatar and sheet; the private balance is not keyed on the selection', async () => {
+    mockMode.current = 'shielded';
+    mockView.current = {kind: 'ready', unspent: 200_000_000n, pending: 0n, notes: 1};
+    mockSelected.current = EXIT_ACCOUNT;
+    const r = await renderDashboard();
+    expect(r.getByTestId('dashboard-avatar')).toHaveTextContent('4');
+    expect(r.getByTestId('dashboard-shielded-balance')).toHaveTextContent('0.2 TEST');
+    // review r1 m5: red if the private-balance hook were handed the selected account (it takes no arguments)
+    expect(mockA0Args.length).toBeGreaterThan(0);
+    expect(mockA0Args.every(a => a.length === 0)).toBe(true);
+    await act(async () => {
+      fireEvent.press(r.getByTestId('dashboard-avatar'));
+    });
+    expect(r.getByTestId('mock-accounts-sheet')).toBeTruthy();
+    expect(mockA0Args.every(a => a.length === 0)).toBe(true);
+  });
+
+  it('review r1 m6: an unreadable list with the encrypted store already open asks for no unlock', async () => {
+    mockListUnreadable.current = true;
+    mockSecure.current = {};
+    const r = await renderDashboard();
+    await act(async () => {
+      fireEvent.press(r.getByTestId('dashboard-avatar'));
+    });
+    expect(mockUnlock).not.toHaveBeenCalled();
+  });
+});
+
+describe('M1d review M2 — the pull-to-refresh alert speaks for the account shown', () => {
+  const pull = async (r: Awaited<ReturnType<typeof renderDashboard>>) => {
+    await act(async () => {
+      await (r.UNSAFE_getByType(RefreshControl).props.onRefresh as () => Promise<void>)();
+    });
+  };
+  const failMain = () => (jest.requireMock('../../../modules/backgroundSync/backgroundSyncModule') as {forceSync: jest.Mock}).forceSync.mockResolvedValueOnce({success: false, error: 'boom'});
+
+  it('main selected, main sync fails → the alert (as before)', async () => {
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    const r = await renderDashboard();
+    failMain();
+    await pull(r);
+    expect(alert).toHaveBeenCalledWith('Could not refresh balance', expect.stringContaining('RPC error: boom'));
+    alert.mockRestore();
+  });
+
+  it('a non-main account selected, only MAIN\'s sync fails → no alert (the figures on screen refreshed fine)', async () => {
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    mockSelected.current = EXIT_ACCOUNT;
+    const r = await renderDashboard();
+    failMain();
+    await pull(r);
+    expect(alert).not.toHaveBeenCalled();
+    alert.mockRestore();
+  });
+
+  it('a non-main account selected and ITS read fails → the alert names this account', async () => {
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    mockSelected.current = EXIT_ACCOUNT;
+    const r = await renderDashboard();
+    (mockRefetchPublic as jest.Mock).mockResolvedValueOnce(false);
+    await pull(r);
+    expect(alert).toHaveBeenCalledWith('Could not refresh balance', "This account's balance could not be read. Pull down to try again.");
+    alert.mockRestore();
   });
 });

@@ -5,9 +5,26 @@ import {SwapScreen} from '../SwapScreen';
 
 // ── Module mocks (jest.mock is hoisted above all imports) ─────────────────────
 
+const mockQuote: {current: {outAmount: string} | undefined} = {current: undefined};
 jest.mock('../../../hooks/useSwapQuote', () => ({
-  useSwapQuote: () => ({data: undefined, isLoading: false, isError: false}),
+  useSwapQuote: () => ({data: mockQuote.current, isLoading: false, isError: false}),
 }));
+
+// M1d (spec §4.3): this screen stays on the main account and says so while another account is selected
+const mockLineSelected: {current: {scheme: string; address: string; label: string; isMain: boolean}} = {
+  current: {scheme: 'slip10:0', address: 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk', label: 'Account 1', isMain: true},
+};
+jest.mock('../../../hooks/useSelectedAccount', () => ({
+  useSelectedAccount: () => mockLineSelected.current,
+  useAccountList: () => ({
+    accounts: [{scheme: 'slip10:0', address: 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk', label: 'Account 1', isMain: true}],
+    seed: [],
+    walletKind: 'slip10',
+    unreadable: false,
+  }),
+}));
+const LINE_EXIT = {scheme: 'slip10:3', address: '3YqEpfo3c818GhvbQ1UmVY1nJxw16vtu4JB9peJXT94k', label: 'Account 4', isMain: false};
+const LINE_MAIN = {scheme: 'slip10:0', address: 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk', label: 'Account 1', isMain: true};
 
 jest.mock('../../../store/zustand/walletStore', () => ({
   useWalletStore: () => ({solBalance: '2000000000', nocBalance: '0', tokenBalances: {}, tokens: []}),
@@ -65,5 +82,24 @@ describe('SwapScreen', () => {
       withSafeArea(<SwapScreen onBack={() => {}} onDone={() => {}} />),
     );
     expect(getByText('Swap')).toBeTruthy();
+  });
+
+  it('M1d: another account selected → "From: Account 1 (main)"; main selected → no line', () => {
+    mockLineSelected.current = LINE_EXIT;
+    expect(render(withSafeArea(<SwapScreen onBack={() => {}} onDone={() => {}} />)).getByTestId('swap-main-account')).toHaveTextContent('From: Account 1 (main)');
+    mockLineSelected.current = LINE_MAIN;
+    expect(render(withSafeArea(<SwapScreen onBack={() => {}} onDone={() => {}} />)).queryByTestId('swap-main-account')).toBeNull();
+  });
+
+  it('r1-10: a sub-precision quote reads "<0.0001" with no "≈" in front; a normal one keeps "≈"', () => {
+    mockQuote.current = {outAmount: '1'};
+    const tiny = render(withSafeArea(<SwapScreen onBack={() => {}} onDone={() => {}} />));
+    expect(tiny.getByText('<0.0001')).toBeTruthy();
+    expect(tiny.queryByText('≈ <0.0001')).toBeNull();
+    tiny.unmount();
+    mockQuote.current = {outAmount: '1500000'};
+    const normal = render(withSafeArea(<SwapScreen onBack={() => {}} onDone={() => {}} />));
+    expect(normal.getByText('≈ 1.5')).toBeTruthy();
+    mockQuote.current = undefined;
   });
 });

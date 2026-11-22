@@ -22,6 +22,7 @@ import {mmkvPublic} from '../../store/mmkv/instances';
 import {MMKV_KEYS} from '../../constants/mmkvKeys';
 import {SWAP_TOKENS} from '../../modules/swap/swapTokens';
 import {TokenPickerSheet} from '../../components/TokenPickerSheet';
+import {MainAccountLine} from '../../components/accounts/MainAccountLine';
 
 // ── Lazy imports — wrapped in try/catch so Jest/stub envs don't crash ─────────
 let submitSwap:
@@ -81,6 +82,12 @@ export interface SwapScreenProps {
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
+
+/** "≈ 1.5", but a sub-precision amount reads "<0.0001" — "≈ <0.0001" would say it twice. */
+function quoteOutText(outAmount: string, decimals: number): string {
+  const formatted = formatBalanceForDisplay(outAmount, decimals);
+  return formatted.startsWith('<') ? formatted : `≈ ${formatted}`;
+}
 
 export function SwapScreen({initialFromMint, onBack, onDone}: SwapScreenProps) {
   const {solBalance, tokenBalances} = useWalletStore();
@@ -347,6 +354,9 @@ export function SwapScreen({initialFromMint, onBack, onDone}: SwapScreenProps) {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}>
 
+          {/* M1d (spec §4.3, D1): Swap stays on the main account */}
+          <MainAccountLine variant="from" testID="swap-main-account" className="mb-2" />
+
           {/* ── From card ─────────────────────────────────────────────────── */}
           <View className="bg-bg-surface-1 rounded-2xl p-4 gap-3 mb-2">
             <Text variant="overline" className="text-fg-tertiary">
@@ -429,9 +439,7 @@ export function SwapScreen({initialFromMint, onBack, onDone}: SwapScreenProps) {
                     'text-fg-primary',
                     quote.data ? 'font-geist-semibold' : 'text-fg-tertiary',
                   )}>
-                  {quote.data
-                    ? `≈ ${formatBalanceForDisplay(quote.data.outAmount, to.decimals)}`
-                    : '—'}
+                  {quote.data ? quoteOutText(quote.data.outAmount, to.decimals) : '—'}
                 </Text>
               )}
               {!quote.isLoading ? (

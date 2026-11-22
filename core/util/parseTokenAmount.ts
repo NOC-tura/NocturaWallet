@@ -43,17 +43,17 @@ export function formatBalanceForDisplay(
     return '0';
   }
   if (big === 0n) return '0';
+  // final review m3: a negative amount is the same figure with a sign (never "-1.-4999" or "<0.0001")
+  if (big < 0n) return '-' + formatBalanceForDisplay((-big).toString(), decimals, maxDisplayDecimals);
 
-  // Sub-display threshold: when value < 10^-maxDisplayDecimals, render as
-  // scientific so users see the magnitude. Skip when maxDisplayDecimals===0
-  // (caller asked for integer-only display) or when decimals <= maxDisplay
-  // (no fractional truncation needed).
+  // Sub-display threshold: a non-zero amount below 10^-maxDisplayDecimals reads
+  // "<0.0001" (the wallet convention; never scientific notation). Skip when
+  // maxDisplayDecimals===0 (caller asked for integer-only display) or when
+  // decimals <= maxDisplay (no fractional truncation needed).
   if (maxDisplayDecimals > 0 && decimals > maxDisplayDecimals) {
     const subThreshold = 10n ** BigInt(decimals - maxDisplayDecimals);
-    if (big < subThreshold) {
-      // value < 10^-maxDisplayDecimals — small enough that Number conversion
-      // is lossless for the leading digits we display.
-      return (Number(big) / Math.pow(10, decimals)).toExponential(2);
+    if (big > 0n && big < subThreshold) { // review m1: a negative is never "<0.0001"
+      return '<0.' + '0'.repeat(maxDisplayDecimals - 1) + '1';
     }
   }
 

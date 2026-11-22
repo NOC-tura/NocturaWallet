@@ -1,4 +1,4 @@
-import React, {useState, useCallback, useMemo, useRef} from 'react';
+import React, {useState, useCallback, useEffect, useMemo, useRef} from 'react';
 import {
   View,
   TextInput,
@@ -6,6 +6,7 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
+  AccessibilityInfo,
 } from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {useNavigation} from '@react-navigation/native';
@@ -27,7 +28,10 @@ import {TokenLogo} from '../../components/TokenLogo';
 import {validateRecipientInput} from '../../utils/validateAddress';
 import {getTransferMarkupLamports} from '../../modules/solana/transactionBuilder';
 import {parseTokenAmount, formatTokenAmount} from '../../utils/parseTokenAmount';
-import {useWalletStore} from '../../store/zustand/walletStore';
+import {useAccountList, useRefreshAccounts, useSelectedAccount} from '../../hooks/useSelectedAccount';
+import {NO_PUBLIC_DATA, useAccountPublicData} from '../../hooks/useAccountPublicData';
+import {LINK_TAP_AGAIN, LINK_WARNING_BODY, LINK_WARNING_TITLE, SEND_BALANCE_CHECKING, SEND_BALANCE_RETRY, VALUE_UNKNOWN} from '../../copy/accounts';
+import {linkingWarningApplies} from '../../modules/accounts/linking';
 import {addressBook} from '../../modules/addressBook/addressBookModule';
 import type {Contact} from '../../modules/addressBook/types';
 import {formatAddress} from '../../utils/formatAddress';
@@ -114,7 +118,38 @@ export interface SendScreenProps {
  *   - Bottom-sheet token picker (TokenPickerSheet)
  */
 export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
-  const {solBalance, nocBalance, tokens: storeTokens, tokenBalances} = useWalletStore();
+  // M1d (spec §3.3, Review Focus 2): the source is the account selected when #12 OPENS — captured
+  // once; a later selection change never moves this Send. Its balances are that account's own.
+  const liveSelected = useSelectedAccount();
+  const [source, setSource] = useState(liveSelected);
+  // review m2: an account not known yet on the first render is captured when it first resolves —
+  // only a null source is ever replaced, so a captured one never moves
+  useEffect(() => {
+    if (source === null && liveSelected !== null) {
+      setSource(liveSelected);
+    }
+  }, [source, liveSelected]);
+  // review r1 m6: re-read the registry once as #12 opens — a reservation made since is in the seed set
+  const refreshAccountList = useRefreshAccounts();
+  useEffect(() => {
+    refreshAccountList();
+  }, [refreshAccountList]);
+  const {data: publicData, refetch: refetchPublic} = useAccountPublicData(source);
+  const publicReady = publicData.status === 'ready';
+  // owner 2A (2026-11-22): a failed read shows "tap to retry", never a figure; one read in flight at a time
+  // (review 2A m2: the row says "Checking balance…" while it runs, so a tap is never silent)
+  const retryingRef = useRef(false);
+  const [retrying, setRetrying] = useState(false);
+  const retryPublic = useCallback(() => {
+    if (retryingRef.current) return;
+    retryingRef.current = true;
+    setRetrying(true);
+    refetchPublic().finally(() => {
+      retryingRef.current = false;
+      setRetrying(false);
+    });
+  }, [refetchPublic]);
+  const {solBalance, nocBalance, tokens: storeTokens, tokenBalances} = publicData.status === 'ready' ? publicData : NO_PUBLIC_DATA;
   const rootNav = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
   // Default token list: ALWAYS include SOL + NOC even if not in the dynamic
@@ -173,7 +208,26 @@ export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
     }
   }, [selectedMint, solBalance, tokenBalances]);
 
+  // M1d (spec §4.4, M1 spec §10 C2): both ends accounts of this seed, different, one an exit (or a
+  // pending exit, plan A2) → the warning, and the CTA needs a second tap. Local only, no request.
+  const accountList = useAccountList();
+  const [linkAck, setLinkAck] = useState(false);
+  const recipientAddress = useMemo(() => {
+    if (!recipient.trim()) return null;
+    const v = validateRecipientInput(recipient);
+    return v.type === 'solana' || v.type === 'solana_pay' ? (v.address ?? null) : null;
+  }, [recipient]);
+  const linkWarn =
+    source !== null && accountList !== null && linkingWarningApplies(accountList.seed, source.address, recipientAddress);
+  const handleAmountChange = useCallback((text: string) => {
+    setAmount(text);
+    setLinkAck(false);
+  }, []);
+
   const handleMaxAmount = useCallback(() => {
+    // review 2A I1: an unknown balance (loading, failed) never fills the amount with a made-up 0
+    if (!publicReady) return;
+    setLinkAck(false);
     if (selectedMint === SOL_MINT) {
       const available = selectedBalance - getTotalNetworkFee(priorityLevel);
       const safeAmount = available > 0n ? available : 0n;
@@ -181,10 +235,11 @@ export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
     } else {
       setAmount(formatTokenAmount(selectedBalance, selectedToken.decimals));
     }
-  }, [selectedMint, selectedBalance, selectedToken.decimals, priorityLevel]);
+  }, [publicReady, selectedMint, selectedBalance, selectedToken.decimals, priorityLevel]);
 
   const handleRecipientChange = useCallback(
     (text: string) => {
+      setLinkAck(false);
       setRecipient(text);
       if (recipientError) setRecipientError('');
       if (text.trim().length >= 1) {
@@ -202,6 +257,7 @@ export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
   );
 
   const handleSelectSuggestion = useCallback((contact: Contact) => {
+    setLinkAck(false);
     setRecipient(contact.address);
     setSuggestions([]);
     setRecipientError('');
@@ -220,6 +276,7 @@ export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
     } else {
       setRecipientError('');
       if (result.type === 'solana_pay' && result.address) {
+        setLinkAck(false);
         setRecipient(result.address);
         if (result.amount) setAmount(result.amount);
       }
@@ -236,6 +293,7 @@ export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
   }, [handleRecipientChange]);
 
   const handleClearRecipient = useCallback(() => {
+    setLinkAck(false);
     setRecipient('');
     setRecipientError('');
     setSuggestions([]);
@@ -256,7 +314,8 @@ export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
 
   // Insufficient balance check
   const insufficientBalance = useMemo(() => {
-    if (!amount.trim()) return false;
+    // review 2A I1: "short by" is computed only from a balance that was actually read
+    if (!publicReady || !amount.trim()) return false;
     try {
       const parsed = parseTokenAmount(amount, selectedToken.decimals);
       if (parsed <= 0n) return false;
@@ -267,7 +326,7 @@ export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
     } catch {
       return false;
     }
-  }, [amount, selectedToken.decimals, selectedMint, selectedBalance, priorityLevel]);
+  }, [publicReady, amount, selectedToken.decimals, selectedMint, selectedBalance, priorityLevel]);
 
   const shortBy = useMemo<bigint>(() => {
     if (!insufficientBalance) return 0n;
@@ -284,6 +343,7 @@ export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
   }, [amount, insufficientBalance, selectedMint, selectedToken.decimals, selectedBalance, priorityLevel]);
 
   const canReview = useMemo(() => {
+    if (source === null || !publicReady) return false;
     if (!recipient.trim() || !amount.trim()) return false;
     if (insufficientBalance) return false;
     const validation = validateRecipientInput(recipient);
@@ -301,13 +361,22 @@ export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
       return false;
     }
     return true;
-  }, [recipient, amount, selectedToken.decimals, insufficientBalance]);
+  }, [source, publicReady, recipient, amount, selectedToken.decimals, insufficientBalance]);
 
   const handleReview = useCallback(() => {
     const now = Date.now();
     if (now - lastTapRef.current < 500) return;
     lastTapRef.current = now;
-    if (!canReview) return;
+    if (!canReview || source === null) return;
+    // M1d (spec §4.4): the first tap only acknowledges the warning; the second one goes on to #19
+    if (linkWarn && !linkAck) {
+      setLinkAck(true);
+      // re-review N2: announced once, here — a live region on the CTA would read every amount keystroke
+      AccessibilityInfo.announceForAccessibility(LINK_TAP_AGAIN);
+      return;
+    }
+    // review M1: #12 stays mounted under #19 — every later attempt needs its own second tap
+    setLinkAck(false);
     onReview({
       mode: 'transparent',
       recipient,
@@ -317,8 +386,10 @@ export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
       decimals: selectedToken.decimals,
       priorityLevel,
       createAta: selectedMint !== SOL_MINT,
+      from: {scheme: source.scheme, address: source.address, label: source.label, isMain: source.isMain},
+      sourceBalances: {solBalance, tokenBalances},
     });
-  }, [canReview, recipient, amount, selectedMint, selectedToken.symbol, selectedToken.decimals, priorityLevel, onReview]);
+  }, [canReview, linkWarn, linkAck, source, recipient, amount, selectedMint, selectedToken.symbol, selectedToken.decimals, priorityLevel, onReview, solBalance, tokenBalances]);
 
   const networkFeeDisplay = useMemo(() => {
     const feeSOL = formatTokenAmount(getTotalNetworkFee(priorityLevel), SOL_DECIMALS);
@@ -478,6 +549,24 @@ export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
             ) : null}
           </View>
 
+          {linkWarn ? (
+            <View
+              className="rounded-md p-4 mb-4 bg-[rgba(242,181,59,0.10)] border-l-2 border-l-warning"
+              testID="send-link-warning"
+              accessibilityRole="alert"
+              accessibilityLiveRegion="polite">
+              <View className="flex-row items-center gap-2 mb-1">
+                <AlertTriangle size={14} color="#F2B53B" strokeWidth={2} />
+                <Text variant="body-sm" className="font-geist-semibold text-warning flex-1">
+                  {LINK_WARNING_TITLE}
+                </Text>
+              </View>
+              <Text variant="body-sm" className="text-fg-secondary">
+                {LINK_WARNING_BODY}
+              </Text>
+            </View>
+          ) : null}
+
           {/* Amount */}
           <View className="mb-4">
             <Text
@@ -495,7 +584,7 @@ export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
                 <TextInput
                   testID="amount-input"
                   value={amount}
-                  onChangeText={setAmount}
+                  onChangeText={handleAmountChange}
                   placeholder="0.000000"
                   placeholderTextColor="#6E727A"
                   keyboardType="decimal-pad"
@@ -507,10 +596,15 @@ export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
                 />
                 <Pressable
                   onPress={handleMaxAmount}
+                  disabled={!publicReady}
                   accessibilityRole="button"
                   accessibilityLabel="Max"
+                  accessibilityState={{disabled: !publicReady}}
                   testID="max-button"
-                  className="px-3 py-1.5 rounded-pill bg-accent-transparent-tint active:opacity-80">
+                  className={cn(
+                    'px-3 py-1.5 rounded-pill bg-accent-transparent-tint active:opacity-80',
+                    !publicReady && 'opacity-40', // review 2A re-review m1: a disabled MAX looks disabled
+                  )}>
                   <Text
                     variant="overline"
                     className="text-accent-transparent">
@@ -518,14 +612,29 @@ export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
                   </Text>
                 </Pressable>
               </View>
-              <View className="flex-row items-center mt-2">
-                <Text variant="body-sm" className="text-fg-secondary">
-                  Available{' '}
-                </Text>
-                <Text variant="body-sm" numeral className="font-geist-semibold text-fg-primary">
-                  {formatTokenAmount(selectedBalance, selectedToken.decimals)} {selectedToken.symbol}
-                </Text>
-              </View>
+              {publicData.status === 'error' ? (
+                <Pressable
+                  onPress={retryPublic}
+                  disabled={retrying}
+                  accessibilityRole="button"
+                  accessibilityState={{disabled: retrying, busy: retrying}}
+                  testID="send-balance-retry"
+                  className="flex-row items-center mt-2"
+                  hitSlop={8}>
+                  <Text variant="body-sm" className="text-fg-secondary">
+                    {retrying ? SEND_BALANCE_CHECKING : SEND_BALANCE_RETRY}
+                  </Text>
+                </Pressable>
+              ) : (
+                <View className="flex-row items-center mt-2">
+                  <Text variant="body-sm" className="text-fg-secondary">
+                    Available{' '}
+                  </Text>
+                  <Text variant="body-sm" numeral className="font-geist-semibold text-fg-primary" testID="send-available">
+                    {publicReady ? formatTokenAmount(selectedBalance, selectedToken.decimals) : VALUE_UNKNOWN} {selectedToken.symbol}
+                  </Text>
+                </View>
+              )}
             </View>
             {insufficientBalance ? (
               <View className="flex-row items-center gap-2 mt-2">
@@ -605,7 +714,7 @@ export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
             disabled={!canReview}
             accessibilityRole="button"
             testID="review-button"
-            accessibilityLabel={`Send ${selectedToken.symbol}`}
+            accessibilityLabel={linkWarn && linkAck ? LINK_TAP_AGAIN : `Send ${selectedToken.symbol}`}
             className={cn(
               'min-h-touch-rec rounded-pill items-center justify-center flex-row gap-2',
               canReview ? 'bg-accent-transparent active:opacity-90' : 'bg-bg-surface-3',
@@ -623,9 +732,11 @@ export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
                 'font-geist-semibold',
                 canReview ? 'text-bg-base' : 'text-fg-disabled',
               )}>
-              {amount.trim() && canReview
-                ? `Send ${amount} ${selectedToken.symbol}`
-                : `Send ${selectedToken.symbol}`}
+              {linkWarn && linkAck
+                ? LINK_TAP_AGAIN
+                : amount.trim() && canReview
+                  ? `Send ${amount} ${selectedToken.symbol}`
+                  : `Send ${selectedToken.symbol}`}
             </Text>
           </Pressable>
         </View>
@@ -640,6 +751,7 @@ export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
         onSelect={mint => {
           setSelectedMint(mint);
           setAmount('');
+          setLinkAck(false);
           setPickerVisible(false);
         }}
         onClose={() => setPickerVisible(false)}

@@ -53,6 +53,13 @@ const EXTRA_COPY = [
   path.join(ROOT, 'src/screens/portfolio/PortfolioScreen.tsx'),
   path.join(ROOT, 'src/constants/errors.ts'),
   path.join(ROOT, 'src/modules/geoFence/geoFenceModule.ts'),
+  // M1d: the accounts copy and the account labels ("Account N") — outside src/screens and src/components
+  path.join(ROOT, 'src/copy/accounts.ts'),
+  path.join(ROOT, 'src/modules/accounts/accountList.ts'),
+  // M1d (review r1 I2): the signer refusal #21 shows as it is
+  path.join(ROOT, 'src/modules/solana/sendTransaction.ts'),
+  // M1d (review r1 I2): the balance-card split's and the sheet rows' formatter
+  path.join(ROOT, 'src/modules/accounts/valueLine.ts'),
 ];
 
 /**
@@ -124,6 +131,12 @@ describe('shielded screens make no unsupported privacy claim', () => {
         'src/screens/staking/StakingScreen.tsx',
         // part B Task 7: the import's account choice is new copy
         'src/screens/onboarding/SelectAccountScreen.tsx',
+        // M1d: the accounts copy module and the label module are in scope
+        'src/copy/accounts.ts',
+        'src/modules/accounts/accountList.ts',
+        // M1d (review r1 I2): the signer refusal #21 shows as it is
+        'src/modules/solana/sendTransaction.ts',
+        'src/modules/accounts/valueLine.ts',
       ]),
     );
     // part B Task 7 carry: each file is read once (EXTRA_COPY overlaps the walked directories)

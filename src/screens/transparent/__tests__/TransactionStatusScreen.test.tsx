@@ -59,10 +59,12 @@ jest.mock('../../../store/mmkv/instances', () => ({
   mmkvSecure: jest.fn().mockReturnValue(null),
   initSecureMmkv: jest.fn(),
   onSecureMmkvReady: jest.fn(),
+  onSecureMmkvReset: jest.fn(), // M1d: the shared query client registers its reset hook on import
 }));
 
 // Import after mocks so the lazy require() block sees mocked modules.
 import {TransactionStatusScreen} from '../TransactionStatusScreen';
+import {queryClient} from '../../../app/queryClient';
 import {submitTransparentTransfer} from '../../../modules/solana/sendTransaction';
 
 const mockSubmit = jest.mocked(submitTransparentTransfer);
@@ -90,6 +92,8 @@ const intent = {
   decimals: 9,
   priorityLevel: 'normal' as const,
   createAta: false,
+  from: {scheme: 'slip10:0', address: 'So11111111111111111111111111111111111111112', label: 'Account 1', isMain: true}, // M1d: #21 signs from the intent's source (was loadTransparentScheme())
+  sourceBalances: {solBalance: '1000000000', tokenBalances: {}}, // M1d: part of the intent (unused by #21)
 };
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -231,5 +235,83 @@ describe('the chain the status names and links (S13)', () => {
     });
     fireEvent.press(getByTestId('tx-status-details'));
     expect(openURL).toHaveBeenCalledWith('https://solscan.io/tx/S');
+  });
+});
+
+describe('M1d — #21 signs from the intent\'s source (spec §3.3)', () => {
+  const A3 = '3YqEpfo3c818GhvbQ1UmVY1nJxw16vtu4JB9peJXT94k';
+  const render21 = (i: typeof intent) =>
+    render(withSafeArea(<TransactionStatusScreen intent={i} onDashboard={jest.fn()} onViewDetails={jest.fn()} />));
+
+  it('the scheme parsed from the intent and the expected signer = the source address', async () => {
+    mockSubmit.mockResolvedValueOnce({signature: 'S', lastValidBlockHeight: 1000});
+    render21({...intent, from: {scheme: 'slip10:3', address: A3, label: 'Account 4', isMain: false}});
+    await waitFor(() => expect(mockSubmit).toHaveBeenCalled());
+    expect(mockSubmit).toHaveBeenCalledWith(expect.objectContaining({scheme: {kind: 'slip10', account: 3}, expectedSigner: A3}));
+  });
+
+  it('Review Focus 2: the signer refusal is shown with its code (nothing was signed)', async () => {
+    // M1d: the real error class (the module is mocked above), so the code the screen keys on is the producer's own
+    const {SendSignerMismatchError} = jest.requireActual('../../../modules/solana/sendTransaction') as typeof import('../../../modules/solana/sendTransaction');
+    mockSubmit.mockRejectedValueOnce(new SendSignerMismatchError(A3));
+    const r = render21({...intent, from: {scheme: 'slip10:3', address: A3, label: 'Account 4', isMain: false}});
+    await waitFor(() => expect(r.getByText(/E_SEND_SIGNER_MISMATCH/)).toBeTruthy());
+    expect(r.getByText('Transaction failed')).toBeTruthy();
+    // review m1: the same key would refuse again — Done only, no Retry (the generic failure row above keeps its Retry)
+    expect(r.queryByTestId('tx-status-retry')).toBeNull();
+    expect(r.getByTestId('tx-status-done')).toBeTruthy();
+  });
+
+  it('re-review n1: the no-Retry rule keys on the code, not the text — a coded error with a reworded message has no Retry; the same text without a code keeps it', async () => {
+    const coded = Object.assign(new Error('the account key is not the one expected'), {code: 'E_SEND_SIGNER_MISMATCH'});
+    mockSubmit.mockRejectedValueOnce(coded);
+    const a = render21({...intent, from: {scheme: 'slip10:3', address: A3, label: 'Account 4', isMain: false}});
+    await waitFor(() => expect(a.getByText(/not the one expected/)).toBeTruthy());
+    expect(a.queryByTestId('tx-status-retry')).toBeNull();
+    a.unmount();
+    mockSubmit.mockRejectedValueOnce(new Error('E_SEND_SIGNER_MISMATCH: text only, no code'));
+    const b = render21({...intent, from: {scheme: 'slip10:3', address: A3, label: 'Account 4', isMain: false}});
+    await waitFor(() => expect(b.getByText(/text only, no code/)).toBeTruthy());
+    expect(b.getByTestId('tx-status-retry')).toBeTruthy();
+  });
+
+  it('review I1: a token from a non-main intent → the SPL branch carries the source\'s scheme and expected signer', async () => {
+    mockSubmit.mockResolvedValueOnce({signature: 'S', lastValidBlockHeight: 1000});
+    render21({
+      ...intent,
+      tokenMint: 'ERkpCFGaoWmeZPhKTUHumrqHTP1QmyHVhMJUnxbRPKCs',
+      tokenSymbol: 'TEST',
+      from: {scheme: 'slip10:3', address: A3, label: 'Account 4', isMain: false},
+    });
+    await waitFor(() => expect(mockSubmit).toHaveBeenCalled());
+    expect(mockSubmit).toHaveBeenCalledWith(expect.objectContaining({kind: 'spl', scheme: {kind: 'slip10', account: 3}, expectedSigner: A3}));
+  });
+
+  it('plan A16: a scheme that does not parse strictly → E_SEND_SCHEME, the keychain never asked', async () => {
+    const r = render21({...intent, from: {scheme: 'slip10:01', address: A3, label: 'Account 2', isMain: false}});
+    await waitFor(() => expect(r.getByText(/E_SEND_SCHEME/)).toBeTruthy());
+    expect(mockSubmit).not.toHaveBeenCalled();
+    expect(r.queryByTestId('tx-status-retry')).toBeNull(); // review m1: not retryable
+  });
+});
+
+describe('M1d review M1 — the source account is re-read after a confirmed send', () => {
+  it('success invalidates the source\'s accountSnapshot and txHistory entries', async () => {
+    const spy = jest.spyOn(queryClient, 'invalidateQueries');
+    const from = {scheme: 'slip10:3', address: '3YqEpfo3c818GhvbQ1UmVY1nJxw16vtu4JB9peJXT94k', label: 'Account 4', isMain: false};
+    const r = render(withSafeArea(<TransactionStatusScreen intent={{...intent, from}} onDashboard={jest.fn()} onViewDetails={jest.fn()} />));
+    await waitFor(() => expect(r.getByTestId('tx-status-done')).toBeTruthy());
+    expect(spy).toHaveBeenCalledWith({queryKey: ['accountSnapshot', from.address]});
+    expect(spy).toHaveBeenCalledWith({queryKey: ['txHistory', from.address]});
+    spy.mockRestore();
+  });
+
+  it('a failed send invalidates nothing', async () => {
+    const spy = jest.spyOn(queryClient, 'invalidateQueries');
+    mockSubmit.mockRejectedValueOnce(new Error('boom'));
+    const r = render(withSafeArea(<TransactionStatusScreen intent={intent} onDashboard={jest.fn()} onViewDetails={jest.fn()} />));
+    await waitFor(() => expect(r.getByTestId('tx-status-retry')).toBeTruthy());
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
   });
 });

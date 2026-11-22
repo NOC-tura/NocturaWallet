@@ -14,6 +14,7 @@ import {SafeAreaView} from 'react-native-safe-area-context';
 import {useFocusEffect} from '@react-navigation/native';
 import {
   Bell,
+  History,
   ScanLine,
   Eye,
   EyeOff,
@@ -29,6 +30,10 @@ import {
 } from 'lucide-react-native';
 import {Text} from '../../components/ui';
 import {useWalletStore} from '../../store/zustand/walletStore';
+import {useAccountList, useRefreshAccounts, useSelectAccount, useSelectedAccount} from '../../hooks/useSelectedAccount';
+import {NO_PUBLIC_DATA, useAccountPublicData} from '../../hooks/useAccountPublicData';
+import {ACCOUNTS_TITLE, HISTORY_A11Y, PUBLIC_LOADING, REFRESH_ACCOUNT_FAILED, REFRESH_FAILED_TITLE, PUBLIC_UNAVAILABLE, SPLIT_PRIVATE, SPLIT_PUBLIC, VALUE_UNKNOWN, avatarA11y, splitA11y} from '../../copy/accounts';
+import {AccountsSheet} from '../../components/accounts/AccountsSheet';
 import {useShieldedStore} from '../../store/zustand/shieldedStore';
 import {usePublicSettingsStore} from '../../store/zustand/publicSettingsStore';
 import {useNetworkStatus} from '../../hooks/useNetworkStatus';
@@ -37,6 +42,7 @@ import {forceSync} from '../../modules/backgroundSync/backgroundSyncModule';
 import {TokenManager} from '../../modules/tokens/tokenModule';
 import {NOC_MINT} from '../../constants/programs';
 import {isShieldedEnabled} from '../../constants/features';
+import {privateSide, publicSide, splitValue, type SplitValue} from '../../modules/accounts/valueLine';
 import {CHAIN} from '../../constants/chain';
 import {formatBalanceForDisplay} from '../../utils/parseTokenAmount';
 import {mmkvPublic} from '../../store/mmkv/instances';
@@ -67,6 +73,7 @@ import {
   MODE_PUBLIC,
   PRIVATE_ASSETS,
   PRIVATE_BALANCE,
+  PUBLIC_BALANCE,
   PRIVATE_CARD_BODY,
   PRIVATE_SUFFIX,
 } from '../../copy/modes';
@@ -76,15 +83,18 @@ import {
  * #11 Dashboard — Phase B migration · mirror /home/user/Downloads/index.html §s11
  *
  * Sections:
- *   - Top row · avatar (initial) + bell + scan
+ *   - Top row · avatar (the selected account's number) + history + bell + scan
  *   - Mode toggle · Public / Private segmented pill
- *   - Balance hero · overline, eye toggle, balance + cents, change line, sub-balance
+ *   - Balance hero · overline, eye toggle, balance + cents, change line, sub-balance, and (only
+ *     where private balances exist) the Public | Private split row at the card's bottom: each
+ *     side's value, never summed, "—" unknown, "•••" hidden; a tap on the other column switches
+ *     the mode (owner 2026-11-22: it replaced M1d D3's thin line under the toggle)
  *   - Quick actions · Send · Receive · Swap|Make private · Buy (4-button grid)
  *   - Tokens section · header + token rows
  *   - Banner · presale (Public) or the Private balance card (Private)
  *
  * Mode-aware:
- *   - Public: violet accents, "Total balance" eyebrow, Swap action, presale banner
+ *   - Public: violet accents, "Public balance" eyebrow (the selected account's public figure, not a total), Swap action, presale banner
  *   - Private: mint accents, "Private balance" eyebrow, Make private action,
  *     Private balance card, "· private" tag on rows
  *   - Private, DEPARTURE (owner-approved 2026-11-20, UX-A 7): a "Make public" action (the eye of
@@ -118,7 +128,7 @@ interface DashboardScreenProps {
   onBuy?: () => void;
   onScan?: () => void;
   onNotifications?: () => void;
-  onProfileTap?: () => void;
+  onHistory?: () => void;
   onPresale?: () => void;
   onFirstShieldedToggle?: () => void;
   onTokenTap?: (mint: string) => void;
@@ -142,14 +152,20 @@ export function DashboardScreen({
   onBuy,
   onScan,
   onNotifications,
-  onProfileTap,
+  onHistory,
   onPresale,
   onFirstShieldedToggle,
   onTokenTap,
   onSeeAllTokens,
 }: DashboardScreenProps) {
-  const {publicKey, solBalance, nocBalance, tokens, tokenBalances} =
-    useWalletStore();
+  // M1d (spec §3.4, D1/D2, plan A6): walletStore.publicKey stays the MAIN account and forceSync keeps
+  // writing its slot (every main-only screen reads it); Public mode shows the SELECTED account's data.
+  const {publicKey} = useWalletStore();
+  const selected = useSelectedAccount();
+  const refreshAccountList = useRefreshAccounts();
+  const {data: publicData, refetch: refetchPublic} = useAccountPublicData(selected);
+  const publicReady = publicData.status === 'ready';
+  const {solBalance, nocBalance, tokens, tokenBalances} = publicData.status === 'ready' ? publicData : NO_PUBLIC_DATA;
 
   const {prices, havePrices} = useResolvedPrices();
   const {isPaused: presalePaused} = usePresaleSync();
@@ -173,19 +189,34 @@ export function DashboardScreen({
   // Single sync entry point so mount, AppState, polling, and pull-to-refresh
   // share one in-flight guard (avoids hammering the RPC if several triggers
   // fire close together — common with public devnet RPC rate limits).
-  const runSync = useCallback(async (opts: {showErrors: boolean}) => {
+  // M1d: the selected account's own data refreshes on every sync trigger too (a no-op for main)
+  const refetchPublicRef = useRef(refetchPublic);
+  refetchPublicRef.current = refetchPublic;
+  const selectedIsMainRef = useRef(true);
+  selectedIsMainRef.current = selected === null || selected.isMain;
+  const runSync = useCallback(async (opts: {showErrors: boolean; refetchSelected?: boolean}) => {
     if (syncingRef.current) return;
     syncingRef.current = true;
     try {
+      // M1d (review r1 m11): the selected account's own read runs alongside the main account's
+      // forceSync and is awaited too, so pull-to-refresh ends after BOTH; a switch passes
+      // refetchSelected: false (the new account's query starts by itself, the old one is not read again)
+      const selectedRead = opts.refetchSelected === false ? Promise.resolve(true) : refetchPublicRef.current();
       const result = await forceSync();
-      if (!result.success && opts.showErrors) {
+      // M1d review M2: the alert speaks for the account SHOWN — main's sync result while main is selected,
+      // the selected account's own read otherwise (main's failure is not what the figures on screen are)
+      const mainShown = selectedIsMainRef.current;
+      if (!mainShown && opts.showErrors && (await selectedRead) === false) {
+        Alert.alert(REFRESH_FAILED_TITLE, REFRESH_ACCOUNT_FAILED);
+      } else if (mainShown && !result.success && opts.showErrors) {
         Alert.alert(
-          'Could not refresh balance',
+          REFRESH_FAILED_TITLE,
           result.error
             ? `RPC error: ${result.error}\n\nIf the funds are visible on a block explorer but not here, the bundle may be pointing at the wrong cluster.`
             : 'Unknown error. Try again in a moment.',
         );
       }
+      await selectedRead;
     } finally {
       syncingRef.current = false;
     }
@@ -199,6 +230,37 @@ export function DashboardScreen({
       setRefreshing(false);
     }
   }, [runSync]);
+
+  // M1d (spec §4.1, D5): the avatar opens the Accounts sheet — never Profile (it stays on its tab)
+  const accountList = useAccountList();
+  const selectAccountScheme = useSelectAccount();
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const openAccounts = useCallback(() => {
+    refreshAccountList();
+    setSheetOpen(true);
+    // review r1 m7: unreadable because the encrypted store is closed -> open it (biometric), then re-read
+    if (accountList?.unreadable && mmkvSecure() === null) {
+      unlockSecureStorage()
+        .then(() => refreshAccountList())
+        .catch(() => undefined);
+    }
+  }, [refreshAccountList, accountList]);
+  const handleSelectAccount = useCallback(
+    (scheme: string) => {
+      selectAccountScheme(scheme);
+      setSheetOpen(false);
+      // review r1 m11: the main account's sync only - the newly selected account's query starts by itself
+      runSync({showErrors: false, refetchSelected: false});
+    },
+    [selectAccountScheme, runSync],
+  );
+
+  // M1d: re-read the account list on focus — an exit that landed since appears, a wiped selection falls back
+  useFocusEffect(
+    useCallback(() => {
+      refreshAccountList();
+    }, [refreshAccountList]),
+  );
 
   // 1. Sync once on mount (cold start / login → see latest balance immediately).
   // 2. Sync whenever the app returns to foreground (user funded the wallet from
@@ -321,10 +383,18 @@ export function DashboardScreen({
     return () => { alive = false; };
   }, []));
 
+  // M1d (spec §4.5 + 2026-11-22 addendum, D2/D4, plan A9): the split row — the selected account's public
+  // value and the wallet's private balance, never summed, "—" for an unknown side, "•••" hidden; only
+  // where private balances exist
+  const split = isShieldedEnabled()
+    ? splitValue(publicSide(publicData), privateSide(a0View), havePrices ? prices : null, hideBalances)
+    : null;
+
   const isShielded = mode === 'shielded';
   const usd = formatUsd(portfolio.totalUsd);
-  const change24h = portfolio.change24hPct; // number | null (transparent only)
-  const avatarInitial = getAddressInitial(publicKey);
+  const change24h = publicReady ? portfolio.change24hPct : null; // number | null (transparent only); M1d: none before the data is known
+  const avatarText = selected ? String(selected.number) : getAddressInitial(publicKey);
+  const avatarLabel = selected ? avatarA11y(selected.label) : ACCOUNTS_TITLE;
 
   return (
     <SafeAreaView
@@ -334,7 +404,7 @@ export function DashboardScreen({
       <StatusBar barStyle="light-content" backgroundColor="#0A0A0A" />
 
       <FlatList
-        data={isShielded ? ([] as typeof displayTokens) : displayTokens}
+        data={isShielded || !publicReady ? ([] as typeof displayTokens) : displayTokens}
         keyExtractor={item => item.mint}
         showsVerticalScrollIndicator={false}
         refreshControl={
@@ -349,7 +419,9 @@ export function DashboardScreen({
         ListHeaderComponent={
           <DashboardHeader
             mode={mode}
-            avatarInitial={avatarInitial}
+            avatarText={avatarText}
+            avatarLabel={avatarLabel}
+            onAvatarPress={openAccounts}
             usd={usd}
             solBalance={solBalance}
             nocBalance={nocBalance}
@@ -364,10 +436,12 @@ export function DashboardScreen({
             onBuy={onBuy}
             onScan={onScan}
             onNotifications={onNotifications}
-            onProfileTap={onProfileTap}
+            onHistory={onHistory}
             isOffline={!isOnline}
             change24hPct={change24h}
             havePrices={havePrices}
+            publicReady={publicReady}
+            split={split}
             anonymitySet={anon}
             shieldedView={a0View}
           />
@@ -403,8 +477,12 @@ export function DashboardScreen({
             <ShieldedAssetsSection view={a0View} hidden={hideBalances} checkAgain={a0CheckAgain} refusal={a0Refusal ?? null} />
           ) : (
             <View className="px-5 py-8">
-              <Text variant="body-sm" className="text-fg-tertiary text-center">
-                No tokens yet · pull to refresh
+              <Text variant="body-sm" className="text-fg-tertiary text-center" testID="dashboard-public-empty">
+                {publicData.status === 'loading'
+                  ? PUBLIC_LOADING
+                  : publicData.status === 'error'
+                    ? PUBLIC_UNAVAILABLE
+                    : 'No tokens yet · pull to refresh'}
               </Text>
             </View>
           )
@@ -418,6 +496,16 @@ export function DashboardScreen({
           />
         }
       />
+      {sheetOpen && accountList && selected ? (
+        <AccountsSheet
+          visible
+          list={accountList}
+          selectedScheme={selected.scheme}
+          hidden={hideBalances}
+          onSelect={handleSelectAccount}
+          onClose={() => setSheetOpen(false)}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -426,7 +514,11 @@ export function DashboardScreen({
 
 interface DashboardHeaderProps {
   mode: 'transparent' | 'shielded';
-  avatarInitial: string;
+  /** M1d: the selected account's number ("4") */
+  avatarText: string;
+  /** M1d: "Account 4, switch account" */
+  avatarLabel: string;
+  onAvatarPress: () => void;
   usd: {whole: string; cents: string};
   solBalance: string;
   nocBalance: string;
@@ -441,10 +533,14 @@ interface DashboardHeaderProps {
   onBuy?: () => void;
   onScan?: () => void;
   onNotifications?: () => void;
-  onProfileTap?: () => void;
+  onHistory?: () => void;
   isOffline: boolean;
   change24hPct: number | null;
   havePrices: boolean;
+  /** M1d (Review Focus 4): the selected account's public data is known — every public figure waits for it */
+  publicReady: boolean;
+  /** M1d (spec §4.5, 2026-11-22 addendum): the split row's two columns, or null where the build has no private balances */
+  split: SplitValue | null;
   /** Live on-chain anonymity set leaf count; null while loading or on RPC error. */
   anonymitySet: number | null;
   /** The A0 shielded balance view (shielded mode's hero). */
@@ -453,7 +549,9 @@ interface DashboardHeaderProps {
 
 function DashboardHeader({
   mode,
-  avatarInitial,
+  avatarText,
+  avatarLabel,
+  onAvatarPress,
   usd,
   solBalance,
   nocBalance,
@@ -468,10 +566,12 @@ function DashboardHeader({
   onBuy,
   onScan,
   onNotifications,
-  onProfileTap,
+  onHistory,
   isOffline,
   change24hPct,
   havePrices,
+  publicReady,
+  split,
   anonymitySet,
   shieldedView,
 }: DashboardHeaderProps) {
@@ -482,9 +582,10 @@ function DashboardHeader({
       {/* Top row · avatar + bell + scan */}
       <View className="flex-row items-center justify-between px-5 pt-2 pb-3">
         <Pressable
-          onPress={onProfileTap}
+          onPress={onAvatarPress}
           accessibilityRole="button"
-          accessibilityLabel="Profile"
+          accessibilityLabel={avatarLabel}
+          testID="dashboard-avatar"
           className="w-10 h-10 rounded-pill bg-bg-surface-2 items-center justify-center active:opacity-80">
           <Text
             variant="body-lg"
@@ -492,7 +593,7 @@ function DashboardHeader({
               'font-geist-semibold',
               isShielded ? 'text-accent-shielded' : 'text-accent-transparent',
             )}>
-            {avatarInitial}
+            {avatarText}
           </Text>
         </Pressable>
         {/* The test build's chain marker (not in the design): a devnet build never passes for the
@@ -508,6 +609,14 @@ function DashboardHeader({
           </View>
         ) : null}
         <View className="flex-row items-center gap-2">
+          <Pressable
+            onPress={onHistory}
+            accessibilityRole="button"
+            accessibilityLabel={HISTORY_A11Y}
+            testID="dashboard-history"
+            className="w-10 h-10 rounded-pill items-center justify-center active:bg-bg-surface-2">
+            <History size={22} color="#A8ACB5" strokeWidth={1.75} />
+          </Pressable>
           <Pressable
             onPress={onNotifications}
             accessibilityRole="button"
@@ -555,7 +664,7 @@ function DashboardHeader({
                 <ShieldCheck size={14} color="#5BE3C2" strokeWidth={1.75} />
               ) : null}
               <Text variant="overline">
-                {isShielded ? PRIVATE_BALANCE : 'Total balance'}
+                {isShielded ? PRIVATE_BALANCE : PUBLIC_BALANCE}
               </Text>
             </View>
             <Pressable
@@ -601,8 +710,8 @@ function DashboardHeader({
               </Text>
             </View>
           ) : (
-            <View className="flex-row items-baseline mb-2">
-              {havePrices ? (
+            <View className="flex-row items-baseline mb-2" testID="dashboard-public-balance">
+              {havePrices && publicReady ? (
                 <>
                   <Text variant="balance-xl" numeral className="text-fg-primary">
                     {usd.whole}
@@ -658,18 +767,45 @@ function DashboardHeader({
           {isShielded ? null : (
             <View className="flex-row items-center gap-3">
               <SubBalanceCell
-                amount={hidden ? '••••' : formatBalanceForDisplay(solBalance, SOL_DECIMALS)}
+                amount={hidden ? '••••' : publicReady ? formatBalanceForDisplay(solBalance, SOL_DECIMALS) : VALUE_UNKNOWN}
                 ticker="SOL"
+                testID="dashboard-sub-sol"
                 hidden={hidden}
               />
               <View className="w-1 h-1 rounded-pill bg-fg-tertiary" />
               <SubBalanceCell
-                amount={hidden ? '••••' : formatBalanceForDisplay(nocBalance, NOC_DECIMALS)}
+                amount={hidden ? '••••' : publicReady ? formatBalanceForDisplay(nocBalance, NOC_DECIMALS) : VALUE_UNKNOWN}
                 ticker="NOC"
+                testID="dashboard-sub-noc"
                 hidden={hidden}
               />
             </View>
           )}
+
+          {/* M1d (2026-11-22 addendum): the Public | Private split, both modes, only where private balances exist */}
+          {split !== null ? (
+            <>
+              <View className="h-px bg-bg-surface-3 my-4" />
+              <View className="flex-row gap-4">
+                <SplitColumn
+                  label={SPLIT_PUBLIC}
+                  lines={split.publicLines}
+                  isActive={!isShielded}
+                  dotClass="bg-accent-transparent"
+                  onSelect={() => onModeToggle('transparent')}
+                  testID="dashboard-split-public"
+                />
+                <SplitColumn
+                  label={SPLIT_PRIVATE}
+                  lines={split.privateLines}
+                  isActive={isShielded}
+                  dotClass="bg-accent-shielded"
+                  onSelect={() => onModeToggle('shielded')}
+                  testID="dashboard-split-private"
+                />
+              </View>
+            </>
+          ) : null}
         </View>
       </View>
 
@@ -798,22 +934,73 @@ export function ModeButton({label, isActive, mode, onPress, withShieldIcon, comi
   );
 }
 
+// ── Split column (M1d, 2026-11-22 addendum) ────────────────────────────────
+
+interface SplitColumnProps {
+  label: string;
+  /** Already formatted by `splitValue`: "•••" when hidden, "—" when unknown — one line each */
+  lines: string[];
+  isActive: boolean;
+  /** The mode's accent: Public #B084FC, Private #5BE3C2 */
+  dotClass: 'bg-accent-transparent' | 'bg-accent-shielded';
+  /** Not named onPress: a test's press must reach the Pressable's own handler, never bubble to this prop */
+  onSelect: () => void;
+  testID: string;
+}
+
+function SplitColumn({label, lines, isActive, dotClass, onSelect, testID}: SplitColumnProps) {
+  return (
+    <Pressable
+      // the active column is the mode already shown: a tap does nothing
+      onPress={isActive ? undefined : onSelect}
+      // final review m6: the active column offers no action, so TalkBack does not announce one
+      accessibilityRole={isActive ? 'text' : 'button'}
+      accessibilityState={{selected: isActive}}
+      accessibilityLabel={splitA11y(label, lines.join(', '), isActive)}
+      testID={testID}
+      className="flex-1 active:opacity-80">
+      <View className="flex-row items-center gap-2 mb-1">
+        <View className={cn('w-[6px] h-[6px] rounded-pill', dotClass)} />
+        <Text variant="overline" className={isActive ? 'text-fg-primary' : 'text-fg-tertiary'}>
+          {label}
+        </Text>
+      </View>
+      {lines.map((line, i) => (
+        <Text
+          key={i}
+          variant="body-sm"
+          numeral
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.75}
+          className="text-fg-secondary"
+          testID={`${testID}-line`}>
+          {line}
+        </Text>
+      ))}
+    </Pressable>
+  );
+}
+
 // ── Sub-balance cell ───────────────────────────────────────────────────────
 
 function SubBalanceCell({
   amount,
   ticker,
   hidden,
+  testID,
 }: {
   amount: string;
   ticker: string;
   hidden: boolean;
+  testID?: string;
 }) {
   return (
     <View className="flex-row items-baseline gap-1">
       <Text
         variant="body-sm"
         numeral={!hidden}
+        testID={testID}
         className={cn(
           'font-geist-semibold',
           hidden ? 'text-fg-secondary' : 'text-fg-primary',

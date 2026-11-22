@@ -1,6 +1,7 @@
 import React from 'react';
 import {createNativeStackNavigator} from '@react-navigation/native-stack';
 import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
+import {useSelectedAccount} from '../hooks/useSelectedAccount';
 import {useNavigation, useRoute} from '@react-navigation/native';
 import type {RouteProp} from '@react-navigation/native';
 import type {NativeStackNavigationProp, NativeStackScreenProps} from '@react-navigation/native-stack';
@@ -306,7 +307,6 @@ function PresaleScreenOnboarding() {
 function DashboardScreenNav() {
   const rootNav = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const dashNav = useNavigation<NativeStackNavigationProp<DashboardStackParamList>>();
-  const tabNav = useNavigation();
   // Presale (and its Buy entry, banner and routes) exists on mainnet only (S13).
   const presale = isPresaleEnabled();
   return (
@@ -334,7 +334,7 @@ function DashboardScreenNav() {
       onBuy={presale ? () => dashNav.navigate('Presale') : undefined}
       onScan={() => rootNav.navigate('ScanModal')}
       onNotifications={() => rootNav.navigate('NotificationsModal')}
-      onProfileTap={() => tabNav.getParent()?.navigate('ProfileTab' as never)}
+      onHistory={() => rootNav.navigate('TransactionHistory')}
       onPresale={presale ? () => dashNav.navigate('Presale') : undefined}
       onFirstShieldedToggle={() => {
         if (isShieldedEnabled()) {
@@ -410,13 +410,14 @@ function StakingScreenNav() {
 // no valid A0 receive address exists yet, and the v1 noc1… address it used to show is gone.
 function ReceiveScreenNav() {
   const publicKey = useWalletStore().publicKey;
+  const selected = useSelectedAccount();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const {mmkvPublic} = require('../store/mmkv/instances');
   const {MMKV_KEYS} = require('../constants/mmkvKeys');
-  // Prefer walletStore, fall back to mmkvPublic if zustand hasn't hydrated the publicKey yet
-  // (e.g., cold launch into a Receive deeplink).
-  const address = publicKey ?? mmkvPublic.getString(MMKV_KEYS.WALLET_PUBLIC_KEY) ?? '';
-  return <ReceiveScreen address={address} onBack={() => navigation.goBack()} />;
+  // M1d (spec §4.2, D1): the SELECTED account's address and its name. Before any account is known
+  // (a cold launch into a Receive deep link) the main key, from walletStore or mmkvPublic, as before.
+  const address = selected?.address ?? publicKey ?? mmkvPublic.getString(MMKV_KEYS.WALLET_PUBLIC_KEY) ?? '';
+  return <ReceiveScreen address={address} accountLabel={selected?.label} onBack={() => navigation.goBack()} />;
 }
 
 function TokenDetailScreenNav() {

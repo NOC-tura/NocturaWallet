@@ -11,8 +11,8 @@ import {
 import {PublicKey} from '@solana/web3.js';
 import {Text, Button, Card} from '../../components/ui';
 import {parseTokenAmount, formatTokenAmount} from '../../utils/parseTokenAmount';
-import {formatAddress} from '../../utils/formatAddress';
-import {useWalletStore} from '../../store/zustand/walletStore';
+import {fromLine} from '../../copy/accounts';
+import {shortAccountAddress} from '../../modules/accounts/accountList';
 import {cn} from '../../utils/cn';
 import type {TransferIntent} from '../../types/transfer';
 import type {TransferCheck} from '../../modules/solana/simulationChecks';
@@ -98,7 +98,9 @@ interface TxSimulateScreenProps {
 }
 
 export function TxSimulateScreen({intent, onContinue, onCancel}: TxSimulateScreenProps) {
-  const {publicKey, solBalance} = useWalletStore();
+  // M1d (spec §3.3, plan A8): the sender and its balance are the intent's source, captured at #12
+  const publicKey = intent.from.address;
+  const solBalance = intent.sourceBalances.solBalance;
 
   const [simState, setSimState] = useState<SimState>('simulating');
   const [retryCount, setRetryCount] = useState(0);
@@ -145,8 +147,9 @@ export function TxSimulateScreen({intent, onContinue, onCancel}: TxSimulateScree
         !!_deriveTransferChecks;
 
       if (modulesLoaded && !publicKey) {
-        // Modules are present but wallet is not loaded — this is a real error,
-        // not a test/stub env. Do NOT fall through to the best-effort stub path.
+        // Review m5: publicKey is the intent's source address (M1d), so this is an empty-address
+        // guard — a malformed intent, a real error and not a test/stub env. Do NOT fall through to
+        // the best-effort stub path.
         if (cancelled) return;
         setSimState({kind: 'failed', reason: 'Wallet not loaded'});
         return;
@@ -309,7 +312,7 @@ export function TxSimulateScreen({intent, onContinue, onCancel}: TxSimulateScree
       } else {
         // Modules absent (test/stub env only) — set ready with best-effort delta.
         // NOTE: this branch is intentionally unreachable in production because the
-        // modulesLoaded && !publicKey guard above handles the wallet-not-loaded case.
+        // modulesLoaded && !publicKey guard above handles an empty source address.
         if (cancelled) return;
         let solBalanceBn: bigint;
         try {
@@ -468,9 +471,12 @@ export function TxSimulateScreen({intent, onContinue, onCancel}: TxSimulateScree
               →
             </Text>
             <Text variant="body-sm" mono className="text-fg-secondary">
-              {formatAddress(intent.recipient)}
+              {shortAccountAddress(intent.recipient)}
             </Text>
           </View>
+          <Text variant="caption" className="text-fg-tertiary mt-2" testID="tx-simulate-from">
+            {fromLine(intent.from.label, shortAccountAddress(intent.from.address), intent.from.isMain)}
+          </Text>
         </Card>
 
         {/* State-specific content */}

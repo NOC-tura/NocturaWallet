@@ -18,18 +18,33 @@ import {ERROR_CODES} from '../../constants/errors';
 import {parseTokenAmount, formatTokenAmount} from '../../utils/parseTokenAmount';
 import type {TransferIntent} from '../../types/transfer';
 import {CancelledError} from '../../modules/solana/landedSignature';
+import {sendSchemeError} from '../../copy/accounts';
+import {queryClient} from '../../app/queryClient';
+import {parseA0Scheme} from '../../modules/shielded/a0/accountRegistry';
 
 // ── In-file constants ─────────────────────────────────────────────────────────
 const BASE_FEE_LAMPORTS = 5_000n;
 const SOL_DECIMALS = 9;
 const MAX_ATTEMPTS = 3;
 
+/**
+ * Review m1: refusals made before anything is signed that a Retry would only repeat (the same scheme,
+ * the same key) — #21 offers Done, not Retry, for these.
+ */
+const NOT_RETRYABLE_CODES: readonly string[] = ['E_SEND_SCHEME', 'E_SEND_SIGNER_MISMATCH'];
+
+/** M1d (re-review n1): keyed on the error's `code`, never on its message text. */
+function isNotRetryable(e: unknown): boolean {
+  if (typeof e !== 'object' || e === null || !('code' in e)) {
+    return false;
+  }
+  const code = (e as {code: unknown}).code;
+  return typeof code === 'string' && NOT_RETRYABLE_CODES.includes(code);
+}
+
 // ── Lazy imports — wrapped in try/catch so Jest/stub envs don't crash ─────────
 let submitTransparentTransfer:
   | typeof import('../../modules/solana/sendTransaction').submitTransparentTransfer
-  | null = null;
-let loadTransparentScheme:
-  | typeof import('../../modules/keyDerivation/derivationScheme').loadTransparentScheme
   | null = null;
 let getConnection:
   | typeof import('../../modules/solana/connection').getConnection
@@ -44,8 +59,6 @@ let findLandedSignature:
 try {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   submitTransparentTransfer = require('../../modules/solana/sendTransaction').submitTransparentTransfer;
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  loadTransparentScheme = require('../../modules/keyDerivation/derivationScheme').loadTransparentScheme;
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   getConnection = require('../../modules/solana/connection').getConnection;
   // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -91,6 +104,7 @@ export function TransactionStatusScreen({
   const [signature, setSignature] = useState<string | null>(null);
   const [slot, setSlot] = useState<number | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [notRetryable, setNotRetryable] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const [priorityFeeUsed, setPriorityFeeUsed] = useState(0);
 
@@ -108,24 +122,41 @@ export function TransactionStatusScreen({
   /** True while a submit is in flight — blocks a second Retry from racing it. */
   const submitInFlight = useRef(false);
 
+  // M1d review M1: once the send is confirmed, the SOURCE account's public data is stale — drop it so the
+  // dashboard (mounted under this modal) re-reads at once instead of showing the pre-send figure for up to
+  // 60 s. The main account's figures keep their existing sync path.
+  useEffect(() => {
+    if (stage === 'success') {
+      queryClient.invalidateQueries({queryKey: ['accountSnapshot', intent.from.address]}).catch(() => undefined);
+      queryClient.invalidateQueries({queryKey: ['txHistory', intent.from.address]}).catch(() => undefined);
+    }
+  }, [stage, intent.from.address]);
+
   useEffect(() => {
     let cancelled = false;
 
     const run = async () => {
       setStage('submitting');
       setErrorMessage(null);
+      setNotRetryable(false);
 
       // Guard: in stub/test env all required modules may be null — exit gracefully
       if (
         !submitTransparentTransfer ||
-        !loadTransparentScheme ||
         !getConnection ||
         !findLandedSignature
       ) {
         return;
       }
 
-      const scheme = loadTransparentScheme();
+      // M1d (spec §3.3, plan A16): the source's scheme, parsed strictly — never the wallet default
+      const scheme = parseA0Scheme(intent.from.scheme);
+      if (scheme === null) {
+        setNotRetryable(true);
+        setErrorMessage(sendSchemeError(intent.from.scheme));
+        setStage('failed');
+        return;
+      }
 
       // Import PublicKey lazily inline to avoid top-level crash in test env
       // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -139,6 +170,7 @@ export function TransactionStatusScreen({
               lamports: parseTokenAmount(intent.amount, SOL_DECIMALS),
               priorityFee,
               scheme,
+              expectedSigner: intent.from.address,
             }
           : {
               kind: 'spl' as const,
@@ -149,6 +181,7 @@ export function TransactionStatusScreen({
               createAta: intent.createAta,
               priorityFee,
               scheme,
+              expectedSigner: intent.from.address,
             };
 
       const attemptSubmit = async (): Promise<SubmitOutcome> => {
@@ -198,6 +231,7 @@ export function TransactionStatusScreen({
         result = outcome;
       } catch (e) {
         if (cancelled || e instanceof CancelledError) return;
+        setNotRetryable(isNotRetryable(e));
         setErrorMessage(e instanceof Error ? e.message : 'Transaction failed');
         setStage('failed');
         return;
@@ -259,6 +293,7 @@ export function TransactionStatusScreen({
                   resubmitResult = outcome;
                 } catch (e) {
                   if (cancelled || e instanceof CancelledError) return;
+                  setNotRetryable(isNotRetryable(e));
                   setErrorMessage(e instanceof Error ? e.message : 'Transaction failed');
                   setStage('failed');
                   return;
@@ -436,17 +471,19 @@ export function TransactionStatusScreen({
           </View>
         ) : stage === 'failed' ? (
           <>
-            <Button
-              label="Retry"
-              variant="primary"
-              testID="tx-status-retry"
-              onPress={() => {
-                // Ignore repeat taps while a submit is still in flight — the
-                // effect cleanup cannot recall a broadcast already sent.
-                if (submitInFlight.current) return;
-                setRetryCount(c => c + 1);
-              }}
-            />
+            {notRetryable ? null : (
+              <Button
+                label="Retry"
+                variant="primary"
+                testID="tx-status-retry"
+                onPress={() => {
+                  // Ignore repeat taps while a submit is still in flight — the
+                  // effect cleanup cannot recall a broadcast already sent.
+                  if (submitInFlight.current) return;
+                  setRetryCount(c => c + 1);
+                }}
+              />
+            )}
             <Button
               label="Done"
               variant="secondary"

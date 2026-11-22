@@ -110,7 +110,11 @@ const adbPath = () => (existsSync(join(sdk(), 'platform-tools/adb')) ? join(sdk(
 const serialArgs = () => (opt('serial') ? ['-s', opt('serial')] : []);
 /** The raw adb: {status, out}. Every caller passes it through I.guarded — except M1b's one clear. */
 const rawAdb = args => {
-  const r = spawnSync(adbPath(), [...serialArgs(), ...args], { encoding: 'utf8', timeout: 1500000, maxBuffer: 64 << 20 });
+  // 1 GiB: a `logcat -d` of 16M-per-buffer logs outgrew 64 MiB and ENOBUFS cut it silently (collect saw 0 readouts, 2026-11-22)
+  const r = spawnSync(adbPath(), [...serialArgs(), ...args], { encoding: 'utf8', timeout: 1500000, maxBuffer: 1 << 30 });
+  if (r.error) {
+    throw new I.CheckpointStop(`adb ${args.join(' ')}: ${r.error.code ?? r.error.message}`);
+  }
   return { status: r.status, out: (r.stdout ?? '') + (r.stderr ?? '') };
 };
 const adb = I.guarded(rawAdb);

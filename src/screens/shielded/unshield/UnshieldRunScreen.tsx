@@ -1,4 +1,4 @@
-import React, {useCallback, useEffect, useRef, useState} from 'react';
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {View, Pressable, ScrollView, Alert, BackHandler} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import Clipboard from '@react-native-clipboard/clipboard';
@@ -22,6 +22,9 @@ import {getConnection} from '../../../modules/solana/connection';
 import {a0PrivateBalanceNow, useA0Shielded} from '../../../hooks/useA0Shielded';
 import {a0CheckCaption, a0UnshieldDecisionFor} from '../../../modules/shielded/a0/unshieldCheck';
 import type {A0UnshieldCheck} from '../../../modules/shielded/a0/unshieldCheck';
+import {freshExitAccountOf, pendingFreshSchemeOf} from '../../../modules/accounts/receivedBy';
+import {shortAccountAddress} from '../../../modules/accounts/accountList';
+import {RECEIVED_BY, accountWithAddress} from '../../../copy/accounts';
 import {CheckAgainLink} from '../../../components/CheckAgainLink';
 import {A0_OWN_ACCOUNT_REFUSAL_COPY, a0RefusalLoudText, a0UnshieldRefusalSentence} from './unshieldCopy';
 import {MetaRow, ProofHeroRing, StageRow, StatusRing, shortSignature} from '../shieldedParts';
@@ -179,6 +182,8 @@ export function UnshieldRunScreen({request, onDone, onBack}: UnshieldRunScreenPr
   const [ownDecision, setOwnDecision] = useState<A0UnshieldCheck | null>(null);
   /** owner phone pass 2, item 1: the private balance after this exit (the dashboard's source), null = not known */
   const [balanceAfter, setBalanceAfter] = useState<bigint | null>(null);
+  /** M1d (spec §4.3, plan A14): the scheme reserved for THIS run's fresh exit, read at onPending */
+  const [freshScheme, setFreshScheme] = useState<string | null>(null);
   const checkReport = checkAgain.report;
   useEffect(() => {
     if (ownRho === null || !checkReport) return;
@@ -255,7 +260,15 @@ export function UnshieldRunScreen({request, onDone, onBack}: UnshieldRunScreenPr
           getConnection(),
           seed,
           {destination: request.destination, amount},
-          {onStage, holdMs: () => takeA0SubmitHold(), onPending: setOwnRho},
+          {
+            onStage,
+            holdMs: () => takeA0SubmitHold(),
+            onPending: rho => {
+              setOwnRho(rho);
+              // M1d: the pending intent holds the reserved scheme now; the settled note will not
+              if (request.destination.kind === 'fresh') setFreshScheme(pendingFreshSchemeOf(rho));
+            },
+          },
         );
         const t = Date.now();
         const current = at.stage;
@@ -312,6 +325,10 @@ export function UnshieldRunScreen({request, onDone, onBack}: UnshieldRunScreenPr
 
   const sym = A0_TOKEN.symbol;
   const amountText = amount === null ? '—' : `${displayAmount(amount, A0_TOKEN.decimals)} ${sym}`;
+  // M1d (spec §4.3): where a fresh exit landed — the registry's fresh-exit entry, so the sheet can show it
+  // (read once per outcome, not per render: the registry is encrypted storage; shown only inside the spent block below)
+  const landedFresh = phase.kind === 'done' && phase.outcome.status === 'spent' && request.destination.kind === 'fresh';
+  const receivedBy = useMemo(() => (landedFresh ? freshExitAccountOf(freshScheme) : null), [landedFresh, freshScheme]);
 
   if (proofLayout) {
     const stage = phase.kind === 'running' ? phase.stage : null;
@@ -504,6 +521,12 @@ export function UnshieldRunScreen({request, onDone, onBack}: UnshieldRunScreenPr
                   <MetaRow label="Change" value={`#${phase.outcome.changeLeafIndex} in the pool`} />
                   {/* item 1: the spent note's change, as a plain row — not the balance */}
                   <MetaRow label={LEFT_IN_THIS_NOTE} value={`${displayAmount(phase.outcome.changeAmount, A0_TOKEN.decimals)} ${sym}`} />
+                  {receivedBy ? (
+                    <MetaRow
+                      label={RECEIVED_BY}
+                      value={accountWithAddress(receivedBy.label, shortAccountAddress(receivedBy.address), false)}
+                    />
+                  ) : null}
                 </>
               ) : null}
             </DetailsDisclosure>

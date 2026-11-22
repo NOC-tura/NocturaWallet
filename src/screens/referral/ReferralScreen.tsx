@@ -11,6 +11,7 @@ import {
   fetchReferralStats,
 } from '../../modules/referral/referralModule';
 import {referralStatsDisplay} from '../../modules/referral/referralDisplay';
+import {MainAccountLine} from '../../components/accounts/MainAccountLine';
 
 interface Props {
   onBack?: () => void;
@@ -111,6 +112,8 @@ export function ReferralScreen({onBack}: Props) {
         className="flex-1"
         contentContainerClassName="px-5 pb-6"
         showsVerticalScrollIndicator={false}>
+        {/* M1d (spec §4.3, D1): the referral link is the main account's */}
+        <MainAccountLine variant="uses" testID="referral-main-account" className="mb-3" />
         {/* 3-stat hero */}
         <View className="flex-row gap-3 mb-4">
           <StatCard

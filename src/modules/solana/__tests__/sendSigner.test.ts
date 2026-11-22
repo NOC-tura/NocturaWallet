@@ -1,0 +1,144 @@
+/**
+ * M1d spec §3.3 (plan A16): a Send signs from the scheme it names, and only when that key derives
+ * the account's address. The addresses are the repo's offline vectors
+ * (src/modules/shielded/a0/__tests__/fixtures/a0-account-vectors.json, "abandon … about"), not
+ * computed by the code under test. Review r1 m8/m9: the seed and the secret are captured where they
+ * are made (the real functions, wrapped) and their CONTENTS are checked after the call.
+ */
+import {Keypair, PublicKey} from '@solana/web3.js';
+import {SendSignerMismatchError, submitTransparentTransfer} from '../sendTransaction';
+import {KeychainManager} from '../../keychain/keychainModule';
+import {base58} from '@scure/base';
+
+const ABANDON = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
+const MAIN = 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk'; // slip10:0
+const A1 = 'Hh8QwFUA6MtVu1qAoq12ucvFHNwCcVTV7hpWjeY1Hztb'; // slip10:1
+
+const mockSendRaw = jest.fn(async () => 'SIG');
+const mockBlockhash = jest.fn(async () => ({blockhash: 'bh', lastValidBlockHeight: 1}));
+jest.mock('../connection', () => ({
+  getConnection: () => ({getLatestBlockhash: mockBlockhash, sendRawTransaction: mockSendRaw}),
+}));
+// review I1: the SPL path resolves the holding account of the SIGNER (the source), never main's
+const mockResolveSource = jest.fn(async (..._args: unknown[]) => null);
+jest.mock('../transactionBuilder', () => {
+  const actual = jest.requireActual<typeof import('../transactionBuilder')>('../transactionBuilder');
+  return {...actual, resolveSourceTokenAccount: (...args: unknown[]) => mockResolveSource(...args)};
+});
+const mockSeeds: Uint8Array[] = [];
+jest.mock('../../keyDerivation/mnemonicUtils', () => {
+  const actual = jest.requireActual<typeof import('../../keyDerivation/mnemonicUtils')>('../../keyDerivation/mnemonicUtils');
+  return {
+    ...actual,
+    mnemonicToSeed: async (m: string) => {
+      const seed = await actual.mnemonicToSeed(m);
+      mockSeeds.push(seed);
+      return seed;
+    },
+  };
+});
+const mockSecrets: Uint8Array[] = [];
+const mockDerive = {throws: false};
+jest.mock('../../keyDerivation/transparent', () => {
+  const actual = jest.requireActual<typeof import('../../keyDerivation/transparent')>('../../keyDerivation/transparent');
+  return {
+    ...actual,
+    deriveTransparentKeypair: (seed: Uint8Array, scheme: Parameters<typeof actual.deriveTransparentKeypair>[1]) => {
+      if (mockDerive.throws) {
+        throw new Error('derivation failed');
+      }
+      const kp = actual.deriveTransparentKeypair(seed, scheme);
+      mockSecrets.push(kp.secretKey);
+      return kp;
+    },
+  };
+});
+
+const sol = (account: number, expectedSigner: string) => ({
+  kind: 'sol' as const,
+  recipient: new PublicKey(MAIN),
+  lamports: 1_000n,
+  priorityFee: 0,
+  scheme: {kind: 'slip10' as const, account},
+  expectedSigner,
+});
+const TEST_MINT = 'ERkpCFGaoWmeZPhKTUHumrqHTP1QmyHVhMJUnxbRPKCs';
+const spl = (account: number, expectedSigner: string) => ({
+  kind: 'spl' as const,
+  recipient: new PublicKey(MAIN),
+  mint: new PublicKey(TEST_MINT),
+  amount: 1_000n,
+  decimals: 9,
+  createAta: false,
+  priorityFee: 0,
+  scheme: {kind: 'slip10' as const, account},
+  expectedSigner,
+});
+const allZero = (b: Uint8Array): boolean => b.every(x => x === 0);
+
+beforeEach(() => {
+  mockSendRaw.mockClear();
+  mockBlockhash.mockClear();
+  mockResolveSource.mockClear();
+  (Keypair.fromSecretKey as jest.Mock).mockClear();
+  mockSeeds.length = 0;
+  mockSecrets.length = 0;
+  mockDerive.throws = false;
+  jest.spyOn(KeychainManager.prototype, 'retrieveSeed').mockResolvedValue(ABANDON);
+});
+afterEach(() => jest.restoreAllMocks());
+
+it('signs from the named scheme when its key derives the account\'s address (slip10:1 → Hh8Q…)', async () => {
+  await expect(submitTransparentTransfer(sol(1, A1))).resolves.toEqual({signature: 'SIG', lastValidBlockHeight: 1});
+  expect(mockSendRaw).toHaveBeenCalledTimes(1);
+});
+
+it('Review Focus 2: a key that does not derive the address → E_SEND_SIGNER_MISMATCH; no key object, nothing built, signed or sent', async () => {
+  const run = submitTransparentTransfer(sol(1, MAIN));
+  await expect(run).rejects.toBeInstanceOf(SendSignerMismatchError);
+  await expect(submitTransparentTransfer(sol(1, MAIN))).rejects.toMatchObject({code: 'E_SEND_SIGNER_MISMATCH'});
+  expect(Keypair.fromSecretKey).not.toHaveBeenCalled();
+  expect(mockBlockhash).not.toHaveBeenCalled();
+  expect(mockSendRaw).not.toHaveBeenCalled();
+});
+
+it('the seed and the secret key are zero-filled — their contents, on the refusal as on the send', async () => {
+  await expect(submitTransparentTransfer(sol(1, MAIN))).rejects.toBeInstanceOf(SendSignerMismatchError);
+  expect(mockSeeds).toHaveLength(1);
+  expect(mockSecrets).toHaveLength(1);
+  expect(allZero(mockSeeds[0]!) && mockSeeds[0]!.length === 64).toBe(true);
+  expect(allZero(mockSecrets[0]!) && mockSecrets[0]!.length === 64).toBe(true);
+  await submitTransparentTransfer(sol(1, A1));
+  expect(mockSeeds.every(allZero) && mockSecrets.every(allZero)).toBe(true);
+});
+
+it('review r1 m8: a derivation that throws still zero-fills the seed; nothing is sent', async () => {
+  mockDerive.throws = true;
+  await expect(submitTransparentTransfer(sol(1, A1))).rejects.toThrow('derivation failed');
+  expect(mockSeeds).toHaveLength(1);
+  expect(allZero(mockSeeds[0]!)).toBe(true);
+  expect(mockSendRaw).not.toHaveBeenCalled();
+});
+
+describe('review I1: a token sent from a non-main account', () => {
+  it('a key that does not derive the address → E_SEND_SIGNER_MISMATCH on the SPL path too; no holding account resolved, nothing sent', async () => {
+    await expect(submitTransparentTransfer(spl(1, MAIN))).rejects.toMatchObject({code: 'E_SEND_SIGNER_MISMATCH'});
+    expect(Keypair.fromSecretKey).not.toHaveBeenCalled();
+    expect(mockResolveSource).not.toHaveBeenCalled();
+    expect(mockBlockhash).not.toHaveBeenCalled();
+    expect(mockSendRaw).not.toHaveBeenCalled();
+    expect(mockSeeds.every(allZero) && mockSecrets.every(allZero)).toBe(true);
+  });
+
+  it('a match spends from the SOURCE\'s holding account (owner = Hh8Q…, not main) and sends', async () => {
+    await expect(submitTransparentTransfer(spl(1, A1))).resolves.toEqual({signature: 'SIG', lastValidBlockHeight: 1});
+    expect(mockResolveSource).toHaveBeenCalledTimes(1);
+    const [, owner, mint, amount] = mockResolveSource.mock.calls[0]! as [unknown, PublicKey, PublicKey, bigint];
+    // the repo's web3.js mock names a byte-built key `mock-pubkey-…`, so the owner is compared by its bytes
+    expect(Buffer.from(owner.toBytes()).equals(Buffer.from(base58.decode(A1)))).toBe(true);
+    expect(Buffer.from(owner.toBytes()).equals(Buffer.from(base58.decode(MAIN)))).toBe(false);
+    expect(mint.toBase58()).toBe(TEST_MINT);
+    expect(amount).toBe(1_000n);
+    expect(mockSendRaw).toHaveBeenCalledTimes(1);
+  });
+});

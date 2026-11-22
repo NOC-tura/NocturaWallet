@@ -46,6 +46,8 @@ export const MMKV_KEYS = {
   A0_LAST_RESTORE: 'v1_a0_last_restore',
   /** The account registry (spec §10): own accounts' schemes, roles and addresses, ENCRYPTED instance only. */
   ACCOUNTS_REGISTRY: 'v1_accounts',
+  /** M1d: the selected account's scheme (`slip10:n` | `cli`). A choice among one's own accounts is itself a link (M1 spec I6): ENCRYPTED instance only. */
+  ACCOUNTS_SELECTED: 'v1_accounts.selected',
 
   // ─── Address Book [S] ───────────────────────────────────────────────
   ADDRESS_BOOK_PREFIX: 'v1_contacts_',

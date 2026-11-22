@@ -54,6 +54,7 @@ interface PresaleScreenProps {
 // Imported as well as re-exported: `export … from` does not bring the names into this
 // module's own scope, and both are used below.
 import {canBuy, FEE_HEADROOM_SOL} from '../../core/presale/purchaseGate';
+import {MainAccountLine} from '../components/accounts/MainAccountLine';
 export {canBuy, FEE_HEADROOM_SOL};
 
 // Group integers with thousands separators while preserving up to 2 decimals.
@@ -529,6 +530,8 @@ export function PresaleActive({
 
         {/* Sticky bottom bar */}
         <View className="px-5 pt-3 pb-4 border-t border-bg-surface-3 bg-bg-base">
+          {/* M1d (spec §4.3, D1): the presale buy stays on the main account */}
+          <MainAccountLine variant="from" testID="presale-main-account" className="mb-2 text-center" />
           {!geoBlocked && jur?.action === 'warn' && (
             <Text
               variant="caption"

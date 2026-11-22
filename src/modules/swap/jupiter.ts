@@ -1,5 +1,5 @@
 const JUP_BASE = 'https://lite-api.jup.ag/swap/v1';
-const WSOL_MINT = 'So11111111111111111111111111111111111111112';
+export const WSOL_MINT = 'So11111111111111111111111111111111111111112';
 
 export interface SwapQuote {
   inputMint: string;
