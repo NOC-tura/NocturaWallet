@@ -16,7 +16,7 @@ import {parseTokenAmount} from '../../utils/parseTokenAmount';
 import {HISTORY_EMPTY, HISTORY_ERROR, HISTORY_LOADING} from '../../copy/accounts';
 
 interface Props {
-  onSelectTx: (signature: string) => void;
+  onSelectTx: (signature: string, account: string) => void;
   onBack: () => void;
 }
 
@@ -171,7 +171,9 @@ export function TransactionHistoryScreen({onSelectTx, onBack}: Props) {
             tx={item}
             publicKey={publicKey}
             nocUsdPrice={nocUsdPrice}
-            onPress={() => onSelectTx(item.signature)}
+            onPress={() => {
+              if (publicKey !== null) onSelectTx(item.signature, publicKey);
+            }}
           />
         )}
         ListHeaderComponent={
@@ -189,8 +191,9 @@ export function TransactionHistoryScreen({onSelectTx, onBack}: Props) {
           ) : null
         }
         ListEmptyComponent={
-          // I2: "No transactions yet" only after a completed, successful read (never with no account selected)
-          isSuccess ? (
+          // I2: "No transactions yet" only after a completed, successful read. post-M1d §7 (m1): with no
+          // account resolved nothing is being read, so nothing is claimed — not even "Loading".
+          publicKey === null ? null : isSuccess ? (
             <View style={styles.emptyContainer}>
               <Text style={styles.emptyText}>{HISTORY_EMPTY}</Text>
             </View>

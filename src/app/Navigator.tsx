@@ -599,8 +599,8 @@ function TransactionStatusScreenNav() {
         rootNav.navigate('MainTabs', {screen: 'HomeTab'} as never);
       }}
       onViewDetails={sig => {
-        // Navigate to TransactionDetail if it exists in the SendStack
-        sendNav.navigate('TransactionDetail', {signature: sig});
+        // post-M1d R9: the detail judges the direction against the account this Send was made from
+        sendNav.navigate('TransactionDetail', {signature: sig, account: route.params.intent.from.address});
       }}
     />
   );
@@ -610,13 +610,13 @@ function TransactionHistoryScreenNav() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   return (
     <TransactionHistoryScreenImpl
-      onSelectTx={(signature: string) => {
+      onSelectTx={(signature: string, account: string) => {
         // Dismiss the modal first, then navigate into SendModal > TransactionDetail
         navigation.goBack();
         setTimeout(() => {
           navigation.navigate('SendModal', {
             screen: 'TransactionDetail',
-            params: {signature},
+            params: {signature, account},
           } as never);
         }, 100);
       }}
@@ -630,9 +630,11 @@ function TransactionDetailScreenNav() {
   const route = useRoute();
   const raw = (route.params ?? {}) as Record<string, unknown>;
   const signature = typeof raw.signature === 'string' ? raw.signature : '';
+  const account = typeof raw.account === 'string' ? raw.account : null; // R9: absent → no direction is claimed
   return (
     <TransactionDetailScreenImpl
       signature={signature}
+      account={account}
       onBack={() => navigation.goBack()}
     />
   );

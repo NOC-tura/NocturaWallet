@@ -1,0 +1,247 @@
+/**
+ * post-M1d spec §5, R9, R11, R12: #27's parser against REAL devnet getTransaction (jsonParsed) responses —
+ * fixtures/*.json are the verbatim RPC responses (see the plan's Task 8 Step 1 for how they were fetched).
+ * Derived cases (no owner, a plain `transfer`) are made from a real response by removing exactly the
+ * fields a node may omit; each says what it removed.
+ */
+import {readFileSync} from 'fs';
+import {join} from 'path';
+import {parseTxDetail, txDirection} from '../txDetail';
+import type {RawParsedTx} from '../txDetail';
+import {A0_TOKEN} from '../../shielded/a0/screenSupport';
+import {NOCTURA_FEE_TREASURY} from '../../../constants/programs';
+
+const load = (name: string): RawParsedTx =>
+  (JSON.parse(readFileSync(join(__dirname, 'fixtures', name), 'utf8')) as {result: RawParsedTx}).result;
+const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
+
+const ACC_9Y = '9Y7FtteLhCJABAQtkYEFZs46rJgy1ixMA1JFMUepTki4';
+const OUTSIDE = 'EfHSPxjapWuecfjRp6eRL2PR3YjpKbk86jm5kqmwXGgk';
+const MAIN = 'Da83cAfGUrsm896FUghCkNKutgFc96WNGWN73bZxe31B';
+const SOL_SENDER = '5H8T9XjLHXL3hUtHo5hKNvgHkWKny484GdVEVxg2rZF7';
+const SRC_TA = '3WzwveDj8C6AGyiq5T13SeffM6HaP2zuc4rH1oW6QNu2';
+const OUTSIDE_TA = '75wGzeQ18yn9Jyf9EhoXjPG4ry9xFni38RcJxScGVoqT';
+const MAIN_TA = 'A3hWoQY9JME12b1kVyxCZdpgbpLm5NYJJTYKLBdFGaR7';
+const TEST_MINT = 'ERkpCFGaoWmeZPhKTUHumrqHTP1QmyHVhMJUnxbRPKCs';
+const DELEGATE = 'DELEGATExxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'; // any other key: it is only compared
+
+/** the symbol source is injected: these tests pin the parser, trustedSymbol.test.ts pins the symbols */
+const symbolOf = (mint: string): string => (mint === TEST_MINT ? 'TEST' : mint === 'native' ? 'SOL' : `short(${mint.slice(0, 4)})`);
+
+// P1
+it('the fixtures\' mint is the pool token', () => {
+  expect(A0_TOKEN.mint).toBe(TEST_MINT);
+});
+
+// P2
+it('a SOL transfer (2HWCCJQd…): amount, sender = the transfer\'s source, recipient wallet', () => {
+  const d = parseTxDetail(load('tx-sol-transfer.json'), 'SIG', symbolOf);
+  expect(d.transfer).toEqual({
+    mint: 'native', symbol: 'SOL', amount: '0.000005',
+    from: SOL_SENDER, authority: null, fromTokenAccount: null,
+    to: OUTSIDE, toIsTokenAccount: false, toTokenAccount: null,
+  });
+  expect(d).toMatchObject({signature: 'SIG', status: 'confirmed', feeLamports: 5050n, slot: 525082222, feePayer: SOL_SENDER, signers: [SOL_SENDER], memo: null});
+  expect(d.blockTime).toEqual(expect.any(Number));
+});
+
+// P3
+it('an SPL send with the owner present (5i53q9tR…): the symbol, and the recipient WALLET — not the token account', () => {
+  const d = parseTxDetail(load('tx-test-to-outside.json'), 'SIG', symbolOf);
+  expect(d.transfer).toEqual({
+    mint: TEST_MINT, symbol: 'TEST', amount: '0.0005',
+    from: ACC_9Y, authority: ACC_9Y, fromTokenAccount: SRC_TA, // the owner of 3Wzwve… and the signer are one key here
+    to: OUTSIDE, toIsTokenAccount: false, toTokenAccount: OUTSIDE_TA,
+  });
+  expect(d.feeLamports).toBe(7000n);
+});
+
+it('the phone-pass transaction (QAgzVzY6…): 0.0002 TEST, TO = the main wallet', () => {
+  const d = parseTxDetail(load('tx-test-to-main.json'), 'SIG', symbolOf);
+  expect(d.transfer).toMatchObject({symbol: 'TEST', amount: '0.0002', from: ACC_9Y, to: MAIN, toIsTokenAccount: false, toTokenAccount: MAIN_TA});
+});
+
+// P4 (Review Focus 2)
+it('R11: no owner in the response → the token account, flagged — never passed off as the wallet', () => {
+  const tx = clone(load('tx-test-to-outside.json'));
+  for (const b of [...(tx.meta!.postTokenBalances ?? []), ...(tx.meta!.preTokenBalances ?? [])]) {
+    delete b.owner; // removed: `owner` (older nodes omit it)
+  }
+  const d = parseTxDetail(tx, 'SIG', symbolOf);
+  expect(d.transfer).toMatchObject({to: OUTSIDE_TA, toIsTokenAccount: true, toTokenAccount: OUTSIDE_TA, symbol: 'TEST', amount: '0.0005'});
+  // review r1-10: with no owner the sender WALLET is not known either — the authority is shown as what it is
+  expect(d.transfer).toMatchObject({from: null, authority: ACC_9Y});
+  expect(txDirection(d, ACC_9Y)).toBe('none');
+});
+
+// P5 (Review Focus 2)
+it('R11: a plain `transfer` carries no mint and a RAW amount → mint and decimals from postTokenBalances by account index', () => {
+  const tx = clone(load('tx-test-to-outside.json'));
+  const ix = (tx.transaction!.message!.instructions as Array<{parsed?: {type: string; info: Record<string, unknown>}}>).find(i => i.parsed?.type === 'transferChecked')!;
+  ix.parsed!.type = 'transfer'; // the shape of spl-token `transfer`: {amount, authority, destination, source}
+  ix.parsed!.info = {amount: '500000', authority: ACC_9Y, destination: OUTSIDE_TA, source: SRC_TA};
+  const d = parseTxDetail(tx, 'SIG', symbolOf);
+  expect(d.transfer).toMatchObject({mint: TEST_MINT, symbol: 'TEST', amount: '0.0005', to: OUTSIDE, toIsTokenAccount: false});
+});
+
+// P7 (Review Focus 2)
+it('a plain `transfer` with no token balances at all → no mint, no symbol, NO amount (never "500000" as a human figure)', () => {
+  const tx = clone(load('tx-test-to-outside.json'));
+  const ix = (tx.transaction!.message!.instructions as Array<{parsed?: {type: string; info: Record<string, unknown>}}>).find(i => i.parsed?.type === 'transferChecked')!;
+  ix.parsed!.type = 'transfer';
+  ix.parsed!.info = {amount: '500000', authority: ACC_9Y, destination: OUTSIDE_TA, source: SRC_TA};
+  tx.meta!.postTokenBalances = []; // removed: every token balance
+  tx.meta!.preTokenBalances = [];
+  const d = parseTxDetail(tx, 'SIG', symbolOf);
+  expect(d.transfer).toMatchObject({mint: null, symbol: '', amount: null, to: OUTSIDE_TA, toIsTokenAccount: true, from: null, authority: ACC_9Y});
+});
+
+it('R12: the sender is the owner of the source token account, never the fee payer (a relayed transaction)', () => {
+  const tx = clone(load('tx-test-to-outside.json'));
+  const RELAYER = 'RELAYERxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'; // any other key: it is only compared
+  const keys = tx.transaction!.message!.accountKeys!;
+  keys.unshift({pubkey: RELAYER, signer: true, writable: true}); // a relayer pays the fee: it becomes key 0
+  for (const b of [...(tx.meta!.postTokenBalances ?? []), ...(tx.meta!.preTokenBalances ?? [])]) {
+    b.accountIndex = (b.accountIndex ?? 0) + 1; // every index moves by one
+  }
+  const d = parseTxDetail(tx, 'SIG', symbolOf);
+  expect(d.feePayer).toBe(RELAYER);
+  expect(d.transfer!.from).toBe(ACC_9Y);
+  expect(d.transfer!.to).toBe(OUTSIDE); // still matched by the (moved) account index
+  expect(d.signers).toEqual([RELAYER, ACC_9Y]);
+});
+
+it('R12: no authority in the instruction → the owner is still the sender; a multisigAuthority is read as the authority', () => {
+  const tx = clone(load('tx-test-to-outside.json'));
+  const ix = (tx.transaction!.message!.instructions as Array<{parsed?: {info: Record<string, unknown>}}>).find(i => i.parsed?.info?.authority)!;
+  delete ix.parsed!.info.authority; // removed: `authority`
+  expect(parseTxDetail(tx, 'SIG', symbolOf).transfer).toMatchObject({from: ACC_9Y, authority: null});
+  ix.parsed!.info.multisigAuthority = 'MULTISIGxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'; // the multisig shape names this instead
+  expect(parseTxDetail(tx, 'SIG', symbolOf).transfer).toMatchObject({from: ACC_9Y, authority: 'MULTISIGxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'});
+});
+
+/**
+ * review r1-10 — the DELEGATED variant, derived from the real 5i53q9tR… response by changing exactly what a
+ * delegated transfer changes: the instruction's `authority` is the delegate, the delegate signs (and pays), and
+ * the owner 9Y7Ftt… does not sign. The token balances — and so the owner of the source account — are untouched.
+ */
+function delegated(): RawParsedTx {
+  const tx = clone(load('tx-test-to-outside.json'));
+  const ix = (tx.transaction!.message!.instructions as Array<{parsed?: {info: Record<string, unknown>}}>).find(i => i.parsed?.info?.authority)!;
+  ix.parsed!.info.authority = DELEGATE;
+  const keys = tx.transaction!.message!.accountKeys!;
+  keys.find(k => k.pubkey === ACC_9Y)!.signer = false; // the owner did not sign
+  keys.unshift({pubkey: DELEGATE, signer: true, writable: true}); // the delegate signs and pays: key 0
+  for (const b of [...(tx.meta!.postTokenBalances ?? []), ...(tx.meta!.preTokenBalances ?? [])]) {
+    b.accountIndex = (b.accountIndex ?? 0) + 1;
+  }
+  return tx;
+}
+
+it('review r1-10: a delegated transfer — From is the OWNER of the source account, not the authority', () => {
+  const d = parseTxDetail(delegated(), 'SIG', symbolOf);
+  expect(d.transfer).toMatchObject({from: ACC_9Y, authority: DELEGATE, fromTokenAccount: SRC_TA, to: OUTSIDE, amount: '0.0005'});
+  expect(d.signers).toEqual([DELEGATE]);
+});
+
+it('review r1-10: a delegated transfer is "sent" for nobody — not the owner (it did not sign), not the delegate (not its funds)', () => {
+  const d = parseTxDetail(delegated(), 'SIG', symbolOf);
+  expect(txDirection(d, ACC_9Y)).toBe('none');
+  expect(txDirection(d, DELEGATE)).toBe('none');
+  expect(txDirection(d, OUTSIDE)).toBe('received'); // the recipient's view is unchanged
+});
+
+it('review r1-10: the owner is read from preTokenBalances when the post entry is missing (a source account closed in the same transaction)', () => {
+  const tx = clone(load('tx-test-to-outside.json'));
+  tx.meta!.postTokenBalances = (tx.meta!.postTokenBalances ?? []).filter(b => b.accountIndex !== 1); // removed: the source's post entry
+  expect(parseTxDetail(tx, 'SIG', symbolOf).transfer!.from).toBe(ACC_9Y);
+});
+
+it('account keys given as PublicKey-like objects (what web3.js returns) are read by toString', () => {
+  const tx = clone(load('tx-sol-transfer.json'));
+  const keys = tx.transaction!.message!.accountKeys! as Array<{pubkey: unknown}>;
+  for (const k of keys) {
+    const s = k.pubkey as string;
+    k.pubkey = {toString: () => s};
+  }
+  const d = parseTxDetail(tx, 'SIG', symbolOf);
+  expect(d.feePayer).toBe(SOL_SENDER);
+  expect(d.signers).toEqual([SOL_SENDER]);
+});
+
+it('the Noctura fee-markup transfer is skipped; a failed transaction is "failed"; no transfer → transfer null', () => {
+  const tx = clone(load('tx-sol-transfer.json'));
+  const ixs = tx.transaction!.message!.instructions as unknown[];
+  ixs.unshift({program: 'system', parsed: {type: 'transfer', info: {source: SOL_SENDER, destination: NOCTURA_FEE_TREASURY, lamports: 20000}}});
+  expect(parseTxDetail(tx, 'SIG', symbolOf).transfer!.to).toBe(OUTSIDE);
+  tx.meta!.err = {InstructionError: [0, 'X']};
+  expect(parseTxDetail(tx, 'SIG', symbolOf).status).toBe('failed');
+  tx.transaction!.message!.instructions = [];
+  const none = parseTxDetail(tx, 'SIG', symbolOf);
+  expect(none.transfer).toBeNull();
+  expect(none.feePayer).toBe(SOL_SENDER);
+});
+
+describe('txDirection — judged against the route\'s account only (R9)', () => {
+  const toOutside = () => parseTxDetail(load('tx-test-to-outside.json'), 'SIG', symbolOf);
+  const toMain = () => parseTxDetail(load('tx-test-to-main.json'), 'SIG', symbolOf);
+  const sol = () => parseTxDetail(load('tx-sol-transfer.json'), 'SIG', symbolOf);
+
+  it('sent: the account is the transfer\'s source and signed', () => {
+    expect(txDirection(toOutside(), ACC_9Y)).toBe('sent');
+    expect(txDirection(sol(), SOL_SENDER)).toBe('sent');
+  });
+  it('received: the account is the recipient wallet, or the destination token account', () => {
+    expect(txDirection(toMain(), MAIN)).toBe('received');
+    expect(txDirection(sol(), OUTSIDE)).toBe('received');
+    expect(txDirection(toMain(), MAIN_TA)).toBe('received');
+  });
+  it('third party: an account that is neither end → none (no direction claimed)', () => {
+    expect(txDirection(sol(), ACC_9Y)).toBe('none');
+    expect(txDirection(toOutside(), MAIN)).toBe('none');
+  });
+  it('no account (a deep link), or no transfer → none', () => {
+    expect(txDirection(toOutside(), null)).toBe('none');
+    const tx = clone(load('tx-sol-transfer.json'));
+    tx.transaction!.message!.instructions = [];
+    expect(txDirection(parseTxDetail(tx, 'SIG', symbolOf), SOL_SENDER)).toBe('none');
+  });
+  // review r1-2
+  it('a FAILED transaction has no direction — for the sender, the recipient, anyone (it moved nothing)', () => {
+    const failed = (name: string) => {
+      const tx = clone(load(name));
+      tx.meta!.err = {InstructionError: [2, {Custom: 1}]}; // changed: `meta.err` only
+      return parseTxDetail(tx, 'SIG', symbolOf);
+    };
+    expect(failed('tx-test-to-outside.json').status).toBe('failed');
+    expect(failed('tx-test-to-outside.json').transfer).not.toBeNull(); // the transfer is still parsed: only the claim goes
+    expect(txDirection(failed('tx-test-to-outside.json'), ACC_9Y)).toBe('none');
+    expect(txDirection(failed('tx-test-to-main.json'), MAIN)).toBe('none');
+    expect(txDirection(failed('tx-sol-transfer.json'), SOL_SENDER)).toBe('none');
+    expect(txDirection(failed('tx-sol-transfer.json'), OUTSIDE)).toBe('none');
+  });
+  it('the source that did NOT sign is not "sent" (a delegate moved the tokens)', () => {
+    const d = toOutside();
+    expect(txDirection({...d, signers: []}, ACC_9Y)).toBe('none');
+  });
+  it('the owner unknown: the wallet cannot be recognised as the recipient → none, never a guess', () => {
+    const tx = clone(load('tx-test-to-main.json'));
+    for (const b of [...(tx.meta!.postTokenBalances ?? []), ...(tx.meta!.preTokenBalances ?? [])]) {
+      delete b.owner;
+    }
+    expect(txDirection(parseTxDetail(tx, 'SIG', symbolOf), MAIN)).toBe('none');
+  });
+  it('a transfer to oneself reads "sent"', () => {
+    const d = sol();
+    expect(txDirection({...d, transfer: {...d.transfer!, to: SOL_SENDER}}, SOL_SENDER)).toBe('sent');
+  });
+});
+
+it('the memo: a string `parsed` is the memo; an object is never put on screen as one', () => {
+  const tx = clone(load('tx-sol-transfer.json'));
+  const ixs = tx.transaction!.message!.instructions as unknown[];
+  ixs.push({program: 'spl-memo', parsed: 'hello'}); // added: a memo instruction in the jsonParsed shape
+  expect(parseTxDetail(tx, 'SIG', symbolOf).memo).toBe('hello');
+  ixs[ixs.length - 1] = {program: 'spl-memo', parsed: {info: {text: 'hello'}}}; // an unexpected shape
+  expect(parseTxDetail(tx, 'SIG', symbolOf).memo).toBeNull();
+});
