@@ -476,9 +476,25 @@ export function splitA11y(sideName: string, value: string, isActive: boolean, st
 | a time | null | `ready` | the last sync of this session succeeded (or none ran yet and the figure is the persisted one — R13) |
 | a time | a time | `stale` | an older good read exists; the last attempt failed |
 | null | a time | **`error`** | nothing was ever read and the sync failed: the store's `'0'` is a default, not a balance |
-| null | null | `ready`, `syncedAt: null` | no attempt has settled yet (a few seconds at first launch): unchanged, see "Known limits" |
+| null | null | **`loading`** | nothing was ever read and no sync of this session has failed yet: the read is still to come (controller ruling, 2026-11-22) |
 
-Before this ruling the third row returned `ready`. Dashboard, TokenDetail and #12 gate only on
+**A main account that has never been read (`lastSyncedAt === null`) is never `ready`** — exactly what a non-main
+account does today (`loading` until its first read settles, `error` if it failed). The honesty rule forbids the
+store's defaults ("0") as a current figure, for a second as much as for a session.
+
+**The screens need no change for this, and it is the same branch for main as for non-main** (checked in the code:
+none of them looks at `isMain` when deciding what to draw, only at `status`):
+- Dashboard: `publicReady = publicData.status === 'ready'` (`DashboardScreen.tsx:167`) → hero "—" (`:714-725`),
+  sub-balances "—" (`:770`, `:777`), no rows (`:407`), and the empty text `PUBLIC_LOADING` for `loading` /
+  `PUBLIC_UNAVAILABLE` for `error` (`:481-485`). The split's Public column is "—" (`valueLine.ts:38`).
+- #12: `publicReady` (`SendScreen.tsx:138`) → "Available — SOL" (`:634`), MAX off (`:229`, `:599`), no "short by"
+  (`:318`), CTA off (`:346`); the retry row only for `error` (`:615`).
+- TokenDetail: `publicReady` (`TokenDetailScreen.tsx:57`) → "— SOL" (`:237`), fiat "—" (`:240`).
+- The Accounts sheet's main row reads `walletStore` itself and already shows "not checked yet" while
+  `lastSyncedAt` is null (`AccountsSheet.tsx:84-86`).
+The tests below pin each of these for the MAIN account.
+
+Before this ruling the third and fourth rows returned `ready`. Dashboard, TokenDetail and #12 gate only on
 `status === 'ready'`, so a fresh import whose first sync failed showed `$0.00` and "Available 0 SOL" as current,
 and #12 judged "insufficient" against that 0. With `error` they show "—" / "Balance unavailable", and #12 shows its
 retry row (which Task 4 wires to `forceSync` for main).
@@ -693,12 +709,47 @@ it('post-M1d §3.1: main — that state, then a good sync → ready with the rea
   expect(result.current.data).toMatchObject({status: 'ready', solBalance: '5', syncedAt: expect.any(Number)});
 });
 
-it('main — never read and no attempt settled yet → unchanged: ready with syncedAt null (plan A12)', () => {
+// controller ruling 2026-11-22: a never-read main is never 'ready' — the store's defaults are not a balance
+it('main — never read and no sync of this session has failed → loading (as a non-main account before its first read)', () => {
+  useWalletStore.setState({solBalance: '0', nocBalance: '0', lastSyncedAt: null, lastSyncFailedAt: null});
+  const {result} = renderHook(() => useAccountPublicData({address: MAIN, isMain: true}), {wrapper});
+  expect(result.current.data).toEqual({status: 'loading'});
+  expect(mockFetch).not.toHaveBeenCalled();
+});
+
+it('main — the three states in order: loading → (the sync fails) error → (a sync succeeds) ready', () => {
   useWalletStore.setState({lastSyncedAt: null, lastSyncFailedAt: null});
   const {result} = renderHook(() => useAccountPublicData({address: MAIN, isMain: true}), {wrapper});
-  expect(result.current.data).toMatchObject({status: 'ready', syncedAt: null});
+  expect(result.current.data.status).toBe('loading');
+  act(() => {
+    useWalletStore.getState().markSyncFailed();
+  });
+  expect(result.current.data).toEqual({status: 'error'});
+  act(() => {
+    useWalletStore.getState().updateBalances('5', '7', {});
+  });
+  expect(result.current.data).toMatchObject({status: 'ready', solBalance: '5', syncedAt: expect.any(Number)});
+});
+
+it('main is never ready with syncedAt null (property over the four store states)', () => {
+  for (const [syncedAt, failedAt] of [[null, null], [null, 9], [5, null], [5, 9]] as const) {
+    useWalletStore.setState({lastSyncedAt: syncedAt, lastSyncFailedAt: failedAt});
+    const {result, unmount} = renderHook(() => useAccountPublicData({address: MAIN, isMain: true}), {wrapper});
+    const d = result.current.data;
+    expect(d.status === 'ready' && d.syncedAt === null).toBe(false);
+    expect(d.status).toBe(syncedAt === null ? (failedAt === null ? 'loading' : 'error') : failedAt === null ? 'ready' : 'stale');
+    unmount();
+  }
 });
 ```
+
+- **Change** the existing `'plan A12: main never synced → syncedAt null'` test (it expects `ready` with
+  `syncedAt: null`): its expectation becomes `expect(result.current.data).toEqual({status: 'loading'});`, title
+  `'main never synced → loading (was: ready with syncedAt null)'`, comment
+  `// post-M1d controller ruling 2026-11-22: a never-read main is never ready`.
+- After the implementation, run the full `npx jest`: any other suite that renders the REAL hook for a main account
+  whose store has `lastSyncedAt: null` and expects figures now sees `loading`. Give that suite's store a
+  `lastSyncedAt` (it meant "a synced wallet"), with the same comment. Do not weaken the hook.
 
 In `src/hooks/__tests__/useAccountRowBalances.test.tsx`, **change** `'review r1 m7: a failed re-read is "failed"…'`:
 its last line becomes
@@ -726,6 +777,20 @@ In `DashboardScreen.test.tsx` add (inside the transparent-mode describe):
     expect(r.queryByText('No tokens yet · pull to refresh')).toBeNull();
     // review r1-4: publicSide does not accept 'stale' until Task 3 — the split never shows it undimmed
     expect(r.getAllByTestId('dashboard-split-public-line').map(l => l.props.children)).toEqual(['—']);
+  });
+
+  // controller ruling 2026-11-22 — pin (passes before the change: this suite mocks the hook). The MAIN account in
+  // 'loading' takes the same branch a non-main account does: nothing is drawn as a figure.
+  it('main never read, no failed sync yet (the hook\'s "loading") → "—" and "Loading balances…", never $0.00 or "No tokens yet"', async () => {
+    mockSelected.current = MAIN_ACCOUNT;
+    mockPublic.current = {status: 'loading'};
+    const r = await renderDashboard();
+    expect(r.getByTestId('dashboard-public-balance')).toHaveTextContent('—');
+    expect(r.getByTestId('dashboard-public-empty')).toHaveTextContent('Loading balances…');
+    expect(r.getByTestId('dashboard-sub-sol')).toHaveTextContent('—');
+    expect(r.getAllByTestId('dashboard-split-public-line').map(l => l.props.children)).toEqual(['—']);
+    expect(r.queryByText(/\$0\.00/)).toBeNull();
+    expect(r.queryByText('No tokens yet · pull to refresh')).toBeNull();
   });
 
   // review r1-1 — pin (passes before the change: this suite mocks the hook; the real state is pinned in
@@ -758,9 +823,11 @@ In `DashboardScreen.test.tsx` add (inside the transparent-mode describe):
 ```ts
   const mainData = useMemo<AccountPublicData | null>(() => {
     if (!isMain) return null;
-    // review r1-1: never read and this session's sync failed → there is no figure (the store's '0' is a default)
-    if (mainBalanceIsUnknown(lastSyncedAt, lastSyncFailedAt)) {
-      return {status: 'error'};
+    // controller ruling 2026-11-22 + review r1-1: a main account never read is never 'ready' — the store
+    // holds defaults ('0'), not a balance. No failed sync yet → loading; a failed one → error. (The same two
+    // states a non-main account has before its first read.)
+    if (lastSyncedAt === null) {
+      return mainBalanceIsUnknown(lastSyncedAt, lastSyncFailedAt) ? {status: 'error'} : {status: 'loading'};
     }
     const main = withPoolToken({solBalance, nocBalance, tokenBalances, tokens});
     // post-M1d §3.1: this session's last sync failed and an older good read exists → the figure is stale
@@ -1156,6 +1223,9 @@ Imports: `staleRow` from the copy, `mainBalanceIsStale` and `mainBalanceIsUnknow
     timer more than the ready one — and say so in the report.
   - **TD5 (review r1-1)** a never-read main whose sync failed: `mockTdPublic.current = {status: 'error'}` →
     `getByText('— SOL')`, `queryByText('0 SOL')` null, no `token-detail-stale`. Pin (passes before the change).
+    The `loading` state of a never-read main is already pinned by this describe's existing
+    `'Review Focus 4: not loaded → "— SOL", never 0'` (its selected account is the main one): leave it, and add
+    to it `expect(r.queryByText(/\$0\.00/)).toBeNull();`.
 
 - [ ] **Step 10: Run, implement, run.** `npx jest src/screens/transparent/__tests__/TokenDetailScreen.test.tsx --forceExit`
       → FAIL. Then in `TokenDetailScreen.tsx`:
@@ -1391,6 +1461,18 @@ it('R4: the tap on that row runs the main sync once (never the no-op refetch)', 
     fireEvent.press(r.getByTestId('send-balance-retry'));
   });
   expect(mockForceSync).toHaveBeenCalledTimes(1);
+});
+
+// controller ruling 2026-11-22: never read and no failed sync yet → 'loading', the non-main branch exactly
+it('never read, no sync failed yet → "Available — SOL": no figure, no retry row, CTA / MAX off', () => {
+  useWalletStore.setState({lastSyncFailedAt: null});
+  const r = screen();
+  expect(r.getByTestId('send-available')).toHaveTextContent('— SOL');
+  expect(r.queryByText(/Available\s*0/)).toBeNull();
+  expect(r.queryByTestId('send-balance-retry')).toBeNull();
+  expect(r.getByTestId('review-button').props.accessibilityState?.disabled).toBe(true);
+  expect(r.getByTestId('max-button').props.accessibilityState?.disabled).toBe(true);
+  expect(r.queryByText(/Insufficient balance/)).toBeNull();
 });
 
 it('positive control: the same store after one good sync → "Available 1 SOL" and a usable CTA', () => {
@@ -3932,7 +4014,7 @@ git commit -m "docs(m1d): the remaining 'combined line' wording carries its supe
 | §1 / §6 wSOL counted once | 5 |
 | §1 / §7 parked minors | 4 (retry guard), 8 (History, Navigator wiring), 3 and 5 (coverage), 9 (spec wording) |
 | §3.1 main: `lastSyncFailedAt`, the stale rule | 1, 2 |
-| §3.1 main: unknown with no read — a never-read main whose sync failed is `error`, never `0` (review r1-1) | 2 (hook, real state), 3 (S3b, TD5, the dashboard pin), 4 (`SendScreen.mainNeverRead.test.tsx`, real hook + store) |
+| §3.1 main: unknown with no read — a never-read main is never `ready`: `loading`, then `error` once a sync failed; never `0` (review r1-1, controller ruling 2026-11-22) | 2 (hook, real state), 3 (S3b, TD5, the dashboard pin), 4 (`SendScreen.mainNeverRead.test.tsx`, real hook + store) |
 | §3.1 another account: `stale` vs `error`; main through the same hook | 2 |
 | §3.2 dashboard hero, sub-balances, token rows; the line and `{age}` | 3 |
 | §3.2 Public column of the split, a11y "not updated" | 2 (`splitA11y`), 3 (`publicSide` accepts stale in the same commit as the dimmed column) |
@@ -4004,10 +4086,6 @@ task's change works, and a task report must not count them as such.
 - **Presale shows the main figure without a stale label.** `PresaleScreen.tsx:121` (`solBalance`) and `:159`
   (`tokenBalances`) read `walletStore` directly. Not changed here: after a failed sync the presale screen shows the
   last figure as current, and for a never-read wallet the store's `0`. PR 2 or later.
-- **The first seconds of a first launch.** A main account never read, whose first sync has not settled yet
-  (`lastSyncedAt` and `lastSyncFailedAt` both null), still reads as `ready` with the store's defaults — today's
-  behaviour, kept (R13 accepts an unlabelled figure until the session's first sync settles). It turns to
-  "unknown" the moment that sync fails (review r1-1), and to the real figure when it succeeds.
 - **A "linked" tag lost if the process dies while the encrypted store is locked** (R2, accepted), and no tag for a
   Send that landed but errored (R14) or was confirmed after #21 closed (R15). PR 2's retroactive scan.
 - **Non-main figures do not survive a restart** (R5): a failed read after a cold start is "Balance unavailable".
@@ -4057,10 +4135,11 @@ Each is the most conservative reading; a reviewer who disagrees should say so be
 15. **The fixtures are the verbatim JSON-RPC responses**; "SPL without owner", "plain `transfer`", "failed" and
     "delegated" are derived from a real response by changing exactly the fields that case changes, and each test
     says what it changed. No devnet transaction among the three has those shapes.
-16. **A main account never read whose sync failed is `error`, not `ready`** (Task 2, review r1-1). §3.1 says the
-    figure is then "unknown (today's '—')"; today's code did not deliver that — the screens gate on
-    `status === 'ready'` and drew the store's default 0. The sheet's main row reads "Balance unavailable" in that
-    state (a sync was tried), and "not checked yet" only while none has settled.
+16. **A main account never read is never `ready`** (Task 2; review r1-1 and the controller ruling of 2026-11-22):
+    `loading` while no sync of this session has failed, `error` once one has — what a non-main account does. §3.1
+    says the figure is then "unknown (today's '—')"; today's code did not deliver that — the screens gate on
+    `status === 'ready'` and drew the store's default 0. The sheet's main row reads "not checked yet" while
+    loading and "Balance unavailable" once a sync failed.
 17. **For an SPL transfer "From" is the source token account's owner, never `info.authority`** (Task 8, review
     r1-10). This corrects R12's order ("`info.authority`, or the source token account's owner"): the authority is a
     delegate in a delegated transfer. When the response names no owner, From is "—" and the authority appears as
