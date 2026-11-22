@@ -77,6 +77,9 @@ node scripts/m1d-checkpoint/m1d-checkpoint.mjs verify --fresh <fresh address> --
   --external <outside address> [--unshield <the fresh unshield's signature>]
 ```
 
+Wait about 30 s after step 6 first: the signature lists are read at `finalized`, so a send not yet finalized shows as
+missing (D1) — run again.
+
 Expected: `PASS` on M1d.D0 … M1d.D6 and `M1d desk: every line PASSED` (exit 0); `build/m1d-checkpoint/verify.json`
 is the record.
 
@@ -93,8 +96,8 @@ then unlock the production wallet and run `node scripts/m1c-checkpoint/m1c-check
 The Accounts sheet (§4); #11 in both modes with the avatar number and the combined line, with balances hidden
 ("Public ••• · Private •••") and while a non-main account loads ("Public — · …", e.g. in airplane mode); #12 with
 the warning and the second tap; #19 / #20 "From"; #21 "Received by" (shown on the NEXT Make public to "A new
-account" — optional here); #17's "Who sees what"; Swap / Referral's main-account lines (presale is mainnet-only).
-Also check: the pool token TEST now appears on the **main** account's devnet dashboard too; Swap, presale #23 and
+account" — optional here); #17's "Who sees what"; Swap / Referral's main-account lines (presale #23 does not exist in the devnet build (S13) — its main-account line is proven in Jest only).
+Also check: the pool token TEST now appears on the **main** account's devnet dashboard too; Swap and
 Referral with a **non-main** account selected (the "From: Account 1 (main)" / "Uses your main account" line and its
 spacing); the combined line "Public … · Private …" fits on one line on the phone; with **TalkBack** on, the linking
 warning under the recipient on #12 is read out.
@@ -104,7 +107,7 @@ The cli wallet's one-row sheet and the unreadable-registry line are proven in Je
 
 - **D0** — the inputs: the fresh address is not in the app's seed set, is the main account, or the recipient IS a
   key of this seed. Check the addresses you passed.
-- **D1** — the fresh account's history is not exactly the two: a third transaction names it (a stranger's dust, or
+- **D1** — (the history is the account plus its TEST token account only, not its token accounts of other mints.) The fresh account's history is not exactly the two: a third transaction names it (a stranger's dust, or
   a send you did not intend) or the send is missing (not confirmed yet — wait and run again).
 - **D2** — the unshield is not the relayed one that funded an empty account.
 - **D3** — the send was not signed and paid by the fresh account alone, did not reach the recipient (or its TEST token account), or failed on chain.

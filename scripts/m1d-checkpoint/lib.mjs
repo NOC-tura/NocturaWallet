@@ -16,18 +16,18 @@ import { ataOf, RELAYER_FEE_PAYER } from '../m1c-checkpoint/chain.mjs';
 
 /** The seed's key set from the LAST `startup-accounts` readout that carries one. */
 export function seedFromReadouts(lines) {
-  const starts = lines
-    .map(l => l && l.readout)
-    .filter(r => r && r.event === 'startup-accounts' && Array.isArray(r.seedKeys) && Array.isArray(r.accounts));
-  if (starts.length === 0) {
+  const all = lines.filter(l => l && l.readout && l.readout.event === 'startup-accounts');
+  const withKeys = all.filter(l => Array.isArray(l.readout.seedKeys) && Array.isArray(l.readout.accounts));
+  if (withKeys.length === 0) {
     return null;
   }
-  const last = starts[starts.length - 1];
+  const lastLine = withKeys[withKeys.length - 1];
+  const last = lastLine.readout;
   const main = last.accounts.find(a => a.role === 'main');
   if (!main) {
     return null;
   }
-  return { seedKeys: [...new Set([...last.seedKeys, ...last.accounts.map(a => a.address)])], main: main.address, registry: last.accounts };
+  return { seedKeys: [...new Set([...last.seedKeys, ...last.accounts.map(a => a.address)])], main: main.address, registry: last.accounts, seenAt: lastLine.seenAt ?? null, isLatest: all[all.length - 1] === lastLine };
 }
 
 /** The signature of THE spent unshield to `fresh` the readouts name (one distinct signature), else null. */
@@ -57,6 +57,8 @@ export function txKeys(result) {
     ok: result.meta !== null && typeof result.meta === 'object' && result.meta.err === null,
     pre: (result.meta && result.meta.preBalances) || [],
     post: (result.meta && result.meta.postBalances) || [],
+    // owners of every token account the transaction touched (json encoding): any token account of a seed key, canonical or not
+    tokenOwners: [...((result.meta && result.meta.preTokenBalances) || []), ...((result.meta && result.meta.postTokenBalances) || [])].map(b => b.owner).filter(Boolean),
   };
 }
 
@@ -109,10 +111,13 @@ export function judgeM1d({ fresh, external, unshieldSig, sendSig, seed, history,
   );
 
   const read = [u, s].filter(t => t !== null);
-  const touching = read.flatMap(t => t.keys.filter(k => forbidden.has(k)).map(k => `${t.signature.slice(0, 8)}…: ${k}`));
+  const touching = read.flatMap(t => [
+    ...t.keys.filter(k => forbidden.has(k)).map(k => `${t.signature.slice(0, 8)}…: ${k}`),
+    ...t.tokenOwners.filter(o => others.includes(o)).map(o => `${t.signature.slice(0, 8)}…: a token account owned by ${o}`),
+  ]);
   line(
     'M1d.D5',
-    'nothing connects it to another account of this seed: no other seed key, nor its TEST token account, in either transaction',
+    'nothing connects it to another account of this seed: no other seed key, nor a token account of one, in either transaction',
     u !== null && s !== null && touching.length === 0,
     touching.length ? touching.join('; ') : `checked ${others.length} seed keys and their token accounts`,
   );
@@ -123,7 +128,11 @@ export function judgeM1d({ fresh, external, unshieldSig, sendSig, seed, history,
     'M1d.D6',
     'the send to the main account was cancelled, not sent: nothing in the fresh account\'s history names the main account',
     u !== null && s !== null && !mainHit && listed.length === 2,
-    mainHit ? 'the main account (or its token account) appears' : 'the main account appears in neither transaction',
+    mainHit
+      ? 'the main account (or its token account) appears'
+      : listed.length !== 2
+        ? `the history holds ${listed.length} transactions, so "not sent" is not shown`
+        : 'the main account appears in neither transaction',
   );
   return { lines, pass: lines.every(l => l.pass) };
 }

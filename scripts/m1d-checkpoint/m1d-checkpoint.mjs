@@ -62,11 +62,16 @@ async function devnet(url, calls) {
   }
   const one = async (method, params) => {
     for (let attempt = 1; ; attempt++) {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, ...(params ? { params } : {}) }),
-      });
+      let res;
+      try {
+        res = await fetch(url, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, ...(params ? { params } : {}) }),
+        });
+      } catch (e) {
+        die(`RPC ${new URL(url).hostname}: ${method} failed (${e instanceof Error ? e.message : String(e)}) — check the network and run again`);
+      }
       const body = res.status === 429 ? null : res.ok ? await res.json() : die(`RPC ${new URL(url).hostname} answered HTTP ${res.status} to ${method}`);
       if (body && body.error?.code !== 429) {
         if (body.error) {
@@ -102,18 +107,28 @@ async function verify() {
   if (!existsSync(file)) {
     die(`no readouts at ${file} — collect them first (README step 3)`);
   }
-  const lines = readFileSync(file, 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l));
+  const lines = readFileSync(file, 'utf8').split('\n').filter(Boolean).map((l, i) => {
+    try {
+      return JSON.parse(l);
+    } catch {
+      return die(`${file} line ${i + 1} is not JSON — collect the readouts again (README step 3)`);
+    }
+  });
   const seed = L.seedFromReadouts(lines);
   if (!seed) {
     die(`no startup-accounts readout with the seed's keys in ${file} — restart the devnet app, then collect (README step 3)`);
   }
+  if (!seed.isLatest) {
+    console.warn('WARNING: the newest startup-accounts readout carried no keys; the seed set below is from an older start — restart the devnet app and collect again for a certain D5.');
+  }
+  console.log(`seed set: ${seed.seedKeys.length} keys, main ${seed.main}, from the startup-accounts readout seen at ${seed.seenAt}`);
   const unshield = opt('unshield') ?? L.freshUnshieldOf(lines, fresh);
   if (!unshield) {
     die(`no single spent unshield to ${fresh} in ${file} — pass --unshield SIG (the Tx hash on that unshield's #21)`);
   }
   const url = opt('rpc', DEFAULT_RPC);
   const TX = { encoding: 'json', maxSupportedTransactionVersion: 0, commitment: 'confirmed' };
-  const LIST = { limit: 1000, commitment: 'confirmed' };
+  const LIST = { limit: 1000, commitment: 'finalized' };
   const [owner, ata, u, s] = await devnet(url, [
     { method: 'getSignaturesForAddress', params: [fresh, LIST] },
     { method: 'getSignaturesForAddress', params: [ataOf(fresh), LIST] },
@@ -127,7 +142,7 @@ async function verify() {
   mkdirSync(OUT, { recursive: true });
   writeFileSync(
     join(OUT, 'verify.json'),
-    JSON.stringify({ at: new Date().toISOString(), rpcHost: new URL(url).hostname, fresh, external, unshield, send, ...r }, null, 2) + '\n',
+    JSON.stringify({ at: new Date().toISOString(), rpcHost: new URL(url).hostname, fresh, external, unshield, send, seed: { seedKeys: seed.seedKeys, main: seed.main, seenAt: seed.seenAt, isLatest: seed.isLatest }, ...r }, null, 2) + '\n',
   );
   console.log(r.pass ? 'M1d desk: every line PASSED' : 'M1d desk: FAILED (see the FAIL lines; README "Reading a FAIL")');
   process.exit(r.pass ? 0 : 1);

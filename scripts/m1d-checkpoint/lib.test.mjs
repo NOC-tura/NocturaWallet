@@ -48,12 +48,19 @@ test('positive control: the honest checkpoint passes every line, D0 … D6', () 
 test('D0: a recipient inside the seed, or the fresh account outside it, fails', () => {
   assert.deepEqual(failing(judgeM1d({ ...base(), external: CLI })).includes('M1d.D0'), true);
   assert.deepEqual(failing(judgeM1d({ ...base(), fresh: EXT })).includes('M1d.D0'), true);
+  assert.ok(failing(judgeM1d({ ...base(), fresh: MAIN })).includes('M1d.D0'));
 });
 
 test('D1: a third transaction in the history, or the send missing from it, fails', () => {
   const extra = base();
   extra.history.ata.push({ signature: 'X'.repeat(88) });
   assert.ok(failing(judgeM1d(extra)).includes('M1d.D1'));
+  // D6 (cancelled, not sent) is evidence only on a complete history: a third transaction fails it too, with its reason
+  const third = base();
+  third.history.owner.push({ signature: 'Y'.repeat(88) });
+  const t = judgeM1d(third);
+  assert.ok(failing(t).includes('M1d.D1') && failing(t).includes('M1d.D6'));
+  assert.match(t.lines.find(l => l.id === 'M1d.D6').detail, /holds 3 transactions/);
   const missing = base();
   missing.history.owner = [{ signature: U_SIG }];
   assert.ok(failing(judgeM1d(missing)).includes('M1d.D1'));
@@ -66,6 +73,9 @@ test('D2: the unshield signed by a key of this seed, or funding a non-empty acco
   const funded = base();
   funded.txs.unshield.meta.preBalances[3] = 5;
   assert.ok(failing(judgeM1d(funded)).includes('M1d.D2'));
+  const failedU = base();
+  failedU.txs.unshield.meta.err = { InstructionError: [0, 'Custom'] };
+  assert.ok(failing(judgeM1d(failedU)).includes('M1d.D2'));
 });
 
 test('D3: a send paid by the main account, or a failed send, fails', () => {
@@ -93,6 +103,11 @@ test('D4: SOL from anywhere but the grant (a balance at the send that is not wha
   const topped = base();
   topped.txs.send.meta.preBalances[0] = 4_000_000;
   assert.ok(failing(judgeM1d(topped)).includes('M1d.D4'));
+  // an empty account that sends is not "paid from the grant": equal balances of 0 must still fail
+  const zero = base();
+  zero.txs.unshield.meta.postBalances[3] = 0;
+  zero.txs.send.meta.preBalances[0] = 0;
+  assert.ok(failing(judgeM1d(zero)).includes('M1d.D4'));
 });
 
 test('D5 / D6: another seed key or its token account in either transaction fails; the main account fails D6 too', () => {
@@ -108,6 +123,15 @@ test('D5 / D6: another seed key or its token account in either transaction fails
   mainAta.txs.unshield.meta.postBalances.push(0);
   const m = failing(judgeM1d(mainAta));
   assert.ok(m.includes('M1d.D5') && m.includes('M1d.D6'));
+});
+
+test('D5 (m2): a token account of another seed key at ANY address, or of another mint, fails', () => {
+  const b = base();
+  b.txs.send.meta.postTokenBalances = [{ accountIndex: 1, mint: SYS, owner: CLI, uiTokenAmount: { amount: '1' } }];
+  assert.ok(failing(judgeM1d(b)).includes('M1d.D5'));
+  const own = base();
+  own.txs.send.meta.postTokenBalances = [{ accountIndex: 1, mint: SYS, owner: EXT, uiTokenAmount: { amount: '1' } }];
+  assert.deepEqual(failing(judgeM1d(own)), []);
 });
 
 test('a transaction that was not read never passes a line', () => {
@@ -135,8 +159,11 @@ test('seedFromReadouts: the LAST startup-accounts line with keys; its registry j
     line(3, null, null),
   ];
   const s = seedFromReadouts(lines);
+  assert.equal(seedFromReadouts(lines.slice(0, 2)).isLatest, true);
   assert.equal(s.main, MAIN);
   assert.deepEqual([...s.seedKeys].sort(), [CLI, FRESH, MAIN].sort());
+  assert.equal(s.seenAt, 't');
+  assert.equal(s.isLatest, false); // the newest start (seq 3) carried no keys: an older set was used
   assert.equal(seedFromReadouts([line(1, null, null)]), null);
   assert.equal(seedFromReadouts([]), null);
 });
