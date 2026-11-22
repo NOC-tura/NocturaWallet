@@ -356,6 +356,8 @@ export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
       setLinkAck(true);
       return;
     }
+    // review M1: #12 stays mounted under #19 — every later attempt needs its own second tap
+    setLinkAck(false);
     onReview({
       mode: 'transparent',
       recipient,
@@ -531,7 +533,9 @@ export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
           {linkWarn ? (
             <View
               className="rounded-md p-4 mb-4 bg-[rgba(242,181,59,0.10)] border-l-2 border-l-warning"
-              testID="send-link-warning">
+              testID="send-link-warning"
+              accessibilityRole="alert"
+              accessibilityLiveRegion="polite">
               <View className="flex-row items-center gap-2 mb-1">
                 <AlertTriangle size={14} color="#F2B53B" strokeWidth={2} />
                 <Text variant="body-sm" className="font-geist-semibold text-warning flex-1">
@@ -685,6 +689,7 @@ export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
             ) : null}
             <Text
               variant="body-lg"
+              accessibilityLiveRegion="polite"
               className={cn(
                 'font-geist-semibold',
                 canReview ? 'text-bg-base' : 'text-fg-disabled',

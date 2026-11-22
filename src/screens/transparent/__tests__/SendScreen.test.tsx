@@ -341,8 +341,61 @@ describe('M1d — the linking warning and its second tap (spec §4.4)', () => {
     expect(r.queryByTestId('send-link-warning')).toBeNull();
   });
 
-  it('no "fund this account" shortcut anywhere on #12', () => {
+  it('no "fund this account" shortcut anywhere on #12 (the warning is shown in this row)', () => {
     const {r} = setup(MAIN);
+    expect(r.getByTestId('send-link-warning')).toBeTruthy(); // M1d review M3: positive control — the row is about the warning state
     expect(r.queryByText(/fund this account|fund account/i)).toBeNull();
+  });
+
+  // M1d review I1: the recipient-recognition path on the screen
+  it('review I1: a Solana Pay URI to an own account warns, and the first tap does not review', () => {
+    const {r, onReview} = setup(`solana:${MAIN}?amount=0.001`);
+    expect(r.getByTestId('send-link-warning')).toBeTruthy();
+    tap(r);
+    expect(onReview).not.toHaveBeenCalled();
+  });
+
+  it('review I1: a padded address warns', () => {
+    const {r} = setup(`  ${MAIN}  `);
+    expect(r.getByTestId('send-link-warning')).toBeTruthy();
+  });
+
+  it('review I1: acknowledge, then blur on the recipient → the acknowledgement resets', () => {
+    const {r, onReview} = setup(`solana:${MAIN}?amount=0.001`);
+    tap(r);
+    expect(r.getByText('Tap again to send anyway')).toBeTruthy();
+    fireEvent(r.getByTestId('recipient-input'), 'blur');
+    expect(r.queryByText('Tap again to send anyway')).toBeNull();
+    tap(r);
+    expect(onReview).not.toHaveBeenCalled();
+  });
+
+  it('review M1: after the second tap goes on, the next attempt (Back from #19) needs a second tap again', () => {
+    const {r, onReview} = setup(MAIN);
+    tap(r);
+    tap(r);
+    expect(onReview).toHaveBeenCalledTimes(1);
+    tap(r);
+    expect(onReview).toHaveBeenCalledTimes(1);
+    tap(r);
+    expect(onReview).toHaveBeenCalledTimes(2);
+  });
+
+  it('review M2: the warning is an alert live region and the CTA label change is announced', () => {
+    const {r} = setup(MAIN);
+    expect(r.getByTestId('send-link-warning').props.accessibilityLiveRegion).toBe('polite');
+    expect(r.getByTestId('send-link-warning').props.accessibilityRole).toBe('alert');
+    expect(r.getByTestId('review-button').props.accessibilityLabel).toBe('Send SOL');
+    tap(r);
+    expect(r.getByTestId('review-button').props.accessibilityLabel).toBe('Tap again to send anyway');
+    expect(r.getByText('Tap again to send anyway').props.accessibilityLiveRegion).toBe('polite');
+  });
+
+  it('review M5: source = recipient (main → main) → no warning, one tap reviews', () => {
+    mockSendSelected.current = {...MAIN_SRC, address: MAIN};
+    const {r, onReview} = setup(MAIN);
+    expect(r.queryByTestId('send-link-warning')).toBeNull();
+    tap(r);
+    expect(onReview).toHaveBeenCalledTimes(1);
   });
 });

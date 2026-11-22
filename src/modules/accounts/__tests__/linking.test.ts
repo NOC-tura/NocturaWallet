@@ -23,7 +23,7 @@ it.each<[string, string, string | null, boolean]>([
   ['exit → a fresh-pending reservation', A3, A1, true],
   ['main → a foreign address', MAIN, FOREIGN, false],
   ['exit → a foreign address', A3, FOREIGN, false],
-  ['main → itself', MAIN, MAIN, false],
+  ['main → itself (truth table; only exit → itself bites on the same-address guard)', MAIN, MAIN, false],
   ['exit → itself', A3, A3, false],
   ['no recipient recognised yet', A3, null, false],
   ['a source outside the seed (never a Send source)', FOREIGN, A3, false],
