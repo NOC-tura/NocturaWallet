@@ -269,3 +269,10 @@ Tell the owner per screen what changed.
   successful sync, so a fresh half never sits under an old age.
 - **r2-6 — symbol source.** R8's "verified" means the mint passes `classifyToken` (`tokenModule.ts:116`); the DAS
   cache has no verified flag. Otherwise the short mint is shown.
+- **r3 notes for the plan:**
+  - `walletStore`'s `partialize` (`walletStore.ts:71`) must exclude `lastSyncFailedAt`, with a test that a rehydrated
+    store has it null.
+  - Under r2-5, the partial-sync early return comes before `setTokens` (`backgroundSyncModule.ts:79-104`). This is a
+    deliberate change from today, where a partial sync shows the fresh half; a test pins the new behaviour.
+
+Spec review: Fable r1 NOT APPROVED (16) → §10; r2 NOT APPROVED (6) → §11; r3 APPROVED (2026-11-22).
