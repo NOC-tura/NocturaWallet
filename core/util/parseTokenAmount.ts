@@ -50,7 +50,7 @@ export function formatBalanceForDisplay(
   // decimals <= maxDisplay (no fractional truncation needed).
   if (maxDisplayDecimals > 0 && decimals > maxDisplayDecimals) {
     const subThreshold = 10n ** BigInt(decimals - maxDisplayDecimals);
-    if (big < subThreshold) {
+    if (big > 0n && big < subThreshold) { // review m1: a negative is never "<0.0001"
       return '<0.' + '0'.repeat(maxDisplayDecimals - 1) + '1';
     }
   }

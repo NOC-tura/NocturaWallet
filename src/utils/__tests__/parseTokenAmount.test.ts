@@ -164,3 +164,9 @@ describe('formatBalanceForDisplay grouping (on-device safe)', () => {
     expect(formatBalanceForDisplay('17027600000', 9)).toBe('17.0276');
   });
 });
+
+describe('formatBalanceForDisplay — review m1 (2026-11-22)', () => {
+  it('a negative amount never reads as a tiny positive "<0.0001"', () => {
+    expect(formatBalanceForDisplay('-5000000000', 9)).not.toMatch(/^</);
+  });
+});
