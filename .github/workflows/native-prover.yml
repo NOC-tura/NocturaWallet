@@ -22,9 +22,9 @@ name: Native prover
 on:
   push:
     branches: [main]
-    paths: ['native/**', '.github/workflows/native-prover.yml', 'android/build.gradle', 'src/modules/shielded/a0/**', 'scripts/a0-vectors/**', 'scripts/m1a-checkpoint/**', 'scripts/m1b-checkpoint/**', 'scripts/m1c-checkpoint/**', 'package-lock.json']
+    paths: ['native/**', '.github/workflows/native-prover.yml', 'android/build.gradle', 'src/modules/shielded/a0/**', 'scripts/a0-vectors/**', 'scripts/m1a-checkpoint/**', 'scripts/m1b-checkpoint/**', 'scripts/m1c-checkpoint/**', 'scripts/m1d-checkpoint/**', 'package-lock.json']
   pull_request:
-    paths: ['native/**', '.github/workflows/native-prover.yml', 'android/build.gradle', 'src/modules/shielded/a0/**', 'scripts/a0-vectors/**', 'scripts/m1a-checkpoint/**', 'scripts/m1b-checkpoint/**', 'scripts/m1c-checkpoint/**', 'package-lock.json']
+    paths: ['native/**', '.github/workflows/native-prover.yml', 'android/build.gradle', 'src/modules/shielded/a0/**', 'scripts/a0-vectors/**', 'scripts/m1a-checkpoint/**', 'scripts/m1b-checkpoint/**', 'scripts/m1c-checkpoint/**', 'scripts/m1d-checkpoint/**', 'package-lock.json']
   workflow_dispatch:
 
 permissions:
@@ -190,6 +190,16 @@ jobs:
         run: |
           files=(scripts/m1c-checkpoint/*.test.mjs)
           [ "${#files[@]}" -ge 3 ] && [ -f "${files[0]}" ] || { echo "::error::no M1c desk test files matched: ${files[*]}"; exit 1; }
+          node --no-warnings --test "${files[@]}"
+
+      # THE M1d CHECKPOINT'S DESK TESTS: the §16 M1d judge (D0–D6) on synthetic devnet answers built from the repo's
+      # vector addresses, a failing row per line, the readout readers. No network, no device. The glob is asserted
+      # to match, as above.
+      - name: The M1d checkpoint desk tests (node --test scripts/m1d-checkpoint/*.test.mjs)
+        working-directory: .
+        run: |
+          files=(scripts/m1d-checkpoint/*.test.mjs)
+          [ "${#files[@]}" -ge 1 ] && [ -f "${files[0]}" ] || { echo "::error::no M1d desk test files matched: ${files[*]}"; exit 1; }
           node --no-warnings --test "${files[@]}"
 
       - uses: dtolnay/rust-toolchain@stable
