@@ -276,3 +276,10 @@ Tell the owner per screen what changed.
     deliberate change from today, where a partial sync shows the fresh half; a test pins the new behaviour.
 
 Spec review: Fable r1 NOT APPROVED (16) → §10; r2 NOT APPROVED (6) → §11; r3 APPROVED (2026-11-22).
+- **2026-11-22, plan review (supersedes R12's order for SPL).**
+  - The SPL sender ("From") is the **source token account's owner**, read from post or pre token balances, not
+    `info.authority`.
+  - When the authority differs from that owner, #27 adds a row "Authorized by <short authority>".
+  - When the owner is unknown, "From" reads "—" and no direction is claimed. This is plan ruling 17.
+- **2026-11-22, plan review.** A main account that was never read (`lastSyncedAt` null) is never `ready`. It reads
+  `loading` until a sync of this session fails, and `error` after that.
