@@ -21,15 +21,16 @@ show a wrong figure, and never claim what the chain does not show.
 
 **Success criteria:**
 - **Stale balances are labelled.** A balance that failed to refresh is shown as the last known figure, visibly marked
-  stale with its age. This applies to the main account and to any other account whose figure is cached. It is never
-  shown as current, and never hidden when a last figure exists.
+  stale with its age. This applies to the main account, and to any other account whose figure was read earlier in
+  this session (§10 R5). A stale figure is never shown as current, and is never hidden while a last figure is known.
 - **The "linked" tag follows own-account sends.** After a confirmed Send that showed the linking warning, every
   fresh-exit account taking part carries "linked" in the Accounts sheet. The main account never does.
 - **#27 names things correctly.** Transaction detail shows the token symbol for known tokens. For SPL transfers it
   names the recipient wallet, not the token account.
 - **One row per token.** A mint held in two token accounts is one row with the summed amount, so USD is never counted
   twice.
-- **wSOL counts as SOL.** The public hero total counts wrapped SOL as SOL, matching the Public column.
+- **wSOL is counted once.** Wrapped SOL is its own "Wrapped SOL" row, priced as SOL. The public hero total is the
+  sum of the rows, so wSOL is counted exactly once (§10 R7).
 - **The parked review minors are closed** (§7).
 - All gates are green and the privacy-claims and banned-word guards are unchanged.
 
@@ -51,16 +52,17 @@ PR (PR 2); new accounts features.
 - **Main account.**
   - Its figure is `walletStore` (written by `forceSync`). `forceSync` already returns `{success, error}`, and
     `lastSyncedAt` is the time of the last successful sync.
-  - Add `lastSyncFailedAt: number | null` next to it. It is set when a sync fails and cleared on success.
+  - Add `lastSyncFailedAt: number | null` next to it, **in memory only, never persisted** (§10 R13). It is set when
+    a sync of this session fails and cleared on success.
   - The figure is **stale** when `lastSyncFailedAt !== null && lastSyncedAt !== null`, meaning the last attempt
-    failed and an older successful read exists.
+    of this session failed and an older successful read exists. The age is measured from `lastSyncedAt`.
   - With no successful read ever, the figure is **unknown** (today's "—").
 - **Another account.**
   - `useAccountPublicData` today returns `error` on a failed re-read even when the query cache holds a previous
     figure (M1d review r1 N1). It becomes:
     - `{status: 'stale', …figure, syncedAt, failedAt}` when the cache holds a figure from an earlier successful
       read;
-    - `{status: 'error'}` only when no figure was ever read.
+    - `{status: 'error'}` only when no figure was read in this session (§10 R5).
 - **Main through the same hook.** `useAccountPublicData` for main returns `stale` under the same rule, so every
   consumer sees one shape.
 
@@ -242,7 +244,8 @@ Tell the owner per screen what changed.
   source token account's owner, for SPL. It is not the fee payer (`keys[0]`), which is wrong for relayed
   transactions.
 - **R13 — cold start.**
-  - `lastSyncFailedAt` is persisted with `lastSyncedAt` and added to `DEFAULTS`.
+  - `lastSyncFailedAt` is **not persisted** (re-review r2-1). It lives in the store's in-memory state and is reset to
+    null on `reset`.
   - At cold start the persisted figure shows as it does today until the session's first sync settles, and turns
     stale if that sync fails. Ruling: a stale label flashing on every launch would be noise. Cost: a few seconds of
     an unlabelled figure at launch, which is today's behaviour.
@@ -252,3 +255,17 @@ Tell the owner per screen what changed.
   After that, PR 2's scan covers it.
 - **R16 — details.** While stale, the token rows' 24h % is hidden too. `{age}` is recomputed on render and every
   60 s while the screen is focused.
+
+## 11. Re-review r2 corrections (binding)
+
+- **r2-1 — cold start.** `lastSyncFailedAt` is in memory only (§3.1, R13), so a new session never starts stale.
+- **r2-2 and r2-3.** §1 and §3.1 are edited in place to match R5 and R7.
+- **r2-4 — R7 code facts.**
+  - `DashboardScreen.tsx` (~:329, :451) treats any row with `symbol === 'SOL'` as the native row. Those checks must
+    key on the mint (`'native'`), not on the symbol, so renaming the wSOL row changes no other row.
+  - The wSOL holding is priced from `prices['native']` (prices are keyed by mint, `portfolio.ts:30`), so the hero
+    counts it.
+- **r2-5 — partial sync.** A partial sync writes **nothing** to the store. Every figure keeps the age of the last fully
+  successful sync, so a fresh half never sits under an old age.
+- **r2-6 — symbol source.** R8's "verified" means the mint passes `classifyToken` (`tokenModule.ts:116`); the DAS
+  cache has no verified flag. Otherwise the short mint is shown.
