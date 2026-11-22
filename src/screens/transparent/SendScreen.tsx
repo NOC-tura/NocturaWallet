@@ -30,7 +30,7 @@ import {getTransferMarkupLamports} from '../../modules/solana/transactionBuilder
 import {parseTokenAmount, formatTokenAmount} from '../../utils/parseTokenAmount';
 import {useAccountList, useRefreshAccounts, useSelectedAccount} from '../../hooks/useSelectedAccount';
 import {NO_PUBLIC_DATA, useAccountPublicData} from '../../hooks/useAccountPublicData';
-import {LINK_TAP_AGAIN, LINK_WARNING_BODY, LINK_WARNING_TITLE, SEND_BALANCE_RETRY, VALUE_UNKNOWN} from '../../copy/accounts';
+import {LINK_TAP_AGAIN, LINK_WARNING_BODY, LINK_WARNING_TITLE, SEND_BALANCE_CHECKING, SEND_BALANCE_RETRY, VALUE_UNKNOWN} from '../../copy/accounts';
 import {linkingWarningApplies} from '../../modules/accounts/linking';
 import {addressBook} from '../../modules/addressBook/addressBookModule';
 import type {Contact} from '../../modules/addressBook/types';
@@ -137,12 +137,16 @@ export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
   const {data: publicData, refetch: refetchPublic} = useAccountPublicData(source);
   const publicReady = publicData.status === 'ready';
   // owner 2A (2026-11-22): a failed read shows "tap to retry", never a figure; one read in flight at a time
+  // (review 2A m2: the row says "Checking balance…" while it runs, so a tap is never silent)
   const retryingRef = useRef(false);
+  const [retrying, setRetrying] = useState(false);
   const retryPublic = useCallback(() => {
     if (retryingRef.current) return;
     retryingRef.current = true;
+    setRetrying(true);
     refetchPublic().finally(() => {
       retryingRef.current = false;
+      setRetrying(false);
     });
   }, [refetchPublic]);
   const {solBalance, nocBalance, tokens: storeTokens, tokenBalances} = publicData.status === 'ready' ? publicData : NO_PUBLIC_DATA;
@@ -221,6 +225,8 @@ export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
   }, []);
 
   const handleMaxAmount = useCallback(() => {
+    // review 2A I1: an unknown balance (loading, failed) never fills the amount with a made-up 0
+    if (!publicReady) return;
     setLinkAck(false);
     if (selectedMint === SOL_MINT) {
       const available = selectedBalance - getTotalNetworkFee(priorityLevel);
@@ -229,7 +235,7 @@ export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
     } else {
       setAmount(formatTokenAmount(selectedBalance, selectedToken.decimals));
     }
-  }, [selectedMint, selectedBalance, selectedToken.decimals, priorityLevel]);
+  }, [publicReady, selectedMint, selectedBalance, selectedToken.decimals, priorityLevel]);
 
   const handleRecipientChange = useCallback(
     (text: string) => {
@@ -308,7 +314,8 @@ export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
 
   // Insufficient balance check
   const insufficientBalance = useMemo(() => {
-    if (!amount.trim()) return false;
+    // review 2A I1: "short by" is computed only from a balance that was actually read
+    if (!publicReady || !amount.trim()) return false;
     try {
       const parsed = parseTokenAmount(amount, selectedToken.decimals);
       if (parsed <= 0n) return false;
@@ -319,7 +326,7 @@ export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
     } catch {
       return false;
     }
-  }, [amount, selectedToken.decimals, selectedMint, selectedBalance, priorityLevel]);
+  }, [publicReady, amount, selectedToken.decimals, selectedMint, selectedBalance, priorityLevel]);
 
   const shortBy = useMemo<bigint>(() => {
     if (!insufficientBalance) return 0n;
@@ -589,8 +596,10 @@ export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
                 />
                 <Pressable
                   onPress={handleMaxAmount}
+                  disabled={!publicReady}
                   accessibilityRole="button"
                   accessibilityLabel="Max"
+                  accessibilityState={{disabled: !publicReady}}
                   testID="max-button"
                   className="px-3 py-1.5 rounded-pill bg-accent-transparent-tint active:opacity-80">
                   <Text
@@ -603,12 +612,14 @@ export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
               {publicData.status === 'error' ? (
                 <Pressable
                   onPress={retryPublic}
+                  disabled={retrying}
                   accessibilityRole="button"
+                  accessibilityState={{disabled: retrying, busy: retrying}}
                   testID="send-balance-retry"
                   className="flex-row items-center mt-2"
                   hitSlop={8}>
                   <Text variant="body-sm" className="text-fg-secondary">
-                    {SEND_BALANCE_RETRY}
+                    {retrying ? SEND_BALANCE_CHECKING : SEND_BALANCE_RETRY}
                   </Text>
                 </Pressable>
               ) : (

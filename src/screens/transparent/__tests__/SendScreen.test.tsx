@@ -190,11 +190,34 @@ describe('M1d — #12 sends from the account selected when it opened (spec §3.3
     expect(retry).toHaveTextContent('Balance unavailable · tap to retry');
     expect(retry.props.accessibilityRole).toBe('button');
     expect(r.getByTestId('review-button').props.accessibilityState?.disabled).toBe(true);
+    // review 2A I1: no "short by" and no MAX from an unknown balance
+    expect(r.queryByText(/Insufficient balance/)).toBeNull();
+    expect(r.getByTestId('max-button').props.accessibilityState?.disabled).toBe(true);
+    let release: (ok: boolean) => void = () => undefined;
+    mockSendRefetch.mockImplementationOnce(() => new Promise<boolean>(res => (release = res)));
     await act(async () => {
       fireEvent.press(retry);
       fireEvent.press(retry); // a double tap reads once (in flight)
     });
     expect(mockSendRefetch).toHaveBeenCalledTimes(1);
+    expect(r.getByTestId('send-balance-retry')).toHaveTextContent('Checking balance…'); // review 2A m2: never silent
+    await act(async () => {
+      release(false);
+    });
+    expect(r.getByTestId('send-balance-retry')).toHaveTextContent('Balance unavailable · tap to retry');
+    await act(async () => {
+      fireEvent.press(r.getByTestId('send-balance-retry'));
+    });
+    expect(mockSendRefetch).toHaveBeenCalledTimes(2); // review 2A m4: the guard is released after a read settles
+  });
+
+  it('review 2A I1: while loading, MAX does not fill a 0 and no "short by" is shown', () => {
+    mockSendPublic.current = {status: 'loading'};
+    const r = render(<SendScreen onReview={jest.fn()} />);
+    fill(r);
+    fireEvent.press(r.getByTestId('max-button'));
+    expect(r.getByTestId('amount-input').props.value).toBe('0.001');
+    expect(r.queryByText(/Insufficient balance/)).toBeNull();
   });
 
   it('owner 2A: no retry row while loading or ready', () => {
