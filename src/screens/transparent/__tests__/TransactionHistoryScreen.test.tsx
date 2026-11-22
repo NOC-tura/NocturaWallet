@@ -39,7 +39,8 @@ const mockTxs: ParsedTransaction[] = [
 ];
 
 let mockTxData: ParsedTransaction[] = [];
-const mockQuery: {isLoading: boolean; isError: boolean; isFetching: boolean; refetch: jest.Mock} = {
+const mockQuery: {isSuccess: boolean; isLoading: boolean; isError: boolean; isFetching: boolean; refetch: jest.Mock} = {
+  isSuccess: true,
   isLoading: false,
   isError: false,
   isFetching: false,
@@ -57,20 +58,71 @@ describe('TransactionHistoryScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockTxData = [];
+    mockQuery.isSuccess = true;
     mockQuery.isLoading = false;
     mockQuery.isError = false;
     mockQuery.isFetching = false;
     mockQuery.refetch = jest.fn(() => Promise.resolve());
   });
 
-  it('Shows filter tabs (All/Sent/Received only)', () => {
-    const {getByTestId, getByText} = render(
+  it('I1: there is no filter tab bar (no direction is known)', () => {
+    const {queryByTestId, queryByText} = render(
       <TransactionHistoryScreen onSelectTx={onSelectTx} onBack={onBack} />,
     );
-    expect(getByTestId('filter-tabs')).toBeTruthy();
-    expect(getByText('All')).toBeTruthy();
-    expect(getByText('Sent')).toBeTruthy();
-    expect(getByText('Received')).toBeTruthy();
+    expect(queryByTestId('filter-tabs')).toBeNull();
+    expect(queryByText('Sent')).toBeNull();
+    expect(queryByText('Received')).toBeNull();
+  });
+
+  it('I1: real-shaped rows (no from/to/amount) show a neutral dot, never an arrow', () => {
+    mockTxData = [
+      {signature: 'realAAAAAAAAAAAAAAAAAAAA', slot: 1, timestamp: 1700000000, type: 'unknown', status: 'confirmed'} as ParsedTransaction,
+      {signature: 'realBBBBBBBBBBBBBBBBBBBB', slot: 2, timestamp: 1700000100, type: 'unknown', status: 'finalized'} as ParsedTransaction,
+    ];
+    const {getAllByText, queryByText} = render(
+      <TransactionHistoryScreen onSelectTx={onSelectTx} onBack={onBack} />,
+    );
+    expect(getAllByText('•')).toHaveLength(2);
+    expect(queryByText('↓')).toBeNull();
+    expect(queryByText('↑')).toBeNull();
+  });
+
+  it('I1: arrows stay when from/to are actually present', () => {
+    mockTxData = mockTxs;
+    const {getByText} = render(<TransactionHistoryScreen onSelectTx={onSelectTx} onBack={onBack} />);
+    expect(getByText('↑')).toBeTruthy();
+    expect(getByText('↓')).toBeTruthy();
+  });
+
+  it('I2: no selected account shows the loading text, never "No transactions yet"', () => {
+    mockHistSelected.current = null;
+    mockQuery.isSuccess = false;
+    const {getByText, queryByText} = render(<TransactionHistoryScreen onSelectTx={onSelectTx} onBack={onBack} />);
+    expect(getByText('Loading transactions…')).toBeTruthy();
+    expect(queryByText('No transactions yet')).toBeNull();
+    mockHistSelected.current = {address: 'myPublicKey111111111111111111111111111111', label: 'Account 1'};
+  });
+
+  it('I2: a read that has not completed (not loading, not error, no data) is not "empty"', () => {
+    mockQuery.isSuccess = false;
+    const {getByText, queryByText} = render(<TransactionHistoryScreen onSelectTx={onSelectTx} onBack={onBack} />);
+    expect(getByText('Loading transactions…')).toBeTruthy();
+    expect(queryByText('No transactions yet')).toBeNull();
+  });
+
+  it('m5: switching account resets a retry that was in flight', async () => {
+    mockQuery.isSuccess = false;
+    mockQuery.isError = true;
+    mockQuery.refetch = jest.fn(() => new Promise<void>(() => undefined));
+    const {getByTestId, getByText, rerender} = render(<TransactionHistoryScreen onSelectTx={onSelectTx} onBack={onBack} />);
+    fireEvent.press(getByTestId('history-retry'));
+    expect(getByText('Loading transactions…')).toBeTruthy();
+    mockHistSelected.current = {address: '3YqEpfo3c818GhvbQ1UmVY1nJxw16vtu4JB9peJXT94k', label: 'Account 4'};
+    rerender(<TransactionHistoryScreen onSelectTx={onSelectTx} onBack={onBack} />);
+    expect(getByText("Couldn't load transactions · tap to retry")).toBeTruthy();
+    fireEvent.press(getByTestId('history-retry'));
+    expect(mockQuery.refetch).toHaveBeenCalledTimes(2);
+    mockHistSelected.current = {address: 'myPublicKey111111111111111111111111111111', label: 'Account 1'};
   });
 
   it('r1-2: has no Private or Staking tab (they could only say "No transactions yet", which is false)', () => {
@@ -80,6 +132,7 @@ describe('TransactionHistoryScreen', () => {
   });
 
   it('r1-1: loading shows "Loading transactions…", never the empty state', () => {
+    mockQuery.isSuccess = false;
     mockQuery.isLoading = true;
     const {getByText, queryByText} = render(<TransactionHistoryScreen onSelectTx={onSelectTx} onBack={onBack} />);
     expect(getByText('Loading transactions…')).toBeTruthy();
@@ -87,6 +140,7 @@ describe('TransactionHistoryScreen', () => {
   });
 
   it('r1-1: an error shows the retry line, never the empty state; tapping refetches once', async () => {
+    mockQuery.isSuccess = false;
     mockQuery.isError = true;
     let resolve: () => void = () => undefined;
     mockQuery.refetch = jest.fn(() => new Promise<void>(r => { resolve = r; }));
@@ -105,6 +159,7 @@ describe('TransactionHistoryScreen', () => {
   });
 
   it('r1-1: a failed refetch keeps the read transactions and shows the retry line above them', () => {
+    mockQuery.isSuccess = false;
     mockQuery.isError = true;
     mockTxData = mockTxs;
     const {getByTestId, getByText} = render(<TransactionHistoryScreen onSelectTx={onSelectTx} onBack={onBack} />);
@@ -119,16 +174,22 @@ describe('TransactionHistoryScreen', () => {
     mockHistSelected.current = {address: 'myPublicKey111111111111111111111111111111', label: 'Account 1'};
   });
 
-  it('Shows "All" filter active by default', () => {
-    const {getByTestId} = render(
-      <TransactionHistoryScreen onSelectTx={onSelectTx} onBack={onBack} />,
-    );
-    const allTab = getByTestId('filter-tab-All');
-    // Active tab has purple background applied via style
-    expect(allTab).toBeTruthy();
-    // Verify it renders without error and "All" tab exists as the first tab
-    const sentTab = getByTestId('filter-tab-Sent');
-    expect(sentTab).toBeTruthy();
+  it('m5: a stale retry finishing does not free the new account\'s in-flight retry', async () => {
+    mockQuery.isSuccess = false;
+    mockQuery.isError = true;
+    const resolvers: Array<() => void> = [];
+    mockQuery.refetch = jest.fn(() => new Promise<void>(r => { resolvers.push(r); }));
+    const {getByTestId, getByText, rerender, UNSAFE_getAllByProps} = render(<TransactionHistoryScreen onSelectTx={onSelectTx} onBack={onBack} />);
+    fireEvent.press(getByTestId('history-retry')); // account 1
+    mockHistSelected.current = {address: '3YqEpfo3c818GhvbQ1UmVY1nJxw16vtu4JB9peJXT94k', label: 'Account 4'};
+    rerender(<TransactionHistoryScreen onSelectTx={onSelectTx} onBack={onBack} />);
+    fireEvent.press(getByTestId('history-retry')); // account 4
+    const onPress = UNSAFE_getAllByProps({testID: 'history-retry'})[0]!.props.onPress as () => void;
+    await act(async () => { resolvers[0]!(); }); // account 1's read finishes late
+    expect(getByText('Loading transactions…')).toBeTruthy();
+    act(() => { onPress(); });
+    expect(mockQuery.refetch).toHaveBeenCalledTimes(2);
+    mockHistSelected.current = {address: 'myPublicKey111111111111111111111111111111', label: 'Account 1'};
   });
 
   it('Shows "No transactions yet" when list empty', () => {

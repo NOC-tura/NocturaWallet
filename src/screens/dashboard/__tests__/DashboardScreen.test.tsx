@@ -225,7 +225,7 @@ beforeEach(() => {
 });
 
 describe('DashboardScreen — transparent mode', () => {
-  it('M1d: the History button calls onHistory, in both modes', async () => {
+  it('M1d: in transparent mode the History button calls onHistory', async () => {
     const onHistory = jest.fn();
     const r = await renderDashboard({onHistory});
     expect(r.getByTestId('dashboard-history').props.accessibilityLabel).toBe('Transaction history');
