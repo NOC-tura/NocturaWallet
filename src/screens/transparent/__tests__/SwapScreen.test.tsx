@@ -228,7 +228,9 @@ describe('post-M1d Task 5 ruling: Swap refuses a stale or unknown main balance',
     mockStore.current = STATES.unknown;
     expect(renderSwap().getByTestId('swap-balance-note')).toHaveTextContent('Balance unavailable · tap to retry');
     mockStore.current = STATES.neverSynced;
-    expect(renderSwap().getByTestId('swap-balance-note')).toHaveTextContent('Checking balance…');
+    const note = renderSwap().getByTestId('swap-balance-note');
+    expect(note).toHaveTextContent('Checking balance…');
+    expect(note.props.accessibilityState).toEqual({disabled: true, busy: true}); // review m1: announced as not tappable
     mockStore.current = STATES.fresh;
     expect(renderSwap().queryByTestId('swap-balance-note')).toBeNull();
   });

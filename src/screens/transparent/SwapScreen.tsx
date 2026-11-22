@@ -113,6 +113,8 @@ export function SwapScreen({initialFromMint, onBack, onDone}: SwapScreenProps) {
         if (isMountedRef.current) setRetrying(false);
       });
   }, []);
+  // a first sync not settled yet: the note reads "Checking balance…" and offers no tap
+  const noteBusy = retrying || (lastSyncedAt === null && lastSyncFailedAt === null);
 
   const [fromMint, setFromMint] = useState<string>(
     initialFromMint && SWAP_TOKENS.some(t => t.mint === initialFromMint)
@@ -427,13 +429,14 @@ export function SwapScreen({initialFromMint, onBack, onDone}: SwapScreenProps) {
             {!balanceKnown ? (
               <Pressable
                 onPress={retryBalance}
-                disabled={retrying || (lastSyncedAt === null && lastSyncFailedAt === null)}
+                disabled={noteBusy}
                 accessibilityRole="button"
-                accessibilityState={{disabled: retrying, busy: retrying}}
+                // review m1: the announced state matches the real one (never an enabled-sounding "Checking…")
+                accessibilityState={{disabled: noteBusy, busy: noteBusy}}
                 testID="swap-balance-note"
                 hitSlop={8}>
                 <Text variant="body-sm" className="text-fg-secondary">
-                  {retrying || (lastSyncedAt === null && lastSyncFailedAt === null)
+                  {noteBusy
                     ? SEND_BALANCE_CHECKING
                     : staleBalance
                       ? SEND_BALANCE_STALE
