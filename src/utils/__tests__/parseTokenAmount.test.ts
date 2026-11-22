@@ -168,5 +168,7 @@ describe('formatBalanceForDisplay grouping (on-device safe)', () => {
 describe('formatBalanceForDisplay — review m1 (2026-11-22)', () => {
   it('a negative amount never reads as a tiny positive "<0.0001"', () => {
     expect(formatBalanceForDisplay('-5000000000', 9)).not.toMatch(/^</);
+    expect(formatBalanceForDisplay('-1500000000', 9)).toBe('-1.5'); // final review m3
+    expect(formatBalanceForDisplay('-100', 9)).toBe('-<0.0001');
   });
 });

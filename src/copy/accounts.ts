@@ -101,10 +101,10 @@ export function moreAssets(n: number): string {
   return `+${n} more`;
 }
 
-/** A column's accessibility label: what it shows (already "•••" when hidden), and what a tap does */
 /** The spoken form of an unknown side */
 export const SPLIT_UNKNOWN_A11Y = 'not known yet';
 
+/** A column's accessibility label: what it shows (already "•••" when hidden), and what a tap does */
 export function splitA11y(sideName: string, value: string, isActive: boolean): string {
   // review Task 5 m8: a screen reader says nothing for "—"; it hears "not known yet"
   const spoken = value === VALUE_UNKNOWN ? SPLIT_UNKNOWN_A11Y : value;

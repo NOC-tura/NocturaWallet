@@ -953,7 +953,8 @@ function SplitColumn({label, lines, isActive, dotClass, onSelect, testID}: Split
     <Pressable
       // the active column is the mode already shown: a tap does nothing
       onPress={isActive ? undefined : onSelect}
-      accessibilityRole="button"
+      // final review m6: the active column offers no action, so TalkBack does not announce one
+      accessibilityRole={isActive ? 'text' : 'button'}
       accessibilityState={{selected: isActive}}
       accessibilityLabel={splitA11y(label, lines.join(', '), isActive)}
       testID={testID}

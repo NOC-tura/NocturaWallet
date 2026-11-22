@@ -43,6 +43,8 @@ export function formatBalanceForDisplay(
     return '0';
   }
   if (big === 0n) return '0';
+  // final review m3: a negative amount is the same figure with a sign (never "-1.-4999" or "<0.0001")
+  if (big < 0n) return '-' + formatBalanceForDisplay((-big).toString(), decimals, maxDisplayDecimals);
 
   // Sub-display threshold: a non-zero amount below 10^-maxDisplayDecimals reads
   // "<0.0001" (the wallet convention; never scientific notation). Skip when

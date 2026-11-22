@@ -22,7 +22,7 @@ const EXTRA = [
   'src/modules/accounts/accountList.ts',
   // M1d (review r1 I2): the signer refusal #21 shows as it is
   'src/modules/solana/sendTransaction.ts',
-  // M1d (review r1 I2): the combined line's and the sheet rows' formatter
+  // M1d (review r1 I2): the balance-card split's and the sheet rows' formatter
   'src/modules/accounts/valueLine.ts',
 ];
 

@@ -93,13 +93,13 @@ then unlock the production wallet and run `node scripts/m1c-checkpoint/m1c-check
 
 ## Your visual pass
 
-The Accounts sheet (§4); #11 in both modes with the avatar number and the combined line, with balances hidden
-("Public ••• · Private •••") and while a non-main account loads ("Public — · …", e.g. in airplane mode); #12 with
+The Accounts sheet (§4); #11 in both modes with the avatar number and the Public | Private split in the balance card, with balances hidden
+("•••" in each column) and while a non-main account loads (Public "—", e.g. in airplane mode); #12 with
 the warning and the second tap; #19 / #20 "From"; #21 "Received by" (shown on the NEXT Make public to "A new
 account" — optional here); #17's "Who sees what"; Swap / Referral's main-account lines (presale #23 does not exist in the devnet build (S13) — its main-account line is proven in Jest only).
 Also check: the pool token TEST now appears on the **main** account's devnet dashboard too; Swap and
 Referral with a **non-main** account selected (the "From: Account 1 (main)" / "Uses your main account" line and its
-spacing); the combined line "Public … · Private …" fits on one line on the phone; with **TalkBack** on, the linking
+spacing); the Public | Private split inside the balance card fits (no cut-off amount) on the phone; with **TalkBack** on, the linking
 warning under the recipient on #12 is read out.
 The cli wallet's one-row sheet and the unreadable-registry line are proven in Jest, not on the phone.
 
