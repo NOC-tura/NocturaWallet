@@ -63,6 +63,19 @@ describe('post-M1d R2: unlock drains the link queue once the encrypted store is 
     expect((initSecureMmkv as jest.Mock).mock.invocationCallOrder[0]!).toBeLessThan(mockDrain.mock.invocationCallOrder[0]!);
   });
 
+  it('a drain that throws never fails the unlock: still resolves, still drops the v1 view key and starts A0', async () => {
+    (isShieldedEnabled as jest.Mock).mockReturnValue(true);
+    mockDrain.mockImplementation(() => {
+      throw new Error('queue');
+    });
+    await expect(unlockSecureStorage()).resolves.toBeUndefined();
+    expect(keychainManager.dropV1ViewKey).toHaveBeenCalledTimes(1);
+    expect(ensureA0Startup).toHaveBeenCalledTimes(1);
+    expect(() => unlockSecureStorageWithSeed(new Uint8Array(64).fill(9))).not.toThrow();
+    expect(ensureA0Startup).toHaveBeenCalledTimes(2);
+    mockDrain.mockImplementation(() => 0);
+  });
+
   it('a store that is already open: nothing to drain here (the sheet drains when it opens)', async () => {
     (mmkvSecure as jest.Mock).mockReturnValueOnce({});
     await unlockSecureStorage();

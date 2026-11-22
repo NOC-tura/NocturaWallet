@@ -440,6 +440,13 @@ describe('M1d — the linking warning and its second tap (spec §4.4)', () => {
     expect(onReview.mock.calls[0]![0].linksAccounts).toEqual([A3, A1]);
   });
 
+  it('post-M1d §4: a Pay URI recipient (solana:<exit>) → linksAccounts names the exit address, not the raw string', () => {
+    const {r, onReview} = setup(`solana:${A1}`);
+    tap(r);
+    tap(r);
+    expect(onReview.mock.calls[0]![0].linksAccounts).toEqual([A3, A1]);
+  });
+
   it('post-M1d §4: a foreign recipient → linksAccounts is empty', () => {
     const {r, onReview} = setup(FOREIGN);
     tap(r);
