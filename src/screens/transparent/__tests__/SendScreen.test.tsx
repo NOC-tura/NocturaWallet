@@ -40,6 +40,9 @@ jest.mock('../../../hooks/useSelectedAccount', () => ({
   useAccountList: () => mockSendList.current,
   useRefreshAccounts: () => mockSendRefresh,
 }));
+// post-M1d R4: the main account's "tap to retry" runs the main sync (refetch is a no-op for main)
+const mockForceSync = jest.fn(() => Promise.resolve({success: true, partial: false, timestamp: 1}));
+jest.mock('../../../modules/backgroundSync/backgroundSyncModule', () => ({forceSync: () => mockForceSync()}));
 const mockSendPublic: {current: unknown} = {current: READY_1_SOL};
 const mockSendRefetch = jest.fn(() => Promise.resolve(true));
 jest.mock('../../../hooks/useAccountPublicData', () => ({
@@ -181,6 +184,8 @@ describe('M1d — #12 sends from the account selected when it opened (spec §3.3
   });
 
   it('owner 2A (2026-11-22): a failed read of the source → "Balance unavailable · tap to retry", the tap re-reads, the CTA stays disabled', async () => {
+    // post-M1d R4: the refetch path is the non-main one — main retries through forceSync (its own row below)
+    mockSendSelected.current = A3_SRC;
     mockSendPublic.current = {status: 'error'};
     mockSendRefetch.mockClear();
     const r = render(<SendScreen onReview={jest.fn()} />);
@@ -211,14 +216,82 @@ describe('M1d — #12 sends from the account selected when it opened (spec §3.3
     expect(mockSendRefetch).toHaveBeenCalledTimes(2); // review 2A m4: the guard is released after a read settles
   });
 
-  it('post-M1d Task 2: a stale source → Available "—", CTA and MAX disabled, no "Insufficient balance" (never usable as current)', () => {
-    mockSendPublic.current = {status: 'stale', syncedAt: 1, failedAt: 2, solBalance: '1000000000', nocBalance: '0', tokenBalances: {}, tokens: []};
+  const STALE_1_SOL = {status: 'stale', syncedAt: 1, failedAt: 2, solBalance: '1000000000', nocBalance: '0', tokens: [], tokenBalances: {}};
+
+  it('post-M1d §3.2: a stale balance is not usable — "Not updated · tap to retry", no figure, CTA / MAX / "short by" off', () => {
+    mockSendPublic.current = STALE_1_SOL;
     const r = render(<SendScreen onReview={jest.fn()} />);
     fill(r);
-    expect(r.getByTestId('send-available')).toHaveTextContent('— SOL');
+    expect(r.queryByTestId('send-available')).toBeNull(); // the stale 1 SOL is never offered as Available
+    expect(r.getByTestId('send-balance-retry')).toHaveTextContent('Not updated · tap to retry');
     expect(r.getByTestId('review-button').props.accessibilityState?.disabled).toBe(true);
     expect(r.getByTestId('max-button').props.accessibilityState?.disabled).toBe(true);
-    expect(r.queryByText(/Insufficient balance/)).toBeNull();
+    fireEvent.press(r.getByTestId('max-button'));
+    expect(r.getByTestId('amount-input').props.value).toBe('0.001'); // MAX filled nothing
+    fireEvent.changeText(r.getByTestId('amount-input'), '5'); // more than the stale 1 SOL
+    expect(r.queryByText(/Insufficient balance/)).toBeNull(); // never judged against a stale figure
+  });
+
+  it('positive control: the same figure as READY is usable', () => {
+    mockSendPublic.current = READY_1_SOL;
+    const r = render(<SendScreen onReview={jest.fn()} />);
+    fill(r);
+    expect(r.getByTestId('send-available')).toHaveTextContent('1 SOL');
+    expect(r.getByTestId('review-button').props.accessibilityState?.disabled).toBe(false);
+  });
+
+  it('R4: main + stale → the tap runs forceSync once (never the no-op refetch); a double tap reads once', async () => {
+    mockSendSelected.current = MAIN_SRC;
+    mockSendPublic.current = STALE_1_SOL;
+    mockSendRefetch.mockClear();
+    mockForceSync.mockClear();
+    let release: (v: {success: boolean; partial: boolean; timestamp: number}) => void = () => undefined;
+    mockForceSync.mockImplementationOnce(() => new Promise(res => (release = res)));
+    const r = render(<SendScreen onReview={jest.fn()} />);
+    await act(async () => {
+      fireEvent.press(r.getByTestId('send-balance-retry'));
+      fireEvent.press(r.getByTestId('send-balance-retry'));
+    });
+    expect(mockForceSync).toHaveBeenCalledTimes(1);
+    expect(mockSendRefetch).not.toHaveBeenCalled();
+    expect(r.getByTestId('send-balance-retry')).toHaveTextContent('Checking balance…');
+    await act(async () => {
+      release({success: false, partial: true, timestamp: 2});
+    });
+    expect(r.getByTestId('send-balance-retry')).toHaveTextContent('Not updated · tap to retry');
+  });
+
+  it('another account + stale → the tap re-reads that account (refetch), not the main sync', async () => {
+    mockSendSelected.current = A3_SRC;
+    mockSendPublic.current = STALE_1_SOL;
+    mockSendRefetch.mockClear();
+    mockForceSync.mockClear();
+    const r = render(<SendScreen onReview={jest.fn()} />);
+    await act(async () => {
+      fireEvent.press(r.getByTestId('send-balance-retry'));
+    });
+    expect(mockSendRefetch).toHaveBeenCalledTimes(1);
+    expect(mockForceSync).not.toHaveBeenCalled();
+  });
+
+  it('a rejected forceSync frees the retry (never stuck on "Checking balance…")', async () => {
+    mockSendSelected.current = MAIN_SRC;
+    mockSendPublic.current = STALE_1_SOL;
+    mockForceSync.mockImplementationOnce(() => Promise.reject(new Error('boom')));
+    const r = render(<SendScreen onReview={jest.fn()} />);
+    await act(async () => {
+      fireEvent.press(r.getByTestId('send-balance-retry'));
+    });
+    expect(r.getByTestId('send-balance-retry')).toHaveTextContent('Not updated · tap to retry');
+  });
+
+  // UNTESTED INVARIANT (race unconstructible): the generation guard itself has no test that can make it bite — the
+  // source moves only null → account. This row pins the condition that makes it safe, not the guard.
+  it('final review m2: no retry can start while the source is unknown (the guard is keyed on the source)', () => {
+    mockSendSelected.current = null;
+    mockSendPublic.current = {status: 'loading'};
+    const r = render(<SendScreen onReview={jest.fn()} />);
+    expect(r.queryByTestId('send-balance-retry')).toBeNull();
   });
 
   it('review 2A I1: while loading, MAX does not fill a 0 and no "short by" is shown', () => {
