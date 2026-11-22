@@ -1,8 +1,9 @@
-import React, {useState} from 'react';
+import React, {useCallback, useRef, useState} from 'react';
 import {
   View,
   Text,
   FlatList,
+  Pressable,
   ScrollView,
   TouchableOpacity,
   StyleSheet,
@@ -13,10 +14,13 @@ import {useTransactionHistory} from '../../hooks/useSolanaQueries';
 import {formatAddress} from '../../utils/formatAddress';
 import type {ParsedTransaction} from '../../modules/solana/types';
 import {parseTokenAmount} from '../../utils/parseTokenAmount';
+import {HISTORY_EMPTY, HISTORY_ERROR, HISTORY_LOADING} from '../../copy/accounts';
 
-type FilterTab = 'All' | 'Sent' | 'Received' | 'Private' | 'Staking';
+// r1-2: no Private / Staking tabs until history parsing can tell those apart — they could only say
+// "No transactions yet", which would be false.
+type FilterTab = 'All' | 'Sent' | 'Received';
 
-const FILTER_TABS: FilterTab[] = ['All', 'Sent', 'Received', 'Private', 'Staking'];
+const FILTER_TABS: FilterTab[] = ['All', 'Sent', 'Received'];
 
 interface Props {
   onSelectTx: (signature: string) => void;
@@ -123,19 +127,27 @@ export function TransactionHistoryScreen({onSelectTx, onBack}: Props) {
   const selected = useSelectedAccount();
   const publicKey = selected?.address ?? null;
   const nocUsdPrice = useWalletStore(s => s.nocUsdPrice);
-  const {data: transactions = []} = useTransactionHistory(publicKey);
+  const {data, isLoading, isError, refetch} = useTransactionHistory(publicKey);
+  const transactions = React.useMemo(() => data ?? [], [data]);
+  // r1-1: one read in flight at a time (the pattern of #12); the line says "Loading…" while it runs
+  const retryingRef = useRef(false);
+  const [retrying, setRetrying] = useState(false);
+  const retry = useCallback(() => {
+    if (retryingRef.current) return;
+    retryingRef.current = true;
+    setRetrying(true);
+    refetch().finally(() => {
+      retryingRef.current = false;
+      setRetrying(false);
+    });
+  }, [refetch]);
 
   const filtered = React.useMemo(() => {
     if (activeFilter === 'All') return transactions;
     if (activeFilter === 'Sent') {
       return transactions.filter(tx => tx.from === publicKey);
     }
-    if (activeFilter === 'Received') {
-      return transactions.filter(tx => tx.to === publicKey);
-    }
-    // Shielded and Staking: not yet distinguishable from on-chain data in Phase 2
-    // Return empty until shielded/staking tx parsing is implemented
-    return [];
+    return transactions.filter(tx => tx.to === publicKey);
   }, [transactions, activeFilter, publicKey]);
 
   return (
@@ -195,10 +207,30 @@ export function TransactionHistoryScreen({onSelectTx, onBack}: Props) {
             onPress={() => onSelectTx(item.signature)}
           />
         )}
+        ListHeaderComponent={
+          isError ? (
+            <Pressable
+              testID="history-retry"
+              onPress={retry}
+              disabled={retrying}
+              accessibilityRole="button"
+              accessibilityState={{disabled: retrying, busy: retrying}}
+              style={styles.retry}
+              hitSlop={8}>
+              <Text style={styles.retryText}>{retrying ? HISTORY_LOADING : HISTORY_ERROR}</Text>
+            </Pressable>
+          ) : null
+        }
         ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No transactions yet</Text>
-          </View>
+          isLoading ? (
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>{HISTORY_LOADING}</Text>
+            </View>
+          ) : isError ? null : (
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>{HISTORY_EMPTY}</Text>
+            </View>
+          )
         }
       />
     </View>
@@ -247,5 +279,7 @@ const styles = StyleSheet.create({
   badgeRed: {backgroundColor: '#7f1d1d'},
   badgeText: {color: '#ffffff', fontSize: 11},
   emptyContainer: {flex: 1, alignItems: 'center', marginTop: 80},
+  retry: {paddingHorizontal: 16, paddingVertical: 12},
+  retryText: {color: '#F2B53B', fontSize: 14},
   emptyText: {color: '#6b7280', fontSize: 16},
 });
