@@ -22,6 +22,7 @@ import {mmkvPublic} from '../../store/mmkv/instances';
 import {MMKV_KEYS} from '../../constants/mmkvKeys';
 import {SWAP_TOKENS} from '../../modules/swap/swapTokens';
 import {TokenPickerSheet} from '../../components/TokenPickerSheet';
+import {MainAccountLine} from '../../components/accounts/MainAccountLine';
 
 // ── Lazy imports — wrapped in try/catch so Jest/stub envs don't crash ─────────
 let submitSwap:
@@ -346,6 +347,11 @@ export function SwapScreen({initialFromMint, onBack, onDone}: SwapScreenProps) {
           contentContainerClassName="px-5 pb-6"
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}>
+
+          {/* M1d (spec §4.3, D1): Swap stays on the main account */}
+          <View className="mb-2">
+            <MainAccountLine variant="from" testID="swap-main-account" />
+          </View>
 
           {/* ── From card ─────────────────────────────────────────────────── */}
           <View className="bg-bg-surface-1 rounded-2xl p-4 gap-3 mb-2">

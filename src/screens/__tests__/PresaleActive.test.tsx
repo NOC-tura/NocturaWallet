@@ -68,6 +68,22 @@ jest.mock('../../store/zustand/presaleStore', () => ({
 
 const SELF_ADDR = '6Zia7b1b3NTFMQ8Kd588m8GJioMhY3YLbtcLwbB5o6Vd';
 
+// M1d (spec §4.3): this screen stays on the main account and says so while another account is selected
+const mockLineSelected: {current: {scheme: string; address: string; label: string; isMain: boolean}} = {
+  current: {scheme: 'slip10:0', address: 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk', label: 'Account 1', isMain: true},
+};
+jest.mock('../../hooks/useSelectedAccount', () => ({
+  useSelectedAccount: () => mockLineSelected.current,
+  useAccountList: () => ({
+    accounts: [{scheme: 'slip10:0', address: 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk', label: 'Account 1', isMain: true}],
+    seed: [],
+    walletKind: 'slip10',
+    unreadable: false,
+  }),
+}));
+const LINE_EXIT = {scheme: 'slip10:3', address: '3YqEpfo3c818GhvbQ1UmVY1nJxw16vtu4JB9peJXT94k', label: 'Account 4', isMain: false};
+const LINE_MAIN = {scheme: 'slip10:0', address: 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk', label: 'Account 1', isMain: true};
+
 jest.mock('../../store/zustand/walletStore', () => ({
   useWalletStore: (selector: (s: Record<string, unknown>) => unknown) =>
     selector({
@@ -302,4 +318,14 @@ describe('PresaleActive — TGE countdown caption', () => {
     const {getByText} = renderActive();
     expect(getByText('Claimable after TGE')).toBeTruthy();
   });
+});
+
+it('M1d: another account selected → "From: Account 1 (main)" above Buy; main selected → no line', async () => {
+  mockCheckJurisdiction.mockResolvedValue({action: 'allow', countryCode: 'SI', transparentAllowed: true}); // the file's allowed-region shape
+  mockLineSelected.current = LINE_EXIT;
+  const r = renderActive();
+  expect(await r.findByTestId('presale-main-account')).toHaveTextContent('From: Account 1 (main)');
+  r.unmount();
+  mockLineSelected.current = LINE_MAIN;
+  expect(renderActive().queryByTestId('presale-main-account')).toBeNull();
 });

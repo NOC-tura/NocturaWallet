@@ -119,4 +119,18 @@ describe('ShieldedExplainerScreen', () => {
     fireEvent.press(getByTestId('learn-more-button'));
     expect(Linking.openURL).toHaveBeenCalledWith('https://noc-tura.io/privacy');
   });
+
+  it('M1d (M1 spec §11 R11): who sees what — the relayer, the RPC provider, the chain — in plain words', () => {
+    const r = render(<ShieldedExplainerScreen navigation={navigation} route={route} />);
+    const block = r.getByTestId('explainer-who-sees-what');
+    expect(block).toBeTruthy();
+    expect(r.getByText('Who sees what')).toBeTruthy();
+    expect(
+      r.getByText(
+        'When you make tokens public, the relayer that sends them sees the request: the destination, the amount, the time and the network address it came from. The proof does not tell it which deposit is spent, but amounts and timing can hint at it. Otherwise it sees what anyone sees on chain.',
+      ),
+    ).toBeTruthy();
+    expect(r.getByText('The RPC provider the app uses sees every request the app makes, including the balances of all your accounts.')).toBeTruthy();
+    expect(r.getByText('On chain, amounts and timing are public.')).toBeTruthy();
+  });
 });

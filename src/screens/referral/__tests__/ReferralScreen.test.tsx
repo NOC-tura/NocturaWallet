@@ -9,6 +9,22 @@ import * as referralModule from '../../../modules/referral/referralModule';
 const MOCK_PUBLIC_KEY = 'So11111111111111111111111111111111111111112';
 const EXPECTED_LINK = `https://noc-tura.io?ref=${MOCK_PUBLIC_KEY}`;
 
+// M1d (spec §4.3): this screen stays on the main account and says so while another account is selected
+const mockLineSelected: {current: {scheme: string; address: string; label: string; isMain: boolean}} = {
+  current: {scheme: 'slip10:0', address: 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk', label: 'Account 1', isMain: true},
+};
+jest.mock('../../../hooks/useSelectedAccount', () => ({
+  useSelectedAccount: () => mockLineSelected.current,
+  useAccountList: () => ({
+    accounts: [{scheme: 'slip10:0', address: 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk', label: 'Account 1', isMain: true}],
+    seed: [],
+    walletKind: 'slip10',
+    unreadable: false,
+  }),
+}));
+const LINE_EXIT = {scheme: 'slip10:3', address: '3YqEpfo3c818GhvbQ1UmVY1nJxw16vtu4JB9peJXT94k', label: 'Account 4', isMain: false};
+const LINE_MAIN = {scheme: 'slip10:0', address: 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk', label: 'Account 1', isMain: true};
+
 jest.mock('../../../store/zustand/walletStore', () => ({
   useWalletStore: jest.fn((selector: (s: {publicKey: string}) => unknown) =>
     selector({publicKey: MOCK_PUBLIC_KEY}),
@@ -96,5 +112,12 @@ describe('ReferralScreen', () => {
     const {getByText, findByLabelText} = renderScreen();
     expect(getByText('YOUR INVITE LINK')).toBeTruthy();
     expect(await findByLabelText('Copy invite link')).toBeTruthy();
+  });
+
+  it('M1d: another account selected → "Uses your main account"; main selected → no line', () => {
+    mockLineSelected.current = LINE_EXIT;
+    expect(renderScreen().getByTestId('referral-main-account')).toHaveTextContent('Uses your main account');
+    mockLineSelected.current = LINE_MAIN;
+    expect(renderScreen().queryByTestId('referral-main-account')).toBeNull();
   });
 });
