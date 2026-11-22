@@ -778,6 +778,7 @@ export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
         tokens={availableTokens}
         selectedMint={selectedMint}
         balances={{native: solBalance, [NOC_MINT]: nocBalance, ...tokenBalances}}
+        balancesKnown={publicReady}
         onSelect={mint => {
           setSelectedMint(mint);
           setAmount('');

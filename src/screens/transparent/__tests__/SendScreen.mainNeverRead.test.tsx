@@ -93,3 +93,33 @@ it('positive control: the same store after one good sync → "Available 1 SOL" a
   expect(r.getByTestId('review-button').props.accessibilityState?.disabled).toBe(false);
 });
 
+
+// post-M1d review: the main retry end to end, real hook and store, no remount
+it('retry succeeds: forceSync writes the store → the row flips to "Available 1 SOL", CTA enabled, same render', async () => {
+  mockForceSync.mockImplementationOnce(() => {
+    useWalletStore.getState().updateBalances('1000000000', '0', {});
+    return Promise.resolve({success: true, partial: false, timestamp: 2});
+  });
+  const r = screen();
+  expect(r.getByTestId('send-balance-retry')).toBeTruthy();
+  await act(async () => {
+    fireEvent.press(r.getByTestId('send-balance-retry'));
+  });
+  expect(r.queryByTestId('send-balance-retry')).toBeNull();
+  expect(r.getByTestId('send-available')).toHaveTextContent('1 SOL');
+  expect(r.getByTestId('review-button').props.accessibilityState?.disabled).toBe(false);
+});
+
+it('retry fails with "wallet changed": the row returns to "Not updated"/unavailable and is enabled again', async () => {
+  useWalletStore.setState({lastSyncedAt: 1, solBalance: '1000000000'}); // a stale (once-read) main
+  mockForceSync.mockImplementationOnce(() => Promise.resolve({success: false, partial: false, timestamp: 2, error: 'wallet changed'}));
+  const r = screen();
+  expect(r.getByTestId('send-balance-retry')).toHaveTextContent('Not updated · tap to retry');
+  await act(async () => {
+    fireEvent.press(r.getByTestId('send-balance-retry'));
+  });
+  const row = r.getByTestId('send-balance-retry');
+  expect(row).toHaveTextContent('Not updated · tap to retry');
+  expect(row.props.accessibilityState?.disabled).toBe(false);
+  expect(r.getByTestId('review-button').props.accessibilityState?.disabled).toBe(true);
+});

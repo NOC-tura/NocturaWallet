@@ -232,6 +232,21 @@ describe('M1d — #12 sends from the account selected when it opened (spec §3.3
     expect(r.queryByText(/Insufficient balance/)).toBeNull(); // never judged against a stale figure
   });
 
+  it('post-M1d review: a stale balance → the token picker shows "—" for each balance, never "0"', () => {
+    mockSendPublic.current = STALE_1_SOL;
+    const r = render(<SendScreen onReview={jest.fn()} />);
+    fireEvent.press(r.getByTestId('token-picker'));
+    expect(r.queryByText('0')).toBeNull();
+    expect(r.getAllByText('—').length).toBeGreaterThanOrEqual(2); // SOL and NOC rows
+  });
+
+  it('positive control: READY → the picker shows the real figures', () => {
+    mockSendPublic.current = READY_1_SOL;
+    const r = render(<SendScreen onReview={jest.fn()} />);
+    fireEvent.press(r.getByTestId('token-picker'));
+    expect(r.queryAllByText('—')).toHaveLength(0);
+  });
+
   it('positive control: the same figure as READY is usable', () => {
     mockSendPublic.current = READY_1_SOL;
     const r = render(<SendScreen onReview={jest.fn()} />);
