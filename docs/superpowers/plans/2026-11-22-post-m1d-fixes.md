@@ -3525,3 +3525,12 @@ Each is the most conservative reading; a reviewer who disagrees should say so be
 15. **The fixtures are the verbatim JSON-RPC responses**; "SPL without owner" and "plain `transfer`" are derived from
     a real response by removing exactly the fields a node may omit, and each test says what it removed. No devnet
     transaction among the three has those shapes.
+
+## Controller addendum (2026-11-22, binding)
+
+- **Task 1 also fixes the stale NOC balance** (found while drafting; honesty rule: a wrong figure is worse than none).
+  - **Bug:** `forceSync` keeps the old `nocBalance` when a fully successful token read holds no NOC account
+    (`tokens[NOC_MINT] ?? store.nocBalance`). A wallet whose NOC went to zero keeps showing the old figure.
+  - **Fix:** when the token read succeeded, a missing NOC account means `'0'`.
+  - **Test:** a store with nocBalance `'5000'` plus a successful token read without NOC leaves nocBalance `'0'`.
+  - **Mutation:** restore the `?? store.nocBalance` fallback and the test must fail.
