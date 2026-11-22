@@ -29,6 +29,7 @@ jest.mock('../../tokens/tokenMetadata', () => ({
 }));
 
 import {getBalance, getTokenAccounts} from '../../solana/queries';
+import {NOC_MINT} from '../../../constants/programs';
 
 const mockGetBalance = getBalance as jest.MockedFunction<typeof getBalance>;
 const mockGetTokenAccounts = getTokenAccounts as jest.MockedFunction<typeof getTokenAccounts>;
@@ -104,22 +105,119 @@ describe('backgroundSyncModule', () => {
       expect(result.error).toContain('ETIMEDOUT');
     });
 
-    it('handles errors gracefully and returns partial result', async () => {
+    // post-M1d R1 / r2-5: a partial sync is a failed sync that writes nothing (was: success with a half-old figure)
+    const seedStore = () => {
       useWalletStore.getState().setPublicKey(TEST_PUBLIC_KEY);
+      useWalletStore.setState({
+        solBalance: '111',
+        nocBalance: '222',
+        tokenBalances: {OldMint: '333'},
+        tokens: [{mint: 'OldMint', symbol: 'OLD', name: 'Old', decimals: 6, trust: 'verified'}],
+        lastSyncedAt: 1000,
+        lastSyncFailedAt: null,
+      });
+    };
+    const unchanged = () => {
+      const s = useWalletStore.getState();
+      expect(s.solBalance).toBe('111');
+      expect(s.nocBalance).toBe('222');
+      expect(s.tokenBalances).toEqual({OldMint: '333'});
+      expect(s.tokens.map(t => t.mint)).toEqual(['OldMint']); // r3 note 2: the early return comes before setTokens
+      expect(s.lastSyncedAt).toBe(1000);
+      expect(s.lastSyncFailedAt).toEqual(expect.any(Number));
+    };
 
-      // Make getBalance fail but getTokenAccounts succeed
+    it('R1 / r2-5: the SOL read failing alone writes nothing, keeps lastSyncedAt, sets lastSyncFailedAt', async () => {
+      seedStore();
       mockGetBalance.mockRejectedValue(new Error('RPC error'));
       mockGetTokenAccounts.mockResolvedValue([
         {mint: 'TokenMint1111', owner: TEST_PUBLIC_KEY, amount: '1000', decimals: 6, address: 'TokenAddr1'},
       ]);
-
       const result = await forceSync();
+      expect(result).toMatchObject({success: false, partial: true, error: 'sol: RPC error'});
+      unchanged();
+    });
 
-      // With Promise.allSettled, individual failures are handled gracefully
-      // solBalance falls back to store value, tokenCount from successful call
+    it('R1 / r2-5: the token read failing alone writes nothing — the fresh SOL figure is NOT shown under the old age', async () => {
+      seedStore();
+      mockGetBalance.mockResolvedValue(BigInt(2_000_000_000));
+      mockGetTokenAccounts.mockRejectedValue(new Error('timeout'));
+      const result = await forceSync();
+      expect(result).toMatchObject({success: false, partial: true, error: 'tokens: timeout'});
+      unchanged();
+    });
+
+    it('R1: both reads failing writes nothing; partial is false', async () => {
+      seedStore();
+      mockGetBalance.mockRejectedValue(new Error('429 Too Many Requests'));
+      mockGetTokenAccounts.mockRejectedValue(new Error('429 Too Many Requests'));
+      const result = await forceSync();
+      expect(result).toMatchObject({success: false, partial: false, error: '429 Too Many Requests'});
+      unchanged();
+    });
+
+    it('R1: a thrown sync (no connection) sets lastSyncFailedAt too', async () => {
+      seedStore();
+      const {getConnection} = require('../../solana/connection');
+      (getConnection as jest.Mock).mockImplementationOnce(() => {
+        throw new Error('Connection failed');
+      });
+      const result = await forceSync();
+      expect(result).toMatchObject({success: false, partial: false});
+      unchanged();
+    });
+
+    it('R1: a later full success writes everything and clears lastSyncFailedAt', async () => {
+      seedStore();
+      useWalletStore.getState().markSyncFailed();
+      mockGetBalance.mockResolvedValue(BigInt(2_000_000_000));
+      mockGetTokenAccounts.mockResolvedValue([]);
+      const result = await forceSync();
+      expect(result).toMatchObject({success: true, partial: false, solBalance: '2000000000'});
+      const s = useWalletStore.getState();
+      expect(s.solBalance).toBe('2000000000');
+      expect(s.lastSyncedAt).toBeGreaterThan(1000);
+      expect(s.lastSyncFailedAt).toBeNull();
+    });
+
+    // review r1-3: this test MUST fail before Step 7 (today the old '222' is kept) — check that it does in Step 6
+    it('a full success whose token read holds no NOC account → nocBalance "0", never the previous figure', async () => {
+      seedStore(); // nocBalance '222'
+      mockGetBalance.mockResolvedValue(BigInt(1));
+      mockGetTokenAccounts.mockResolvedValue([
+        {mint: 'TokenMint1111', owner: TEST_PUBLIC_KEY, amount: '1000', decimals: 6, address: 'TokenAddr1'},
+      ]);
+      const result = await forceSync();
       expect(result.success).toBe(true);
-      expect(result.tokenCount).toBe(1);
-      expect(result.timestamp).toBeGreaterThan(0);
+      expect(useWalletStore.getState().tokenBalances).toEqual({TokenMint1111: '1000'}); // positive control: this sync was written
+      expect(useWalletStore.getState().nocBalance).toBe('0');
+    });
+
+    it('control: NOC held in two accounts → nocBalance is their sum', async () => {
+      seedStore();
+      mockGetBalance.mockResolvedValue(BigInt(1));
+      mockGetTokenAccounts.mockResolvedValue([
+        {mint: NOC_MINT, owner: TEST_PUBLIC_KEY, amount: '40', decimals: 9, address: 'Noc1'},
+        {mint: NOC_MINT, owner: TEST_PUBLIC_KEY, amount: '2', decimals: 9, address: 'Noc2'},
+      ]);
+      await forceSync();
+      expect(useWalletStore.getState().nocBalance).toBe('42');
+    });
+
+    it('a partial failure redacts the RPC key as a total one does', async () => {
+      seedStore();
+      const KEY = 'a852c8f4-e262-4a03-9a29-4e414edc87e5';
+      mockGetBalance.mockRejectedValue(new Error(`request to https://mainnet.helius-rpc.com/?api-key=${KEY} failed`));
+      mockGetTokenAccounts.mockResolvedValue([]);
+      const result = await forceSync();
+      expect(result.error).not.toContain(KEY);
+      expect(result.error).toContain('<redacted>');
+    });
+
+    it('no wallet: nothing is marked failed (there is no figure to be stale)', async () => {
+      const result = await forceSync();
+      expect(result).toMatchObject({success: false, partial: false, error: 'No wallet loaded'});
+      expect(useWalletStore.getState().lastSyncFailedAt).toBeNull();
     });
 
     it('handles complete failure gracefully', async () => {
