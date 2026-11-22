@@ -1,6 +1,8 @@
 /**
  * M1d spec §4.3 (plan A14): #21 Now public names the new account a fresh exit landed on, so the
- * user can find it in the Accounts sheet. Read-only, with no change to M1c's flow: the reserved
+ * user can find it in the Accounts sheet. Reads only, with no change to M1c's flow (the note store's
+ * first read writes an empty record when none exists; at `onPending` the record always exists, so
+ * call this nowhere else without that guarantee): the reserved
  * scheme is on the note's PENDING intent (written right before the flow's `onPending(rho)`; the
  * settled note drops it), and the account is the registry's `fresh-exit` entry of that scheme.
  * Anything missing or unreadable → null, never a guess.

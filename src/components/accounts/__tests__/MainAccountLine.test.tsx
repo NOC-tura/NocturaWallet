@@ -22,6 +22,15 @@ it('the main account selected → nothing', () => {
   expect(render(<MainAccountLine variant="from" testID="x" />).queryByTestId('x')).toBeNull();
 });
 
+it('review I1: with main selected nothing at all is mounted (no wrapper, no spacing for the 100% case)', () => {
+  expect(render(<MainAccountLine variant="from" testID="x" className="mb-2" />).toJSON()).toBeNull();
+});
+
+it('review I1: the caller\'s spacing class goes onto the line itself', () => {
+  mockMla.selected = A3;
+  expect(render(<MainAccountLine variant="uses" testID="y" className="mb-3" />).getByTestId('y').props.className).toContain('mb-3');
+});
+
 it('another account selected → "From: Account 1 (main)" / "Uses your main account"', () => {
   mockMla.selected = A3;
   expect(render(<MainAccountLine variant="from" testID="x" />).getByTestId('x')).toHaveTextContent('From: Account 1 (main)');

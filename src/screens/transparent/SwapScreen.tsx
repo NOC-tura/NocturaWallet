@@ -349,9 +349,7 @@ export function SwapScreen({initialFromMint, onBack, onDone}: SwapScreenProps) {
           showsVerticalScrollIndicator={false}>
 
           {/* M1d (spec §4.3, D1): Swap stays on the main account */}
-          <View className="mb-2">
-            <MainAccountLine variant="from" testID="swap-main-account" />
-          </View>
+          <MainAccountLine variant="from" testID="swap-main-account" className="mb-2" />
 
           {/* ── From card ─────────────────────────────────────────────────── */}
           <View className="bg-bg-surface-1 rounded-2xl p-4 gap-3 mb-2">

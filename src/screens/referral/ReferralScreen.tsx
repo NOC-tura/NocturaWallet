@@ -113,9 +113,7 @@ export function ReferralScreen({onBack}: Props) {
         contentContainerClassName="px-5 pb-6"
         showsVerticalScrollIndicator={false}>
         {/* M1d (spec §4.3, D1): the referral link is the main account's */}
-        <View className="mb-3">
-          <MainAccountLine variant="uses" testID="referral-main-account" />
-        </View>
+        <MainAccountLine variant="uses" testID="referral-main-account" className="mb-3" />
         {/* 3-stat hero */}
         <View className="flex-row gap-3 mb-4">
           <StatCard

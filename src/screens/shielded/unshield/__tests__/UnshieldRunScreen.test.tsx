@@ -939,5 +939,6 @@ describe('M1d — #21 Now public names the new account it landed on (spec §4.3)
     act(() => ctl.pending('rho-4'));
     await act(async () => ctl.resolve({status: 'pending', signature: SIG, reason: 'unconfirmed'}));
     expect(r.queryByText('Received by')).toBeNull();
+    expect(mockFreshExit).not.toHaveBeenCalled(); // M1d: review m2 — the reader is not even asked for a run that has not landed
   });
 });

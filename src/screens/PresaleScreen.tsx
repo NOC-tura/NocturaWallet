@@ -531,9 +531,7 @@ export function PresaleActive({
         {/* Sticky bottom bar */}
         <View className="px-5 pt-3 pb-4 border-t border-bg-surface-3 bg-bg-base">
           {/* M1d (spec §4.3, D1): the presale buy stays on the main account */}
-          <View className="items-center mb-2">
-            <MainAccountLine variant="from" testID="presale-main-account" />
-          </View>
+          <MainAccountLine variant="from" testID="presale-main-account" className="mb-2 text-center" />
           {!geoBlocked && jur?.action === 'warn' && (
             <Text
               variant="caption"

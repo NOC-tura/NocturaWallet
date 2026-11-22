@@ -1,4 +1,4 @@
-import React, {useCallback, useEffect, useRef, useState} from 'react';
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {View, Pressable, ScrollView, Alert, BackHandler} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import Clipboard from '@react-native-clipboard/clipboard';
@@ -326,10 +326,9 @@ export function UnshieldRunScreen({request, onDone, onBack}: UnshieldRunScreenPr
   const sym = A0_TOKEN.symbol;
   const amountText = amount === null ? '—' : `${displayAmount(amount, A0_TOKEN.decimals)} ${sym}`;
   // M1d (spec §4.3): where a fresh exit landed — the registry's fresh-exit entry, so the sheet can show it
-  const receivedBy =
-    phase.kind === 'done' && phase.outcome.status === 'spent' && request.destination.kind === 'fresh'
-      ? freshExitAccountOf(freshScheme)
-      : null;
+  // (read once per outcome, not per render: the registry is encrypted storage; shown only inside the spent block below)
+  const landedFresh = phase.kind === 'done' && phase.outcome.status === 'spent' && request.destination.kind === 'fresh';
+  const receivedBy = useMemo(() => (landedFresh ? freshExitAccountOf(freshScheme) : null), [landedFresh, freshScheme]);
 
   if (proofLayout) {
     const stage = phase.kind === 'running' ? phase.stage : null;
