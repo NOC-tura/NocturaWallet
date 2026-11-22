@@ -39,7 +39,8 @@ notes) are BINDING and override §3–§7 wherever they differ. Read the whole s
 **Rules of this plan (they bind every task):**
 
 - **Run Tasks 1 → 8 strictly in sequence, one at a time.** They share files:
-  - `walletStore.ts`, `backgroundSyncModule.ts`: Task 1 writes them; Tasks 2–4 read what it produced.
+  - `walletStore.ts`: Task 1, then Task 5 (which extends Task 1's `merge`). `backgroundSyncModule.ts`: Task 1.
+    Tasks 2–4 read what Task 1 produced.
   - `useAccountPublicData.ts`, `useAccountRowBalances.ts`: Task 2.
   - `DashboardScreen.tsx` and its test: Tasks 2, 3, 5, 7 (in that order).
   - `SendScreen.tsx` and its test: Tasks 4, 7.
@@ -77,13 +78,13 @@ Five conditions the spec implies but does not spell out, most likely first. Each
 
 | File | Task | Responsibility after this plan |
 |---|---|---|
-| `src/store/zustand/walletStore.ts` | 1 | + `lastSyncFailedAt` (memory only), `markSyncFailed` |
-| `src/modules/backgroundSync/backgroundSyncModule.ts` | 1 | a partial sync writes nothing; `SyncResult.partial` |
-| `src/modules/accounts/staleness.ts` (new) | 2 | `mainBalanceIsStale` — the one stale rule for the main account |
+| `src/store/zustand/walletStore.ts` | 1, 5 | + `lastSyncFailedAt` (memory only), `markSyncFailed`; core-token labels corrected on rehydration |
+| `src/modules/backgroundSync/backgroundSyncModule.ts` | 1 | a partial sync writes nothing; `SyncResult.partial`; no NOC account after a good read is `'0'` |
+| `src/modules/accounts/staleness.ts` (new) | 2 | `mainBalanceIsStale`, `mainBalanceIsUnknown` — the main account's two rules |
 | `src/hooks/useAccountPublicData.ts` | 2 | + `status: 'stale'` |
 | `src/hooks/useAccountRowBalances.ts` | 2 | + `state: 'stale'` |
 | `src/copy/accounts.ts` | 2 | stale copy, `relativeAge`, `splitA11y` with a stale flag |
-| `src/modules/accounts/valueLine.ts` | 2 | `publicSide` accepts a stale figure |
+| `src/modules/accounts/valueLine.ts` | 3 | `publicSide` accepts a stale figure (with the column that dims it) |
 | `src/screens/dashboard/DashboardScreen.tsx` | 2, 3, 5, 7 | stale display; native keyed by mint; drains the link queue on sheet open |
 | `src/components/accounts/AccountsSheet.tsx` | 3 | stale rows, the main row included |
 | `src/screens/transparent/TokenDetailScreen.tsx` | 3, 5 | stale holding; wSOL priced as SOL |
@@ -107,7 +108,7 @@ Five conditions the spec implies but does not spell out, most likely first. Each
 
 ### Task 1: A partial sync writes nothing, and the store remembers a failed sync
 
-Spec: §3.1, R1, R13, r2-1, r2-5, both r3 notes.
+Spec: §3.1, R1, R13, r2-1, r2-5, both r3 notes; the honesty rule (the NOC figure after a good read).
 
 **Files:**
 - Modify: `src/store/zustand/walletStore.ts:15-34` (state type), `:36-46` (DEFAULTS), `:54-55` (`updateBalances`),
@@ -124,10 +125,17 @@ Spec: §3.1, R1, R13, r2-1, r2-5, both r3 notes.
   - `WalletState.markSyncFailed: () => void`.
   - `SyncResult.partial: boolean` — true when exactly one of the two reads failed. `success` is false then.
   - `updateBalances` still stamps `lastSyncedAt = Date.now()`; it is now called only when every read succeeded.
+  - After a fully successful sync whose token read holds no NOC account, `nocBalance` is `'0'` (review r1-3) — never
+    the previous figure.
 
 **Why (read the code):** today `forceSync` calls `updateBalances` (`backgroundSyncModule.ts:73`) when only one read
 succeeded, reusing the store's old value for the other (`:61`, `:65-71`), so a half-old figure gets a fresh
 `lastSyncedAt`. It also calls `setTokens` (`:101-104`) with the fresh half.
+
+**A second wrong figure in the same lines (review r1-3):** `:69-71` keep the store's old `nocBalance` when the token
+read *succeeded* but holds no NOC account (`tokens[NOC_MINT] ?? useWalletStore.getState().nocBalance`). A wallet
+whose NOC went to zero keeps showing the old amount, as current, under a fresh `lastSyncedAt`. A successful token
+read that lists no NOC account is a read of zero.
 
 - [ ] **Step 1: Write the failing store test.** Create `src/store/zustand/__tests__/walletStore.test.ts`:
 
@@ -287,6 +295,30 @@ it('r3 note 1 / r2-1: a rehydrated store has it null — even from a record that
       expect(s.lastSyncFailedAt).toBeNull();
     });
 
+    // review r1-3: this test MUST fail before Step 7 (today the old '222' is kept) — check that it does in Step 6
+    it('a full success whose token read holds no NOC account → nocBalance "0", never the previous figure', async () => {
+      seedStore(); // nocBalance '222'
+      mockGetBalance.mockResolvedValue(BigInt(1));
+      mockGetTokenAccounts.mockResolvedValue([
+        {mint: 'TokenMint1111', owner: TEST_PUBLIC_KEY, amount: '1000', decimals: 6, address: 'TokenAddr1'},
+      ]);
+      const result = await forceSync();
+      expect(result.success).toBe(true);
+      expect(useWalletStore.getState().tokenBalances).toEqual({TokenMint1111: '1000'}); // positive control: this sync was written
+      expect(useWalletStore.getState().nocBalance).toBe('0');
+    });
+
+    it('control: NOC held in two accounts → nocBalance is their sum', async () => {
+      seedStore();
+      mockGetBalance.mockResolvedValue(BigInt(1));
+      mockGetTokenAccounts.mockResolvedValue([
+        {mint: NOC_MINT, owner: TEST_PUBLIC_KEY, amount: '40', decimals: 9, address: 'Noc1'},
+        {mint: NOC_MINT, owner: TEST_PUBLIC_KEY, amount: '2', decimals: 9, address: 'Noc2'},
+      ]);
+      await forceSync();
+      expect(useWalletStore.getState().nocBalance).toBe('42');
+    });
+
     it('a partial failure redacts the RPC key as a total one does', async () => {
       seedStore();
       const KEY = 'a852c8f4-e262-4a03-9a29-4e414edc87e5';
@@ -305,7 +337,9 @@ it('r3 note 1 / r2-1: a rehydrated store has it null — even from a record that
 ```
 
 - [ ] **Step 6: Run them.** `npx jest src/modules/backgroundSync --forceExit`
-      Expected: FAIL — the partial cases report `success: true`; `partial` is undefined.
+      Expected: FAIL — the partial cases report `success: true`; `partial` is undefined; and the no-NOC test reads
+      `'222'`, not `'0'` (if that one passes before Step 7, it is not testing the fix: stop and report).
+      (`NOC_MINT` is imported in the test from `'../../../constants/programs'`.)
 
 - [ ] **Step 7: Implement.** In `backgroundSyncModule.ts` add `partial: boolean;` to `SyncResult` (after `success`),
       and replace everything from `const [solBalance, tokenAccounts] = await Promise.allSettled(` down to the
@@ -348,7 +382,9 @@ it('r3 note 1 / r2-1: a rehydrated store has it null — even from a record that
     const sol = solBalance.value.toString();
     // Sum per mint — an owner can hold one mint across several token accounts, which this wallet routinely does.
     const tokens = sumTokenBalancesByMint(tokenAccounts.value);
-    const nocBalance = tokens[NOC_MINT] ?? useWalletStore.getState().nocBalance;
+    // review r1-3: the token read succeeded, so "no NOC account" is a read of zero — never the store's old
+    // figure (which would be shown as current under this sync's fresh lastSyncedAt)
+    const nocBalance = tokens[NOC_MINT] ?? '0';
 
     useWalletStore.getState().updateBalances(sol, nocBalance, tokens);
 ```
@@ -377,7 +413,7 @@ it('r3 note 1 / r2-1: a rehydrated store has it null — even from a record that
 ```bash
 git add src/store/zustand/walletStore.ts src/store/zustand/__tests__/walletStore.test.ts \
   src/modules/backgroundSync/backgroundSyncModule.ts src/modules/backgroundSync/__tests__/backgroundSyncModule.test.ts
-git commit -m "fix(sync): a partial sync writes nothing; the store remembers this session's failed sync (memory only)"
+git commit -m "fix(sync): a partial sync writes nothing; no NOC account after a good read is 0; the store remembers a failed sync (memory only)"
 ```
 
 ---
@@ -391,12 +427,13 @@ Spec: §3.1, §3.3, R5, R16 (the age), Review Focus 4.
 - Modify: `src/hooks/useAccountPublicData.ts:1-8` (header), `:23-26` (type), `:38-79` (body)
 - Modify: `src/hooks/useAccountRowBalances.ts:1-9` (header), `:18` (type), `:38-49` (mapping)
 - Modify: `src/copy/accounts.ts` (after `SEND_BALANCE_CHECKING` at `:31`; `splitA11y` at `:108-112`)
-- Modify: `src/modules/accounts/valueLine.ts:38` (`publicSide`)
 - Modify: `src/components/accounts/AccountsSheet.tsx:55-63` (`rowBalanceText`, a holding line only)
 - Modify: `src/screens/dashboard/DashboardScreen.tsx:481-485` (the empty-list text, a holding line only)
 - Create: `src/copy/__tests__/accountsStale.test.ts`
 - Test: `src/hooks/__tests__/useAccountPublicData.test.tsx`, `src/hooks/__tests__/useAccountRowBalances.test.tsx`,
-  `src/modules/accounts/__tests__/valueLine.test.ts`, `src/screens/dashboard/__tests__/DashboardScreen.test.tsx`
+  `src/screens/dashboard/__tests__/DashboardScreen.test.tsx`
+- Not here: `src/modules/accounts/valueLine.ts`. `publicSide` keeps refusing a `stale` status in this task, so the
+  split's Public column reads "—" for a stale account until Task 3 teaches the column to dim it (review r1-4).
 
 **Interfaces:**
 - Consumes (Task 1): `useWalletStore(s => s.lastSyncFailedAt): number | null`.
@@ -405,6 +442,8 @@ Spec: §3.1, §3.3, R5, R16 (the age), Review Focus 4.
 ```ts
 // src/modules/accounts/staleness.ts
 export function mainBalanceIsStale(lastSyncedAt: number | null, lastSyncFailedAt: number | null): boolean;
+/** never read, and this session's sync failed: NO figure exists (the store's '0' is a default, not a read) */
+export function mainBalanceIsUnknown(lastSyncedAt: number | null, lastSyncFailedAt: number | null): boolean;
 
 // src/hooks/useAccountPublicData.ts
 export type AccountPublicData =
@@ -430,6 +469,20 @@ export const SEND_BALANCE_STALE = 'Not updated · tap to retry';
 export function splitA11y(sideName: string, value: string, isActive: boolean, stale?: boolean): string;
 ```
 
+**The main account, never read (review r1-1) — the rule every consumer relies on:**
+
+| `lastSyncedAt` | `lastSyncFailedAt` | the hook returns for main | why |
+|---|---|---|---|
+| a time | null | `ready` | the last sync of this session succeeded (or none ran yet and the figure is the persisted one — R13) |
+| a time | a time | `stale` | an older good read exists; the last attempt failed |
+| null | a time | **`error`** | nothing was ever read and the sync failed: the store's `'0'` is a default, not a balance |
+| null | null | `ready`, `syncedAt: null` | no attempt has settled yet (a few seconds at first launch): unchanged, see "Known limits" |
+
+Before this ruling the third row returned `ready`. Dashboard, TokenDetail and #12 gate only on
+`status === 'ready'`, so a fresh import whose first sync failed showed `$0.00` and "Available 0 SOL" as current,
+and #12 judged "insufficient" against that 0. With `error` they show "—" / "Balance unavailable", and #12 shows its
+retry row (which Task 4 wires to `forceSync` for main).
+
 **Honest between tasks:** this task adds the `stale` state but the screens are taught to draw it in Tasks 3 and 4.
 Until then a stale status must read as "not known", never as current:
 - Dashboard, #12 and TokenDetail already gate on `status === 'ready'`, so `stale` shows "—" there. One spot would
@@ -443,16 +496,18 @@ Until then a stale status must read as "not known", never as current:
 `src/modules/accounts/__tests__/staleness.test.ts`:
 
 ```ts
-/** post-M1d §3.1: the main account's figure is stale when this session's last sync failed AND an older good read exists. */
-import {mainBalanceIsStale} from '../staleness';
+/** post-M1d §3.1: the main account's figure is stale when this session's last sync failed AND an older good read
+ *  exists; it is unknown when the sync failed and nothing was ever read (review r1-1). Never both. */
+import {mainBalanceIsStale, mainBalanceIsUnknown} from '../staleness';
 
-it.each<[string, number | null, number | null, boolean]>([
-  ['never read, never failed', null, null, false],
-  ['never read, failed → unknown, not stale', null, 900, false],
-  ['read, not failed → current', 500, null, false],
-  ['read, then failed → stale', 500, 900, true],
-])('%s', (_n, syncedAt, failedAt, expected) => {
-  expect(mainBalanceIsStale(syncedAt, failedAt)).toBe(expected);
+it.each<[string, number | null, number | null, boolean, boolean]>([
+  ['never read, never failed', null, null, false, false],
+  ['never read, failed → unknown, not stale', null, 900, false, true],
+  ['read, not failed → current', 500, null, false, false],
+  ['read, then failed → stale, not unknown', 500, 900, true, false],
+])('%s', (_n, syncedAt, failedAt, stale, unknown) => {
+  expect(mainBalanceIsStale(syncedAt, failedAt)).toBe(stale);
+  expect(mainBalanceIsUnknown(syncedAt, failedAt)).toBe(unknown);
 });
 ```
 
@@ -515,6 +570,14 @@ it('splitA11y says "not updated" for a stale side, and is unchanged otherwise', 
  */
 export function mainBalanceIsStale(lastSyncedAt: number | null, lastSyncFailedAt: number | null): boolean {
   return lastSyncFailedAt !== null && lastSyncedAt !== null;
+}
+
+/**
+ * Review r1-1: nothing was ever read and this session's sync failed. walletStore then holds its
+ * defaults ('0'), which are not a balance: every consumer must show "unknown", never 0.
+ */
+export function mainBalanceIsUnknown(lastSyncedAt: number | null, lastSyncFailedAt: number | null): boolean {
+  return lastSyncFailedAt !== null && lastSyncedAt === null;
 }
 ```
 
@@ -613,8 +676,25 @@ it('post-M1d §3.1: main — read then failed → stale, the age from lastSynced
   expect(mockFetch).not.toHaveBeenCalled();
 });
 
-it('post-M1d §3.1: main — never read + failed → not stale (ready with syncedAt null, which every consumer reads as unknown)', () => {
+// review r1-1: 'ready' here made every screen show the store's default 0 as a current balance
+it('post-M1d §3.1: main — never read + the sync failed → error: no figure, never the store\'s default 0', () => {
+  useWalletStore.setState({solBalance: '0', nocBalance: '0', lastSyncedAt: null, lastSyncFailedAt: 456});
+  const {result} = renderHook(() => useAccountPublicData({address: MAIN, isMain: true}), {wrapper});
+  expect(result.current.data).toEqual({status: 'error'});
+  expect(mockFetch).not.toHaveBeenCalled();
+});
+
+it('post-M1d §3.1: main — that state, then a good sync → ready with the read figure', () => {
   useWalletStore.setState({lastSyncedAt: null, lastSyncFailedAt: 456});
+  const {result} = renderHook(() => useAccountPublicData({address: MAIN, isMain: true}), {wrapper});
+  act(() => {
+    useWalletStore.getState().updateBalances('5', '7', {});
+  });
+  expect(result.current.data).toMatchObject({status: 'ready', solBalance: '5', syncedAt: expect.any(Number)});
+});
+
+it('main — never read and no attempt settled yet → unchanged: ready with syncedAt null (plan A12)', () => {
+  useWalletStore.setState({lastSyncedAt: null, lastSyncFailedAt: null});
   const {result} = renderHook(() => useAccountPublicData({address: MAIN, isMain: true}), {wrapper});
   expect(result.current.data).toMatchObject({status: 'ready', syncedAt: null});
 });
@@ -637,19 +717,6 @@ it('R5: a row never read whose first read fails is "failed" (Balance unavailable
 });
 ```
 
-In `src/modules/accounts/__tests__/valueLine.test.ts` add (reuse that file's existing constants for a SOL-only
-`PublicBalances`; `publicSide` and `sideLines` are already imported there):
-
-```ts
-it('post-M1d §3.2: a stale figure is a known side (the screen dims it); the same lines as the ready one', () => {
-  const figure = {solBalance: '1000000000', nocBalance: '0', tokenBalances: {}, tokens: []};
-  const ready = publicSide({status: 'ready', syncedAt: 5, ...figure});
-  const stale = publicSide({status: 'stale', syncedAt: 5, failedAt: 9, ...figure});
-  expect(stale).toEqual(ready);
-  expect(sideLines(stale, null)).toEqual(['1 SOL']);
-});
-```
-
 In `DashboardScreen.test.tsx` add (inside the transparent-mode describe):
 
 ```ts
@@ -657,13 +724,28 @@ In `DashboardScreen.test.tsx` add (inside the transparent-mode describe):
     mockPublic.current = {status: 'stale', syncedAt: 1, failedAt: 2, solBalance: '1000000000', nocBalance: '0', tokens: [], tokenBalances: {}};
     const r = await renderDashboard();
     expect(r.queryByText('No tokens yet · pull to refresh')).toBeNull();
+    // review r1-4: publicSide does not accept 'stale' until Task 3 — the split never shows it undimmed
+    expect(r.getAllByTestId('dashboard-split-public-line').map(l => l.props.children)).toEqual(['—']);
+  });
+
+  // review r1-1 — pin (passes before the change: this suite mocks the hook; the real state is pinned in
+  // useAccountPublicData.test.tsx above). It fixes what the dashboard draws for the status the hook now returns.
+  it('post-M1d §3.1: main never read + a failed sync (the hook\'s "error") → "—" and "Balance unavailable", never $0.00', async () => {
+    mockPublic.current = {status: 'error'};
+    const r = await renderDashboard();
+    expect(r.getByTestId('dashboard-public-balance')).toHaveTextContent('—');
+    expect(r.getByTestId('dashboard-public-empty')).toHaveTextContent('Balance unavailable · pull to refresh');
+    expect(r.getByTestId('dashboard-sub-sol')).toHaveTextContent('—');
+    expect(r.queryByText(/\$0\.00/)).toBeNull();
+    expect(r.queryByText(/^0 SOL$/)).toBeNull();
   });
 ```
 
-(Task 3 rewrites this test into the stale-rows test; it exists now so this commit is honest.)
+(Task 3 rewrites the first test into the stale-rows test; it exists now so this commit is honest.)
 
-- [ ] **Step 6: Run them.** `npx jest src/hooks/__tests__/useAccountPublicData.test.tsx src/hooks/__tests__/useAccountRowBalances.test.tsx src/modules/accounts/__tests__/valueLine.test.ts src/screens/dashboard --forceExit`
-      Expected: FAIL — `status` is `'error'` / `'failed'`, the type has no `stale`.
+- [ ] **Step 6: Run them.** `npx jest src/hooks/__tests__/useAccountPublicData.test.tsx src/hooks/__tests__/useAccountRowBalances.test.tsx src/screens/dashboard --forceExit`
+      Expected: FAIL — `status` is `'error'` / `'failed'`, the type has no `stale`; the never-read main is `'ready'`.
+      (The dashboard "error" pin passes already; that is what a pin does.)
 
 - [ ] **Step 7: Implement.**
 
@@ -676,6 +758,10 @@ In `DashboardScreen.test.tsx` add (inside the transparent-mode describe):
 ```ts
   const mainData = useMemo<AccountPublicData | null>(() => {
     if (!isMain) return null;
+    // review r1-1: never read and this session's sync failed → there is no figure (the store's '0' is a default)
+    if (mainBalanceIsUnknown(lastSyncedAt, lastSyncFailedAt)) {
+      return {status: 'error'};
+    }
     const main = withPoolToken({solBalance, nocBalance, tokenBalances, tokens});
     // post-M1d §3.1: this session's last sync failed and an older good read exists → the figure is stale
     if (lastSyncedAt !== null && lastSyncFailedAt !== null && mainBalanceIsStale(lastSyncedAt, lastSyncFailedAt)) {
@@ -698,7 +784,7 @@ and replace the `if (q.isError) {…}` block:
   }
 ```
 
-Import `mainBalanceIsStale` from `'../modules/accounts/staleness'`. Update the file header: replace
+Import `mainBalanceIsStale` and `mainBalanceIsUnknown` from `'../modules/accounts/staleness'`. Update the file header: replace
 "`loading` / `error` are states" with "`loading` / `error` are states, and `stale` is the last figure with its age
 (post-M1d §3.1) — never to be drawn as current".
 
@@ -713,13 +799,6 @@ Import `mainBalanceIsStale` from `'../modules/accounts/staleness'`. Update the f
 
 Update the header sentence "…and then turns to the fresh figure, or to "Balance unavailable" if the re-read failed"
 to "…and then turns to the fresh figure, or — if the re-read failed — to that same figure marked stale (post-M1d)".
-
-`valueLine.ts:38`:
-
-```ts
-  // post-M1d §3.2: a stale figure is a known side (the screen dims it and says "not updated")
-  if ((data.status !== 'ready' && data.status !== 'stale') || data.syncedAt === null) {
-```
 
 `AccountsSheet.tsx` `rowBalanceText` — the holding line:
 
@@ -750,9 +829,8 @@ else → `PUBLIC_UNAVAILABLE`).
 git add src/modules/accounts/staleness.ts src/modules/accounts/__tests__/staleness.test.ts \
   src/copy/accounts.ts src/copy/__tests__/accountsStale.test.ts \
   src/hooks/useAccountPublicData.ts src/hooks/useAccountRowBalances.ts src/hooks/__tests__ \
-  src/modules/accounts/valueLine.ts src/modules/accounts/__tests__/valueLine.test.ts \
   src/components/accounts/AccountsSheet.tsx src/screens/dashboard
-git commit -m "feat(stale): a failed refresh keeps the last figure as a 'stale' state with its age (hooks, rule, copy)"
+git commit -m "feat(stale): a failed refresh keeps the last figure as a 'stale' state; a never-read main is unknown, not 0"
 ```
 
 ---
@@ -766,15 +844,17 @@ Spec: §3.2, R10, R16, Review Focus 1 and 4; §7 coverage (the dashboard and Tok
   `:407` (list data), `:420-447` (header props), `:449-473` (`renderItem`), `:515-548` (`DashboardHeaderProps`),
   `:713-727` (hero), `:745-761` (change line), `:767-783` (sub-balances), `:790-797` (public split column),
   `:939-983` (`SplitColumn`), `:987-1015` (`SubBalanceCell`), `:1047-1118` (`TokenListRow`)
+- Modify: `src/modules/accounts/valueLine.ts:38` (`publicSide` — moved here from Task 2, review r1-4: it lands in
+  the same commit as the column that dims it)
 - Modify: `src/components/accounts/AccountsSheet.tsx:55-63`, `:70-90`, `:113`, `:145-147`
 - Modify: `src/screens/transparent/TokenDetailScreen.tsx:56-58`, `:229-251`
-- Test: `src/screens/dashboard/__tests__/DashboardScreen.test.tsx`,
+- Test: `src/modules/accounts/__tests__/valueLine.test.ts`, `src/screens/dashboard/__tests__/DashboardScreen.test.tsx`,
   `src/components/accounts/__tests__/AccountsSheet.test.tsx`,
   `src/screens/transparent/__tests__/TokenDetailScreen.test.tsx`
 
 **Interfaces:**
 - Consumes (Task 2): `AccountPublicData` (`status: 'stale'` with `syncedAt`, `failedAt`), `RowBalance`
-  (`state: 'stale'`), `mainBalanceIsStale`, `relativeAge`, `staleLine`, `staleNote`, `staleRow`, `splitA11y(…, stale)`.
+  (`state: 'stale'`), `mainBalanceIsStale`, `mainBalanceIsUnknown`, `relativeAge`, `staleLine`, `staleNote`, `staleRow`, `splitA11y(…, stale)`.
   (Task 1): `useWalletStore(s => s.lastSyncFailedAt)`, `SyncResult.partial`.
 - Produces: no new exports. New testIDs: `dashboard-stale-line`, `token-detail-stale`.
   `rowBalanceText(row, prices)` keeps its signature and now returns the figure for `stale` (the caller adds the suffix).
@@ -783,6 +863,35 @@ Spec: §3.2, R10, R16, Review Focus 1 and 4; §7 coverage (the dashboard and Tok
 `text-fg-secondary`). No opacity. Tests assert it the way this repo already does
 (`AmountLimitHint.test.tsx:20`): `expect(node.props.className).toMatch(/(^|\s)text-fg-tertiary(\s|$)/)`; a control
 asserts `.not.toMatch` of the same pattern. Do not assert the absence of another colour class.
+
+- [ ] **Step 0: `publicSide` accepts a stale figure (review r1-4: here, not in Task 2).** Test first, in
+      `src/modules/accounts/__tests__/valueLine.test.ts` (`publicSide` and `sideLines` are already imported there):
+
+```ts
+it('post-M1d §3.2: a stale figure is a known side (the screen dims it); the same lines as the ready one', () => {
+  const figure = {solBalance: '1000000000', nocBalance: '0', tokenBalances: {}, tokens: []};
+  const ready = publicSide({status: 'ready', syncedAt: 5, ...figure});
+  const stale = publicSide({status: 'stale', syncedAt: 5, failedAt: 9, ...figure});
+  expect(stale).toEqual(ready);
+  expect(sideLines(stale, null)).toEqual(['1 SOL']);
+});
+
+it('an error (a never-read main whose sync failed) is an unknown side: "—"', () => {
+  expect(sideLines(publicSide({status: 'error'}), null)).toEqual(['—']);
+});
+```
+
+      Run `npx jest src/modules/accounts/__tests__/valueLine.test.ts --forceExit` → the first FAILS (`unknown`).
+      Implement at `valueLine.ts:38`:
+
+```ts
+  // post-M1d §3.2: a stale figure is a known side (the screen dims it and says "not updated")
+  if ((data.status !== 'ready' && data.status !== 'stale') || data.syncedAt === null) {
+```
+
+      Run again → PASS. Do not commit yet: between this step and Step 3 the split would show a stale figure
+      undimmed; they ship in this task's one commit. In Task 2's holding test the split assertion
+      (`['—']` for a stale account) now fails — that test is replaced by D5 and D8 in Step 1.
 
 - [ ] **Step 1: Write the failing dashboard tests.** In `DashboardScreen.test.tsx`, add a describe
       `'post-M1d §3.2 — a stale public balance'` with these fixtures at its top:
@@ -841,7 +950,8 @@ asserts `.not.toMatch` of the same pattern. Do not assert the absence of another
     `await act(async () => { jest.advanceTimersByTime(60_000); })` → the line reads
     `Not updated · 6 min ago · pull to refresh`. `jest.useRealTimers()` in a `finally`. (The dashboard's own 60 s
     poll fires in that minute too; `forceSync` is mocked.)
-  - **D12** the alert on a partial sync (Task 1's intended change): with `READY_MAIN`, mock
+  - **D12 — pin (passes before the change)** the alert on a partial sync (Task 1's intended change; the alert
+    code itself is not edited in this task): with `READY_MAIN`, mock
     `forceSync` once to resolve `{success: false, partial: true, error: 'tokens: timeout', timestamp: 1}`, spy on
     `Alert.alert`, trigger the `RefreshControl`'s `onRefresh` as the existing pull-to-refresh tests in this file do,
     and assert one alert whose message contains `tokens: timeout`.
@@ -859,8 +969,9 @@ asserts `.not.toMatch` of the same pattern. Do not assert the absence of another
     `mockSetMode` called with `'shielded'`, the callback not called again. Remove the key in a `finally`.
 
 - [ ] **Step 2: Run them.** `npx jest src/screens/dashboard/__tests__/DashboardScreen.test.tsx --forceExit`
-      Expected: FAIL — no `dashboard-stale-line`; a stale status renders "—". (K1, K2 and D12 may already pass: they
-      are coverage for existing behaviour. Say so in the task report; do not weaken them.)
+      Expected: FAIL — no `dashboard-stale-line`; a stale status renders "—". (K1, K2 and D12 are pins: they pass
+      before the change, because they cover behaviour that already exists. Say so in the task report; do not weaken
+      them, and do not count them as evidence for this task's change.)
 
 - [ ] **Step 3: Implement the dashboard.**
 
@@ -941,8 +1052,11 @@ Imports: add `relativeAge`, `staleLine` to the `../../copy/accounts` import. Upd
     not dimmed (no `text-fg-tertiary`).
   - **S3 (R10)** the main row uses the same rule: `useWalletStore.setState({solBalance: '2000000000',
     lastSyncedAt: 5, lastSyncFailedAt: 9})` → `accounts-row-slip10:0-balance` reads `2 SOL · not updated`, dimmed.
-    Control: `lastSyncFailedAt: null` → `2 SOL`, not dimmed. Control: `lastSyncedAt: null, lastSyncFailedAt: 9` →
-    `not checked yet`.
+    Control: `lastSyncFailedAt: null` → `2 SOL`, not dimmed.
+  - **S3b (review r1-1)** the main row, never read: `useWalletStore.setState({solBalance: '0', lastSyncedAt: null,
+    lastSyncFailedAt: 9})` → `Balance unavailable` (never `0 SOL`, never `not checked yet`: a sync was tried and
+    failed). Control: `lastSyncedAt: null, lastSyncFailedAt: null` → `not checked yet` (today's
+    `'review M11 … no sync yet → not checked yet'` test stays as it is).
   - **S4 (Review Focus 1)** hidden wins: S1's data with `hidden: true` → the row reads `••• · not updated`; the row's
     `accessibilityLabel` contains `not updated` and matches no `/\d\.\d|SOL/` after the address part (assert
     `label.endsWith('••• · not updated')`).
@@ -965,7 +1079,9 @@ Imports: add `relativeAge`, `staleLine` to the `../../copy/accounts` import. Upd
 In the component: read `const lastSyncFailedAt = useWalletStore(s => s.lastSyncFailedAt);`, and the main row becomes
 
 ```ts
-        if (!lastSyncedAt) {
+        if (mainBalanceIsUnknown(lastSyncedAt, lastSyncFailedAt)) {
+          out[a.address] = {state: 'failed'}; // review r1-1: a sync was tried, nothing was ever read → "Balance unavailable"
+        } else if (!lastSyncedAt) {
           out[a.address] = {state: 'not-checked'};
         } else {
           const data = withPoolToken({solBalance, nocBalance, tokenBalances, tokens});
@@ -987,7 +1103,8 @@ In the component: read `const lastSyncFailedAt = useWalletStore(s => s.lastSyncF
 ```
 
 and the balance `Text`'s class: `className={cn('mt-0.5', stale ? 'text-fg-tertiary' : 'text-fg-secondary')}`.
-Imports: `staleRow` from the copy, `mainBalanceIsStale` from `'../../modules/accounts/staleness'`.
+Imports: `staleRow` from the copy, `mainBalanceIsStale` and `mainBalanceIsUnknown` from
+`'../../modules/accounts/staleness'`.
 
 - [ ] **Step 8: Run them.** The Step 6 command. Expected: PASS.
 
@@ -1000,8 +1117,45 @@ Imports: `staleRow` from the copy, `mainBalanceIsStale` from `'../../modules/acc
     `getByText('1.5 SOL')` has `className` containing `text-fg-tertiary`; `getByTestId('token-detail-stale')` reads
     `Not updated · 2 h ago`.
   - **TD2** control: `status: 'ready'` → no `token-detail-stale`; `1.5 SOL` does not carry `text-fg-tertiary`.
-  - **TD3 (§7 coverage)** `'<0.0001'`: ready, `solBalance: '10'` → `getByText('<0.0001 SOL')`; no text matches
-    `/e-\d/`.
+  - **TD3 (§7 coverage) — pin (passes before the change)** `'<0.0001'`: ready, `solBalance: '10'` →
+    `getByText('<0.0001 SOL')`; no text matches `/e-\d/`.
+  - **TD4 (review r1-7, R16)** the age ticks here too, as code:
+
+```ts
+  it('review r1-7 / R16: the stale age is recomputed every 60 s while the screen is mounted', async () => {
+    const NOW = 1_800_000_000_000;
+    jest.useFakeTimers({now: NOW}); // the fake clock is Date here
+    try {
+      mockTdPublic.current = {status: 'stale', syncedAt: NOW - 59 * 60_000, failedAt: NOW, solBalance: '1500000000', nocBalance: '0', tokenBalances: {}, tokens: []};
+      const r = screen();
+      expect(r.getByTestId('token-detail-stale')).toHaveTextContent('Not updated · 59 min ago');
+      await act(async () => {
+        jest.advanceTimersByTime(60_000);
+      });
+      expect(r.getByTestId('token-detail-stale')).toHaveTextContent('Not updated · 1 h ago');
+      r.unmount();
+      expect(jest.getTimerCount()).toBe(0); // the interval is cleared with the screen
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('review r1-7: no timer runs for a figure that is current', () => {
+    jest.useFakeTimers();
+    try {
+      screen(); // the describe's default data is 'ready'
+      expect(jest.getTimerCount()).toBe(0);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+```
+
+    (import `act` from `@testing-library/react-native` in that file.) If the screen turns out to own another
+    timer, so that the ready control is not 0, assert the difference instead — the stale render has exactly one
+    timer more than the ready one — and say so in the report.
+  - **TD5 (review r1-1)** a never-read main whose sync failed: `mockTdPublic.current = {status: 'error'}` →
+    `getByText('— SOL')`, `queryByText('0 SOL')` null, no `token-detail-stale`. Pin (passes before the change).
 
 - [ ] **Step 10: Run, implement, run.** `npx jest src/screens/transparent/__tests__/TokenDetailScreen.test.tsx --forceExit`
       → FAIL. Then in `TokenDetailScreen.tsx`:
@@ -1013,6 +1167,18 @@ Imports: `staleRow` from the copy, `mainBalanceIsStale` from `'../../modules/acc
   const {solBalance, nocBalance, tokenBalances, tokens} =
     publicData.status === 'ready' || publicData.status === 'stale' ? publicData : NO_PUBLIC_DATA;
   const staleText = publicData.status === 'stale' ? staleNote(relativeAge(publicData.syncedAt, Date.now())) : null;
+  // review r1-7 / R16: the age is recomputed on every render, and a tick re-renders every 60 s while the figure is
+  // stale. A plain effect, not useFocusEffect: this screen is a modal (mounted = shown) and its tests render it
+  // without a navigator.
+  const isStale = staleText !== null;
+  const [, setAgeTick] = React.useState(0);
+  React.useEffect(() => {
+    if (!isStale) {
+      return undefined;
+    }
+    const id = setInterval(() => setAgeTick(t => t + 1), 60_000);
+    return () => clearInterval(id);
+  }, [isStale]);
 ```
 
   Rename the remaining `publicReady` uses (`:237`, `:240`) to `publicKnown`. In the holdings card, the three figure
@@ -1034,7 +1200,8 @@ Imports: `staleRow` from the copy, `mainBalanceIsStale` from `'../../modules/acc
 - [ ] **Step 12: Commit.**
 
 ```bash
-git add src/screens/dashboard src/components/accounts src/screens/transparent/TokenDetailScreen.tsx \
+git add src/modules/accounts/valueLine.ts src/modules/accounts/__tests__/valueLine.test.ts \
+  src/screens/dashboard src/components/accounts src/screens/transparent/TokenDetailScreen.tsx \
   src/screens/transparent/__tests__/TokenDetailScreen.test.tsx
 git commit -m "feat(stale): the dashboard, the Accounts sheet and the token detail show a stale balance dimmed, with its age"
 ```
@@ -1048,10 +1215,11 @@ Spec: §3.2 (#12), R4, §7 first bullet.
 **Files:**
 - Modify: `src/screens/transparent/SendScreen.tsx:26-42` (imports), `:137-151` (retry), `:615-637` (the row)
 - Test: `src/screens/transparent/__tests__/SendScreen.test.tsx`
+- Create: `src/screens/transparent/__tests__/SendScreen.mainNeverRead.test.tsx` (the real hook and store, review r1-1)
 
 **Interfaces:**
 - Consumes (Task 1): `forceSync(): Promise<SyncResult>` with `success: boolean`. (Task 2): `AccountPublicData`
-  `'stale'`, `SEND_BALANCE_STALE`.
+  `'stale'`, `SEND_BALANCE_STALE`, and the hook returning `error` for a never-read main whose sync failed.
 - Produces: no new exports. `send-balance-retry` is now also rendered for `status === 'stale'`.
 
 **What must stay true (do not "fix"):** `publicReady` in this file stays `publicData.status === 'ready'`. A stale
@@ -1114,17 +1282,6 @@ and, in the `'M1d — #12 sends from the account selected when it opened'` descr
     expect(r.getByTestId('send-balance-retry')).toHaveTextContent('Not updated · tap to retry');
   });
 
-  it('R4: main + error (never read) → the tap runs forceSync too', async () => {
-    mockSendSelected.current = MAIN_SRC;
-    mockSendPublic.current = {status: 'error'};
-    mockForceSync.mockClear();
-    const r = render(<SendScreen onReview={jest.fn()} />);
-    await act(async () => {
-      fireEvent.press(r.getByTestId('send-balance-retry'));
-    });
-    expect(mockForceSync).toHaveBeenCalledTimes(1);
-  });
-
   it('another account + stale → the tap re-reads that account (refetch), not the main sync', async () => {
     mockSendSelected.current = A3_SRC;
     mockSendPublic.current = STALE_1_SOL;
@@ -1149,6 +1306,8 @@ and, in the `'M1d — #12 sends from the account selected when it opened'` descr
     expect(r.getByTestId('send-balance-retry')).toHaveTextContent('Not updated · tap to retry');
   });
 
+  // UNTESTED INVARIANT (race unconstructible): the generation guard itself has no test that can make it bite — the
+  // source moves only null → account. This row pins the condition that makes it safe, not the guard.
   it('final review m2: no retry can start while the source is unknown (the guard is keyed on the source)', () => {
     mockSendSelected.current = null;
     mockSendPublic.current = {status: 'loading'};
@@ -1157,13 +1316,109 @@ and, in the `'M1d — #12 sends from the account selected when it opened'` descr
   });
 ```
 
+  **The never-read main account, through the REAL hook (review r1-1).** The suite above mocks
+  `useAccountPublicData`, so it cannot show that a never-read main reaches #12 as `error`. Create
+  `src/screens/transparent/__tests__/SendScreen.mainNeverRead.test.tsx` — the hook and `walletStore` are real here:
+
+```tsx
+/**
+ * post-M1d §3.1 (review r1-1): a main account that was NEVER read and whose sync failed has no figure.
+ * This suite does NOT mock useAccountPublicData or walletStore: the state is the store's real one, read
+ * through the real hook. (SendScreen.test.tsx mocks the hook and so cannot prove this path.)
+ */
+import React from 'react';
+import {render, fireEvent, act} from '@testing-library/react-native';
+import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
+import {useWalletStore} from '../../../store/zustand/walletStore';
+
+jest.mock('@react-navigation/native', () => ({
+  ...jest.requireActual('@react-navigation/native'),
+  useNavigation: () => ({navigate: jest.fn(), goBack: jest.fn()}),
+  useRoute: () => ({params: {}}),
+}));
+jest.mock('../../../modules/solana/simulation', () => ({simulateTransaction: jest.fn().mockResolvedValue({success: true})}));
+jest.mock('../../../modules/solana/connection', () => ({getConnection: jest.fn(() => ({}))}));
+jest.mock('../../../modules/solana/transactionBuilder', () => ({
+  buildTransferTx: jest.fn().mockResolvedValue({}),
+  getTransferMarkupLamports: jest.requireActual('../../../modules/solana/transactionBuilder').getTransferMarkupLamports,
+}));
+
+const MAIN = 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk';
+const FOREIGN = 'E48cosDiQZK1iDSsyUzhvW4WxJeoKuDk5qgcdkmANV4N';
+const mockMainSrc = {scheme: 'slip10:0', address: MAIN, label: 'Account 1', number: 1, role: 'main', isMain: true, linked: false};
+const mockRefresh = jest.fn();
+jest.mock('../../../hooks/useSelectedAccount', () => ({
+  useSelectedAccount: () => mockMainSrc,
+  useAccountList: () => null,
+  useRefreshAccounts: () => mockRefresh,
+}));
+const mockForceSync = jest.fn(() => Promise.resolve({success: false, partial: false, timestamp: 1}));
+jest.mock('../../../modules/backgroundSync/backgroundSyncModule', () => ({forceSync: () => mockForceSync()}));
+
+import {SendScreen} from '../SendScreen';
+
+const screen = () => {
+  const qc = new QueryClient({defaultOptions: {queries: {retry: false}}});
+  const r = render(
+    <QueryClientProvider client={qc}>
+      <SendScreen onReview={jest.fn()} />
+    </QueryClientProvider>,
+  );
+  fireEvent.changeText(r.getByTestId('recipient-input'), FOREIGN);
+  fireEvent.changeText(r.getByTestId('amount-input'), '0.001');
+  return r;
+};
+
+beforeEach(() => {
+  mockForceSync.mockClear();
+  // a fresh import: the store's defaults, and the first sync of this session failed
+  useWalletStore.setState({publicKey: MAIN, solBalance: '0', nocBalance: '0', tokenBalances: {}, tokens: [], lastSyncedAt: null, lastSyncFailedAt: 5});
+});
+
+it('never read + the sync failed → no "Available 0 SOL": the retry row, CTA / MAX off, nothing judged against 0', () => {
+  const r = screen();
+  expect(r.queryByTestId('send-available')).toBeNull();
+  expect(r.queryByText(/Available/)).toBeNull();
+  expect(r.getByTestId('send-balance-retry')).toHaveTextContent('Balance unavailable · tap to retry');
+  expect(r.getByTestId('review-button').props.accessibilityState?.disabled).toBe(true);
+  expect(r.getByTestId('max-button').props.accessibilityState?.disabled).toBe(true);
+  expect(r.queryByText(/Insufficient balance/)).toBeNull(); // 0.001 SOL is NOT "more than the balance": there is none
+});
+
+it('R4: the tap on that row runs the main sync once (never the no-op refetch)', async () => {
+  const r = screen();
+  await act(async () => {
+    fireEvent.press(r.getByTestId('send-balance-retry'));
+  });
+  expect(mockForceSync).toHaveBeenCalledTimes(1);
+});
+
+it('positive control: the same store after one good sync → "Available 1 SOL" and a usable CTA', () => {
+  expect(useWalletStore.getState().lastSyncedAt).toBeNull(); // the arranged state really is "never read"
+  const r = screen();
+  act(() => {
+    useWalletStore.getState().updateBalances('1000000000', '0', {});
+  });
+  expect(r.queryByTestId('send-balance-retry')).toBeNull();
+  expect(r.getByTestId('send-available')).toHaveTextContent('1 SOL');
+  expect(r.getByTestId('review-button').props.accessibilityState?.disabled).toBe(false);
+});
+
+```
+
+  Run it once now: the first two tests pass only because Task 2 made the hook return `error` for this state and
+  this task wires the row to `forceSync`. Prove the first is a check: temporarily make
+  `mainBalanceIsUnknown` return `false`, see `'never read + the sync failed…'` fail on `Available`, and revert.
+  Report the result. (Add this file to Step 2's run and to the commit.)
+
   The existing `'owner 2A (2026-11-22): a failed read of the source…'` test uses `MAIN_SRC` (the describe's
   `beforeEach`) and asserts `mockSendRefetch` calls. **Change** it to select `A3_SRC` at its top
   (`mockSendSelected.current = A3_SRC;`), comment
   `// post-M1d R4: the refetch path is the non-main one — main retries through forceSync (its own row below)`.
 
-- [ ] **Step 2: Run them.** `npx jest src/screens/transparent/__tests__/SendScreen.test.tsx --forceExit`
-      Expected: FAIL — a stale status renders "Available — SOL"; `forceSync` is never called.
+- [ ] **Step 2: Run them.** `npx jest src/screens/transparent/__tests__/SendScreen --forceExit` (both files)
+      Expected: FAIL — a stale status renders "Available — SOL"; `forceSync` is never called (in the real-hook file
+      the retry row is there since Task 2, but its tap calls the no-op refetch).
 
 - [ ] **Step 3: Implement.** Replace `SendScreen.tsx:139-151`:
 
@@ -1232,7 +1487,8 @@ and, in the `'M1d — #12 sends from the account selected when it opened'` descr
               ) : (
 ```
 
-- [ ] **Step 4: Run them.** The Step 2 command. Expected: PASS.
+- [ ] **Step 4: Run them.** The Step 2 command. Expected: PASS. Then the `mainBalanceIsUnknown` mutation described
+      in Step 1 (fails, reverted).
 
 - [ ] **Step 5: Gates.** `npx tsc --noEmit && npm run lint:ci && npx jest && node scripts/check-no-tge-date.mjs`.
       If `lint:ci` reports a new `react-hooks/exhaustive-deps` warning, fix the dependency list; do not add a
@@ -1241,7 +1497,8 @@ and, in the `'M1d — #12 sends from the account selected when it opened'` descr
 - [ ] **Step 6: Commit.**
 
 ```bash
-git add src/screens/transparent/SendScreen.tsx src/screens/transparent/__tests__/SendScreen.test.tsx
+git add src/screens/transparent/SendScreen.tsx src/screens/transparent/__tests__/SendScreen.test.tsx \
+  src/screens/transparent/__tests__/SendScreen.mainNeverRead.test.tsx
 git commit -m "fix(send): #12 refuses a stale balance, and the main account's retry runs the main sync"
 ```
 
@@ -1256,22 +1513,31 @@ Spec: §6, R6, R7, r2-4, Review Focus 5; §7 coverage (TokenPicker, presale allo
 - Modify: `src/modules/tokens/coreTokens.ts:13`
 - Modify: `src/modules/prices/portfolio.ts:1-48`
 - Modify: `src/components/TokenLogo.tsx:19`
+- Modify: `src/store/zustand/walletStore.ts` (the `merge` Task 1 added — persisted core-token labels, review r1-6)
 - Modify: `src/screens/dashboard/DashboardScreen.tsx:327-352` (`displayTokens`), `:451` (`isNativeSol`)
 - Modify: `src/screens/transparent/TokenDetailScreen.tsx:74` (price), `:104` (chart id)
-- Test: `src/modules/tokens/__tests__/tokenModule.test.ts`, `src/modules/prices/__tests__/portfolio.test.ts`,
+- Test: `src/store/zustand/__tests__/walletStore.test.ts`, `src/modules/tokens/__tests__/tokenModule.test.ts`,
+  `src/modules/prices/__tests__/portfolio.test.ts`,
   `src/modules/prices/__tests__/holdings.test.ts`, `src/modules/accounts/__tests__/accountSnapshot.test.ts`,
   `src/components/__tests__/TokenLogo.test.tsx`, `src/screens/dashboard/__tests__/DashboardScreen.test.tsx`,
   `src/screens/transparent/__tests__/TokenDetailScreen.test.tsx`,
   `src/components/__tests__/TokenPickerSheet.test.tsx`, `src/modules/presale/__tests__/presaleAllocation.test.ts`
 
 **Interfaces:**
-- Consumes: nothing from earlier tasks (it follows Task 3 only because it edits the same two screens).
+- Consumes (Task 1): walletStore's `merge` persist option (this task extends it). Otherwise nothing; it follows
+  Task 3 because it edits the same two screens.
 - Produces:
 
 ```ts
 // src/modules/prices/portfolio.ts
 /** The key a mint's price is stored under: wrapped SOL is priced as SOL ('native'); every other mint under itself. */
 export function priceKeyFor(mint: string): string;
+```
+
+```ts
+// src/store/zustand/walletStore.ts
+/** A persisted token list relabelled from CORE_TOKENS: a core mint always carries its registry symbol and name. */
+export function relabelCoreTokens(tokens: readonly TokenMetadata[]): TokenMetadata[];
 ```
 
   `buildDisplayTokens` returns at most one entry per mint. `CORE_TOKENS`' wSOL entry is
@@ -1283,7 +1549,55 @@ native row is not added) and `:451` gives that row the native balance. A wallet 
 "SOL" row with the native amount and no wSOL at all. After this task: the native row is always there (mint
 `'native'`), and the wSOL row shows its own amount.
 
+**Persisted rows (review r1-6).** `walletStore.tokens` is persisted (`partialize` keeps it), so a device that held
+wSOL before this change has `{mint: So111…112, symbol: 'SOL', name: 'Solana'}` on disk. Until the next fully
+successful sync rewrites the list (`setTokens`), that row would render as a second "SOL" — and after Task 1 a failed
+sync no longer rewrites it. The store has **no persist `version` and no `migrate`** (checked:
+`walletStore.ts:60-72` passes only `name`, `storage`, `partialize`, plus Task 1's `merge`), so there is no migration
+to bump; adding a version now would run `migrate` against every existing record for one label. The rewrite goes in
+`merge`, which is the rehydration path and already exists since Task 1: the labels are corrected before any screen
+reads the store, with no second write. (`onRehydrateStorage` would correct them one render later, through a `set`.)
+
 - [ ] **Step 1: Write the failing module tests.**
+
+`src/store/zustand/__tests__/walletStore.test.ts` (the file Task 1 created):
+
+```ts
+describe('post-M1d R7 / review r1-6: a persisted core token is relabelled on rehydration', () => {
+  const WSOL = 'So11111111111111111111111111111111111111112';
+  const USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+
+  it('a wSOL row stored as "SOL" / "Solana" comes back as "wSOL" / "Wrapped SOL"; nothing else changes', async () => {
+    const stored = [
+      {mint: WSOL, symbol: 'SOL', name: 'Solana', decimals: 9, trust: 'core'},
+      {mint: USDC, symbol: 'USDC', name: 'USD Coin', decimals: 6, trust: 'core'},
+      {mint: 'VerifiedMint', symbol: 'SOL', name: 'Not ours to rename', decimals: 9, trust: 'verified', logoUri: 'https://cdn/x'},
+    ];
+    mmkvPublic.set(NAME, JSON.stringify({state: {publicKey: 'P', tokens: stored, tokenBalances: {[WSOL]: '5'}}, version: 0}));
+    await useWalletStore.persist.rehydrate();
+    const tokens = useWalletStore.getState().tokens;
+    expect(tokens[0]).toEqual({mint: WSOL, symbol: 'wSOL', name: 'Wrapped SOL', decimals: 9, trust: 'core'});
+    expect(tokens[1]).toEqual(stored[1]);
+    expect(tokens[2]).toEqual(stored[2]); // a non-core mint keeps whatever it carries: only the registry is authoritative
+    expect(useWalletStore.getState().tokenBalances).toEqual({[WSOL]: '5'}); // the amounts are not touched
+  });
+
+  it('a record with no tokens, or a malformed tokens value, rehydrates without throwing', async () => {
+    mmkvPublic.set(NAME, JSON.stringify({state: {publicKey: 'P'}, version: 0}));
+    await useWalletStore.persist.rehydrate();
+    expect(useWalletStore.getState().tokens).toEqual([]);
+    mmkvPublic.set(NAME, JSON.stringify({state: {publicKey: 'P', tokens: 'nope'}, version: 0}));
+    await useWalletStore.persist.rehydrate();
+    expect(useWalletStore.getState().tokens).toEqual([]);
+  });
+
+  it('Task 1 still holds through the extended merge: lastSyncFailedAt is null after rehydration', async () => {
+    mmkvPublic.set(NAME, JSON.stringify({state: {publicKey: 'P', lastSyncedAt: 5, lastSyncFailedAt: 9}, version: 0}));
+    await useWalletStore.persist.rehydrate();
+    expect(useWalletStore.getState().lastSyncFailedAt).toBeNull();
+  });
+});
+```
 
 `tokenModule.test.ts`, in `describe('buildDisplayTokens')`:
 
@@ -1406,8 +1720,9 @@ Coverage rows (spec §7; these may pass at once — they pin existing behaviour,
   });
 ```
 
-- [ ] **Step 2: Run them.** `npx jest src/modules/tokens src/modules/prices src/components/__tests__/TokenLogo.test.tsx src/components/__tests__/TokenPickerSheet.test.tsx src/modules/presale --forceExit`
-      Expected: FAIL on T1, T2, the wSOL name, `priceKeyFor`, the wSOL portfolio rows and the logo.
+- [ ] **Step 2: Run them.** `npx jest src/store/zustand/__tests__/walletStore.test.ts src/modules/tokens src/modules/prices src/components/__tests__/TokenLogo.test.tsx src/components/__tests__/TokenPickerSheet.test.tsx src/modules/presale --forceExit`
+      Expected: FAIL on the rehydration relabel, T1, T2, the wSOL name, `priceKeyFor`, the wSOL portfolio rows and
+      the logo. The TokenPicker and presale-allocation rows are **pins (pass before the change)**.
 
 - [ ] **Step 3: Implement the modules.**
 
@@ -1453,6 +1768,39 @@ and in `computePortfolio`: `const price = prices[priceKeyFor(h.mint)];` (the `pe
 
 `TokenLogo.tsx:19`: `if (symbol === 'SOL' || symbol === 'wSOL') {`.
 
+`walletStore.ts` — import `CORE_TOKENS` from `'../../modules/tokens/coreTokens'` (that file imports only
+`constants/programs`: no cycle; `tokenModule.ts` imports this store's *type* only), add above the store:
+
+```ts
+/**
+ * post-M1d R7 (review r1-6): the token list is persisted, so a row written by an older build can carry a
+ * label the registry no longer uses (wrapped SOL was "SOL" / "Solana"). A core mint always shows its
+ * CORE_TOKENS symbol and name; every other row is returned as stored. Runs on rehydration (`merge`).
+ */
+export function relabelCoreTokens(tokens: readonly TokenMetadata[]): TokenMetadata[] {
+  return tokens.map(t => {
+    const core = CORE_TOKENS.find(c => c.mint === t.mint);
+    return core && (t.symbol !== core.symbol || t.name !== core.name) ? {...t, symbol: core.symbol, name: core.name} : t;
+  });
+}
+```
+
+and replace Task 1's `merge`:
+
+```ts
+      // r2-1: a new session never starts stale, whatever the record holds.
+      // review r1-6: a persisted core-token row takes the registry's label (no version/migrate exists to bump).
+      merge: (persisted, current) => {
+        const stored = (persisted ?? {}) as Partial<WalletState>;
+        return {
+          ...current,
+          ...stored,
+          tokens: Array.isArray(stored.tokens) ? relabelCoreTokens(stored.tokens) : current.tokens,
+          lastSyncFailedAt: null,
+        };
+      },
+```
+
 - [ ] **Step 4: Run them.** The Step 2 command. Expected: PASS. Then `npx jest` once: any other test that expected
       the wSOL core entry to be `'SOL'` / `'Solana'` fails here — update it with the comment `// post-M1d R7`.
 
@@ -1496,6 +1844,8 @@ and in `computePortfolio`: `const price = prices[priceKeyFor(h.mint)];` (the `pe
       expect(r.getAllByText('1 SOL').length).toBeGreaterThan(0); // and the native row exists beside it
     });
 
+    // pin (passes before the change): publicSide already folds wSOL (valueLine.ts:42-46); this row keeps R7's
+    // "the split keeps folding" true while the list rows stop folding
     it('the split\'s Public column keeps folding wSOL into SOL (a summary, R7)', async () => {
       mockPublic.current = withWsol('1000000000');
       mockResolved.current = {prices: {}, havePrices: false};
@@ -1523,7 +1873,8 @@ suite's default; its prices are `{native: {usd: 150, change24h: 2}}`):
 ```
 
 - [ ] **Step 6: Run them.** `npx jest src/screens/dashboard src/screens/transparent/__tests__/TokenDetailScreen.test.tsx --forceExit`
-      Expected: FAIL — the wSOL row is missing or shows the native amount; the wSOL price is "—".
+      Expected: FAIL — the wSOL row is missing or shows the native amount; the wSOL price is "—". (The split-folding
+      row is a pin and passes already.)
 
 - [ ] **Step 7: Implement the screens.**
 
@@ -1542,6 +1893,7 @@ and `:104`: `const cgId = coingeckoIdForMint(priceKeyFor(mint));` — import `pr
 
 ```bash
 git add src/modules/tokens src/modules/prices src/components/TokenLogo.tsx src/components/__tests__ \
+  src/store/zustand/walletStore.ts src/store/zustand/__tests__/walletStore.test.ts \
   src/modules/accounts/__tests__/accountSnapshot.test.ts src/modules/presale/__tests__ \
   src/screens/dashboard src/screens/transparent/TokenDetailScreen.tsx src/screens/transparent/__tests__/TokenDetailScreen.test.tsx
 git commit -m "fix(tokens): one row per mint; wrapped SOL is its own row, priced as SOL and counted once"
@@ -2212,6 +2564,7 @@ export function linkedParticipants(seed: readonly SeedAccount[], source: string,
     expect(onReview.mock.calls[0]![0].linksAccounts).toEqual([]);
   });
 
+  // pin (passes before the change): #12 never imported the queue. It keeps a later edit from moving the write here.
   it('post-M1d §4: #12 itself writes nothing — the tag belongs to #21', () => {
     const {r} = setup(MAIN);
     tap(r);
@@ -2458,9 +2811,13 @@ export interface TxTransfer {
   symbol: string;
   /** human, exact (BigInt-formatted); null when the decimals are not known — never a raw base-unit figure */
   amount: string | null;
-  /** the transfer's own source WALLET (R12): `info.source` for SOL; `info.authority`, else the source token
-   *  account's owner, for SPL. Never the fee payer. null when not derivable. */
+  /** the WALLET the funds left (R12, review r1-10): `info.source` for SOL; for SPL the OWNER of the source token
+   *  account, read from the token balances (post, then pre). Never the fee payer, and never `info.authority` — a
+   *  delegate can move tokens it does not own. null when the response names no owner. */
   from: string | null;
+  /** SPL only: who authorised the transfer (`info.authority`, else `info.multisigAuthority`); null for SOL or
+   *  when absent. Equal to `from` for an ordinary send; different for a delegated one. */
+  authority: string | null;
   /** SPL only: the source token account */
   fromTokenAccount: string | null;
   /** the recipient WALLET when the response names it; otherwise the destination token account */
@@ -2503,6 +2860,7 @@ export const TX_RECEIVED = 'Received';
 export const TX_NEUTRAL = 'Transaction';
 export const TX_TOKEN_ACCOUNT = 'token account';
 export const TX_FEE_PAYER = 'Fee payer';
+export const TX_AUTHORIZED_BY = 'Authorized by';
 
 // navigation
 SendStackParamList['TransactionDetail'] = {signature: string; account?: string};
@@ -2510,12 +2868,21 @@ SendStackParamList['TransactionDetail'] = {signature: string; account?: string};
 // TransactionHistoryScreen props: onSelectTx: (signature: string, account: string) => void
 ```
 
-**The direction rule (§5, R9, R12):**
-- `sent` — there is a transfer, `account === transfer.from`, and `account` is among `signers`.
+**The direction rule (§5, R9, R12; review r1-2 and r1-10):**
+- **A failed transaction has no direction.** `detail.status === 'failed'` → `none`, whatever the instructions say:
+  it moved nothing, so "Sent" or "Received" would be a false claim. This is checked first.
+- `sent` — there is a transfer, `account === transfer.from` (the wallet that owned the funds), and `account` is
+  among `signers`.
 - `received` — there is a transfer and `account === transfer.to` with `toIsTokenAccount === false`, or
   `account === transfer.toTokenAccount`.
 - `none` — everything else, including `account === null`. The screen then reads "TRANSACTION" and claims no
   direction. `sent` wins when both hold (a transfer to oneself).
+
+**A delegated SPL transfer (review r1-10).** The instruction's `authority` is whoever signed for the tokens — the
+owner in an ordinary send, a delegate otherwise. "From" is therefore the source token account's **owner**, taken
+from the token balances, and never `info.authority`. The owner did not sign a delegated transfer, so it is not
+"sent" for the owner; the delegate does not own the funds, so it is not "sent" for the delegate either. When the
+authority is not the owner (or the owner is unknown), the screen adds a row "Authorized by" with the authority.
 - It is judged against the route's `account` only (R9) — the account whose history or #21 opened the detail — never
   against the live selection.
 
@@ -2705,6 +3072,7 @@ const SRC_TA = '3WzwveDj8C6AGyiq5T13SeffM6HaP2zuc4rH1oW6QNu2';
 const OUTSIDE_TA = '75wGzeQ18yn9Jyf9EhoXjPG4ry9xFni38RcJxScGVoqT';
 const MAIN_TA = 'A3hWoQY9JME12b1kVyxCZdpgbpLm5NYJJTYKLBdFGaR7';
 const TEST_MINT = 'ERkpCFGaoWmeZPhKTUHumrqHTP1QmyHVhMJUnxbRPKCs';
+const DELEGATE = 'DELEGATExxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'; // any other key: it is only compared
 
 /** the symbol source is injected: these tests pin the parser, trustedSymbol.test.ts pins the symbols */
 const symbolOf = (mint: string): string => (mint === TEST_MINT ? 'TEST' : mint === 'native' ? 'SOL' : `short(${mint.slice(0, 4)})`);
@@ -2719,7 +3087,7 @@ it('a SOL transfer (2HWCCJQd…): amount, sender = the transfer\'s source, recip
   const d = parseTxDetail(load('tx-sol-transfer.json'), 'SIG', symbolOf);
   expect(d.transfer).toEqual({
     mint: 'native', symbol: 'SOL', amount: '0.000005',
-    from: SOL_SENDER, fromTokenAccount: null,
+    from: SOL_SENDER, authority: null, fromTokenAccount: null,
     to: OUTSIDE, toIsTokenAccount: false, toTokenAccount: null,
   });
   expect(d).toMatchObject({signature: 'SIG', status: 'confirmed', feeLamports: 5050n, slot: 525082222, feePayer: SOL_SENDER, signers: [SOL_SENDER], memo: null});
@@ -2731,7 +3099,7 @@ it('an SPL send with the owner present (5i53q9tR…): the symbol, and the recipi
   const d = parseTxDetail(load('tx-test-to-outside.json'), 'SIG', symbolOf);
   expect(d.transfer).toEqual({
     mint: TEST_MINT, symbol: 'TEST', amount: '0.0005',
-    from: ACC_9Y, fromTokenAccount: SRC_TA,
+    from: ACC_9Y, authority: ACC_9Y, fromTokenAccount: SRC_TA, // the owner of 3Wzwve… and the signer are one key here
     to: OUTSIDE, toIsTokenAccount: false, toTokenAccount: OUTSIDE_TA,
   });
   expect(d.feeLamports).toBe(7000n);
@@ -2749,7 +3117,10 @@ it('R11: no owner in the response → the token account, flagged — never passe
     delete b.owner; // removed: `owner` (older nodes omit it)
   }
   const d = parseTxDetail(tx, 'SIG', symbolOf);
-  expect(d.transfer).toMatchObject({to: OUTSIDE_TA, toIsTokenAccount: true, toTokenAccount: OUTSIDE_TA, from: ACC_9Y, symbol: 'TEST', amount: '0.0005'});
+  expect(d.transfer).toMatchObject({to: OUTSIDE_TA, toIsTokenAccount: true, toTokenAccount: OUTSIDE_TA, symbol: 'TEST', amount: '0.0005'});
+  // review r1-10: with no owner the sender WALLET is not known either — the authority is shown as what it is
+  expect(d.transfer).toMatchObject({from: null, authority: ACC_9Y});
+  expect(txDirection(d, ACC_9Y)).toBe('none');
 });
 
 // P5 (Review Focus 2)
@@ -2771,10 +3142,10 @@ it('a plain `transfer` with no token balances at all → no mint, no symbol, NO 
   tx.meta!.postTokenBalances = []; // removed: every token balance
   tx.meta!.preTokenBalances = [];
   const d = parseTxDetail(tx, 'SIG', symbolOf);
-  expect(d.transfer).toMatchObject({mint: null, symbol: '', amount: null, to: OUTSIDE_TA, toIsTokenAccount: true});
+  expect(d.transfer).toMatchObject({mint: null, symbol: '', amount: null, to: OUTSIDE_TA, toIsTokenAccount: true, from: null, authority: ACC_9Y});
 });
 
-it('R12: the sender is the transfer\'s authority, never the fee payer (a relayed transaction)', () => {
+it('R12: the sender is the owner of the source token account, never the fee payer (a relayed transaction)', () => {
   const tx = clone(load('tx-test-to-outside.json'));
   const RELAYER = 'RELAYERxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'; // any other key: it is only compared
   const keys = tx.transaction!.message!.accountKeys!;
@@ -2789,10 +3160,49 @@ it('R12: the sender is the transfer\'s authority, never the fee payer (a relayed
   expect(d.signers).toEqual([RELAYER, ACC_9Y]);
 });
 
-it('R12: no authority in the instruction → the source token account\'s owner', () => {
+it('R12: no authority in the instruction → the owner is still the sender; a multisigAuthority is read as the authority', () => {
   const tx = clone(load('tx-test-to-outside.json'));
   const ix = (tx.transaction!.message!.instructions as Array<{parsed?: {info: Record<string, unknown>}}>).find(i => i.parsed?.info?.authority)!;
-  delete ix.parsed!.info.authority; // removed: `authority` (a multisig transfer names `multisigAuthority` instead)
+  delete ix.parsed!.info.authority; // removed: `authority`
+  expect(parseTxDetail(tx, 'SIG', symbolOf).transfer).toMatchObject({from: ACC_9Y, authority: null});
+  ix.parsed!.info.multisigAuthority = 'MULTISIGxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'; // the multisig shape names this instead
+  expect(parseTxDetail(tx, 'SIG', symbolOf).transfer).toMatchObject({from: ACC_9Y, authority: 'MULTISIGxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'});
+});
+
+/**
+ * review r1-10 — the DELEGATED variant, derived from the real 5i53q9tR… response by changing exactly what a
+ * delegated transfer changes: the instruction's `authority` is the delegate, the delegate signs (and pays), and
+ * the owner 9Y7Ftt… does not sign. The token balances — and so the owner of the source account — are untouched.
+ */
+function delegated(): RawParsedTx {
+  const tx = clone(load('tx-test-to-outside.json'));
+  const ix = (tx.transaction!.message!.instructions as Array<{parsed?: {info: Record<string, unknown>}}>).find(i => i.parsed?.info?.authority)!;
+  ix.parsed!.info.authority = DELEGATE;
+  const keys = tx.transaction!.message!.accountKeys!;
+  keys.find(k => k.pubkey === ACC_9Y)!.signer = false; // the owner did not sign
+  keys.unshift({pubkey: DELEGATE, signer: true, writable: true}); // the delegate signs and pays: key 0
+  for (const b of [...(tx.meta!.postTokenBalances ?? []), ...(tx.meta!.preTokenBalances ?? [])]) {
+    b.accountIndex = (b.accountIndex ?? 0) + 1;
+  }
+  return tx;
+}
+
+it('review r1-10: a delegated transfer — From is the OWNER of the source account, not the authority', () => {
+  const d = parseTxDetail(delegated(), 'SIG', symbolOf);
+  expect(d.transfer).toMatchObject({from: ACC_9Y, authority: DELEGATE, fromTokenAccount: SRC_TA, to: OUTSIDE, amount: '0.0005'});
+  expect(d.signers).toEqual([DELEGATE]);
+});
+
+it('review r1-10: a delegated transfer is "sent" for nobody — not the owner (it did not sign), not the delegate (not its funds)', () => {
+  const d = parseTxDetail(delegated(), 'SIG', symbolOf);
+  expect(txDirection(d, ACC_9Y)).toBe('none');
+  expect(txDirection(d, DELEGATE)).toBe('none');
+  expect(txDirection(d, OUTSIDE)).toBe('received'); // the recipient's view is unchanged
+});
+
+it('review r1-10: the owner is read from preTokenBalances when the post entry is missing (a source account closed in the same transaction)', () => {
+  const tx = clone(load('tx-test-to-outside.json'));
+  tx.meta!.postTokenBalances = (tx.meta!.postTokenBalances ?? []).filter(b => b.accountIndex !== 1); // removed: the source's post entry
   expect(parseTxDetail(tx, 'SIG', symbolOf).transfer!.from).toBe(ACC_9Y);
 });
 
@@ -2845,6 +3255,20 @@ describe('txDirection — judged against the route\'s account only (R9)', () => 
     tx.transaction!.message!.instructions = [];
     expect(txDirection(parseTxDetail(tx, 'SIG', symbolOf), SOL_SENDER)).toBe('none');
   });
+  // review r1-2
+  it('a FAILED transaction has no direction — for the sender, the recipient, anyone (it moved nothing)', () => {
+    const failed = (name: string) => {
+      const tx = clone(load(name));
+      tx.meta!.err = {InstructionError: [2, {Custom: 1}]}; // changed: `meta.err` only
+      return parseTxDetail(tx, 'SIG', symbolOf);
+    };
+    expect(failed('tx-test-to-outside.json').status).toBe('failed');
+    expect(failed('tx-test-to-outside.json').transfer).not.toBeNull(); // the transfer is still parsed: only the claim goes
+    expect(txDirection(failed('tx-test-to-outside.json'), ACC_9Y)).toBe('none');
+    expect(txDirection(failed('tx-test-to-main.json'), MAIN)).toBe('none');
+    expect(txDirection(failed('tx-sol-transfer.json'), SOL_SENDER)).toBe('none');
+    expect(txDirection(failed('tx-sol-transfer.json'), OUTSIDE)).toBe('none');
+  });
   it('the source that did NOT sign is not "sent" (a delegate moved the tokens)', () => {
     const d = toOutside();
     expect(txDirection({...d, signers: []}, ACC_9Y)).toBe('none');
@@ -2876,11 +3300,13 @@ describe('txDirection — judged against the route\'s account only (R9)', () => 
  * never filled with a guess (a token account is never called the wallet; a base-unit amount is never
  * shown as a human one).
  *
- * R11: the mint, decimals and owner of an SPL transfer are read from `meta.postTokenBalances`, matched
- * by the token account's index in `accountKeys`. A plain `transfer` carries no mint; `transferChecked`
+ * R11: the mint, decimals and owner of an SPL transfer are read from `meta.postTokenBalances` (the pre
+ * entry only when an account has no post one), matched by the token account's index in `accountKeys`. A plain `transfer` carries no mint; `transferChecked`
  * carries it, and the instruction's own values win when present.
- * R12: "from" is the transfer's own source — `info.source` (SOL); `info.authority`, else the source
- * token account's owner (SPL). Never the fee payer, which is a relayer for a relayed transaction.
+ * R12 (as corrected by plan review r1-10): "from" is the wallet the funds left — `info.source` (SOL); the
+ * OWNER of the source token account, from the token balances (SPL). `info.authority` is kept apart as
+ * `authority`: it is the owner in an ordinary send and a delegate in a delegated one. Never the fee payer,
+ * which is a relayer for a relayed transaction. A failed transaction has no direction (r1-2).
  */
 import {NOCTURA_FEE_TREASURY} from '../../constants/programs';
 import {formatTokenAmount} from '../../utils/parseTokenAmount';
@@ -2943,13 +3369,21 @@ export function parseTxDetail(tx: RawParsedTx, signature: string, symbolOf: (min
   const meta = tx.meta ?? {};
   const keys = (tx.transaction?.message?.accountKeys ?? []).map(k => ({address: keyString(k.pubkey), signer: k.signer === true}));
   const postBalances = meta.postTokenBalances ?? [];
-  /** R11: a token account's balance entry, matched by its index among the account keys */
+  const preBalances = meta.preTokenBalances ?? [];
+  /**
+   * R11: a token account's balance entry, matched by its index among the account keys. The POST entry
+   * first; the PRE entry only when there is no post one (an account closed in this transaction) — its
+   * mint, decimals and owner are the same account's (review r1-10).
+   */
   const balanceOf = (tokenAccount: string | null): RawTokenBalance | undefined => {
     if (tokenAccount === null) {
       return undefined;
     }
     const index = keys.findIndex(k => k.address === tokenAccount);
-    return index < 0 ? undefined : postBalances.find(b => b.accountIndex === index);
+    if (index < 0) {
+      return undefined;
+    }
+    return postBalances.find(b => b.accountIndex === index) ?? preBalances.find(b => b.accountIndex === index);
   };
 
   let transfer: TxTransfer | null = null;
@@ -2976,6 +3410,7 @@ export function parseTxDetail(tx: RawParsedTx, signature: string, symbolOf: (min
         symbol: symbolOf('native'),
         amount: lamports !== null ? formatTokenAmount(lamports, SOL_DECIMALS) : null,
         from: str(info.source),
+        authority: null,
         fromTokenAccount: null,
         to: destination,
         toIsTokenAccount: false,
@@ -2999,7 +3434,10 @@ export function parseTxDetail(tx: RawParsedTx, signature: string, symbolOf: (min
         symbol: mint !== null ? symbolOf(mint) : '',
         // never a raw figure: without the decimals there is no human amount
         amount: baseUnits !== null && decimals !== null ? formatTokenAmount(baseUnits, decimals) : null,
-        from: str(info.authority) ?? str(src?.owner),
+        // review r1-10: the funds' OWNER — never `info.authority`, which is a delegate in a delegated transfer.
+        // With no owner in the response the sender wallet is not known: null, and the authority is shown apart.
+        from: str(src?.owner),
+        authority: str(info.authority) ?? str(info.multisigAuthority),
         fromTokenAccount: source,
         to: owner ?? destination,
         toIsTokenAccount: owner === null,
@@ -3024,9 +3462,11 @@ export function parseTxDetail(tx: RawParsedTx, signature: string, symbolOf: (min
 /** §5 / R9: judged against ONE address — the account whose history or #21 the detail was opened from. */
 export function txDirection(detail: TxDetail, account: string | null): TxDirection {
   const t = detail.transfer;
-  if (account === null || t === null) {
+  // review r1-2: a failed transaction moved nothing — no direction is claimed, whoever looks at it
+  if (detail.status === 'failed' || account === null || t === null) {
     return 'none';
   }
+  // review r1-10: `from` is the owner of the funds; it must also have signed (a delegate's move is not "sent")
   if (t.from === account && detail.signers.includes(account)) {
     return 'sent';
   }
@@ -3072,7 +3512,7 @@ export async function getTransactionDetail(connection: Connection, signature: st
     `// post-M1d §5: TxDetail.transfer replaces the flat from/to/amount/tokenSymbol/type`):
 
 ```ts
-    expect(d!.transfer).toMatchObject({from: 'SENDER_ADDR', to: 'RECIPIENT_ADDR', amount: '0.01', symbol: 'SOL', mint: 'native'});
+    expect(d!.transfer).toMatchObject({from: 'SENDER_ADDR', authority: null, to: 'RECIPIENT_ADDR', amount: '0.01', symbol: 'SOL', mint: 'native'});
     expect(d!.feePayer).toBe('SENDER_ADDR');
     expect(d!.feeLamports).toBe(5005n);
     expect(d!.slot).toBe(271_408_924);
@@ -3089,7 +3529,8 @@ const SENT_SPL = {
   signature: 'SIG12345678ABCDEFGHIJ', status: 'confirmed' as const,
   transfer: {
     mint: 'ERkpCFGaoWmeZPhKTUHumrqHTP1QmyHVhMJUnxbRPKCs', symbol: 'TEST', amount: '0.0002',
-    from: '9Y7FtteLhCJABAQtkYEFZs46rJgy1ixMA1JFMUepTki4', fromTokenAccount: '3WzwveDj8C6AGyiq5T13SeffM6HaP2zuc4rH1oW6QNu2',
+    from: '9Y7FtteLhCJABAQtkYEFZs46rJgy1ixMA1JFMUepTki4', authority: '9Y7FtteLhCJABAQtkYEFZs46rJgy1ixMA1JFMUepTki4',
+    fromTokenAccount: '3WzwveDj8C6AGyiq5T13SeffM6HaP2zuc4rH1oW6QNu2',
     to: 'Da83cAfGUrsm896FUghCkNKutgFc96WNGWN73bZxe31B', toIsTokenAccount: false, toTokenAccount: 'A3hWoQY9JME12b1kVyxCZdpgbpLm5NYJJTYKLBdFGaR7',
   },
   feePayer: '9Y7FtteLhCJABAQtkYEFZs46rJgy1ixMA1JFMUepTki4', signers: ['9Y7FtteLhCJABAQtkYEFZs46rJgy1ixMA1JFMUepTki4'],
@@ -3160,6 +3601,35 @@ describe('post-M1d §5 — #27 names the token, the wallet and the direction', (
     expect(r.getByTestId('tx-detail-direction')).toHaveTextContent('Transaction');
   });
 
+  it('review r1-2: a FAILED transaction reads "Transaction" for its own sender — never "Sent"; the Failed pill shows', () => {
+    mockDetail.current = {...SENT_SPL, status: 'failed' as const};
+    const r = screen(ACC);
+    expect(r.getByTestId('tx-detail-direction')).toHaveTextContent('Transaction');
+    expect(r.queryByText('Sent')).toBeNull();
+    expect(r.getAllByText('Failed').length).toBeGreaterThan(0);
+  });
+
+  it('review r1-10: an ordinary send (authority = owner) has no "Authorized by" row', () => {
+    expect(screen(ACC).queryByText('Authorized by')).toBeNull();
+  });
+
+  it('review r1-10: a delegated transfer shows the owner as From and adds "Authorized by <the delegate>"; not "Sent" for the owner', () => {
+    const DELEGATE = 'DLGTxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx';
+    mockDetail.current = {...SENT_SPL, transfer: {...SENT_SPL.transfer, authority: DELEGATE}, signers: [DELEGATE], feePayer: DELEGATE};
+    const r = screen(ACC);
+    expect(r.getByTestId('tx-detail-from')).toHaveTextContent(/^9Y7Ftt/); // the owner
+    expect(r.getByText('Authorized by')).toBeTruthy();
+    expect(r.getByTestId('tx-detail-authority')).toHaveTextContent(/^DLGTxx/);
+    expect(r.getByTestId('tx-detail-direction')).toHaveTextContent('Transaction');
+  });
+
+  it('review r1-10: the owner unknown → From "—", and the authority is shown as "Authorized by", not as From', () => {
+    mockDetail.current = {...SENT_SPL, transfer: {...SENT_SPL.transfer, from: null}};
+    const r = screen(ACC);
+    expect(r.getByTestId('tx-detail-from')).toHaveTextContent('—');
+    expect(r.getByTestId('tx-detail-authority')).toHaveTextContent(/^9Y7Ftt/);
+  });
+
   it('a received transaction does not offer to save one\'s own account as a contact', () => {
     expect(screen(MAIN).queryByText('Save to address book')).toBeNull();
   });
@@ -3181,6 +3651,8 @@ export const TX_NEUTRAL = 'Transaction';
 export const TX_TOKEN_ACCOUNT = 'token account';
 /** The row shown instead of "From" when the transaction has no transfer (R12: the fee payer is not the sender) */
 export const TX_FEE_PAYER = 'Fee payer';
+/** An SPL transfer signed for by a key that is not the funds' owner (a delegate), or whose owner is not known */
+export const TX_AUTHORIZED_BY = 'Authorized by';
 ```
 
   In `TransactionDetailScreen.tsx`:
@@ -3217,8 +3689,23 @@ export const TX_FEE_PAYER = 'Fee payer';
               <>
                 <DetailRow
                   label="From"
-                  value={transfer.from !== null ? <ChecksumAddr address={transfer.from} /> : <Text className="text-fg-primary">—</Text>}
+                  value={
+                    <View className="items-end" testID="tx-detail-from">
+                      {transfer.from !== null ? <ChecksumAddr address={transfer.from} /> : <Text className="text-fg-primary">—</Text>}
+                    </View>
+                  }
                 />
+                {/* review r1-10: a delegate (or an authority whose relation to the funds is not known) is named apart */}
+                {transfer.authority !== null && transfer.authority !== transfer.from ? (
+                  <DetailRow
+                    label={TX_AUTHORIZED_BY}
+                    value={
+                      <View className="items-end" testID="tx-detail-authority">
+                        <ChecksumAddr address={transfer.authority} />
+                      </View>
+                    }
+                  />
+                ) : null}
                 <DetailRow
                   label="To"
                   value={
@@ -3239,7 +3726,7 @@ export const TX_FEE_PAYER = 'Fee payer';
 ```
 
   - the contact button (`:235-242`): `{contactAddress !== null ? ( … ) : null}`;
-  - imports: `txDirection` from `'../../modules/solana/txDetail'`, the five words from `'../../copy/transactions'`.
+  - imports: `txDirection` from `'../../modules/solana/txDetail'`, the six words from `'../../copy/transactions'`.
 
   Run again → PASS.
 
@@ -3424,6 +3911,13 @@ git commit -m "docs(m1d): the remaining 'combined line' wording carries its supe
       "Fee payer"), #26 (the empty list with no account) — and name the backup files made in Step 1. Say explicitly
       what was **not** drawn: no stale phone for the Accounts sheet's main row (it follows the same rule as the row
       drawn), and no drawing for Private mode's dimmed Public column.
+      Also tell the owner, in these words, the limits this PR leaves (the "Known limits" section below):
+  - **The presale screen shows the main account's SOL and stablecoin figures with no stale label.**
+    `PresaleScreen.tsx:121,159` reads `walletStore` directly, not the hook; this PR does not change it. After a
+    failed sync it shows the last figure as if current (and a never-read wallet's `0`). PR 2 or later.
+  - #27 adds a row the design does not draw: "Authorized by", shown only for a delegated token transfer or when
+    the sender wallet is not named by the chain response. Ask whether it should be drawn.
+  - A failed transaction's detail reads "TRANSACTION", not "SENT".
 
 ---
 
@@ -3437,10 +3931,11 @@ git commit -m "docs(m1d): the remaining 'combined line' wording carries its supe
 | §1 / §6 one row per token | 5 |
 | §1 / §6 wSOL counted once | 5 |
 | §1 / §7 parked minors | 4 (retry guard), 8 (History, Navigator wiring), 3 and 5 (coverage), 9 (spec wording) |
-| §3.1 main: `lastSyncFailedAt`, the stale rule, unknown with no read | 1, 2 |
+| §3.1 main: `lastSyncFailedAt`, the stale rule | 1, 2 |
+| §3.1 main: unknown with no read — a never-read main whose sync failed is `error`, never `0` (review r1-1) | 2 (hook, real state), 3 (S3b, TD5, the dashboard pin), 4 (`SendScreen.mainNeverRead.test.tsx`, real hook + store) |
 | §3.1 another account: `stale` vs `error`; main through the same hook | 2 |
 | §3.2 dashboard hero, sub-balances, token rows; the line and `{age}` | 3 |
-| §3.2 Public column of the split, a11y "not updated" | 2 (`splitA11y`), 3 |
+| §3.2 Public column of the split, a11y "not updated" | 2 (`splitA11y`), 3 (`publicSide` accepts stale in the same commit as the dimmed column) |
 | §3.2 Accounts sheet rows | 3 |
 | §3.2 #12 not usable; CTA, MAX, insufficiency disabled | 4 |
 | §3.2 24h change line hidden while stale | 3 |
@@ -3449,19 +3944,21 @@ git commit -m "docs(m1d): the remaining 'combined line' wording carries its supe
 | §4 `linksAccounts`, `markA0AccountsLinked`, failure → queue, never on cancel / failure / unknown, sheet re-reads | 6, 7 |
 | §5 symbol, recipient wallet, direction, real fixtures | 8 |
 | §6 one row per mint; wSOL | 5 |
-| §7 #12 retry generation guard | 4 |
+| §7 #12 retry generation guard | 4 — implemented; **untested invariant (race unconstructible)**: no test can make the guard bite, only the condition that makes it safe is pinned |
 | §7 History with no selected account | 8 |
 | §7 spec wording | 9 |
-| §7 coverage: "<0.0001" dashboard row + sub-balance, TokenDetail | 3 (K1, TD3) |
-| §7 coverage: "<0.0001" TokenPicker, presale allocation | 5 |
-| §7 coverage: split-column tap → first-private onboarding | 3 (K2) |
+| §7 coverage: "<0.0001" dashboard row + sub-balance, TokenDetail | 3 (K1, TD3) — pins |
+| §7 coverage: "<0.0001" TokenPicker, presale allocation | 5 — pins |
+| §7 coverage: split-column tap → first-private onboarding | 3 (K2) — pin |
 | §7 coverage: History cached rows + failed refetch | 8 |
 | §7 coverage: Navigator `onHistory` wiring | 8 |
 | §8 unit and screen tests; gates | every task |
 | §8 phone pass (owner) | after Task 9; not a task |
 | §9 design files | 9 |
 | R1 partial sync; `SyncResult.partial`; each read failing alone | 1 |
-| R2 queue in memory + encrypted MMKV; drains; cleared on wipe/import; accepted loss | 6 (queue), 7 (drain triggers) |
+| R2 queue in memory + encrypted MMKV; cleared on wipe/import; accepted loss | 6 |
+| R2 drains: on sheet open, after a confirmed Send, on promote | 6, 7 — both the memory and the stored queue |
+| R2 drains: after unlock | 7 — **the STORED queue only**. The memory queue is emptied by the reset hook on every open of the store (ruling 14), so nothing in memory survives to an unlock |
 | R3 fresh-pending queued, applied on promote, dropped on release | 6 (Q4, Q5), 7 (`linkedParticipants`) |
 | R4 #12 retry for main = `forceSync` | 4 |
 | R5 non-main figures are this session's only | 2 |
@@ -3471,11 +3968,15 @@ git commit -m "docs(m1d): the remaining 'combined line' wording carries its supe
 | R9 route `{signature, account}`; direction against it only | 8 |
 | R10 TokenDetail stale; the sheet's main row uses the same rule | 3 |
 | R11 mint, decimals, owner from `postTokenBalances` by index; "token account"; the cast | 8 |
-| R12 sender = the transfer's source, not the fee payer | 8 |
+| R12 sender = the transfer's source, not the fee payer | 8 — as corrected by review r1-10: for SPL the source token account's OWNER, not `info.authority`; "Authorized by" row when they differ |
+| review r1-2: a failed transaction has no direction | 8 |
+| review r1-3: no NOC account after a good token read is `'0'` | 1 |
+| review r1-6: a persisted wSOL row labelled "SOL" is relabelled on rehydration | 5 |
+| review r1-7: TokenDetail's stale age ticks every 60 s | 3 (TD4) |
 | R13 `lastSyncFailedAt` not persisted, null on `reset`; cold start | 1 |
 | R14 a Send that lands but errors: no tag (noted for PR 2) | 7 (test) |
 | R15 late confirmation only while #21 is mounted | 7 (test) |
-| R16 token rows' 24h % hidden while stale; `{age}` on render + every 60 s focused | 3 (D5, D11) |
+| R16 token rows' 24h % hidden while stale; `{age}` on render + every 60 s focused | 3 (D5, D11; TD4 for TokenDetail) |
 | r2-1 memory only; a new session never starts stale | 1 |
 | r2-2, r2-3 (spec edits) | already in the spec; nothing to build |
 | r2-4 native checks key on the mint; wSOL priced from `prices['native']` | 5 |
@@ -3483,6 +3984,35 @@ git commit -m "docs(m1d): the remaining 'combined line' wording carries its supe
 | r2-6 "verified" = passes `classifyToken` | 8 |
 | r3 note: `partialize` excludes `lastSyncFailedAt`, rehydration test | 1 |
 | r3 note: the partial early return comes before `setTokens`, pinned by a test | 1 |
+
+## Pins — tests that pass before the change
+
+These cover behaviour that already exists, or keep a later edit from breaking it. They are not evidence that a
+task's change works, and a task report must not count them as such.
+
+| Test | Task | What it pins |
+|---|---|---|
+| D12 (the alert on a partial sync) | 3 | the alert code is not edited; Task 1 changed what `forceSync` returns |
+| K1, K2, TD3, TD5; the dashboard "error" row in Task 2 | 2, 3 | existing formatting, the split tap, and what the screens draw for `error` |
+| "the split's Public column keeps folding wSOL into SOL" | 5 | `publicSide` already folds |
+| TokenPicker and presale-allocation "<0.0001" / "<0.01" | 5 | the shared formatter |
+| "#12 itself writes nothing — the tag belongs to #21" | 7 | #12 never imported the queue |
+| the generation guard's row in Task 4 | 4 | not the guard: an untested invariant (race unconstructible) |
+
+## Known limits this PR leaves (tell the owner — Task 9 Step 5)
+
+- **Presale shows the main figure without a stale label.** `PresaleScreen.tsx:121` (`solBalance`) and `:159`
+  (`tokenBalances`) read `walletStore` directly. Not changed here: after a failed sync the presale screen shows the
+  last figure as current, and for a never-read wallet the store's `0`. PR 2 or later.
+- **The first seconds of a first launch.** A main account never read, whose first sync has not settled yet
+  (`lastSyncedAt` and `lastSyncFailedAt` both null), still reads as `ready` with the store's defaults — today's
+  behaviour, kept (R13 accepts an unlabelled figure until the session's first sync settles). It turns to
+  "unknown" the moment that sync fails (review r1-1), and to the real figure when it succeeds.
+- **A "linked" tag lost if the process dies while the encrypted store is locked** (R2, accepted), and no tag for a
+  Send that landed but errored (R14) or was confirmed after #21 closed (R15). PR 2's retroactive scan.
+- **Non-main figures do not survive a restart** (R5): a failed read after a cold start is "Balance unavailable".
+- **#27 with no owner in the RPC response:** the recipient is shown as a token account and the sender as "—" with
+  "Authorized by"; no direction is claimed. No extra RPC call is made to resolve the owner.
 
 ## Rulings made while writing this plan (the spec was silent or two readings existed)
 
@@ -3498,16 +4028,18 @@ Each is the most conservative reading; a reviewer who disagrees should say so be
 4. **A hidden stale sheet row reads "••• · not updated"** (Task 3): §3.2 says hidden wins and the stale mark still
    shows.
 5. **#12's generation guard cannot bite today** (Task 4): the source moves only null → account and no retry row
-   exists while it is null. It is implemented as History's, and the test pins the invariant that makes it safe
-   rather than a race that cannot be constructed.
+   exists while it is null. It is implemented as History's. It is an **untested invariant (race unconstructible)**:
+   the one row beside it pins the condition that makes it safe, not the guard.
 6. **wSOL is priced in `computePortfolio` through `priceKeyFor`** (Task 5), not in `buildHoldings`, which R6 says
    stays unchanged. `TokenLogo` gets the Solana logo for "wSOL" (otherwise the rename would show a letter "w").
 7. **`linksAccounts` includes fresh-pending participants** (Task 7): §4 says "fresh-exit accounts", R3 says a
    pending participant is queued — so it must travel in the intent to be queued.
 8. **The promote hook is a listener in the registry** (`onA0AccountPromoted`, Task 6), so `accountRegistry.ts` does
    not import the queue, and all five `promoteA0FreshAccount` call sites in `unshieldFlow.ts` stay untouched.
-9. **"Sent" needs both: the account is the transfer's source AND it signed** (Task 8). §5 says "signed the
-   transaction"; R12 says the sender is the transfer's source, not the fee payer. Requiring both satisfies each.
+9. **"Sent" needs all three: the account is the wallet the funds left, it signed, and the transaction did not
+   fail** (Task 8). §5 says "signed the transaction"; R12 says the sender is the transfer's source, not the fee
+   payer; requiring both satisfies each. A failed transaction moved nothing, so it has no direction for anyone —
+   not "Sent", not "Received" (review r1-2).
 10. **"Received" is recognised only when the response names the owner** (or the route's account is itself the
     destination token account) (Task 8). With no owner the wallet cannot be matched without another RPC call, so the
     detail reads "Transaction".
@@ -3522,15 +4054,21 @@ Each is the most conservative reading; a reviewer who disagrees should say so be
     a memory-only entry never outlives an unlock; it exists only while the store is open and the registry is
     unreadable (Task 6, Q6), where it is stored too. An entry queued while the store is locked cannot arise in
     practice: `linksAccounts` is non-empty only if #12 read the registry, which needs the store open.
-15. **The fixtures are the verbatim JSON-RPC responses**; "SPL without owner" and "plain `transfer`" are derived from
-    a real response by removing exactly the fields a node may omit, and each test says what it removed. No devnet
-    transaction among the three has those shapes.
-
-## Controller addendum (2026-11-22, binding)
-
-- **Task 1 also fixes the stale NOC balance** (found while drafting; honesty rule: a wrong figure is worse than none).
-  - **Bug:** `forceSync` keeps the old `nocBalance` when a fully successful token read holds no NOC account
-    (`tokens[NOC_MINT] ?? store.nocBalance`). A wallet whose NOC went to zero keeps showing the old figure.
-  - **Fix:** when the token read succeeded, a missing NOC account means `'0'`.
-  - **Test:** a store with nocBalance `'5000'` plus a successful token read without NOC leaves nocBalance `'0'`.
-  - **Mutation:** restore the `?? store.nocBalance` fallback and the test must fail.
+15. **The fixtures are the verbatim JSON-RPC responses**; "SPL without owner", "plain `transfer`", "failed" and
+    "delegated" are derived from a real response by changing exactly the fields that case changes, and each test
+    says what it changed. No devnet transaction among the three has those shapes.
+16. **A main account never read whose sync failed is `error`, not `ready`** (Task 2, review r1-1). §3.1 says the
+    figure is then "unknown (today's '—')"; today's code did not deliver that — the screens gate on
+    `status === 'ready'` and drew the store's default 0. The sheet's main row reads "Balance unavailable" in that
+    state (a sync was tried), and "not checked yet" only while none has settled.
+17. **For an SPL transfer "From" is the source token account's owner, never `info.authority`** (Task 8, review
+    r1-10). This corrects R12's order ("`info.authority`, or the source token account's owner"): the authority is a
+    delegate in a delegated transfer. When the response names no owner, From is "—" and the authority appears as
+    "Authorized by" — it is not promoted to sender. The owner is read from the post balances, then the pre ones.
+18. **A successful token read with no NOC account sets `nocBalance` to `'0'`** (Task 1, review r1-3) — outside the
+    spec's list, inside its honesty rule: the old figure was shown as current under a fresh sync time.
+19. **Persisted core-token labels are corrected in `merge`** (Task 5, review r1-6). The store has no persist
+    `version` / `migrate` to bump; `merge` is the rehydration path, already present since Task 1, and corrects the
+    row before any screen reads it. Only core mints are relabelled.
+20. **TokenDetail's age tick is a mounted-while-stale interval, not `useFocusEffect`** (Task 3, review r1-7): the
+    screen is a modal and is rendered in its tests without a navigator.
