@@ -30,7 +30,7 @@ import {getTransferMarkupLamports} from '../../modules/solana/transactionBuilder
 import {parseTokenAmount, formatTokenAmount} from '../../utils/parseTokenAmount';
 import {useAccountList, useRefreshAccounts, useSelectedAccount} from '../../hooks/useSelectedAccount';
 import {NO_PUBLIC_DATA, useAccountPublicData} from '../../hooks/useAccountPublicData';
-import {LINK_TAP_AGAIN, LINK_WARNING_BODY, LINK_WARNING_TITLE, VALUE_UNKNOWN} from '../../copy/accounts';
+import {LINK_TAP_AGAIN, LINK_WARNING_BODY, LINK_WARNING_TITLE, SEND_BALANCE_RETRY, VALUE_UNKNOWN} from '../../copy/accounts';
 import {linkingWarningApplies} from '../../modules/accounts/linking';
 import {addressBook} from '../../modules/addressBook/addressBookModule';
 import type {Contact} from '../../modules/addressBook/types';
@@ -134,8 +134,17 @@ export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
   useEffect(() => {
     refreshAccountList();
   }, [refreshAccountList]);
-  const {data: publicData} = useAccountPublicData(source);
+  const {data: publicData, refetch: refetchPublic} = useAccountPublicData(source);
   const publicReady = publicData.status === 'ready';
+  // owner 2A (2026-11-22): a failed read shows "tap to retry", never a figure; one read in flight at a time
+  const retryingRef = useRef(false);
+  const retryPublic = useCallback(() => {
+    if (retryingRef.current) return;
+    retryingRef.current = true;
+    refetchPublic().finally(() => {
+      retryingRef.current = false;
+    });
+  }, [refetchPublic]);
   const {solBalance, nocBalance, tokens: storeTokens, tokenBalances} = publicData.status === 'ready' ? publicData : NO_PUBLIC_DATA;
   const rootNav = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
@@ -591,14 +600,27 @@ export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
                   </Text>
                 </Pressable>
               </View>
-              <View className="flex-row items-center mt-2">
-                <Text variant="body-sm" className="text-fg-secondary">
-                  Available{' '}
-                </Text>
-                <Text variant="body-sm" numeral className="font-geist-semibold text-fg-primary" testID="send-available">
-                  {publicReady ? formatTokenAmount(selectedBalance, selectedToken.decimals) : VALUE_UNKNOWN} {selectedToken.symbol}
-                </Text>
-              </View>
+              {publicData.status === 'error' ? (
+                <Pressable
+                  onPress={retryPublic}
+                  accessibilityRole="button"
+                  testID="send-balance-retry"
+                  className="flex-row items-center mt-2"
+                  hitSlop={8}>
+                  <Text variant="body-sm" className="text-fg-secondary">
+                    {SEND_BALANCE_RETRY}
+                  </Text>
+                </Pressable>
+              ) : (
+                <View className="flex-row items-center mt-2">
+                  <Text variant="body-sm" className="text-fg-secondary">
+                    Available{' '}
+                  </Text>
+                  <Text variant="body-sm" numeral className="font-geist-semibold text-fg-primary" testID="send-available">
+                    {publicReady ? formatTokenAmount(selectedBalance, selectedToken.decimals) : VALUE_UNKNOWN} {selectedToken.symbol}
+                  </Text>
+                </View>
+              )}
             </View>
             {insufficientBalance ? (
               <View className="flex-row items-center gap-2 mt-2">

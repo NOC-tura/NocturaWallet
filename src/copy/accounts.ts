@@ -25,6 +25,8 @@ export const ROW_UNAVAILABLE = 'Balance unavailable';
 /** The dashboard's public token list while a non-main account's balances load or failed (Review Focus 4) */
 export const PUBLIC_LOADING = 'Loading balances…';
 export const PUBLIC_UNAVAILABLE = 'Balance unavailable · pull to refresh';
+/** #12: the source's balances could not be read (owner 2A, 2026-11-22) — the tap re-reads */
+export const SEND_BALANCE_RETRY = 'Balance unavailable · tap to retry';
 
 /** The linking warning on #12 (§4.4, M1 spec §10 C2) and its second tap */
 export const LINK_WARNING_TITLE = 'Sending between your own accounts links them on chain.';

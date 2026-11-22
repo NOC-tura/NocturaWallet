@@ -1,6 +1,6 @@
 import React from 'react';
 import {AccessibilityInfo} from 'react-native';
-import {render, fireEvent} from '@testing-library/react-native';
+import {render, fireEvent, act} from '@testing-library/react-native';
 import {SendScreen} from '../SendScreen';
 
 // The screen calls useNavigation() for the QR/address-book routes; the suite
@@ -41,9 +41,10 @@ jest.mock('../../../hooks/useSelectedAccount', () => ({
   useRefreshAccounts: () => mockSendRefresh,
 }));
 const mockSendPublic: {current: unknown} = {current: READY_1_SOL};
+const mockSendRefetch = jest.fn(() => Promise.resolve(true));
 jest.mock('../../../hooks/useAccountPublicData', () => ({
   NO_PUBLIC_DATA: {solBalance: '0', nocBalance: '0', tokenBalances: {}, tokens: []},
-  useAccountPublicData: () => ({data: mockSendPublic.current, refetch: () => undefined}),
+  useAccountPublicData: () => ({data: mockSendPublic.current, refetch: mockSendRefetch}),
 }));
 
 /**
@@ -177,6 +178,32 @@ describe('M1d — #12 sends from the account selected when it opened (spec §3.3
     fill(r);
     expect(r.getByTestId('send-available')).toHaveTextContent('— SOL');
     expect(r.getByTestId('review-button').props.accessibilityState?.disabled).toBe(true);
+  });
+
+  it('owner 2A (2026-11-22): a failed read of the source → "Balance unavailable · tap to retry", the tap re-reads, the CTA stays disabled', async () => {
+    mockSendPublic.current = {status: 'error'};
+    mockSendRefetch.mockClear();
+    const r = render(<SendScreen onReview={jest.fn()} />);
+    fill(r);
+    expect(r.queryByTestId('send-available')).toBeNull(); // never a figure, never "0"
+    const retry = r.getByTestId('send-balance-retry');
+    expect(retry).toHaveTextContent('Balance unavailable · tap to retry');
+    expect(retry.props.accessibilityRole).toBe('button');
+    expect(r.getByTestId('review-button').props.accessibilityState?.disabled).toBe(true);
+    await act(async () => {
+      fireEvent.press(retry);
+      fireEvent.press(retry); // a double tap reads once (in flight)
+    });
+    expect(mockSendRefetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('owner 2A: no retry row while loading or ready', () => {
+    mockSendPublic.current = {status: 'loading'};
+    const r = render(<SendScreen onReview={jest.fn()} />);
+    expect(r.queryByTestId('send-balance-retry')).toBeNull();
+    mockSendPublic.current = READY_1_SOL;
+    r.rerender(<SendScreen onReview={jest.fn()} />);
+    expect(r.queryByTestId('send-balance-retry')).toBeNull();
   });
 
   it('review m2: an account not known on the first render is captured when it resolves — and then never moves', () => {
