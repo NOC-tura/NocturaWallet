@@ -249,13 +249,28 @@ describe('M1d — #21 signs from the intent\'s source (spec §3.3)', () => {
   });
 
   it('Review Focus 2: the signer refusal is shown with its code (nothing was signed)', async () => {
-    mockSubmit.mockRejectedValueOnce(new Error(`E_SEND_SIGNER_MISMATCH: this account's key does not derive ${A3}; nothing was signed.`));
+    // M1d: the real error class (the module is mocked above), so the code the screen keys on is the producer's own
+    const {SendSignerMismatchError} = jest.requireActual('../../../modules/solana/sendTransaction') as typeof import('../../../modules/solana/sendTransaction');
+    mockSubmit.mockRejectedValueOnce(new SendSignerMismatchError(A3));
     const r = render21({...intent, from: {scheme: 'slip10:3', address: A3, label: 'Account 4', isMain: false}});
     await waitFor(() => expect(r.getByText(/E_SEND_SIGNER_MISMATCH/)).toBeTruthy());
     expect(r.getByText('Transaction failed')).toBeTruthy();
     // review m1: the same key would refuse again — Done only, no Retry (the generic failure row above keeps its Retry)
     expect(r.queryByTestId('tx-status-retry')).toBeNull();
     expect(r.getByTestId('tx-status-done')).toBeTruthy();
+  });
+
+  it('re-review n1: the no-Retry rule keys on the code, not the text — a coded error with a reworded message has no Retry; the same text without a code keeps it', async () => {
+    const coded = Object.assign(new Error('the account key is not the one expected'), {code: 'E_SEND_SIGNER_MISMATCH'});
+    mockSubmit.mockRejectedValueOnce(coded);
+    const a = render21({...intent, from: {scheme: 'slip10:3', address: A3, label: 'Account 4', isMain: false}});
+    await waitFor(() => expect(a.getByText(/not the one expected/)).toBeTruthy());
+    expect(a.queryByTestId('tx-status-retry')).toBeNull();
+    a.unmount();
+    mockSubmit.mockRejectedValueOnce(new Error('E_SEND_SIGNER_MISMATCH: text only, no code'));
+    const b = render21({...intent, from: {scheme: 'slip10:3', address: A3, label: 'Account 4', isMain: false}});
+    await waitFor(() => expect(b.getByText(/text only, no code/)).toBeTruthy());
+    expect(b.getByTestId('tx-status-retry')).toBeTruthy();
   });
 
   it('review I1: a token from a non-main intent → the SPL branch carries the source\'s scheme and expected signer', async () => {

@@ -29,7 +29,16 @@ const MAX_ATTEMPTS = 3;
  * Review m1: refusals made before anything is signed that a Retry would only repeat (the same scheme,
  * the same key) — #21 offers Done, not Retry, for these.
  */
-const NOT_RETRYABLE = /^E_SEND_(SCHEME|SIGNER_MISMATCH):/;
+const NOT_RETRYABLE_CODES: readonly string[] = ['E_SEND_SCHEME', 'E_SEND_SIGNER_MISMATCH'];
+
+/** M1d (re-review n1): keyed on the error's `code`, never on its message text. */
+function isNotRetryable(e: unknown): boolean {
+  if (typeof e !== 'object' || e === null || !('code' in e)) {
+    return false;
+  }
+  const code = (e as {code: unknown}).code;
+  return typeof code === 'string' && NOT_RETRYABLE_CODES.includes(code);
+}
 
 // ── Lazy imports — wrapped in try/catch so Jest/stub envs don't crash ─────────
 let submitTransparentTransfer:
@@ -93,6 +102,7 @@ export function TransactionStatusScreen({
   const [signature, setSignature] = useState<string | null>(null);
   const [slot, setSlot] = useState<number | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [notRetryable, setNotRetryable] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const [priorityFeeUsed, setPriorityFeeUsed] = useState(0);
 
@@ -116,6 +126,7 @@ export function TransactionStatusScreen({
     const run = async () => {
       setStage('submitting');
       setErrorMessage(null);
+      setNotRetryable(false);
 
       // Guard: in stub/test env all required modules may be null — exit gracefully
       if (
@@ -129,6 +140,7 @@ export function TransactionStatusScreen({
       // M1d (spec §3.3, plan A16): the source's scheme, parsed strictly — never the wallet default
       const scheme = parseA0Scheme(intent.from.scheme);
       if (scheme === null) {
+        setNotRetryable(true);
         setErrorMessage(`E_SEND_SCHEME: ${intent.from.scheme} is not an account this wallet can sign for; nothing was signed.`);
         setStage('failed');
         return;
@@ -207,6 +219,7 @@ export function TransactionStatusScreen({
         result = outcome;
       } catch (e) {
         if (cancelled || e instanceof CancelledError) return;
+        setNotRetryable(isNotRetryable(e));
         setErrorMessage(e instanceof Error ? e.message : 'Transaction failed');
         setStage('failed');
         return;
@@ -268,6 +281,7 @@ export function TransactionStatusScreen({
                   resubmitResult = outcome;
                 } catch (e) {
                   if (cancelled || e instanceof CancelledError) return;
+                  setNotRetryable(isNotRetryable(e));
                   setErrorMessage(e instanceof Error ? e.message : 'Transaction failed');
                   setStage('failed');
                   return;
@@ -445,7 +459,7 @@ export function TransactionStatusScreen({
           </View>
         ) : stage === 'failed' ? (
           <>
-            {errorMessage !== null && NOT_RETRYABLE.test(errorMessage) ? null : (
+            {notRetryable ? null : (
               <Button
                 label="Retry"
                 variant="primary"

@@ -10,6 +10,7 @@ import {formatUsdString} from '../../utils/formatUsd';
 import {NOC_DECIMALS, NOC_MINT} from '../../constants/programs';
 import {A0_TOKEN} from '../shielded/a0/screenSupport';
 import {BELOW_ONE_CENT, VALUE_HIDDEN, VALUE_UNKNOWN, combinedLine} from '../../copy/accounts';
+import {WSOL_MINT} from '../swap/jupiter';
 import type {TokenPrice} from '../prices/priceModule';
 import type {AccountPublicData} from '../../hooks/useAccountPublicData';
 import type {A0ShieldedView} from '../../hooks/useA0Shielded';
@@ -28,8 +29,6 @@ export type SideValue = {kind: 'unknown'} | {kind: 'known'; assets: readonly Sid
 export const LISTED_ASSETS = 2;
 
 const DIGITS = /^\d+$/;
-/** Wrapped SOL is SOL: folded into the SOL amount (priced as SOL, one "SOL" in the line) */
-const WSOL_MINT = 'So11111111111111111111111111111111111111112';
 const NORMALISED_DECIMALS = 18;
 
 /** The public side: SOL, NOC and the account's listed tokens (the dashboard's holdings, plan A11). */
@@ -37,8 +36,12 @@ export function publicSide(data: AccountPublicData): SideValue {
   if (data.status !== 'ready' || data.syncedAt === null) {
     return {kind: 'unknown'};
   }
+  // wrapped SOL is SOL: folded into the SOL amount (priced as SOL, one "SOL" in the line)
   const wrapped = data.tokenBalances[WSOL_MINT] ?? '0';
-  const solAmount = DIGITS.test(data.solBalance) && DIGITS.test(wrapped) ? (BigInt(data.solBalance) + BigInt(wrapped)).toString() : data.solBalance;
+  if (!DIGITS.test(wrapped)) {
+    return {kind: 'unknown'}; // re-review N2: a malformed wrapped amount is not a value, never silently dropped
+  }
+  const solAmount = DIGITS.test(data.solBalance) ? (BigInt(data.solBalance) + BigInt(wrapped)).toString() : data.solBalance;
   const raw: {mint: string; symbol: string; amount: string; decimals: number}[] = [
     {mint: 'native', symbol: 'SOL', amount: solAmount, decimals: 9},
     {mint: NOC_MINT, symbol: 'NOC', amount: data.tokenBalances[NOC_MINT] ?? data.nocBalance, decimals: NOC_DECIMALS},

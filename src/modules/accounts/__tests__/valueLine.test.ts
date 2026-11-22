@@ -77,6 +77,11 @@ describe('formatSide — large values, wide decimals, small USD (review M1, M3)'
     const prices = {...PRICES, [A0_TOKEN.mint]: {usd: 0.5, change24h: null}};
     expect(combinedValueLine(pub, priv, prices, false)).toBe('Public $150.00 · Private $1.00');
   });
+  it('re-review N3: a NaN / Infinity price falls to the token form, never "<$0.01" or a made-up USD', () => {
+    expect(formatSide(known([sol(1_000_000_000n)]), {native: {usd: NaN, change24h: null}}, ', ')).toBe('1 SOL');
+    expect(formatSide(known([sol(1_000_000_000n)]), {native: {usd: Infinity, change24h: null}}, ', ')).toBe('1 SOL');
+  });
+
   it('M3: a priced, non-empty side worth under half a cent reads "<$0.01", never "$0.00"', () => {
     expect(formatSide(known([sol(1_000n)]), PRICES, ', ')).toBe('<$0.01');
     expect(formatSide(known([sol(0n)]), PRICES, ', ')).toBe('0 SOL'); // known-empty stays distinguishable
@@ -93,6 +98,17 @@ describe('the sides', () => {
     });
     expect(s).toEqual(known([sol(1_500_000_000n), {mint: NOC_MINT, symbol: 'NOC', amountRaw: 0n, decimals: 9}]));
     expect(formatSide(s, PRICES, ', ')).toBe('$225.00');
+  });
+
+  it('re-review N2: a malformed wrapped-SOL amount makes the side unknown ("—"), not silently dropped', () => {
+    const WSOL = 'So11111111111111111111111111111111111111112';
+    const s = publicSide({
+      status: 'ready', syncedAt: 1, solBalance: '1000000000', nocBalance: '0',
+      tokenBalances: {[WSOL]: '5e8'},
+      tokens: [],
+    });
+    expect(s).toEqual({kind: 'unknown'});
+    expect(formatSide(s, PRICES, ', ')).toBe('—');
   });
 
   const ready = {status: 'ready' as const, syncedAt: 1, solBalance: '20000000', nocBalance: '0', tokenBalances: {}, tokens: []};

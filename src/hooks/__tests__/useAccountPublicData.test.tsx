@@ -1,6 +1,6 @@
 /** M1d spec §3.4: the selected account's public data — main from walletStore, any other by address. */
 import React from 'react';
-import {renderHook, waitFor} from '@testing-library/react-native';
+import {act, renderHook, waitFor} from '@testing-library/react-native';
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
 import {useWalletStore} from '../../store/zustand/walletStore';
 
@@ -9,7 +9,7 @@ jest.mock('../../modules/accounts/accountSnapshot', () => ({fetchAccountSnapshot
 const mockFeatures = {shielded: true};
 jest.mock('../../constants/features', () => ({isShieldedEnabled: () => mockFeatures.shielded}));
 
-import {NO_PUBLIC_DATA, useAccountPublicData} from '../useAccountPublicData';
+import {ACCOUNT_SNAPSHOT_KEY, NO_PUBLIC_DATA, useAccountPublicData} from '../useAccountPublicData';
 import {A0_TOKEN} from '../../modules/shielded/a0/screenSupport';
 
 const MAIN = 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk';
@@ -104,4 +104,26 @@ it('review I2: a switch never shows the previous account\'s data (another → an
   expect(result.current.data).toMatchObject({status: 'ready', solBalance: '1000000000'});
   rerender({acc: {address: A4, isMain: false}});
   expect(result.current.data).toEqual({status: 'loading'}); // not the main values
+});
+
+it('review r1 N1: a failed re-read of a non-main account is error, not the old figure as current; a successful one shows the fresh figure', async () => {
+  const OLD = {...SNAP, solBalance: '111'};
+  const NEW = {...SNAP, solBalance: '222'};
+  qc.setQueryData([ACCOUNT_SNAPSHOT_KEY, A3], OLD, {updatedAt: Date.now() - 60_000});
+  mockFetch.mockRejectedValueOnce(new Error('429'));
+  const {result} = renderHook(() => useAccountPublicData({address: A3, isMain: false}), {wrapper});
+  await waitFor(() => expect(result.current.data).toEqual({status: 'error'}));
+  mockFetch.mockResolvedValueOnce(NEW);
+  await act(async () => {
+    await result.current.refetch();
+  });
+  await waitFor(() => expect(result.current.data).toMatchObject({status: 'ready', solBalance: '222'}));
+});
+
+it('review r1 N1: the main account is unchanged by a failing snapshot read (walletStore, no request)', () => {
+  qc.setQueryData([ACCOUNT_SNAPSHOT_KEY, MAIN], {...SNAP, solBalance: '1'});
+  mockFetch.mockRejectedValue(new Error('429'));
+  const {result} = renderHook(() => useAccountPublicData({address: MAIN, isMain: true}), {wrapper});
+  expect(result.current.data).toMatchObject({status: 'ready', solBalance: '1000000000'});
+  expect(mockFetch).not.toHaveBeenCalled();
 });

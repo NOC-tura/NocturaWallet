@@ -69,8 +69,12 @@ export function useAccountPublicData(account: {address: string; isMain: boolean}
   if (mainData !== null) {
     return {data: mainData, refetch};
   }
+  if (q.isError) {
+    // review r1 N1 (as the Accounts sheet): a failed re-read never presents the older figure as current
+    return {data: {status: 'error'}, refetch};
+  }
   if (q.data) {
     return {data: {status: 'ready', ...q.data, syncedAt: q.dataUpdatedAt}, refetch};
   }
-  return {data: q.isError ? {status: 'error'} : {status: 'loading'}, refetch};
+  return {data: {status: 'loading'}, refetch};
 }

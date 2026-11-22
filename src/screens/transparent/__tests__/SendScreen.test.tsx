@@ -1,4 +1,5 @@
 import React from 'react';
+import {AccessibilityInfo} from 'react-native';
 import {render, fireEvent} from '@testing-library/react-native';
 import {SendScreen} from '../SendScreen';
 
@@ -382,17 +383,35 @@ describe('M1d — the linking warning and its second tap (spec §4.4)', () => {
   });
 
   it('review M2: the warning is an alert live region and the CTA label change is announced', () => {
+    const announce = jest.spyOn(AccessibilityInfo, 'announceForAccessibility').mockImplementation(() => undefined);
+    announce.mockClear(); // the RN jest setup shares one mock across tests
     const {r} = setup(MAIN);
     expect(r.getByTestId('send-link-warning').props.accessibilityLiveRegion).toBe('polite');
     expect(r.getByTestId('send-link-warning').props.accessibilityRole).toBe('alert');
     expect(r.getByTestId('review-button').props.accessibilityLabel).toBe('Send SOL');
+    expect(announce).not.toHaveBeenCalled();
     tap(r);
     expect(r.getByTestId('review-button').props.accessibilityLabel).toBe('Tap again to send anyway');
-    expect(r.getByText('Tap again to send anyway').props.accessibilityLiveRegion).toBe('polite');
+    expect(announce).toHaveBeenCalledTimes(1); // M1d: announced once, at the acknowledgement (was: a live region on the CTA text)
+    expect(announce).toHaveBeenCalledWith('Tap again to send anyway');
   });
 
-  it('review M5: source = recipient (main → main) → no warning, one tap reviews', () => {
-    mockSendSelected.current = {...MAIN_SRC, address: MAIN};
+  it('review r1 N2: the CTA text is not a live region (no announcement per amount keystroke); the warning stays an alert', () => {
+    const announce = jest.spyOn(AccessibilityInfo, 'announceForAccessibility').mockImplementation(() => undefined);
+    announce.mockClear(); // the RN jest setup shares one mock across tests
+    const {r} = setup(MAIN);
+    expect(r.getByText('Send 0.001 SOL').props.accessibilityLiveRegion).toBeUndefined();
+    for (const a of ['0.0011', '0.00112', '0.001123']) {
+      fireEvent.changeText(r.getByTestId('amount-input'), a);
+    }
+    expect(r.getByText('Send 0.001123 SOL').props.accessibilityLiveRegion).toBeUndefined();
+    expect(announce).not.toHaveBeenCalled();
+    expect(r.getByTestId('send-link-warning').props.accessibilityRole).toBe('alert');
+  });
+
+  it('review M5 / r1 N1: source = recipient on an exit account (MAIN is the fresh-exit here) → no warning, one tap reviews — bites on the recipient === source guard', () => {
+    mockSendList.current = {...SEED_LIST, seed: [{address: MAIN, role: 'fresh-exit'}, {address: A3, role: 'main'}]};
+    mockSendSelected.current = {...MAIN_SRC, address: MAIN}; // M1d: an on-curve exit, so only the same-address guard stops the warning
     const {r, onReview} = setup(MAIN);
     expect(r.queryByTestId('send-link-warning')).toBeNull();
     tap(r);

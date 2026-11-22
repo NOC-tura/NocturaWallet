@@ -6,6 +6,7 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
+  AccessibilityInfo,
 } from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {useNavigation} from '@react-navigation/native';
@@ -354,6 +355,8 @@ export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
     // M1d (spec §4.4): the first tap only acknowledges the warning; the second one goes on to #19
     if (linkWarn && !linkAck) {
       setLinkAck(true);
+      // re-review N2: announced once, here — a live region on the CTA would read every amount keystroke
+      AccessibilityInfo.announceForAccessibility(LINK_TAP_AGAIN);
       return;
     }
     // review M1: #12 stays mounted under #19 — every later attempt needs its own second tap
@@ -689,7 +692,6 @@ export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
             ) : null}
             <Text
               variant="body-lg"
-              accessibilityLiveRegion="polite"
               className={cn(
                 'font-geist-semibold',
                 canReview ? 'text-bg-base' : 'text-fg-disabled',

@@ -106,3 +106,16 @@ it('review r1 m7: a failed re-read is "failed", never the older figure as curren
   });
   await waitFor(() => expect(result.current.acc0).toEqual({state: 'failed'}));
 });
+
+it('review r1 N2: a successful re-read shows the fresh figure (cache seeded OLD, re-read returns NEW → NEW); in flight it still shows OLD', async () => {
+  const OLD = {...SNAP, solBalance: '111'};
+  const NEW = {...SNAP, solBalance: '222'};
+  qc.setQueryData(KEY('acc0'), OLD, {updatedAt: Date.now() - 60_000});
+  const {result} = renderHook(() => useAccountRowBalances(['acc0'], true), {wrapper});
+  await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
+  expect(result.current.acc0).toMatchObject({state: 'ready', data: OLD}); // in flight: the cached figure
+  await act(async () => {
+    pending.acc0!.resolve(NEW);
+  });
+  await waitFor(() => expect(result.current.acc0).toMatchObject({state: 'ready', data: NEW}));
+});

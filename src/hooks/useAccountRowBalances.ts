@@ -1,8 +1,10 @@
 /**
  * M1d spec §3.4 (plan A1): the Accounts sheet's balances — read while the sheet is open, at most
  * ROW_WINDOW (the extension's FRESH_ROWS) in flight: each settled row lets the next one start, so
- * every row is read. A row in flight or waiting is "not checked yet", a failed one "Balance
- * unavailable". The query key is the dashboard's (`['accountSnapshot', address]`), so a row and
+ * every row is read. A row with nothing cached that is in flight or waiting is "not checked yet"; a
+ * row with a cached figure that is being re-read keeps showing that figure until the read ends —
+ * including the retry backoff (the app's `retry: 2`) — and then turns to the fresh figure, or to
+ * "Balance unavailable" if the re-read failed. The query key is the dashboard's (`['accountSnapshot', address]`), so a row and
  * the dashboard share one read.
  */
 import {useEffect, useState} from 'react';
