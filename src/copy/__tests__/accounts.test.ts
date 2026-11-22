@@ -58,6 +58,7 @@ describe('src/copy/accounts.ts — the M1d strings', () => {
     expect(c.moreAssets(1)).toBe('+1 more');
     expect(c.splitA11y('Public', '$12.40', true)).toBe('Public, $12.40');
     expect(c.splitA11y('Private', '1.0038 TEST', false)).toBe('Private, 1.0038 TEST, switch to Private');
+    expect(c.splitA11y('Public', '—', false)).toBe('Public, not known yet, switch to Public'); // review Task 5 m8
     expect('combinedLine' in c).toBe(false); // r1-7: the old line's copy is gone
   });
 

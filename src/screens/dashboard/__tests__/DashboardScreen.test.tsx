@@ -621,9 +621,9 @@ describe('M1d — the Public | Private split inside the balance card (spec §4.5
     expect(r.getAllByTestId('dashboard-split-private-line').map(l => l.props.children)).toEqual(['—']);
   });
 
-  it('Review Focus 1: hidden balances → "•••" in both columns, one line each, and no digit in either a11y label', async () => {
+  it.each(['transparent', 'shielded'] as const)('Review Focus 1: hidden balances (%s mode) → "•••" in both columns, one line each, and no digit in either a11y label', async mode => {
     mockHide.current = true;
-    mockMode.current = 'shielded';
+    mockMode.current = mode; // review Task 5 I1: both modes, not only Private
     mockView.current = {kind: 'ready', unspent: 1_003_800_000n, pending: 0n, notes: 1};
     const r = await renderDashboard();
     expect(r.getAllByTestId('dashboard-split-public-line').map(l => l.props.children)).toEqual(['•••']);

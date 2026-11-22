@@ -102,8 +102,13 @@ export function moreAssets(n: number): string {
 }
 
 /** A column's accessibility label: what it shows (already "•••" when hidden), and what a tap does */
+/** The spoken form of an unknown side */
+export const SPLIT_UNKNOWN_A11Y = 'not known yet';
+
 export function splitA11y(sideName: string, value: string, isActive: boolean): string {
-  return isActive ? `${sideName}, ${value}` : `${sideName}, ${value}, switch to ${sideName}`;
+  // review Task 5 m8: a screen reader says nothing for "—"; it hears "not known yet"
+  const spoken = value === VALUE_UNKNOWN ? SPLIT_UNKNOWN_A11Y : value;
+  return isActive ? `${sideName}, ${spoken}` : `${sideName}, ${spoken}, switch to ${sideName}`;
 }
 
 /** #21's refusals (M5): nothing was signed. The code leads the line (the screen keys no-Retry on it). */
