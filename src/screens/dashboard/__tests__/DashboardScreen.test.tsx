@@ -230,9 +230,9 @@ describe('DashboardScreen — transparent mode', () => {
     expect(getByTestId('dashboard-screen')).toBeTruthy();
   });
 
-  it('shows "Total balance" overline in transparent mode', async () => {
+  it('shows "Public balance" overline in transparent mode', async () => {
     const {getByText} = await renderDashboard();
-    expect(getByText('Total balance')).toBeTruthy();
+    expect(getByText('Public balance')).toBeTruthy();
   });
 
   it('does NOT render shielded empty state in transparent mode', async () => {
@@ -482,10 +482,10 @@ describe('part B: the one vocabulary on the dashboard (spec §2, §4)', () => {
     expect(r.queryByText(/vault/i)).toBeNull();
   });
 
-  it('Public mode: only the toggle changed — "Total balance", Send, Receive, Swap, "Tokens"', async () => {
+  it('Public mode: only the toggle changed — "Public balance", Send, Receive, Swap, "Tokens"', async () => {
     mockMode.current = 'transparent';
     const r = await renderDashboard({onReceive: jest.fn()});
-    expect(r.getByText('Total balance')).toBeTruthy();
+    expect(r.getByText('Public balance')).toBeTruthy();
     expect(r.getByText('Send')).toBeTruthy();
     expect(r.getByText('Receive')).toBeTruthy();
     expect(r.getByLabelText('Swap')).toBeTruthy();

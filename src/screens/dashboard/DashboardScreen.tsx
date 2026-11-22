@@ -72,6 +72,7 @@ import {
   MODE_PUBLIC,
   PRIVATE_ASSETS,
   PRIVATE_BALANCE,
+  PUBLIC_BALANCE,
   PRIVATE_CARD_BODY,
   PRIVATE_SUFFIX,
 } from '../../copy/modes';
@@ -89,7 +90,7 @@ import {
  *   - Banner · presale (Public) or the Private balance card (Private)
  *
  * Mode-aware:
- *   - Public: violet accents, "Total balance" eyebrow, Swap action, presale banner
+ *   - Public: violet accents, "Public balance" eyebrow (the selected account's public figure, not a total), Swap action, presale banner
  *   - Private: mint accents, "Private balance" eyebrow, Make private action,
  *     Private balance card, "· private" tag on rows
  *   - Private, DEPARTURE (owner-approved 2026-11-20, UX-A 7): a "Make public" action (the eye of
@@ -654,7 +655,7 @@ function DashboardHeader({
                 <ShieldCheck size={14} color="#5BE3C2" strokeWidth={1.75} />
               ) : null}
               <Text variant="overline">
-                {isShielded ? PRIVATE_BALANCE : 'Total balance'}
+                {isShielded ? PRIVATE_BALANCE : PUBLIC_BALANCE}
               </Text>
             </View>
             <Pressable
