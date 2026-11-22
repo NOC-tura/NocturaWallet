@@ -992,6 +992,46 @@ describe('post-M1d §3.2 — a stale public balance', () => {
     expect(r.getByTestId('dashboard-stale-line')).toHaveTextContent(LINE);
   });
 
+  it('fix 2: the hero cents are dimmed while stale (control: not when ready)', async () => {
+    let r = await renderDashboard();
+    expect(r.getByText('.00').props.className).toMatch(TERTIARY);
+    r.unmount();
+    mockPublic.current = READY_MAIN;
+    r = await renderDashboard();
+    expect(r.getByText('.00').props.className).not.toMatch(TERTIARY);
+  });
+
+  it.each(['transparent', 'shielded'] as const)('fix 3: the Public column carries a visible "not updated" caption (%s mode), hidden too, and the label is unchanged', async mode => {
+    mockMode.current = mode;
+    let r = await renderDashboard();
+    const cap = r.getByTestId('dashboard-split-public-stale');
+    expect(cap).toHaveTextContent('not updated');
+    expect(cap.props.className).toMatch(TERTIARY);
+    expect(r.queryByTestId('dashboard-split-private-stale')).toBeNull();
+    r.unmount();
+    mockHide.current = true;
+    r = await renderDashboard();
+    expect(r.getByTestId('dashboard-split-public-stale')).toHaveTextContent('not updated');
+    expect(r.getByTestId('dashboard-split-public').props.accessibilityLabel).toMatch(/^Public, •••, not updated/);
+    r.unmount();
+    mockHide.current = false;
+    mockPublic.current = READY_MAIN;
+    r = await renderDashboard();
+    expect(r.queryByTestId('dashboard-split-public-stale')).toBeNull();
+  });
+
+  it('fix 4: a (re)focus ticks once at once, so the age never lags', async () => {
+    let clock = NOW;
+    jest.spyOn(Date, 'now').mockImplementation(() => clock);
+    // the focus effect starts its interval, then the clock has moved on by the time the screen re-renders
+    jest.spyOn(global, 'setInterval').mockImplementation((() => {
+      clock = NOW + 60_000;
+      return 1;
+    }) as unknown as typeof setInterval);
+    const r = await renderDashboard();
+    expect(r.getByTestId('dashboard-stale-line')).toHaveTextContent('Not updated · 6 min ago · pull to refresh');
+  });
+
   it('D11 (R16): the age ticks every 60 s', async () => {
     jest.useFakeTimers({now: NOW});
     try {

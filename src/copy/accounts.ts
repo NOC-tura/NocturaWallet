@@ -58,6 +58,8 @@ export function staleNote(age: string): string {
 }
 /** The Accounts sheet: a row whose last figure could not be refreshed */
 export const STALE_ROW_SUFFIX = 'not updated';
+/** The Public split column's caption while its figures are the last known ones (visible in both modes, also hidden) */
+export const SPLIT_STALE_CAPTION = STALE_ROW_SUFFIX;
 export function staleRow(figure: string): string {
   return `${figure} · ${STALE_ROW_SUFFIX}`;
 }

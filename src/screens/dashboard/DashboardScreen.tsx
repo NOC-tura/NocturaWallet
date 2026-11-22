@@ -32,7 +32,7 @@ import {Text} from '../../components/ui';
 import {useWalletStore} from '../../store/zustand/walletStore';
 import {useAccountList, useRefreshAccounts, useSelectAccount, useSelectedAccount} from '../../hooks/useSelectedAccount';
 import {NO_PUBLIC_DATA, useAccountPublicData} from '../../hooks/useAccountPublicData';
-import {ACCOUNTS_TITLE, HISTORY_A11Y, PUBLIC_LOADING, REFRESH_ACCOUNT_FAILED, REFRESH_FAILED_TITLE, PUBLIC_UNAVAILABLE, SPLIT_PRIVATE, SPLIT_PUBLIC, VALUE_UNKNOWN, avatarA11y, relativeAge, splitA11y, staleLine} from '../../copy/accounts';
+import {ACCOUNTS_TITLE, HISTORY_A11Y, PUBLIC_LOADING, REFRESH_ACCOUNT_FAILED, REFRESH_FAILED_TITLE, PUBLIC_UNAVAILABLE, SPLIT_PRIVATE, SPLIT_PUBLIC, SPLIT_STALE_CAPTION, VALUE_UNKNOWN, avatarA11y, relativeAge, splitA11y, staleLine} from '../../copy/accounts';
 import {AccountsSheet} from '../../components/accounts/AccountsSheet';
 import {useShieldedStore} from '../../store/zustand/shieldedStore';
 import {usePublicSettingsStore} from '../../store/zustand/publicSettingsStore';
@@ -179,6 +179,7 @@ export function DashboardScreen({
         return undefined;
       }
       const id = setInterval(() => setAgeTick(t => t + 1), 60_000);
+      setAgeTick(t => t + 1); // refocus: the age may be minutes behind, so show the true one at once
       return () => clearInterval(id);
     }, [isStale]),
   );
@@ -1017,6 +1018,11 @@ function SplitColumn({label, lines, isActive, dotClass, onSelect, testID, stale}
           {line}
         </Text>
       ))}
+      {stale ? (
+        <Text variant="caption" className="text-fg-tertiary" testID={`${testID}-stale`}>
+          {SPLIT_STALE_CAPTION}
+        </Text>
+      ) : null}
     </Pressable>
   );
 }

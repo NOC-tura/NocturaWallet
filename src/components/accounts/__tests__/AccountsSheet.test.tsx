@@ -209,9 +209,11 @@ it('S2: "Balance unavailable" only when nothing was read, and not dimmed', () =>
 
 it('S3 (R10): the main row, read earlier and the last sync failed → the figure, dimmed, "· not updated"; control: no failure', () => {
   useWalletStore.setState({solBalance: '2000000000', lastSyncedAt: 5, lastSyncFailedAt: 9});
-  let n = bal(sheet().r, 'slip10:0');
+  const first = sheet().r;
+  let n = bal(first, 'slip10:0');
   expect(n).toHaveTextContent('2 SOL · not updated');
   expect(n.props.className).toMatch(TERTIARY);
+  first.unmount(); // before the store changes: a mounted sheet would re-render outside act()
   useWalletStore.setState({lastSyncFailedAt: null});
   n = bal(sheet().r, 'slip10:0');
   expect(n).toHaveTextContent('2 SOL');
@@ -221,10 +223,12 @@ it('S3 (R10): the main row, read earlier and the last sync failed → the figure
 
 it('S3b (ruling 1): the main row never read — a sync failed → "Balance unavailable"; still loading → "not checked yet"', () => {
   useWalletStore.setState({solBalance: '0', lastSyncedAt: null, lastSyncFailedAt: 9});
-  const n = bal(sheet().r, 'slip10:0');
+  const first = sheet().r;
+  const n = bal(first, 'slip10:0');
   expect(n).toHaveTextContent('Balance unavailable');
   expect(n).not.toHaveTextContent('0 SOL');
   expect(n.props.className).not.toMatch(TERTIARY);
+  first.unmount(); // before the store changes: a mounted sheet would re-render outside act()
   useWalletStore.setState({lastSyncedAt: null, lastSyncFailedAt: null});
   expect(bal(sheet().r, 'slip10:0')).toHaveTextContent('not checked yet');
 });

@@ -283,6 +283,19 @@ describe('M1d — the holding is the selected account\'s (plan A6)', () => {
       jest.restoreAllMocks();
     }
   });
+  it('fix 1: the stale USD figure is dimmed too (control: not when ready)', () => {
+    jest.spyOn(Date, 'now').mockReturnValue(NOW);
+    try {
+      mockTdPublic.current = STALE;
+      const r = screen();
+      expect(r.getByText('$225.00').props.className).toMatch(TERTIARY);
+      r.unmount();
+      mockTdPublic.current = {...STALE, status: 'ready', syncedAt: 1};
+      expect(screen().getByText('$225.00').props.className).not.toMatch(TERTIARY);
+    } finally {
+      jest.restoreAllMocks();
+    }
+  });
   it('TD2: control — a ready holding is not dimmed and has no stale line', () => {
     mockTdPublic.current = {...STALE, status: 'ready', syncedAt: 1};
     const r = screen();
