@@ -80,13 +80,16 @@ jest.mock('@react-navigation/native', () => ({
 
 // ── Stores ──────────────────────────────────────────────────────────────────
 jest.mock('../../../store/zustand/walletStore', () => ({
-  useWalletStore: () => ({
-    publicKey: 'AbCdEfAbCdEf',
-    solBalance: '1000000000', // 1 SOL
-    nocBalance: '2000000000', // 2 NOC
-    tokens: [],
-    tokenBalances: {},
-  }),
+  useWalletStore: Object.assign(
+    () => ({
+      publicKey: 'AbCdEfAbCdEf',
+      solBalance: '1000000000', // 1 SOL
+      nocBalance: '2000000000', // 2 NOC
+      tokens: [],
+      tokenBalances: {},
+    }),
+    {getState: () => ({lastSyncedAt: null})}, // post-M1d: the refresh alert reads it
+  ),
 }));
 jest.mock('../../../store/zustand/shieldedStore', () => ({
   useShieldedStore: () => ({mode: 'transparent', setMode: jest.fn()}),

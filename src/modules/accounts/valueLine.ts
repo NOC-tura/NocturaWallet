@@ -35,7 +35,8 @@ const NORMALISED_DECIMALS = 18;
 
 /** The public side: SOL, NOC and the account's listed tokens (the dashboard's holdings, plan A11). */
 export function publicSide(data: AccountPublicData): SideValue {
-  if (data.status !== 'ready' || data.syncedAt === null) {
+  // post-M1d §3.2: a stale figure is a known side (the screen dims it and says "not updated")
+  if ((data.status !== 'ready' && data.status !== 'stale') || data.syncedAt === null) {
     return {kind: 'unknown'};
   }
   // wrapped SOL is SOL: folded into the SOL amount (priced as SOL, one "SOL" in the line)

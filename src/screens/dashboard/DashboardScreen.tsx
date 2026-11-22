@@ -32,7 +32,7 @@ import {Text} from '../../components/ui';
 import {useWalletStore} from '../../store/zustand/walletStore';
 import {useAccountList, useRefreshAccounts, useSelectAccount, useSelectedAccount} from '../../hooks/useSelectedAccount';
 import {NO_PUBLIC_DATA, useAccountPublicData} from '../../hooks/useAccountPublicData';
-import {ACCOUNTS_TITLE, HISTORY_A11Y, PUBLIC_LOADING, REFRESH_ACCOUNT_FAILED, REFRESH_FAILED_TITLE, PUBLIC_UNAVAILABLE, SPLIT_PRIVATE, SPLIT_PUBLIC, VALUE_UNKNOWN, avatarA11y, splitA11y} from '../../copy/accounts';
+import {ACCOUNTS_TITLE, HISTORY_A11Y, PUBLIC_LOADING, REFRESH_ACCOUNT_FAILED, REFRESH_FAILED_TITLE, PUBLIC_UNAVAILABLE, SPLIT_PRIVATE, SPLIT_PUBLIC, VALUE_UNKNOWN, avatarA11y, relativeAge, splitA11y, staleLine} from '../../copy/accounts';
 import {AccountsSheet} from '../../components/accounts/AccountsSheet';
 import {useShieldedStore} from '../../store/zustand/shieldedStore';
 import {usePublicSettingsStore} from '../../store/zustand/publicSettingsStore';
@@ -85,7 +85,8 @@ import {
  * Sections:
  *   - Top row · avatar (the selected account's number) + history + bell + scan
  *   - Mode toggle · Public / Private segmented pill
- *   - Balance hero · overline, eye toggle, balance + cents, change line, sub-balance, and (only
+ *   - Balance hero · overline, eye toggle, balance + cents (a stale figure, post-M1d §3.2, is dimmed with
+ *     one "Not updated" line under it), change line, sub-balance, and (only
  *     where private balances exist) the Public | Private split row at the card's bottom: each
  *     side's value, never summed, "—" unknown, "•••" hidden; a tap on the other column switches
  *     the mode (owner 2026-11-22: it replaced M1d D3's thin line under the toggle)
@@ -164,8 +165,23 @@ export function DashboardScreen({
   const selected = useSelectedAccount();
   const refreshAccountList = useRefreshAccounts();
   const {data: publicData, refetch: refetchPublic} = useAccountPublicData(selected);
-  const publicReady = publicData.status === 'ready';
-  const {solBalance, nocBalance, tokens, tokenBalances} = publicData.status === 'ready' ? publicData : NO_PUBLIC_DATA;
+  // post-M1d §3.2: "known" = a figure exists to draw (current or stale); a stale one is drawn dimmed
+  const publicKnown = publicData.status === 'ready' || publicData.status === 'stale';
+  const {solBalance, nocBalance, tokens, tokenBalances} =
+    publicData.status === 'ready' || publicData.status === 'stale' ? publicData : NO_PUBLIC_DATA;
+  // R16: the age is recomputed on every render, and a tick re-renders every 60 s while the screen is focused
+  const staleText = publicData.status === 'stale' ? staleLine(relativeAge(publicData.syncedAt, Date.now())) : null;
+  const isStale = staleText !== null;
+  const [, setAgeTick] = useState(0);
+  useFocusEffect(
+    useCallback(() => {
+      if (!isStale) {
+        return undefined;
+      }
+      const id = setInterval(() => setAgeTick(t => t + 1), 60_000);
+      return () => clearInterval(id);
+    }, [isStale]),
+  );
 
   const {prices, havePrices} = useResolvedPrices();
   const {isPaused: presalePaused} = usePresaleSync();
@@ -202,13 +218,18 @@ export function DashboardScreen({
       // forceSync and is awaited too, so pull-to-refresh ends after BOTH; a switch passes
       // refetchSelected: false (the new account's query starts by itself, the old one is not read again)
       const selectedRead = opts.refetchSelected === false ? Promise.resolve(true) : refetchPublicRef.current();
+      const syncStartedAt = Date.now();
       const result = await forceSync();
+      // post-M1d ruling 2: neither a reset wallet ("wallet changed") nor a throw AFTER this sync wrote its balances
+      // (the store carries a lastSyncedAt from this run) is an RPC failure: no alert, and never the cluster hint
+      const walletChanged = result.error === 'wallet changed';
+      const wroteThisSync = (useWalletStore.getState().lastSyncedAt ?? 0) >= syncStartedAt;
       // M1d review M2: the alert speaks for the account SHOWN — main's sync result while main is selected,
       // the selected account's own read otherwise (main's failure is not what the figures on screen are)
       const mainShown = selectedIsMainRef.current;
       if (!mainShown && opts.showErrors && (await selectedRead) === false) {
         Alert.alert(REFRESH_FAILED_TITLE, REFRESH_ACCOUNT_FAILED);
-      } else if (mainShown && !result.success && opts.showErrors) {
+      } else if (mainShown && !result.success && opts.showErrors && !walletChanged && !wroteThisSync) {
         Alert.alert(
           REFRESH_FAILED_TITLE,
           result.error
@@ -392,7 +413,8 @@ export function DashboardScreen({
 
   const isShielded = mode === 'shielded';
   const usd = formatUsd(portfolio.totalUsd);
-  const change24h = publicReady ? portfolio.change24hPct : null; // number | null (transparent only); M1d: none before the data is known
+  // number | null (transparent only); none before the data is known, and hidden while stale: it describes a live price movement
+  const change24h = publicData.status === 'ready' ? portfolio.change24hPct : null;
   const avatarText = selected ? String(selected.number) : getAddressInitial(publicKey);
   const avatarLabel = selected ? avatarA11y(selected.label) : ACCOUNTS_TITLE;
 
@@ -404,7 +426,7 @@ export function DashboardScreen({
       <StatusBar barStyle="light-content" backgroundColor="#0A0A0A" />
 
       <FlatList
-        data={isShielded || !publicReady ? ([] as typeof displayTokens) : displayTokens}
+        data={isShielded || !publicKnown ? ([] as typeof displayTokens) : displayTokens}
         keyExtractor={item => item.mint}
         showsVerticalScrollIndicator={false}
         refreshControl={
@@ -440,7 +462,8 @@ export function DashboardScreen({
             isOffline={!isOnline}
             change24hPct={change24h}
             havePrices={havePrices}
-            publicReady={publicReady}
+            publicKnown={publicKnown}
+            staleText={staleText}
             split={split}
             anonymitySet={anon}
             shieldedView={a0View}
@@ -469,6 +492,7 @@ export function DashboardScreen({
               usdValue={fiat?.usd ?? null}
               change24h={fiat?.change24h ?? null}
               logoUri={token.logoUri}
+              stale={isStale}
             />
           );
         }}
@@ -537,8 +561,10 @@ interface DashboardHeaderProps {
   isOffline: boolean;
   change24hPct: number | null;
   havePrices: boolean;
-  /** M1d (Review Focus 4): the selected account's public data is known — every public figure waits for it */
-  publicReady: boolean;
+  /** M1d (Review Focus 4): a public figure exists to draw — current or stale; every public figure waits for it */
+  publicKnown: boolean;
+  /** post-M1d §3.2: "Not updated · {age} · pull to refresh", or null when the public figure is current */
+  staleText: string | null;
   /** M1d (spec §4.5, 2026-11-22 addendum): the split row's two columns, or null where the build has no private balances */
   split: SplitValue | null;
   /** Live on-chain anonymity set leaf count; null while loading or on RPC error. */
@@ -570,7 +596,8 @@ function DashboardHeader({
   isOffline,
   change24hPct,
   havePrices,
-  publicReady,
+  publicKnown,
+  staleText,
   split,
   anonymitySet,
   shieldedView,
@@ -711,12 +738,12 @@ function DashboardHeader({
             </View>
           ) : (
             <View className="flex-row items-baseline mb-2" testID="dashboard-public-balance">
-              {havePrices && publicReady ? (
+              {havePrices && publicKnown ? (
                 <>
-                  <Text variant="balance-xl" numeral className="text-fg-primary">
+                  <Text variant="balance-xl" numeral className={staleText !== null ? 'text-fg-tertiary' : 'text-fg-primary'}>
                     {usd.whole}
                   </Text>
-                  <Text variant="body-lg" numeral className="text-fg-secondary ml-0.5">
+                  <Text variant="body-lg" numeral className={cn('ml-0.5', staleText !== null ? 'text-fg-tertiary' : 'text-fg-secondary')}>
                     {usd.cents}
                   </Text>
                 </>
@@ -760,6 +787,13 @@ function DashboardHeader({
             )
           )}
 
+          {/* post-M1d §3.2: the stale line — Public mode only; it stays when balances are hidden (no figure in it) */}
+          {!isShielded && staleText !== null ? (
+            <Text variant="body-sm" className="text-fg-secondary mb-3" testID="dashboard-stale-line">
+              {staleText}
+            </Text>
+          ) : null}
+
           {/* Sub-balance · SOL + NOC — transparent only. In shielded mode this
              would mirror the (unrelated) transparent SOL/NOC balances, which is
              misleading; the shielded vault shows its own per-token asset rows +
@@ -767,17 +801,19 @@ function DashboardHeader({
           {isShielded ? null : (
             <View className="flex-row items-center gap-3">
               <SubBalanceCell
-                amount={hidden ? '••••' : publicReady ? formatBalanceForDisplay(solBalance, SOL_DECIMALS) : VALUE_UNKNOWN}
+                amount={hidden ? '••••' : publicKnown ? formatBalanceForDisplay(solBalance, SOL_DECIMALS) : VALUE_UNKNOWN}
                 ticker="SOL"
                 testID="dashboard-sub-sol"
                 hidden={hidden}
+                dim={staleText !== null}
               />
               <View className="w-1 h-1 rounded-pill bg-fg-tertiary" />
               <SubBalanceCell
-                amount={hidden ? '••••' : publicReady ? formatBalanceForDisplay(nocBalance, NOC_DECIMALS) : VALUE_UNKNOWN}
+                amount={hidden ? '••••' : publicKnown ? formatBalanceForDisplay(nocBalance, NOC_DECIMALS) : VALUE_UNKNOWN}
                 ticker="NOC"
                 testID="dashboard-sub-noc"
                 hidden={hidden}
+                dim={staleText !== null}
               />
             </View>
           )}
@@ -794,6 +830,7 @@ function DashboardHeader({
                   dotClass="bg-accent-transparent"
                   onSelect={() => onModeToggle('transparent')}
                   testID="dashboard-split-public"
+                  stale={staleText !== null}
                 />
                 <SplitColumn
                   label={SPLIT_PRIVATE}
@@ -946,9 +983,11 @@ interface SplitColumnProps {
   /** Not named onPress: a test's press must reach the Pressable's own handler, never bubble to this prop */
   onSelect: () => void;
   testID: string;
+  /** post-M1d §3.2: the figures are the last known ones — dimmed, and the label says "not updated" */
+  stale?: boolean;
 }
 
-function SplitColumn({label, lines, isActive, dotClass, onSelect, testID}: SplitColumnProps) {
+function SplitColumn({label, lines, isActive, dotClass, onSelect, testID, stale}: SplitColumnProps) {
   return (
     <Pressable
       // the active column is the mode already shown: a tap does nothing
@@ -956,7 +995,7 @@ function SplitColumn({label, lines, isActive, dotClass, onSelect, testID}: Split
       // final review m6: the active column offers no action, so TalkBack does not announce one
       accessibilityRole={isActive ? 'text' : 'button'}
       accessibilityState={{selected: isActive}}
-      accessibilityLabel={splitA11y(label, lines.join(', '), isActive)}
+      accessibilityLabel={splitA11y(label, lines.join(', '), isActive, stale === true)}
       testID={testID}
       className="flex-1 active:opacity-80">
       <View className="flex-row items-center gap-2 mb-1">
@@ -973,7 +1012,7 @@ function SplitColumn({label, lines, isActive, dotClass, onSelect, testID}: Split
           numberOfLines={1}
           adjustsFontSizeToFit
           minimumFontScale={0.75}
-          className="text-fg-secondary"
+          className={stale ? 'text-fg-tertiary' : 'text-fg-secondary'}
           testID={`${testID}-line`}>
           {line}
         </Text>
@@ -989,11 +1028,13 @@ function SubBalanceCell({
   ticker,
   hidden,
   testID,
+  dim,
 }: {
   amount: string;
   ticker: string;
   hidden: boolean;
   testID?: string;
+  dim?: boolean;
 }) {
   return (
     <View className="flex-row items-baseline gap-1">
@@ -1003,7 +1044,7 @@ function SubBalanceCell({
         testID={testID}
         className={cn(
           'font-geist-semibold',
-          hidden ? 'text-fg-secondary' : 'text-fg-primary',
+          hidden ? 'text-fg-secondary' : dim ? 'text-fg-tertiary' : 'text-fg-primary',
         )}>
         {amount}
       </Text>
@@ -1056,6 +1097,8 @@ interface TokenListRowProps {
   usdValue: number | null;
   change24h: number | null;
   logoUri?: string;
+  /** post-M1d §3.2: the row's figures are the last known ones (dimmed, no 24h change) */
+  stale: boolean;
 }
 
 function TokenListRow({
@@ -1070,6 +1113,7 @@ function TokenListRow({
   usdValue,
   change24h,
   logoUri,
+  stale,
 }: TokenListRowProps) {
   const isShielded = mode === 'shielded';
   const formattedBalance = hidden
@@ -1088,17 +1132,17 @@ function TokenListRow({
         <Text
           variant="body-sm"
           numeral={!hidden}
-          className={hidden ? 'text-fg-tertiary' : 'text-fg-secondary'}>
+          className={hidden || stale ? 'text-fg-tertiary' : 'text-fg-secondary'}>
           {formattedBalance}
           {isShielded ? PRIVATE_SUFFIX : ''}
         </Text>
       </View>
       {!hidden && usdValue != null ? (
         <View className="items-end mr-2">
-          <Text variant="body-lg" numeral className="text-fg-primary">
+          <Text variant="body-lg" numeral className={stale ? 'text-fg-tertiary' : 'text-fg-primary'}>
             {formatUsdString(usdValue)}
           </Text>
-          {change24h == null ? (
+          {stale ? null : change24h == null ? (
             <Text variant="body-sm" className="text-fg-tertiary">
               —
             </Text>

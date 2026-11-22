@@ -14,7 +14,7 @@ import {TokenLogo} from '../../components/TokenLogo';
 import {SparkChart, SparkChartSkeleton} from '../../components/SparkChart';
 import {useSelectedAccount} from '../../hooks/useSelectedAccount';
 import {NO_PUBLIC_DATA, useAccountPublicData} from '../../hooks/useAccountPublicData';
-import {VALUE_UNKNOWN} from '../../copy/accounts';
+import {VALUE_UNKNOWN, relativeAge, staleNote} from '../../copy/accounts';
 import {useResolvedPrices} from '../../hooks/useResolvedPrices';
 import {usePriceHistory} from '../../hooks/usePriceHistory';
 import {buildHoldings} from '../../modules/prices/holdings';
@@ -54,8 +54,23 @@ export function TokenDetailScreen({mint, onBack, onSend, onReceive, onSwap}: Pro
 
   // M1d (plan A6): opened from the dashboard's list of the SELECTED account — its holding is that account's
   const {data: publicData} = useAccountPublicData(useSelectedAccount());
-  const publicReady = publicData.status === 'ready';
-  const {solBalance, nocBalance, tokenBalances, tokens} = publicData.status === 'ready' ? publicData : NO_PUBLIC_DATA;
+  // post-M1d R10: a stale holding is drawn (dimmed, with its age) — "known" = a figure exists
+  const publicKnown = publicData.status === 'ready' || publicData.status === 'stale';
+  const {solBalance, nocBalance, tokenBalances, tokens} =
+    publicData.status === 'ready' || publicData.status === 'stale' ? publicData : NO_PUBLIC_DATA;
+  const staleText = publicData.status === 'stale' ? staleNote(relativeAge(publicData.syncedAt, Date.now())) : null;
+  // review r1-7 / R16: the age is recomputed on every render, and a tick re-renders every 60 s while the figure is
+  // stale. A plain effect, not useFocusEffect: this screen is a modal (mounted = shown) and its tests render it
+  // without a navigator.
+  const isStale = staleText !== null;
+  const [, setAgeTick] = React.useState(0);
+  React.useEffect(() => {
+    if (!isStale) {
+      return undefined;
+    }
+    const id = setInterval(() => setAgeTick(t => t + 1), 60_000);
+    return () => clearInterval(id);
+  }, [isStale]);
   const {prices, havePrices} = useResolvedPrices();
 
   const isNoc = mint === NOC_MINT;
@@ -233,11 +248,11 @@ export function TokenDetailScreen({mint, onBack, onSend, onReceive, onSwap}: Pro
           </Text>
           <View className="flex-row items-center justify-between">
             <View>
-              <Text variant="body-lg" numeral className="text-fg-primary">
-                {`${publicReady ? formatBalanceForDisplay(balanceRaw, meta.decimals) : VALUE_UNKNOWN} ${meta.symbol}`}
+              <Text variant="body-lg" numeral className={isStale ? 'text-fg-tertiary' : 'text-fg-primary'}>
+                {`${publicKnown ? formatBalanceForDisplay(balanceRaw, meta.decimals) : VALUE_UNKNOWN} ${meta.symbol}`}
               </Text>
-              <Text variant="body-sm" numeral className="text-fg-secondary mt-0.5">
-                {fiat != null && publicReady ? formatUsdString(fiat) : '—'}
+              <Text variant="body-sm" numeral className={isStale ? 'text-fg-tertiary mt-0.5' : 'text-fg-secondary mt-0.5'}>
+                {fiat != null && publicKnown ? formatUsdString(fiat) : '—'}
               </Text>
             </View>
             {pct != null ? (
@@ -248,6 +263,11 @@ export function TokenDetailScreen({mint, onBack, onSend, onReceive, onSwap}: Pro
               </View>
             ) : null}
           </View>
+          {staleText !== null ? (
+            <Text variant="caption" className="text-fg-secondary mt-2" testID="token-detail-stale">
+              {staleText}
+            </Text>
+          ) : null}
         </View>
 
         {/* Quick actions */}

@@ -189,4 +189,16 @@ describe('splitValue (spec §4.5, 2026-11-22 addendum)', () => {
     expect(r).toEqual({publicLines: ['•••'], privateLines: ['•••']});
     expect(JSON.stringify(r)).not.toMatch(/\d/);
   });
+
+  it('post-M1d §3.2: a stale figure is a known side (the screen dims it); the same lines as the ready one', () => {
+    const figure = {solBalance: '1000000000', nocBalance: '0', tokenBalances: {}, tokens: []};
+    const ready = publicSide({status: 'ready', syncedAt: 5, ...figure});
+    const stale = publicSide({status: 'stale', syncedAt: 5, failedAt: 9, ...figure});
+    expect(stale).toEqual(ready);
+    expect(sideLines(stale, null)).toEqual(['1 SOL']);
+  });
+
+  it('an error (a never-read main whose sync failed) is an unknown side: "—"', () => {
+    expect(sideLines(publicSide({status: 'error'}), null)).toEqual(['—']);
+  });
 });
