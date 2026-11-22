@@ -13,7 +13,7 @@ A Make public to "A new account (recommended)" lands on a fresh account of the s
 encrypted registry, M1c). Today the app shows no account but the main one, so the user cannot find those funds. M1d makes
 every account of the wallet visible with its balances, lets the user choose the account that Send, Receive and the
 public balance use, warns before a Send links two of the user's accounts, and adds the one combined line
-"Public X · Private Y" (UX part C).
+"Public X · Private Y" (UX part C). (2026-11-22: superseded — the combined line was replaced by the Public | Private split row inside the balance card; see the §4.5 addendum and plan 2026-11-22-shielded-m1d-phone-pass-fixes.)
 
 **Success criteria:**
 - every `main` and `fresh-exit` account is listed with its balances; a `fresh-pending` reservation never is;
@@ -129,6 +129,8 @@ verification or reconciliation; private send (M2).
 
 ### 4.5 The combined line (UX part C; D2–D4)
 
+(2026-11-22: superseded — the combined line was replaced by the Public | Private split row inside the balance card; see the §4.5 addendum and plan 2026-11-22-shielded-m1d-phone-pass-fixes.)
+
 - One line directly under the Public | Private toggle, both modes: "Public {X} · Private {Y}".
 - X = the selected account's public value; Y = the wallet's private balance.
 - Each side in USD when every asset on that side has a known price, otherwise as the token amounts of that side (the
@@ -156,14 +158,14 @@ Per the owner's standing guidance (2026-11-21: improve the design as we build), 
 `/home/user/Downloads/index.html` and `screen.md` first: add the Accounts sheet (default, cli, registry-unreadable), the
 numbered avatar, the combined line on #11 (both modes, hidden, unknown), the linking warning on #12, "From: Account N"
 on #19/#20, "Received by" on #21, the "Uses your main account" lines, and #17's who-sees-what paragraph. Tell the owner
-per screen what changed.
+per screen what changed. (2026-11-22: superseded — the combined line was replaced by the Public | Private split row inside the balance card; see the §4.5 addendum and plan 2026-11-22-shielded-m1d-phone-pass-fixes.)
 
 ## 6. Testing and gates
 
 - Test-first in every task; each changed existing row says why.
 - Unit: the account list (main only, fresh-exits, pending hidden, cli, corrupt registry), labels and order; selection
   default, persistence, fallback; the linking-warning predicate (every source/recipient role pair, a foreign address,
-  same address); the combined-line formatter (USD, token fallback, "+N", unknown, hidden); the signer-address check.
+  same address); the combined-line formatter (USD, token fallback, "+N", unknown, hidden); the signer-address check. (2026-11-22: superseded — the combined line was replaced by the Public | Private split row inside the balance card; see the §4.5 addendum and plan 2026-11-22-shielded-m1d-phone-pass-fixes.)
 - Screen: the sheet (rows, check, select, footer, cli, a11y); Send/Receive/history following the selection; the main-only
   lines; the second-tap gate and its reset; #21 "Received by"; #17 copy.
 - The privacy-claims guard covers every new file (it already walks all of `src/screens` and `src/components`; any new
