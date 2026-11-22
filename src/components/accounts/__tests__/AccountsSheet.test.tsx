@@ -1,6 +1,7 @@
 /** M1d spec §4.1: the Accounts sheet. The row balances and the prices are controlled here. */
 import React from 'react';
 import {fireEvent, render} from '@testing-library/react-native';
+import {ScrollView, useWindowDimensions} from 'react-native';
 import type {AccountList, WalletAccount} from '../../../modules/accounts/accountList';
 import type {RowBalance} from '../../../hooks/useAccountRowBalances';
 
@@ -39,6 +40,11 @@ const sheet = (over: Partial<React.ComponentProps<typeof AccountsSheet>> = {}) =
   const r = render(<AccountsSheet visible list={LIST} selectedScheme="slip10:3" hidden={false} onSelect={onSelect} onClose={jest.fn()} {...over} />);
   return {r, onSelect};
 };
+
+jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
+  __esModule: true,
+  default: jest.fn(() => ({width: 400, height: 2000, scale: 1, fontScale: 1})),
+}));
 
 beforeEach(() => {
   mockRows.current = {};
@@ -171,4 +177,13 @@ it('review M11: the main row never goes through the by-address reader, and shows
   r.unmount();
   useWalletStore.setState({solBalance: '5000000', lastSyncedAt: 9});
   expect(sheet().r.getByTestId('accounts-row-slip10:0-balance')).toHaveTextContent('0.005 SOL');
+});
+
+it('the list is at most 60% of the window high and shows its scrollbar (r1-5)', () => {
+  const {r} = sheet();
+  const sv = r.UNSAFE_getByType(ScrollView);
+  expect(useWindowDimensions().height).toBe(2000);
+  expect(sv.props.style).toEqual(expect.objectContaining({maxHeight: 1200}));
+  expect(sv.props.showsVerticalScrollIndicator).toBe(true);
+  expect(sv.props.persistentScrollbar).toBe(true);
 });

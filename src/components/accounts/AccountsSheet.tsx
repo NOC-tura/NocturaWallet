@@ -5,7 +5,7 @@
  * (D6). Rows are radios in a radiogroup.
  */
 import React, {useMemo} from 'react';
-import {Modal, Pressable, ScrollView, View} from 'react-native';
+import {Modal, Pressable, ScrollView, useWindowDimensions, View} from 'react-native';
 import {Check} from 'lucide-react-native';
 import {Text} from '../ui';
 import {cn} from '../../utils/cn';
@@ -63,6 +63,8 @@ export function rowBalanceText(row: RowBalance | undefined, prices: Record<strin
 }
 
 export function AccountsSheet({visible, list, selectedScheme, hidden, onSelect, onClose}: AccountsSheetProps) {
+  // The list takes up to 60% of the screen (a fixed 384 dp cut it after ~3½ rows) and shows its scrollbar.
+  const {height: windowHeight} = useWindowDimensions();
   // M1d review M11: the main account's figures are walletStore's (what the dashboard shows) — no RPC read
   // for it here; only the other accounts are read by address.
   const solBalance = useWalletStore(s => s.solBalance);
@@ -103,7 +105,7 @@ export function AccountsSheet({visible, list, selectedScheme, hidden, onSelect, 
               {ACCOUNTS_UNREADABLE}
             </Text>
           ) : null}
-          <ScrollView className="max-h-96">
+          <ScrollView style={{maxHeight: Math.round(windowHeight * 0.6)}} showsVerticalScrollIndicator persistentScrollbar>
             <View accessibilityRole="radiogroup" testID="accounts-radiogroup">
               {list.accounts.map(a => {
                 const checked = a.scheme === selectedScheme;
