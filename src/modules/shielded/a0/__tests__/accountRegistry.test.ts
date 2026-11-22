@@ -27,6 +27,8 @@ import {
   addA0RecoveredExitAccounts,
   hasA0AccountRegistry,
   loadA0AccountRegistry,
+  markA0AccountsLinked,
+  onA0AccountPromoted,
   openA0AccountRegistry,
   parseA0Scheme,
   promoteA0FreshAccount,
@@ -471,5 +473,75 @@ describe('the public-key set and the restore\'s writer (handed to Tasks 4–7)',
 
   it('the account-discovery gap stays 20 (controller ruling 7: S15 raised the deposit gap only)', () => {
     expect(A0_ACCOUNT_DISCOVERY_GAP).toBe(20);
+  });
+});
+
+describe('post-M1d §4: markA0AccountsLinked (the tag after a confirmed own-account Send)', () => {
+  const base = () =>
+    setRaw([entry(ABANDON, 'slip10:0', 'main'), entry(ABANDON, 'slip10:1', 'fresh-exit'), entry(ABANDON, 'slip10:2', 'fresh-pending'), entry(ABANDON, 'slip10:3', 'fresh-exit')]);
+
+  it('marks the matching fresh-exit entries only, returns how many changed, and the record still decodes', () => {
+    base();
+    expect(markA0AccountsLinked([addr(ABANDON, 'slip10:1')])).toBe(1);
+    const stored = loadA0AccountRegistry()!;
+    expect(stored[1]).toEqual({...entry(ABANDON, 'slip10:1', 'fresh-exit'), linked: true});
+    expect(stored[3]!.linked).toBeUndefined(); // the other exit is untouched
+  });
+
+  it('never the main account, never a fresh-pending one (the validator forbids linked there)', () => {
+    base();
+    expect(markA0AccountsLinked([addr(ABANDON, 'slip10:0'), addr(ABANDON, 'slip10:2')])).toBe(0);
+    const stored = loadA0AccountRegistry()!;
+    expect(stored[0]!.linked).toBeUndefined();
+    expect(stored[2]!.linked).toBeUndefined();
+    expect(stored[2]!.role).toBe('fresh-pending');
+  });
+
+  it('idempotent: a second call changes nothing and writes nothing', () => {
+    base();
+    expect(markA0AccountsLinked([addr(ABANDON, 'slip10:1')])).toBe(1);
+    const before = mmkvSecure()!.getString(KEY);
+    expect(markA0AccountsLinked([addr(ABANDON, 'slip10:1')])).toBe(0);
+    expect(mmkvSecure()!.getString(KEY)).toBe(before);
+  });
+
+  it('an address the registry does not know, an empty list, no record → 0', () => {
+    base();
+    expect(markA0AccountsLinked([addr(ZOO, 'slip10:1')])).toBe(0);
+    expect(markA0AccountsLinked([])).toBe(0);
+    mmkvSecure()!.remove(KEY);
+    expect(markA0AccountsLinked([addr(ABANDON, 'slip10:1')])).toBe(0);
+  });
+
+  it('needs no seed, and fails closed: locked → E_A0_STORE_LOCKED, a corrupt record → E_A0_ACCOUNTS_CORRUPT, another instance → E_A0_STORE_CHANGED', () => {
+    base();
+    const bound = mmkvSecure();
+    mmkvSecure()!.set(KEY, '{not json');
+    expect(code(() => markA0AccountsLinked([addr(ABANDON, 'slip10:1')]))).toBe('E_A0_ACCOUNTS_CORRUPT');
+    clearAllStores();
+    expect(code(() => markA0AccountsLinked([addr(ABANDON, 'slip10:1')]))).toBe('E_A0_STORE_LOCKED');
+    initSecureMmkv('other-key');
+    expect(code(() => markA0AccountsLinked([addr(ABANDON, 'slip10:1')], {bound}))).toBe('E_A0_STORE_CHANGED');
+  });
+});
+
+describe('post-M1d R3: onA0AccountPromoted', () => {
+  it('fires after a fresh-pending → fresh-exit write (promote and a restore), not for "already", and a throwing listener never fails the promotion', () => {
+    setRaw([entry(ABANDON, 'slip10:0', 'main'), entry(ABANDON, 'slip10:1', 'fresh-pending'), entry(ABANDON, 'slip10:2', 'fresh-pending')]);
+    const seen: string[] = [];
+    const off = onA0AccountPromoted(() => {
+      seen.push(loadA0AccountRegistry()!.filter(e => e.role === 'fresh-exit').map(e => e.scheme).join(','));
+      throw new Error('a listener that throws');
+    });
+    expect(promoteA0FreshAccount('slip10:1')).toBe('promoted');
+    expect(seen).toEqual(['slip10:1']); // fired AFTER the write: the listener reads the promoted entry
+    expect(promoteA0FreshAccount('slip10:1')).toBe('already');
+    expect(seen).toHaveLength(1);
+    expect(addA0RecoveredExitAccounts([2], seedOf(ABANDON))).toEqual(['slip10:2']);
+    expect(seen).toHaveLength(2);
+    off();
+    setRaw([entry(ABANDON, 'slip10:0', 'main'), entry(ABANDON, 'slip10:1', 'fresh-pending')]);
+    promoteA0FreshAccount('slip10:1');
+    expect(seen).toHaveLength(2); // unregistered
   });
 });
