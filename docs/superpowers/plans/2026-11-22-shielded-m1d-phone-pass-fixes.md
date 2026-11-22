@@ -207,3 +207,15 @@ refs by grep after each task.
   - `DashboardScreen.tsx:84-92` (the header and hero comments);
   - `valueLine.ts:1-7`;
   - spec row D3 (:37), with a dated note, as well as the §4.5 addendum.
+
+## Re-review r1 corrections (Fable APPROVED with these; binding)
+
+- **r1-2 correction:** the tabs to remove are `Private` and `Staking`. The code has no tab named "Shielded"; see
+  `TransactionHistoryScreen.tsx:17,19`.
+  - Remove both from the `FilterTab` type and from `FILTER_TABS`.
+  - Delete the dead `return []` branch.
+  - Update `src/screens/transparent/__tests__/TransactionHistoryScreen.test.tsx:56-65`.
+- **r1-1 addition:** when a refetch fails after an earlier successful read, keep the list and show the retry line above
+  it. Read transactions are never replaced by the error. Add one test for this.
+- **Task 6 addition:** if #26 in `index.html` / `screen.md` draws Private or Staking tabs, remove them there with a
+  dated note. Tell the owner explicitly that these two tabs are removed until history parsing for them exists.
