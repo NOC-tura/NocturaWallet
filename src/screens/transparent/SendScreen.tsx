@@ -601,7 +601,10 @@ export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
                   accessibilityLabel="Max"
                   accessibilityState={{disabled: !publicReady}}
                   testID="max-button"
-                  className="px-3 py-1.5 rounded-pill bg-accent-transparent-tint active:opacity-80">
+                  className={cn(
+                    'px-3 py-1.5 rounded-pill bg-accent-transparent-tint active:opacity-80',
+                    !publicReady && 'opacity-40', // review 2A re-review m1: a disabled MAX looks disabled
+                  )}>
                   <Text
                     variant="overline"
                     className="text-accent-transparent">
