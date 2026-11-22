@@ -63,6 +63,10 @@ jest.mock('../../../hooks/useAccountPublicData', () => ({
 const mockUnlock = jest.fn(() => Promise.resolve());
 jest.mock('../../../modules/session/secureStorageSession', () => ({unlockSecureStorage: () => mockUnlock()}));
 
+// post-M1d §4 / R2: the link queue, observed here
+const mockDrain = jest.fn(() => 0);
+jest.mock('../../../modules/accounts/linkQueue', () => ({drainLinkQueue: () => mockDrain()}));
+
 // M1d (spec §4.1): the Accounts sheet, stubbed — records its props, renders a marker
 const mockSheetProps: Array<Record<string, unknown>> = [];
 jest.mock('../../../components/accounts/AccountsSheet', () => ({
@@ -721,6 +725,17 @@ describe('M1d — the Public | Private split inside the balance card (spec §4.5
 });
 
 describe('M1d — the numbered avatar opens the Accounts sheet (spec §4.1, D5)', () => {
+  it('post-M1d §4 / R2: opening the sheet drains the link queue BEFORE the list is re-read (the tag shows at once)', async () => {
+    const r = await renderDashboard();
+    mockRefreshAccounts.mockClear();
+    mockDrain.mockClear();
+    await act(async () => {
+      fireEvent.press(r.getByTestId('dashboard-avatar'));
+    });
+    expect(mockDrain).toHaveBeenCalledTimes(1);
+    expect(mockDrain.mock.invocationCallOrder[0]!).toBeLessThan(mockRefreshAccounts.mock.invocationCallOrder[0]!);
+  });
+
   it('the avatar shows the selected account\'s number and says what it does', async () => {
     mockSelected.current = EXIT_ACCOUNT;
     const r = await renderDashboard();

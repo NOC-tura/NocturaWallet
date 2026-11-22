@@ -35,6 +35,12 @@ const READY_1_SOL = {status: 'ready', syncedAt: 1, solBalance: '1000000000', noc
 const mockSendSelected: {current: unknown} = {current: MAIN_SRC};
 const mockSendList: {current: unknown} = {current: null};
 const mockSendRefresh = jest.fn();
+// post-M1d §4: #12 must never write the tag (that is #21's)
+const mockRecordLinks = jest.fn((_a: readonly string[]) => 0);
+jest.mock('../../../modules/accounts/linkQueue', () => ({
+  recordConfirmedSendLinks: (a: readonly string[]) => mockRecordLinks(a),
+  drainLinkQueue: jest.fn(() => 0),
+}));
 jest.mock('../../../hooks/useSelectedAccount', () => ({
   useSelectedAccount: () => mockSendSelected.current,
   useAccountList: () => mockSendList.current,
@@ -160,6 +166,7 @@ describe('M1d — #12 sends from the account selected when it opened (spec §3.3
         recipient: FOREIGN,
         from: {scheme: 'slip10:3', address: A3_SRC.address, label: 'Account 4', isMain: false},
         sourceBalances: {solBalance: '3000000', tokenBalances: {}},
+        linksAccounts: [], // post-M1d §4: a foreign recipient links nothing
       }),
     );
   });
@@ -418,16 +425,40 @@ describe('M1d — the linking warning and its second tap (spec §4.4)', () => {
     expect(onReview.mock.calls[0]![0]).toMatchObject({recipient: MAIN, from: {address: A3}});
   });
 
-  // M1d: known limit, owner question (final review I1) — an acknowledged own-account Send does NOT mark the
-  // account "linked" in the sheet: the tag comes only from a landed exit (M1c). This row pins today's behaviour.
-  it('M1d: known limit, owner question — an acknowledged exit → main Send leaves the account\'s tags unchanged (no "linked" is recorded)', () => {
+  // post-M1d P3 (owner): the limit this row used to pin is closed — the intent now names the accounts to tag
+  it('post-M1d §4: exit → main, second tap → the intent carries linksAccounts = [the exit]; never the main account', () => {
     const {r, onReview} = setup(MAIN);
     tap(r);
     tap(r);
-    expect(onReview).toHaveBeenCalledTimes(1);
-    expect(mockSendSelected.current).toBe(A3_SRC);
-    expect(Object.keys(onReview.mock.calls[0]![0].from).sort()).toEqual(['address', 'isMain', 'label', 'scheme']); // no "linking" flag travels with the intent for #21 to record
-    expect(A3_SRC.linked).toBe(false);
+    expect(onReview.mock.calls[0]![0].linksAccounts).toEqual([A3]);
+  });
+
+  it('post-M1d §4 / R3: exit → a fresh-pending reservation → both travel (the pending one is queued by #21)', () => {
+    const {r, onReview} = setup(A1);
+    tap(r);
+    tap(r);
+    expect(onReview.mock.calls[0]![0].linksAccounts).toEqual([A3, A1]);
+  });
+
+  it('post-M1d §4: a foreign recipient → linksAccounts is empty', () => {
+    const {r, onReview} = setup(FOREIGN);
+    tap(r);
+    expect(onReview.mock.calls[0]![0].linksAccounts).toEqual([]);
+  });
+
+  it('post-M1d §4: no registry known (list null) → empty, never a guess', () => {
+    mockSendList.current = null;
+    const {r, onReview} = setup(MAIN);
+    tap(r);
+    expect(onReview.mock.calls[0]![0].linksAccounts).toEqual([]);
+  });
+
+  // pin (passes before the change): #12 never imported the queue. It keeps a later edit from moving the write here.
+  it('post-M1d §4: #12 itself writes nothing — the tag belongs to #21', () => {
+    const {r} = setup(MAIN);
+    tap(r);
+    tap(r);
+    expect(mockRecordLinks).not.toHaveBeenCalled();
   });
 
   it('the debounce still holds: a second tap within 500 ms is not the second tap', () => {

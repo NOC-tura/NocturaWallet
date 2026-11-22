@@ -32,7 +32,7 @@ import {useAccountList, useRefreshAccounts, useSelectedAccount} from '../../hook
 import {NO_PUBLIC_DATA, useAccountPublicData} from '../../hooks/useAccountPublicData';
 import {LINK_TAP_AGAIN, LINK_WARNING_BODY, LINK_WARNING_TITLE, SEND_BALANCE_CHECKING, SEND_BALANCE_RETRY, SEND_BALANCE_STALE, VALUE_UNKNOWN} from '../../copy/accounts';
 import {forceSync} from '../../modules/backgroundSync/backgroundSyncModule';
-import {linkingWarningApplies} from '../../modules/accounts/linking';
+import {linkedParticipants, linkingWarningApplies} from '../../modules/accounts/linking';
 import {addressBook} from '../../modules/addressBook/addressBookModule';
 import type {Contact} from '../../modules/addressBook/types';
 import {formatAddress} from '../../utils/formatAddress';
@@ -414,8 +414,10 @@ export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
       createAta: selectedMint !== SOL_MINT,
       from: {scheme: source.scheme, address: source.address, label: source.label, isMain: source.isMain},
       sourceBalances: {solBalance, tokenBalances},
+      // post-M1d §4: the accounts this Send links, from the same registry read that showed the warning
+      linksAccounts: accountList !== null ? linkedParticipants(accountList.seed, source.address, recipientAddress) : [],
     });
-  }, [canReview, linkWarn, linkAck, source, recipient, amount, selectedMint, selectedToken.symbol, selectedToken.decimals, priorityLevel, onReview, solBalance, tokenBalances]);
+  }, [canReview, linkWarn, linkAck, source, recipient, amount, selectedMint, selectedToken.symbol, selectedToken.decimals, priorityLevel, onReview, solBalance, tokenBalances, accountList, recipientAddress]);
 
   const networkFeeDisplay = useMemo(() => {
     const feeSOL = formatTokenAmount(getTotalNetworkFee(priorityLevel), SOL_DECIMALS);

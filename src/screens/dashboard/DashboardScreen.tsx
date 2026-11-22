@@ -1,4 +1,5 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {drainLinkQueue} from '../../modules/accounts/linkQueue';
 import {
   View,
   FlatList,
@@ -258,6 +259,7 @@ export function DashboardScreen({
   const selectAccountScheme = useSelectAccount();
   const [sheetOpen, setSheetOpen] = useState(false);
   const openAccounts = useCallback(() => {
+    drainLinkQueue(); // post-M1d §4 / R2: a "linked" tag still queued is written before the list is read
     refreshAccountList();
     setSheetOpen(true);
     // review r1 m7: unreadable because the encrypted store is closed -> open it (biometric), then re-read

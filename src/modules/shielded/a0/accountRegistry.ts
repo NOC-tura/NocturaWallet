@@ -531,8 +531,8 @@ export function markA0AccountsLinked(addresses: readonly string[], options: A0Re
 const promotedListeners = new Set<() => void>();
 
 /**
- * post-M1d R3: told after a write that turned a `fresh-pending` entry into `fresh-exit` (a landed
- * unshield, or a restore). The link queue (`modules/accounts/linkQueue.ts`) registers here, so this
+ * post-M1d R3: told after a write that promoted a `fresh-pending` entry to `fresh-exit` (a landed
+ * unshield) or added recovered exit accounts (a restore: new `fresh-exit` entries, or promotions). The link queue (`modules/accounts/linkQueue.ts`) registers here, so this
  * module imports nothing of it. A listener that throws never fails the promotion.
  */
 export function onA0AccountPromoted(listener: () => void): () => void {

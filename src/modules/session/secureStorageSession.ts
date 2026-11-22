@@ -2,6 +2,7 @@ import {keychainManager} from '../keychain/keychainModule';
 import {mnemonicToSeed} from '../keyDerivation/mnemonicUtils';
 import {deriveSecureStorageKey} from '../keychain/secureStorageKey';
 import {zeroize} from './zeroize';
+import {drainLinkQueue} from '../accounts/linkQueue';
 import {initSecureMmkv, mmkvSecure, mmkvPublic} from '../../store/mmkv/instances';
 import {MMKV_KEYS} from '../../constants/mmkvKeys';
 import {isShieldedEnabled} from '../../constants/features';
@@ -72,6 +73,7 @@ export async function unlockSecureStorage(): Promise<void> {
     seed = await mnemonicToSeed(mnemonic);
     initSecureMmkv(deriveSecureStorageKey(seed));
     dropV1ShieldedLeftovers();
+    drainLinkQueue(); // post-M1d R2: "linked" tags queued by an earlier process (never throws)
     await dropV1ViewKey();
     startA0(seed);
   } finally {
@@ -84,6 +86,7 @@ export function unlockSecureStorageWithSeed(seed: Uint8Array): void {
   if (mmkvSecure()) return;
   initSecureMmkv(deriveSecureStorageKey(seed));
   dropV1ShieldedLeftovers();
+  drainLinkQueue(); // post-M1d R2 (never throws)
   dropV1ViewKey().catch(() => undefined); // never rejects; not awaited (onboarding is synchronous here)
   startA0(seed);
 }

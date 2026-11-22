@@ -62,6 +62,12 @@ jest.mock('../../../store/mmkv/instances', () => ({
   onSecureMmkvReset: jest.fn(), // M1d: the shared query client registers its reset hook on import
 }));
 
+// post-M1d §4: the tag write, observed here
+const mockRecordLinks = jest.fn((_a: readonly string[]) => 1);
+jest.mock('../../../modules/accounts/linkQueue', () => ({
+  recordConfirmedSendLinks: (a: readonly string[]) => mockRecordLinks(a),
+}));
+
 // Import after mocks so the lazy require() block sees mocked modules.
 import {TransactionStatusScreen} from '../TransactionStatusScreen';
 import {queryClient} from '../../../app/queryClient';
@@ -94,6 +100,7 @@ const intent = {
   createAta: false,
   from: {scheme: 'slip10:0', address: 'So11111111111111111111111111111111111111112', label: 'Account 1', isMain: true}, // M1d: #21 signs from the intent's source (was loadTransparentScheme())
   sourceBalances: {solBalance: '1000000000', tokenBalances: {}}, // M1d: part of the intent (unused by #21)
+  linksAccounts: [], // post-M1d §4: no own-account link in this Send
 };
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -313,5 +320,69 @@ describe('M1d review M1 — the source account is re-read after a confirmed send
     await waitFor(() => expect(r.getByTestId('tx-status-retry')).toBeTruthy());
     expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();
+  });
+});
+
+describe('post-M1d §4 / P3 — the "linked" tag is written only on a confirmed Send', () => {
+  const A3 = '3YqEpfo3c818GhvbQ1UmVY1nJxw16vtu4JB9peJXT94k';
+  const linking = {...intent, linksAccounts: [A3]};
+  const screen = (i: typeof linking | typeof intent = linking) =>
+    render(withSafeArea(<TransactionStatusScreen intent={i} onDashboard={jest.fn()} onViewDetails={jest.fn()} />));
+
+  it("confirmed -> written once, with the intent's accounts", async () => {
+    const r = screen();
+    await waitFor(() => expect(r.getByText('Sent successfully')).toBeTruthy());
+    expect(mockRecordLinks).toHaveBeenCalledTimes(1);
+    expect(mockRecordLinks).toHaveBeenCalledWith([A3]);
+  });
+
+  it('R14: a landed-but-failed Send (confirmed WITH err) -> nothing written', async () => {
+    mockSubmit.mockResolvedValueOnce({signature: 'S', lastValidBlockHeight: 1000});
+    mockGetSignatureStatus.mockResolvedValue({value: {confirmationStatus: 'confirmed', slot: 42, err: {x: 1}}});
+    const r = screen();
+    await waitFor(() => expect(r.getByText('Transaction failed')).toBeTruthy());
+    expect(mockRecordLinks).not.toHaveBeenCalled();
+  });
+
+  it('a failed submit -> nothing written', async () => {
+    mockSubmit.mockRejectedValueOnce(new Error('boom'));
+    const r = screen();
+    await waitFor(() => expect(r.getByTestId('tx-status-retry')).toBeTruthy());
+    expect(mockRecordLinks).not.toHaveBeenCalled();
+  });
+
+  it('an unknown outcome (no status yet) -> nothing written; R15: a late confirmation while mounted -> written once', async () => {
+    mockGetSignatureStatus.mockResolvedValue({value: null});
+    const r = screen();
+    await waitFor(() => expect(mockGetSignatureStatus.mock.calls.length).toBeGreaterThanOrEqual(2), {timeout: 4000});
+    expect(mockRecordLinks).not.toHaveBeenCalled();
+    mockGetSignatureStatus.mockResolvedValue({value: {confirmationStatus: 'confirmed', slot: 42}});
+    await waitFor(() => expect(r.getByText('Sent successfully')).toBeTruthy(), {timeout: 4000});
+    expect(mockRecordLinks).toHaveBeenCalledTimes(1);
+  });
+
+  it('cancel: unmounted before any confirmation -> nothing written, also not afterwards', async () => {
+    mockGetSignatureStatus.mockResolvedValue({value: null});
+    const r = screen();
+    await waitFor(() => expect(mockGetSignatureStatus).toHaveBeenCalled(), {timeout: 4000});
+    r.unmount();
+    mockGetSignatureStatus.mockResolvedValue({value: {confirmationStatus: 'confirmed', slot: 42}});
+    await new Promise(res => setTimeout(res, 1200));
+    expect(mockRecordLinks).not.toHaveBeenCalled();
+  });
+
+  it('a Send that links nothing -> the queue is not touched', async () => {
+    const r = screen({...intent, linksAccounts: []});
+    await waitFor(() => expect(r.getByText('Sent successfully')).toBeTruthy());
+    expect(mockRecordLinks).not.toHaveBeenCalled();
+  });
+
+  it('a tag write that throws never turns a successful Send into a failure', async () => {
+    mockRecordLinks.mockImplementationOnce(() => {
+      throw new Error('registry');
+    });
+    const r = screen();
+    await waitFor(() => expect(r.getByText('Sent successfully')).toBeTruthy());
+    expect(r.queryByText('Transaction failed')).toBeNull();
   });
 });
