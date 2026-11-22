@@ -187,3 +187,68 @@ Before any change, make dated backups of `/home/user/Downloads/index.html` and `
 - **#27:** the token symbol in the hero and the wallet as TO.
 
 Tell the owner per screen what changed.
+
+## 10. Review r1 dispositions (Fable, NOT APPROVED → folded in; binding over §3–§7 where they differ)
+
+- **R1 — partial sync (§3.1).** `forceSync` today calls `updateBalances` (stamping `lastSyncedAt = now`) even when one
+  of its reads failed and old values were reused (`backgroundSyncModule.ts:39,61-73`). The fix:
+  - `lastSyncedAt` is stamped **only when every read of that sync succeeded**;
+  - a partial or total failure sets `lastSyncFailedAt` and leaves `lastSyncedAt` alone;
+  - stale is the whole account; the age is that of the last fully successful sync;
+  - `SyncResult` gains `partial: boolean`;
+  - tests cover each read failing alone.
+- **R2 — where the link queue lives (§4).**
+  - The queue is held **in memory** and is also written to encrypted MMKV whenever that store is open. A locked
+    store throws (`accountRegistry.ts:283-287`), so the queue cannot rely on it.
+  - The queue drains when the registry becomes writable: at app start after unlock, on sheet open, and after the
+    next write attempt.
+  - It is cleared on wipe and import, through the existing `onSecureMmkvReset`.
+  - If the app dies while the store is locked, the tag is lost. This is accepted: PR 2's retroactive scan recovers
+    it, and the copy never claims "not linked".
+- **R3 — fresh-pending participants.**
+  - A `fresh-pending` address taking part is queued, not written; the validator forbids `linked` on pending.
+  - The queue applies it when `promoteA0FreshAccount` turns that entry into `fresh-exit`.
+  - If the reservation is released, the queued address is dropped.
+- **R4 — retry for main.** On #12, "tap to retry" for the main account calls `forceSync`; `refetch` for main is a
+  no-op today. The dashboard's pull-to-refresh already does this.
+- **R5 — non-main figures are not persisted.**
+  - A non-main figure lives in the in-memory query cache for this session (gcTime 5 min).
+  - §1 and §3.1 now read "a figure read earlier **in this session**".
+  - After a restart, or once the cache has expired, a failed read is still "Balance unavailable".
+  - Ruling: persisting per-account holdings was refused in M1d (plan I1). The cost is a blank row after a cold start
+    with no network.
+- **R6 — one row per token (§6).** The duplicate comes from `buildDisplayTokens` (`tokenModule.ts:166`), which pushes
+  one row per token account. `tokenBalances` is already summed per mint, so the fix is to **dedupe rows by mint**.
+  `buildHoldings` stays unchanged, because summing there would double the figure.
+- **R7 — wSOL (§6).**
+  - The wSOL row is labelled "Wrapped SOL" and its symbol is "wSOL"; today `coreTokens.ts:13` calls it "SOL".
+  - It shows its own amount, with USD and 24h % from the SOL price.
+  - The SOL row stays native-only.
+  - The hero is the sum of the rows, so wSOL counts once. The Public split column keeps folding wSOL into SOL,
+    since it is a summary.
+- **R8 — symbol source (§5).**
+  - A symbol comes only from `CORE_TOKENS`, `A0_TOKEN` (TEST), or the DAS metadata cache's **verified** entries.
+  - Otherwise the short mint is shown.
+  - An unverified DAS symbol is never shown, because a scam mint could call itself "USDC".
+- **R9 — #27's account.** The route carries `{signature, account}`: the address of the account whose history or
+  #21 the detail was opened from. Direction is judged against that address only, never against the live selection.
+- **R10 — more consumers (§3.2).** TokenDetail (`TokenDetailScreen.tsx:56`) shows the stale state too. The sheet's
+  main row, which reads `walletStore` directly, uses the same stale rule.
+- **R11 — reading an SPL transfer (§5).** The mint, decimals and owner of an SPL transfer come from
+  `meta.postTokenBalances`, matched by account index. A plain `transfer` carries no mint. The fixtures are today's
+  real devnet transactions: `5i53q9tR…` (TEST to an outside wallet), `QAgzVzY6…` (TEST to main) and `2HWCCJQd…`
+  (SOL). If no owner is present, the screen shows "token account". The cast in `queries.ts` gains those fields.
+- **R12 — sender (§5).** "From" is the transfer's own source: `info.source` for SOL, and `info.authority`, or the
+  source token account's owner, for SPL. It is not the fee payer (`keys[0]`), which is wrong for relayed
+  transactions.
+- **R13 — cold start.**
+  - `lastSyncFailedAt` is persisted with `lastSyncedAt` and added to `DEFAULTS`.
+  - At cold start the persisted figure shows as it does today until the session's first sync settles, and turns
+    stale if that sync fails. Ruling: a stale label flashing on every launch would be noise. Cost: a few seconds of
+    an unlabelled figure at launch, which is today's behaviour.
+- **R14 — a Send that lands but errors on chain.** Its transaction is on chain and names both accounts, so the
+  accounts are linked, yet P3 tags only confirmed sends. Noted for PR 2's retroactive scan.
+- **R15 — a late confirmation.** The tag write follows a late success (stuck → confirmed) only while #21 is mounted.
+  After that, PR 2's scan covers it.
+- **R16 — details.** While stale, the token rows' 24h % is hidden too. `{age}` is recomputed on render and every
+  60 s while the screen is focused.
