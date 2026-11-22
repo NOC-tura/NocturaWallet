@@ -17,8 +17,9 @@ const A3 = '3YqEpfo3c818GhvbQ1UmVY1nJxw16vtu4JB9peJXT94k';
 const SNAP = {solBalance: '3000000', nocBalance: '0', tokenBalances: {}, tokens: []};
 
 // One client per test, created outside the wrapper so a rerender keeps the same cache (a new client per
-// render would make every switch row read "loading" for the wrong reason); cleared after each test so the
-// hook's 5-minute gcTime leaves no timer behind and a single-file run exits.
+// render would make every switch row read "loading" for the wrong reason); cleared after each test. NOTE: a
+// single-file run of this suite still prints "Jest did not exit" (the full run is fine); the likely cause is
+// react-query's 5-minute gcTime timers (not proven) — clear() does not stop it.
 let qc: QueryClient;
 function wrapper({children}: {children: React.ReactNode}) {
   return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
@@ -74,7 +75,7 @@ it('plan A11 (ruling C1): the main account\'s held pool token is listed where pr
 
 it('refetch resolves (a no-op for main)', async () => {
   const {result} = renderHook(() => useAccountPublicData({address: MAIN, isMain: true}), {wrapper});
-  await expect(result.current.refetch()).resolves.toBeUndefined();
+  await expect(result.current.refetch()).resolves.toBe(true); // M1d: refetch now says whether the read succeeded (review M2)
 });
 
 it('no account → loading; NO_PUBLIC_DATA is all zeros (shown only behind a not-ready state)', () => {

@@ -31,7 +31,7 @@ import {Text} from '../../components/ui';
 import {useWalletStore} from '../../store/zustand/walletStore';
 import {useAccountList, useRefreshAccounts, useSelectAccount, useSelectedAccount} from '../../hooks/useSelectedAccount';
 import {NO_PUBLIC_DATA, useAccountPublicData} from '../../hooks/useAccountPublicData';
-import {ACCOUNTS_TITLE, PUBLIC_LOADING, PUBLIC_UNAVAILABLE, VALUE_UNKNOWN, avatarA11y} from '../../copy/accounts';
+import {ACCOUNTS_TITLE, PUBLIC_LOADING, REFRESH_ACCOUNT_FAILED, REFRESH_FAILED_TITLE, PUBLIC_UNAVAILABLE, VALUE_UNKNOWN, avatarA11y} from '../../copy/accounts';
 import {AccountsSheet} from '../../components/accounts/AccountsSheet';
 import {useShieldedStore} from '../../store/zustand/shieldedStore';
 import {usePublicSettingsStore} from '../../store/zustand/publicSettingsStore';
@@ -185,6 +185,8 @@ export function DashboardScreen({
   // M1d: the selected account's own data refreshes on every sync trigger too (a no-op for main)
   const refetchPublicRef = useRef(refetchPublic);
   refetchPublicRef.current = refetchPublic;
+  const selectedIsMainRef = useRef(true);
+  selectedIsMainRef.current = selected === null || selected.isMain;
   const runSync = useCallback(async (opts: {showErrors: boolean; refetchSelected?: boolean}) => {
     if (syncingRef.current) return;
     syncingRef.current = true;
@@ -192,11 +194,16 @@ export function DashboardScreen({
       // M1d (review r1 m11): the selected account's own read runs alongside the main account's
       // forceSync and is awaited too, so pull-to-refresh ends after BOTH; a switch passes
       // refetchSelected: false (the new account's query starts by itself, the old one is not read again)
-      const selectedRead = opts.refetchSelected === false ? Promise.resolve() : refetchPublicRef.current();
+      const selectedRead = opts.refetchSelected === false ? Promise.resolve(true) : refetchPublicRef.current();
       const result = await forceSync();
-      if (!result.success && opts.showErrors) {
+      // M1d review M2: the alert speaks for the account SHOWN — main's sync result while main is selected,
+      // the selected account's own read otherwise (main's failure is not what the figures on screen are)
+      const mainShown = selectedIsMainRef.current;
+      if (!mainShown && opts.showErrors && (await selectedRead) === false) {
+        Alert.alert(REFRESH_FAILED_TITLE, REFRESH_ACCOUNT_FAILED);
+      } else if (mainShown && !result.success && opts.showErrors) {
         Alert.alert(
-          'Could not refresh balance',
+          REFRESH_FAILED_TITLE,
           result.error
             ? `RPC error: ${result.error}\n\nIf the funds are visible on a block explorer but not here, the bundle may be pointing at the wrong cluster.`
             : 'Unknown error. Try again in a moment.',

@@ -82,3 +82,15 @@ export function fromMainLine(mainLabel: string): string {
 export function combinedLine(pub: string, priv: string): string {
   return `${MODE_PUBLIC} ${pub} · ${MODE_PRIVATE} ${priv}`;
 }
+
+/** #21's refusals (M5): nothing was signed. The code leads the line (the screen keys no-Retry on it). */
+export function sendSchemeError(scheme: string): string {
+  return `E_SEND_SCHEME: ${scheme} is not an account this wallet can sign for; nothing was signed.`;
+}
+export function sendSignerMismatchError(expected: string): string {
+  return `E_SEND_SIGNER_MISMATCH: this account's key does not derive ${expected}; nothing was signed.`;
+}
+
+/** Pull-to-refresh while a non-main account is shown and its own read failed (review M2) */
+export const REFRESH_FAILED_TITLE = 'Could not refresh balance';
+export const REFRESH_ACCOUNT_FAILED = "This account's balance could not be read. Pull down to try again.";

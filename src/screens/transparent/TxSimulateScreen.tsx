@@ -11,7 +11,6 @@ import {
 import {PublicKey} from '@solana/web3.js';
 import {Text, Button, Card} from '../../components/ui';
 import {parseTokenAmount, formatTokenAmount} from '../../utils/parseTokenAmount';
-import {formatAddress} from '../../utils/formatAddress';
 import {fromLine} from '../../copy/accounts';
 import {shortAccountAddress} from '../../modules/accounts/accountList';
 import {cn} from '../../utils/cn';
@@ -472,7 +471,7 @@ export function TxSimulateScreen({intent, onContinue, onCancel}: TxSimulateScree
               →
             </Text>
             <Text variant="body-sm" mono className="text-fg-secondary">
-              {formatAddress(intent.recipient)}
+              {shortAccountAddress(intent.recipient)}
             </Text>
           </View>
           <Text variant="caption" className="text-fg-tertiary mt-2" testID="tx-simulate-from">

@@ -19,6 +19,7 @@ const mockFeatures = {shielded: true};
 jest.mock('../../../constants/features', () => ({isShieldedEnabled: () => mockFeatures.shielded}));
 
 import {AccountsSheet} from '../AccountsSheet';
+import {useWalletStore} from '../../../store/zustand/walletStore';
 
 const MAIN = 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk';
 const A2 = '7WktogJEd2wQ9eH2oWusmcoFTgeYi6rS632UviTBJ2jm';
@@ -42,6 +43,7 @@ const sheet = (over: Partial<React.ComponentProps<typeof AccountsSheet>> = {}) =
 beforeEach(() => {
   mockRows.current = {};
   mockRowArgs.length = 0;
+  useWalletStore.setState({publicKey: MAIN, solBalance: '0', nocBalance: '0', tokenBalances: {}, tokens: [], lastSyncedAt: null}); // M1d: the main row reads walletStore (review M11)
   mockPrices.current = {prices: {}, havePrices: false};
   mockFeatures.shielded = true;
 });
@@ -83,12 +85,11 @@ it('Task 1 note: a tap on the already-selected row only closes the sheet — not
 });
 
 it('balances: read for every listed address while open; not checked yet / Balance unavailable / the token amounts', () => {
-  mockRows.current = {
-    [MAIN]: {state: 'ready', at: 1, data: {solBalance: '20000000', nocBalance: '0', tokenBalances: {[USDC]: '8990000'}, tokens: [{mint: USDC, symbol: 'USDC', name: 'USD Coin', decimals: 6, trust: 'core'}]}},
-    [A2]: {state: 'failed'},
-  };
+  // M1d: main comes from walletStore (review M11), only A2 and A3 are read by address
+  useWalletStore.setState({solBalance: '20000000', tokenBalances: {[USDC]: '8990000'}, tokens: [{mint: USDC, symbol: 'USDC', name: 'USD Coin', decimals: 6, trust: 'core'}], lastSyncedAt: 1});
+  mockRows.current = {[A2]: {state: 'failed'}};
   const {r} = sheet();
-  expect(mockRowArgs[mockRowArgs.length - 1]).toEqual({addresses: [MAIN, A2, A3], active: true});
+  expect(mockRowArgs[mockRowArgs.length - 1]).toEqual({addresses: [A2, A3], active: true}); // M1d: main is not read by address
   expect(r.getByTestId('accounts-row-slip10:0-balance')).toHaveTextContent('8.99 USDC · 0.02 SOL');
   expect(r.getByTestId('accounts-row-slip10:2-balance')).toHaveTextContent('Balance unavailable');
   expect(r.getByTestId('accounts-row-slip10:3-balance')).toHaveTextContent('not checked yet');
@@ -96,7 +97,7 @@ it('balances: read for every listed address while open; not checked yet / Balanc
 
 it('USD where every held asset is priced', () => {
   mockPrices.current = {prices: {native: {usd: 150, change24h: null}}, havePrices: true};
-  mockRows.current = {[MAIN]: {state: 'ready', at: 1, data: {solBalance: '20000000', nocBalance: '0', tokenBalances: {}, tokens: []}}};
+  useWalletStore.setState({solBalance: '20000000', lastSyncedAt: 1}); // M1d: main from walletStore (review M11)
   expect(sheet().r.getByTestId('accounts-row-slip10:0-balance')).toHaveTextContent('$3.00');
 });
 
@@ -133,7 +134,7 @@ it('plan A11 (ruling C1): a fresh exit\'s pool token is in its row — "8.99 TES
 });
 
 it('review r1 m4: balances hidden on the dashboard → every row reads "•••"', () => {
-  mockRows.current = {[MAIN]: {state: 'ready', at: 1, data: {solBalance: '20000000', nocBalance: '0', tokenBalances: {}, tokens: []}}};
+  useWalletStore.setState({solBalance: '20000000', lastSyncedAt: 1}); // M1d: main from walletStore (review M11)
   const {r} = sheet({hidden: true});
   expect(r.getByTestId('accounts-row-slip10:0-balance')).toHaveTextContent('•••');
   expect(r.getByTestId('accounts-row-slip10:3-balance')).toHaveTextContent('•••');
@@ -161,4 +162,13 @@ it('review r1 m3: a row reads its label, tags, short address and balance to a sc
   expect(r.getByTestId('accounts-row-slip10:3').props.accessibilityLabel).toBe('Account 4, exit, 3YqEpf…JXT94k, Balance unavailable');
   const h = sheet({hidden: true}).r;
   expect(h.getAllByTestId('accounts-row-slip10:3')[0]!.props.accessibilityLabel).toBe('Account 4, exit, 3YqEpf…JXT94k, •••');
+});
+
+it('review M11: the main row never goes through the by-address reader, and shows walletStore\'s figure; no sync yet → not checked yet', () => {
+  const {r} = sheet();
+  expect(mockRowArgs.every(a => !a.addresses.includes(MAIN))).toBe(true);
+  expect(r.getByTestId('accounts-row-slip10:0-balance')).toHaveTextContent('not checked yet');
+  r.unmount();
+  useWalletStore.setState({solBalance: '5000000', lastSyncedAt: 9});
+  expect(sheet().r.getByTestId('accounts-row-slip10:0-balance')).toHaveTextContent('0.005 SOL');
 });

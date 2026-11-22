@@ -10,7 +10,6 @@ import {useWalletStore} from '../../../store/zustand/walletStore';
 import {
   readAccountsState,
   refreshAccounts,
-  resetAccountsForTests,
   resolveSelection,
   selectAccount,
   useAccountsStore,
@@ -32,7 +31,7 @@ beforeEach(() => {
   clearAllStores();
   initSecureMmkv('test-key');
   storeTransparentScheme({kind: 'slip10', account: 0});
-  resetAccountsForTests();
+  useAccountsStore.setState({forMain: null, state: null}); // M1d: the product module no longer exports a test reset
 });
 
 it('the key is v1_accounts.selected (encrypted instance, mmkvKeys.ts [S])', () => {
@@ -58,7 +57,7 @@ it('persists across a restart (the store forgotten, re-hydrated from MMKV)', () 
   setRegistry([main, exit3]);
   refreshAccounts(MAIN);
   selectAccount('slip10:3');
-  resetAccountsForTests();
+  useAccountsStore.setState({forMain: null, state: null}); // M1d: the product module no longer exports a test reset
   expect(refreshAccounts(MAIN)!.selected.scheme).toBe('slip10:3');
 });
 

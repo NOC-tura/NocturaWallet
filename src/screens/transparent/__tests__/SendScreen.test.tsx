@@ -270,6 +270,18 @@ describe('M1d — the linking warning and its second tap (spec §4.4)', () => {
     expect(onReview.mock.calls[0]![0]).toMatchObject({recipient: MAIN, from: {address: A3}});
   });
 
+  // M1d: known limit, owner question (final review I1) — an acknowledged own-account Send does NOT mark the
+  // account "linked" in the sheet: the tag comes only from a landed exit (M1c). This row pins today's behaviour.
+  it('M1d: known limit, owner question — an acknowledged exit → main Send leaves the account\'s tags unchanged (no "linked" is recorded)', () => {
+    const {r, onReview} = setup(MAIN);
+    tap(r);
+    tap(r);
+    expect(onReview).toHaveBeenCalledTimes(1);
+    expect(mockSendSelected.current).toBe(A3_SRC);
+    expect(Object.keys(onReview.mock.calls[0]![0].from).sort()).toEqual(['address', 'isMain', 'label', 'scheme']); // no "linking" flag travels with the intent for #21 to record
+    expect(A3_SRC.linked).toBe(false);
+  });
+
   it('the debounce still holds: a second tap within 500 ms is not the second tap', () => {
     const {r, onReview} = setup(MAIN);
     tap(r);

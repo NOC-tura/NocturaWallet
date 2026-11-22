@@ -18,6 +18,8 @@ import {ERROR_CODES} from '../../constants/errors';
 import {parseTokenAmount, formatTokenAmount} from '../../utils/parseTokenAmount';
 import type {TransferIntent} from '../../types/transfer';
 import {CancelledError} from '../../modules/solana/landedSignature';
+import {sendSchemeError} from '../../copy/accounts';
+import {queryClient} from '../../app/queryClient';
 import {parseA0Scheme} from '../../modules/shielded/a0/accountRegistry';
 
 // ── In-file constants ─────────────────────────────────────────────────────────
@@ -120,6 +122,16 @@ export function TransactionStatusScreen({
   /** True while a submit is in flight — blocks a second Retry from racing it. */
   const submitInFlight = useRef(false);
 
+  // M1d review M1: once the send is confirmed, the SOURCE account's public data is stale — drop it so the
+  // dashboard (mounted under this modal) re-reads at once instead of showing the pre-send figure for up to
+  // 60 s. The main account's figures keep their existing sync path.
+  useEffect(() => {
+    if (stage === 'success') {
+      queryClient.invalidateQueries({queryKey: ['accountSnapshot', intent.from.address]}).catch(() => undefined);
+      queryClient.invalidateQueries({queryKey: ['txHistory', intent.from.address]}).catch(() => undefined);
+    }
+  }, [stage, intent.from.address]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -141,7 +153,7 @@ export function TransactionStatusScreen({
       const scheme = parseA0Scheme(intent.from.scheme);
       if (scheme === null) {
         setNotRetryable(true);
-        setErrorMessage(`E_SEND_SCHEME: ${intent.from.scheme} is not an account this wallet can sign for; nothing was signed.`);
+        setErrorMessage(sendSchemeError(intent.from.scheme));
         setStage('failed');
         return;
       }

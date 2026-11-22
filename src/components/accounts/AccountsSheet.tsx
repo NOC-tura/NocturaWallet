@@ -4,13 +4,15 @@
  * tags, short address and balances; the selected row has the check. No Add, no rename, no remove
  * (D6). Rows are radios in a radiogroup.
  */
-import React from 'react';
+import React, {useMemo} from 'react';
 import {Modal, Pressable, ScrollView, View} from 'react-native';
 import {Check} from 'lucide-react-native';
 import {Text} from '../ui';
 import {cn} from '../../utils/cn';
 import {useAccountRowBalances} from '../../hooks/useAccountRowBalances';
 import type {RowBalance} from '../../hooks/useAccountRowBalances';
+import {useWalletStore} from '../../store/zustand/walletStore';
+import {withPoolToken} from '../../modules/accounts/poolToken';
 import {useResolvedPrices} from '../../hooks/useResolvedPrices';
 import {shortAccountAddress} from '../../modules/accounts/accountList';
 import type {AccountList, WalletAccount} from '../../modules/accounts/accountList';
@@ -61,10 +63,29 @@ export function rowBalanceText(row: RowBalance | undefined, prices: Record<strin
 }
 
 export function AccountsSheet({visible, list, selectedScheme, hidden, onSelect, onClose}: AccountsSheetProps) {
-  const rows = useAccountRowBalances(
-    list.accounts.map(a => a.address),
+  // M1d review M11: the main account's figures are walletStore's (what the dashboard shows) — no RPC read
+  // for it here; only the other accounts are read by address.
+  const solBalance = useWalletStore(s => s.solBalance);
+  const nocBalance = useWalletStore(s => s.nocBalance);
+  const tokenBalances = useWalletStore(s => s.tokenBalances);
+  const tokens = useWalletStore(s => s.tokens);
+  const lastSyncedAt = useWalletStore(s => s.lastSyncedAt);
+  const others = list.accounts.filter(a => !a.isMain);
+  const otherRows = useAccountRowBalances(
+    others.map(a => a.address),
     visible,
   );
+  const rows = useMemo<Record<string, RowBalance>>(() => {
+    const out: Record<string, RowBalance> = {...otherRows};
+    for (const a of list.accounts) {
+      if (a.isMain) {
+        out[a.address] = lastSyncedAt
+          ? {state: 'ready', data: withPoolToken({solBalance, nocBalance, tokenBalances, tokens}), at: lastSyncedAt}
+          : {state: 'not-checked'};
+      }
+    }
+    return out;
+  }, [otherRows, list.accounts, solBalance, nocBalance, tokenBalances, tokens, lastSyncedAt]);
   const {prices, havePrices} = useResolvedPrices();
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>

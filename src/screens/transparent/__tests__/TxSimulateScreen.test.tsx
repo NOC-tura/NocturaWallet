@@ -198,3 +198,9 @@ it('M1d: the main account reads "From: Account 1 (main) · …"', () => {
   const r = render(withSafeArea(<TxSimulateScreen intent={intent} onContinue={jest.fn()} onCancel={jest.fn()} />));
   expect(r.getByTestId('tx-simulate-from')).toHaveTextContent('From: Account 1 (main) · GabcDE…ABCDEF');
 });
+
+it('M1d review M10: the recipient uses the same 6…6 short form as the From line', () => {
+  const to = 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk';
+  const r = render(withSafeArea(<TxSimulateScreen intent={{...intent, recipient: to}} onContinue={jest.fn()} onCancel={jest.fn()} />));
+  expect(r.getByText('HAgk14…3DKpqk')).toBeTruthy();
+});

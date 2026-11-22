@@ -7,6 +7,7 @@
  * test.
  */
 import React from 'react';
+import {Alert, RefreshControl} from 'react-native';
 import {render, act, fireEvent} from '@testing-library/react-native';
 import {SafeAreaProvider} from 'react-native-safe-area-context';
 import type {A0ShieldedView} from '../../../hooks/useA0Shielded';
@@ -713,5 +714,43 @@ describe('M1d — the numbered avatar opens the Accounts sheet (spec §4.1, D5)'
       fireEvent.press(r.getByTestId('dashboard-avatar'));
     });
     expect(mockUnlock).not.toHaveBeenCalled();
+  });
+});
+
+describe('M1d review M2 — the pull-to-refresh alert speaks for the account shown', () => {
+  const pull = async (r: Awaited<ReturnType<typeof renderDashboard>>) => {
+    await act(async () => {
+      await (r.UNSAFE_getByType(RefreshControl).props.onRefresh as () => Promise<void>)();
+    });
+  };
+  const failMain = () => (jest.requireMock('../../../modules/backgroundSync/backgroundSyncModule') as {forceSync: jest.Mock}).forceSync.mockResolvedValueOnce({success: false, error: 'boom'});
+
+  it('main selected, main sync fails → the alert (as before)', async () => {
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    const r = await renderDashboard();
+    failMain();
+    await pull(r);
+    expect(alert).toHaveBeenCalledWith('Could not refresh balance', expect.stringContaining('RPC error: boom'));
+    alert.mockRestore();
+  });
+
+  it('a non-main account selected, only MAIN\'s sync fails → no alert (the figures on screen refreshed fine)', async () => {
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    mockSelected.current = EXIT_ACCOUNT;
+    const r = await renderDashboard();
+    failMain();
+    await pull(r);
+    expect(alert).not.toHaveBeenCalled();
+    alert.mockRestore();
+  });
+
+  it('a non-main account selected and ITS read fails → the alert names this account', async () => {
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    mockSelected.current = EXIT_ACCOUNT;
+    const r = await renderDashboard();
+    (mockRefetchPublic as jest.Mock).mockResolvedValueOnce(false);
+    await pull(r);
+    expect(alert).toHaveBeenCalledWith('Could not refresh balance', "This account's balance could not be read. Pull down to try again.");
+    alert.mockRestore();
   });
 });

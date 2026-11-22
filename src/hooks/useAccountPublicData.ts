@@ -31,8 +31,8 @@ export const ACCOUNT_SNAPSHOT_KEY = 'accountSnapshot';
 
 export function useAccountPublicData(account: {address: string; isMain: boolean} | null): {
   data: AccountPublicData;
-  /** resolves when the selected non-main account's read settled (at once for main) */
-  refetch: () => Promise<void>;
+  /** resolves when the selected non-main account's read settled (at once for main): false when that read failed */
+  refetch: () => Promise<boolean>;
 } {
   // field selectors (review m3): a walletStore write to an unrelated field (prices) does not re-render here
   const solBalance = useWalletStore(s => s.solBalance);
@@ -49,13 +49,13 @@ export function useAccountPublicData(account: {address: string; isMain: boolean}
     staleTime: 10_000,
     gcTime: 5 * 60_000,
   });
-  const refetch = (): Promise<void> =>
+  const refetch = (): Promise<boolean> =>
     other !== null
       ? q.refetch({cancelRefetch: false}).then(
-          () => undefined,
-          () => undefined,
+          r => !r.isError,
+          () => false,
         ) // review r1 m11: never cancels a read in flight
-      : Promise.resolve();
+      : Promise.resolve(true);
   // plan A11: the main account's held pool token is listed too (display only; walletStore unchanged).
   // Memoised: the object is referentially stable across renders while walletStore's values are.
   const mainData = useMemo<AccountPublicData | null>(() => {

@@ -5,7 +5,6 @@ import {ArrowLeft} from 'lucide-react-native';
 import {useNavigation} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import {Text, Button, Card} from '../../components/ui';
-import {formatAddress} from '../../utils/formatAddress';
 import {formatTokenAmount} from '../../utils/parseTokenAmount';
 import {addressBook} from '../../modules/addressBook/addressBookModule';
 import {accountWithAddress} from '../../copy/accounts';
@@ -165,7 +164,7 @@ export function TxConfirmScreen({intent, onBroadcast, onCancel}: TxConfirmScreen
                 onPress={() => {
                   try {
                     addressBook.addContact({
-                      name: formatAddress(intent.recipient),
+                      name: shortAccountAddress(intent.recipient),
                       address: intent.recipient,
                       addressType: 'transparent',
                       lastUsedAt: Date.now(),

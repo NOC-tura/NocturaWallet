@@ -98,8 +98,3 @@ export function selectAccount(scheme: string): boolean {
   useAccountsStore.setState({forMain, state: {list: state.list, selected: hit}});
   return true;
 }
-
-/** TEST-ONLY: forget the in-memory state (a "restart"). */
-export function resetAccountsForTests(): void {
-  useAccountsStore.setState({forMain: null, state: null});
-}

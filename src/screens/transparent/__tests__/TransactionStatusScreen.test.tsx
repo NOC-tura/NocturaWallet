@@ -59,10 +59,12 @@ jest.mock('../../../store/mmkv/instances', () => ({
   mmkvSecure: jest.fn().mockReturnValue(null),
   initSecureMmkv: jest.fn(),
   onSecureMmkvReady: jest.fn(),
+  onSecureMmkvReset: jest.fn(), // M1d: the shared query client registers its reset hook on import
 }));
 
 // Import after mocks so the lazy require() block sees mocked modules.
 import {TransactionStatusScreen} from '../TransactionStatusScreen';
+import {queryClient} from '../../../app/queryClient';
 import {submitTransparentTransfer} from '../../../modules/solana/sendTransaction';
 
 const mockSubmit = jest.mocked(submitTransparentTransfer);
@@ -290,5 +292,26 @@ describe('M1d — #21 signs from the intent\'s source (spec §3.3)', () => {
     await waitFor(() => expect(r.getByText(/E_SEND_SCHEME/)).toBeTruthy());
     expect(mockSubmit).not.toHaveBeenCalled();
     expect(r.queryByTestId('tx-status-retry')).toBeNull(); // review m1: not retryable
+  });
+});
+
+describe('M1d review M1 — the source account is re-read after a confirmed send', () => {
+  it('success invalidates the source\'s accountSnapshot and txHistory entries', async () => {
+    const spy = jest.spyOn(queryClient, 'invalidateQueries');
+    const from = {scheme: 'slip10:3', address: '3YqEpfo3c818GhvbQ1UmVY1nJxw16vtu4JB9peJXT94k', label: 'Account 4', isMain: false};
+    const r = render(withSafeArea(<TransactionStatusScreen intent={{...intent, from}} onDashboard={jest.fn()} onViewDetails={jest.fn()} />));
+    await waitFor(() => expect(r.getByTestId('tx-status-done')).toBeTruthy());
+    expect(spy).toHaveBeenCalledWith({queryKey: ['accountSnapshot', from.address]});
+    expect(spy).toHaveBeenCalledWith({queryKey: ['txHistory', from.address]});
+    spy.mockRestore();
+  });
+
+  it('a failed send invalidates nothing', async () => {
+    const spy = jest.spyOn(queryClient, 'invalidateQueries');
+    mockSubmit.mockRejectedValueOnce(new Error('boom'));
+    const r = render(withSafeArea(<TransactionStatusScreen intent={intent} onDashboard={jest.fn()} onViewDetails={jest.fn()} />));
+    await waitFor(() => expect(r.getByTestId('tx-status-retry')).toBeTruthy());
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
   });
 });

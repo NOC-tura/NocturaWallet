@@ -25,6 +25,13 @@ describe('src/copy/accounts.ts — the M1d strings', () => {
     expect(c.PUBLIC_UNAVAILABLE).toBe('Balance unavailable · pull to refresh');
   });
 
+  it('review M5/M2: #21\'s refusals and the refresh alert, with their codes first', () => {
+    expect(c.sendSchemeError('foo:1')).toBe('E_SEND_SCHEME: foo:1 is not an account this wallet can sign for; nothing was signed.');
+    expect(c.sendSignerMismatchError('ADDR')).toBe("E_SEND_SIGNER_MISMATCH: this account's key does not derive ADDR; nothing was signed.");
+    expect(c.REFRESH_FAILED_TITLE).toBe('Could not refresh balance');
+    expect(c.REFRESH_ACCOUNT_FAILED).toBe("This account's balance could not be read. Pull down to try again.");
+  });
+
   it('the linking warning (spec §4.4, M1 spec §10 C2)', () => {
     expect(c.LINK_WARNING_TITLE).toBe('Sending between your own accounts links them on chain.');
     expect(c.LINK_WARNING_BODY).toBe('Anyone can see that these two accounts belong to the same person.');

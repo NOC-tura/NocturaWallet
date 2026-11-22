@@ -3,7 +3,7 @@ import {act, renderHook} from '@testing-library/react-native';
 import {clearAllStores, initSecureMmkv, mmkvSecure} from '../../store/mmkv/instances';
 import {storeTransparentScheme} from '../../modules/keyDerivation/derivationScheme';
 import {useWalletStore} from '../../store/zustand/walletStore';
-import {resetAccountsForTests, selectAccount, useAccountsStore} from '../../modules/accounts/selectedAccount';
+import {selectAccount, useAccountsStore} from '../../modules/accounts/selectedAccount';
 import type {WalletAccount} from '../../modules/accounts/accountList';
 import {useAccountList, useRefreshAccounts, useSelectedAccount} from '../useSelectedAccount';
 
@@ -15,7 +15,7 @@ beforeEach(() => {
   clearAllStores();
   initSecureMmkv('test-key');
   storeTransparentScheme({kind: 'slip10', account: 0});
-  resetAccountsForTests();
+  useAccountsStore.setState({forMain: null, state: null}); // M1d: the product module no longer exports a test reset
   useWalletStore.setState({publicKey: MAIN});
 });
 

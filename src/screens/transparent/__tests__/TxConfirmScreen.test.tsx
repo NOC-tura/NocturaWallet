@@ -272,3 +272,10 @@ it('M1d (plan A8): the high-value gate reads the SOURCE\'s balance (0.5 SOL of a
   );
   expect(r.getByTestId('tx-confirm-highvalue')).toBeTruthy();
 });
+
+it('M1d review M10: the recipient uses the same 6…6 short form as the From row', () => {
+  const to = 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk';
+  const r = render(withSafeArea(<TxConfirmScreen intent={{...intent, recipient: to}} onBroadcast={jest.fn()} onCancel={jest.fn()} />));
+  expect(r.getAllByText(/HAgk14…3DKpqk/).length).toBeGreaterThanOrEqual(1); // the recipient row (the From row is another address)
+  expect(r.queryByText(/HAgk14\.\.\./)).toBeNull();
+});

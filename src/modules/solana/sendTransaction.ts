@@ -13,6 +13,7 @@ import {
   deriveTransparentKeypair,
   type TransparentScheme,
 } from '../keyDerivation/transparent';
+import {sendSignerMismatchError} from '../../copy/accounts';
 import {zeroize} from '../session/zeroize';
 
 export type SendTransparentParams =
@@ -44,7 +45,7 @@ const keychainManager = new KeychainManager();
 export class SendSignerMismatchError extends Error {
   readonly code = 'E_SEND_SIGNER_MISMATCH' as const;
   constructor(expected: string) {
-    super(`E_SEND_SIGNER_MISMATCH: this account's key does not derive ${expected}; nothing was signed.`);
+    super(sendSignerMismatchError(expected));
     this.name = 'SendSignerMismatchError';
   }
 }
