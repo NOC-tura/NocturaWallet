@@ -23,4 +23,8 @@ describe('presaleAllocationDisplay', () => {
   it('is resilient to a malformed stored value', () => {
     expect(presaleAllocationDisplay({tokensPurchased: 'oops', referralBonusTokens: '0'}).show).toBe(false);
   });
+
+  it('post-M1d §7: an allocation below the shown precision reads "<0.01"', () => {
+    expect(presaleAllocationDisplay({tokensPurchased: '100', referralBonusTokens: '0'})).toEqual({show: true, nocText: '<0.01'});
+  });
 });

@@ -348,7 +348,7 @@ export function DashboardScreen({
   // wallet's own token always pinned.
   const displayTokens = useMemo(() => {
     const NATIVE_SOL = 'native';
-    const hasSol = tokens.some(t => t.mint === NATIVE_SOL || t.symbol === 'SOL');
+    const hasSol = tokens.some(t => t.mint === NATIVE_SOL); // r2-4: by mint, never by symbol
     const hasNoc = tokens.some(t => t.mint === NOC_MINT);
 
     const defaults: typeof tokens = [];
@@ -472,7 +472,7 @@ export function DashboardScreen({
         }
         renderItem={({item: token}) => {
           const isNoc = token.mint === NOC_MINT;
-          const isNativeSol = token.mint === 'native' || token.symbol === 'SOL';
+          const isNativeSol = token.mint === 'native'; // r2-4: by mint, never by symbol
           // Balance source: native SOL → solBalance, NOC → nocBalance fallback,
           // other SPL → tokenBalances[mint]
           let balance = '0';

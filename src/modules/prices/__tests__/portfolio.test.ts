@@ -1,4 +1,4 @@
-import {computePortfolio} from '../portfolio';
+import {computePortfolio, priceKeyFor} from '../portfolio';
 import type {TokenPrice} from '../priceModule';
 
 const prices: Record<string, TokenPrice> = {
@@ -42,5 +42,35 @@ describe('computePortfolio', () => {
     expect(r.totalUsd).toBe(0);
     expect(r.change24hPct).toBeNull();
     expect(r.perToken.UNKNOWN).toBeUndefined();
+  });
+});
+
+const WSOL = 'So11111111111111111111111111111111111111112';
+
+describe('r2-4: wrapped SOL is priced as SOL', () => {
+  it('priceKeyFor: wSOL → native; everything else → itself', () => {
+    expect(priceKeyFor(WSOL)).toBe('native');
+    expect(priceKeyFor('native')).toBe('native');
+    expect(priceKeyFor('USDC')).toBe('USDC');
+  });
+
+  it('a wSOL holding gets USD and 24h % from the SOL price, under its own mint', () => {
+    const r = computePortfolio([{mint: WSOL, amountRaw: '500000000', decimals: 9}], prices);
+    expect(r.perToken[WSOL]).toEqual({usd: 50, change24h: 2});
+    expect(r.totalUsd).toBeCloseTo(50, 6);
+  });
+
+  // W3 (Review Focus 5)
+  it('R7: native SOL + wSOL — each its own row, the total counts each once', () => {
+    const r = computePortfolio(
+      [
+        {mint: 'native', amountRaw: '1000000000', decimals: 9},
+        {mint: WSOL, amountRaw: '500000000', decimals: 9},
+      ],
+      prices,
+    );
+    expect(r.perToken.native!.usd).toBeCloseTo(100, 6);
+    expect(r.perToken[WSOL]!.usd).toBeCloseTo(50, 6);
+    expect(r.totalUsd).toBeCloseTo(150, 6);
   });
 });

@@ -18,7 +18,7 @@ import {VALUE_UNKNOWN, relativeAge, staleNote} from '../../copy/accounts';
 import {useResolvedPrices} from '../../hooks/useResolvedPrices';
 import {usePriceHistory} from '../../hooks/usePriceHistory';
 import {buildHoldings} from '../../modules/prices/holdings';
-import {computePortfolio} from '../../modules/prices/portfolio';
+import {computePortfolio, priceKeyFor} from '../../modules/prices/portfolio';
 import {
   coingeckoIdForMint,
   changeOverSeries,
@@ -86,7 +86,7 @@ export function TokenDetailScreen({mint, onBack, onSend, onReceive, onSwap}: Pro
     ? solBalance
     : (tokenBalances[mint] ?? (isNoc ? nocBalance : '0'));
 
-  const price = prices[mint]?.usd ?? null;
+  const price = prices[priceKeyFor(mint)]?.usd ?? null; // r2-4: wSOL is priced as SOL
   // Display-only float: feeds the USD fiat figure, NOT a money path. The exact
   // token amount shown to the user comes from formatBalanceForDisplay (BigInt).
   const uiAmount = Number(balanceRaw || '0') / 10 ** meta.decimals;
@@ -116,7 +116,7 @@ export function TokenDetailScreen({mint, onBack, onSend, onReceive, onSwap}: Pro
   // market) — there the history query is never scheduled.
   const pricing = isPricingEnabled();
   const noMarket = isNoc || !pricing;
-  const cgId = coingeckoIdForMint(mint);
+  const cgId = coingeckoIdForMint(priceKeyFor(mint));
   const history = usePriceHistory(pricing ? cgId : null, tf);
   const series = history.data?.prices ?? [];
   const change = noMarket ? null : changeOverSeries(series);

@@ -16,7 +16,7 @@ export interface TokenLogoProps {
 export function TokenLogo({symbol, isNoc, logoUri}: TokenLogoProps) {
   const [failed, setFailed] = React.useState(false);
 
-  if (symbol === 'SOL') {
+  if (symbol === 'SOL' || symbol === 'wSOL') {
     return (
       <View className="w-10 h-10 rounded-pill items-center justify-center bg-bg-surface-2 overflow-hidden">
         <Image

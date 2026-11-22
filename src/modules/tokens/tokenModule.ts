@@ -157,6 +157,9 @@ export class TokenManager {
    * symbol/name/decimals from CORE_TOKENS; verified mints fall back to
    * resolved metadata from the optional `meta` map, then to a shortened-mint symbol.
    *
+   * One entry per mint (post-M1d R6): the amounts are summed per mint elsewhere
+   * (`sumTokenBalancesByMint`); this is the list of rows.
+   *
    * Verified classification depends on the Jupiter list being loaded
    * (fetchVerifiedList); when it is not, only core tokens qualify.
    *
@@ -168,10 +171,13 @@ export class TokenManager {
     meta: Record<string, {name?: string; symbol?: string; logoUri?: string}> = {},
   ): TokenMetadata[] {
     const result: TokenMetadata[] = [];
+    const listed = new Set<string>();
     for (const acc of accounts) {
       if (acc.amount === '0') continue; // not held
+      if (listed.has(acc.mint)) continue; // one row per mint
       const trust = this.classifyToken(acc.mint);
       if (trust === 'unknown') continue; // core + verified only
+      listed.add(acc.mint);
       const core = CORE_TOKENS.find(t => t.mint === acc.mint);
       const m = meta[acc.mint];
       result.push({

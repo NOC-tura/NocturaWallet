@@ -16,4 +16,10 @@ describe('TokenLogo', () => {
     const {getByText} = render(<TokenLogo symbol="WIF" isNoc={false} />);
     expect(getByText('W')).toBeTruthy();
   });
+
+  it('R7: "wSOL" gets the Solana logo (not the letter "w")', () => {
+    const {UNSAFE_getAllByType, queryByText} = render(<TokenLogo symbol="wSOL" isNoc={false} />);
+    expect(UNSAFE_getAllByType(Image)).toHaveLength(1);
+    expect(queryByText('w')).toBeNull();
+  });
 });

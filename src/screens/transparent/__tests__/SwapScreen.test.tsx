@@ -1,5 +1,5 @@
 import React from 'react';
-import {render} from '@testing-library/react-native';
+import {render, fireEvent, act} from '@testing-library/react-native';
 import {SafeAreaProvider} from 'react-native-safe-area-context';
 import {SwapScreen} from '../SwapScreen';
 
@@ -26,8 +26,12 @@ jest.mock('../../../hooks/useSelectedAccount', () => ({
 const LINE_EXIT = {scheme: 'slip10:3', address: '3YqEpfo3c818GhvbQ1UmVY1nJxw16vtu4JB9peJXT94k', label: 'Account 4', isMain: false};
 const LINE_MAIN = {scheme: 'slip10:0', address: 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk', label: 'Account 1', isMain: true};
 
+// post-M1d Task 5 (controller ruling): the sync stamps are switchable per test
+const mockStore: {current: {lastSyncedAt: number | null; lastSyncFailedAt: number | null}} = {
+  current: {lastSyncedAt: 1, lastSyncFailedAt: null},
+};
 jest.mock('../../../store/zustand/walletStore', () => ({
-  useWalletStore: () => ({solBalance: '2000000000', nocBalance: '0', tokenBalances: {}, tokens: []}),
+  useWalletStore: () => ({solBalance: '2000000000', nocBalance: '0', tokenBalances: {}, tokens: [], ...mockStore.current}),
 }));
 
 jest.mock('../../../store/mmkv/instances', () => ({
@@ -101,5 +105,83 @@ describe('SwapScreen', () => {
     const normal = render(withSafeArea(<SwapScreen onBack={() => {}} onDone={() => {}} />));
     expect(normal.getByText('≈ 1.5')).toBeTruthy();
     mockQuote.current = undefined;
+  });
+});
+
+describe('post-M1d Task 5 ruling: Swap refuses a stale or unknown main balance', () => {
+  const STATES = {
+    fresh: {lastSyncedAt: 1, lastSyncFailedAt: null},
+    stale: {lastSyncedAt: 1, lastSyncFailedAt: 2}, // read once, the last sync failed
+    unknown: {lastSyncedAt: null, lastSyncFailedAt: 2}, // never read, the sync failed
+  };
+  afterEach(() => {
+    mockStore.current = STATES.fresh;
+    mockQuote.current = undefined;
+    jest.useRealTimers();
+  });
+
+  const renderSwap = () => render(withSafeArea(<SwapScreen onBack={() => {}} onDone={() => {}} />));
+
+  it('fresh (control): the from-balance line shows the figure', () => {
+    const r = renderSwap();
+    expect(r.getByText('2 SOL')).toBeTruthy();
+  });
+
+  it.each(['stale', 'unknown'] as const)('%s: the from-balance line reads "— SOL", never the figure', state => {
+    mockStore.current = STATES[state];
+    const r = renderSwap();
+    expect(r.getByText('— SOL')).toBeTruthy();
+    expect(r.queryByText('2 SOL')).toBeNull();
+  });
+
+  it('fresh (control): MAX fills the amount', () => {
+    const r = renderSwap();
+    fireEvent.press(r.getByLabelText('Max'));
+    expect(r.getByLabelText('Amount to swap').props.value).toBe('1.998');
+  });
+
+  it.each(['stale', 'unknown'] as const)('%s: MAX is disabled and fills nothing', state => {
+    mockStore.current = STATES[state];
+    const r = renderSwap();
+    expect(r.getByLabelText('Max').props.accessibilityState).toMatchObject({disabled: true});
+    fireEvent.press(r.getByLabelText('Max'));
+    expect(r.getByLabelText('Amount to swap').props.value).toBe('');
+  });
+
+  it('fresh (control): the token picker shows balances', () => {
+    const r = renderSwap();
+    fireEvent.press(r.getByLabelText('From token SOL, tap to change'));
+    expect(r.getAllByText('2').length).toBeGreaterThan(0);
+  });
+
+  it.each(['stale', 'unknown'] as const)('%s: the token picker shows "—" for every balance', state => {
+    mockStore.current = STATES[state];
+    const r = renderSwap();
+    fireEvent.press(r.getByLabelText('From token SOL, tap to change'));
+    expect(r.getAllByText('—').length).toBeGreaterThan(0);
+    expect(r.queryByText('2')).toBeNull();
+  });
+
+  function typeAmountWithQuote(r: ReturnType<typeof renderSwap>) {
+    mockQuote.current = {outAmount: '1500000'};
+    fireEvent.changeText(r.getByLabelText('Amount to swap'), '1');
+    act(() => {
+      jest.advanceTimersByTime(500);
+    });
+  }
+
+  it('fresh (control): with an amount and a quote the swap CTA is enabled', () => {
+    jest.useFakeTimers();
+    const r = renderSwap();
+    typeAmountWithQuote(r);
+    expect(r.getByLabelText('Swap SOL → USDC').props.accessibilityState).toMatchObject({disabled: false});
+  });
+
+  it.each(['stale', 'unknown'] as const)('%s: with an amount and a quote the swap CTA is still disabled', state => {
+    jest.useFakeTimers();
+    mockStore.current = STATES[state];
+    const r = renderSwap();
+    typeAmountWithQuote(r);
+    expect(r.getByLabelText('Swap SOL → USDC').props.accessibilityState).toMatchObject({disabled: true});
   });
 });

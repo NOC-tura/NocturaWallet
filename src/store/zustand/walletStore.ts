@@ -1,6 +1,7 @@
 import {create} from 'zustand';
 import {persist, createJSONStorage} from 'zustand/middleware';
 import {mmkvPublicStorage} from '../mmkv/publicAdapter';
+import {CORE_TOKENS} from '../../modules/tokens/coreTokens';
 
 export interface TokenMetadata {
   mint: string;
@@ -49,6 +50,18 @@ const DEFAULTS = {
   lastSyncFailedAt: null,
 };
 
+/**
+ * post-M1d R7 (review r1-6): the token list is persisted, so a row written by an older build can carry a
+ * label the registry no longer uses (wrapped SOL was "SOL" / "Solana"). A core mint always shows its
+ * CORE_TOKENS symbol and name; every other row is returned as stored. Runs on rehydration (`merge`).
+ */
+export function relabelCoreTokens(tokens: readonly TokenMetadata[]): TokenMetadata[] {
+  return tokens.map(t => {
+    const core = CORE_TOKENS.find(c => c.mint === t.mint);
+    return core && (t.symbol !== core.symbol || t.name !== core.name) ? {...t, symbol: core.symbol, name: core.name} : t;
+  });
+}
+
 export const useWalletStore = create<WalletState>()(
   persist(
     set => ({
@@ -74,8 +87,17 @@ export const useWalletStore = create<WalletState>()(
       // proper encryption-key derivation lands at app-unlock time.
       storage: createJSONStorage(() => mmkvPublicStorage),
       partialize: ({pkShielded: _pkShielded, lastSyncFailedAt: _lastSyncFailedAt, ...rest}) => rest,
-      // r2-1: a new session never starts stale, whatever the record holds
-      merge: (persisted, current) => ({...current, ...(persisted as Partial<WalletState>), lastSyncFailedAt: null}),
+      // r2-1: a new session never starts stale, whatever the record holds.
+      // review r1-6: a persisted core-token row takes the registry's label (no version/migrate exists to bump).
+      merge: (persisted, current) => {
+        const stored = (persisted ?? {}) as Partial<WalletState>;
+        return {
+          ...current,
+          ...stored,
+          tokens: Array.isArray(stored.tokens) ? relabelCoreTokens(stored.tokens) : current.tokens,
+          lastSyncFailedAt: null,
+        };
+      },
     },
   ),
 );

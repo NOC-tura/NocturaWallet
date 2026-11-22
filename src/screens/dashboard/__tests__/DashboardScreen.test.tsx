@@ -1129,3 +1129,47 @@ describe('post-M1d §7 coverage — dashboard pins', () => {
     }
   });
 });
+
+describe('post-M1d R7 / r2-4 — the native row is keyed by the mint, not by the symbol', () => {
+  const WSOL = 'So11111111111111111111111111111111111111112';
+  const withWsol = (solBalance: string): AccountPublicData => ({
+    status: 'ready', syncedAt: 1, solBalance, nocBalance: '0',
+    tokens: [{mint: WSOL, symbol: 'wSOL', name: 'Wrapped SOL', decimals: 9, trust: 'core'}],
+    tokenBalances: {[WSOL]: '500000000'},
+  });
+
+  it('SOL and wSOL are two rows: "1 SOL" (native only) and "0.5 wSOL" (its own amount)', async () => {
+    mockPublic.current = withWsol('1000000000');
+    const r = await renderDashboard();
+    expect(r.getByText('1 SOL')).toBeTruthy();
+    expect(r.getByText('0.5 wSOL')).toBeTruthy();
+    expect(r.getByText('Wrapped SOL')).toBeTruthy();
+    expect(r.queryByText('1.5 SOL')).toBeNull();
+  });
+
+  it('Review Focus 5: wSOL held and 0 native SOL → the SOL row is still there, reading "0 SOL"', async () => {
+    mockPublic.current = withWsol('0');
+    const r = await renderDashboard();
+    expect(r.getByText('0 SOL')).toBeTruthy();
+    expect(r.getByText('0.5 wSOL')).toBeTruthy();
+  });
+
+  it('a row that merely CALLS itself "SOL" is not the native row: it shows its own mint\'s amount', async () => {
+    mockPublic.current = {
+      status: 'ready', syncedAt: 1, solBalance: '1000000000', nocBalance: '0',
+      tokens: [{mint: 'FAKEMINT', symbol: 'SOL', name: 'Not Solana', decimals: 9, trust: 'verified'}],
+      tokenBalances: {FAKEMINT: '7000000000'},
+    };
+    const r = await renderDashboard();
+    expect(r.getAllByText('7 SOL').length).toBeGreaterThan(0);
+    expect(r.getAllByText('1 SOL')).toHaveLength(2); // the native row + the sub-balance line; a symbol-named row is not given the native amount (a third)
+  });
+
+  // pin: publicSide already folds wSOL; the list rows stop folding, the split keeps folding
+  it('the split\'s Public column keeps folding wSOL into SOL (a summary, R7)', async () => {
+    mockPublic.current = withWsol('1000000000');
+    mockResolved.current = {prices: {}, havePrices: false};
+    const r = await renderDashboard();
+    expect(r.getAllByTestId('dashboard-split-public-line').map(l => l.props.children)).toEqual(['1.5 SOL']);
+  });
+});

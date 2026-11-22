@@ -1,4 +1,5 @@
 import type {TokenPrice} from './priceModule';
+import {WSOL_MINT} from '../swap/jupiter';
 
 export interface Holding {
   mint: string; // 'native' | mint base58
@@ -10,6 +11,14 @@ export interface PortfolioValue {
   totalUsd: number;
   change24hPct: number | null; // USD-weighted; null if no priced holding has a change
   perToken: Record<string, {usd: number; change24h: number | null}>;
+}
+
+/**
+ * post-M1d R7 / r2-4: prices are keyed by mint ('native' for SOL). Wrapped SOL has no entry of its own —
+ * it is worth exactly SOL, so it is priced from 'native'. Every other mint is priced under itself.
+ */
+export function priceKeyFor(mint: string): string {
+  return mint === WSOL_MINT ? 'native' : mint;
 }
 
 /**
@@ -27,7 +36,7 @@ export function computePortfolio(
   const perToken: PortfolioValue['perToken'] = {};
 
   for (const h of holdings) {
-    const price = prices[h.mint];
+    const price = prices[priceKeyFor(h.mint)];
     if (price == null) {
       // No price for this mint → omit it from perToken so the UI hides the
       // fiat column instead of showing a misleading $0.00.

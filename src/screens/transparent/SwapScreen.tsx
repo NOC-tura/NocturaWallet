@@ -22,6 +22,8 @@ import {mmkvPublic} from '../../store/mmkv/instances';
 import {MMKV_KEYS} from '../../constants/mmkvKeys';
 import {SWAP_TOKENS} from '../../modules/swap/swapTokens';
 import {TokenPickerSheet} from '../../components/TokenPickerSheet';
+import {mainBalanceIsStale, mainBalanceIsUnknown} from '../../modules/accounts/staleness';
+import {VALUE_UNKNOWN} from '../../copy/accounts';
 import {MainAccountLine} from '../../components/accounts/MainAccountLine';
 
 // ── Lazy imports — wrapped in try/catch so Jest/stub envs don't crash ─────────
@@ -90,7 +92,9 @@ function quoteOutText(outAmount: string, decimals: number): string {
 }
 
 export function SwapScreen({initialFromMint, onBack, onDone}: SwapScreenProps) {
-  const {solBalance, tokenBalances} = useWalletStore();
+  const {solBalance, tokenBalances, lastSyncedAt, lastSyncFailedAt} = useWalletStore();
+  // post-M1d Task 5 ruling: a stale or never-read main balance is not a figure to spend from — refuse it everywhere.
+  const balanceKnown = !mainBalanceIsStale(lastSyncedAt, lastSyncFailedAt) && !mainBalanceIsUnknown(lastSyncedAt, lastSyncFailedAt);
 
   const [fromMint, setFromMint] = useState<string>(
     initialFromMint && SWAP_TOKENS.some(t => t.mint === initialFromMint)
@@ -170,6 +174,7 @@ export function SwapScreen({initialFromMint, onBack, onDone}: SwapScreenProps) {
   };
 
   const onMax = () => {
+    if (!balanceKnown) return;
     let raw: bigint;
     try { raw = BigInt(fromBalanceRaw || '0'); } catch { raw = 0n; }
     if (fromMint === 'native') {
@@ -188,7 +193,7 @@ export function SwapScreen({initialFromMint, onBack, onDone}: SwapScreenProps) {
   const onPickTo = () => setPicker('to');
 
   const canSwap =
-    quoteEnabled && quote.data != null && !quote.isLoading && !insufficient;
+    balanceKnown && quoteEnabled && quote.data != null && !quote.isLoading && !insufficient;
 
   const onSwap = async () => {
     const now = Date.now();
@@ -386,6 +391,8 @@ export function SwapScreen({initialFromMint, onBack, onDone}: SwapScreenProps) {
               />
               <Pressable
                 onPress={onMax}
+                disabled={!balanceKnown}
+                accessibilityState={{disabled: !balanceKnown}}
                 accessibilityRole="button"
                 accessibilityLabel="Max"
                 className="px-3 py-1.5 rounded-pill bg-accent-transparent-tint active:opacity-80">
@@ -396,7 +403,7 @@ export function SwapScreen({initialFromMint, onBack, onDone}: SwapScreenProps) {
             </View>
             {/* Balance line */}
             <Text variant="caption" className="text-fg-secondary">
-              {formatBalanceForDisplay(fromBalanceRaw, from.decimals)} {from.symbol}
+              {balanceKnown ? formatBalanceForDisplay(fromBalanceRaw, from.decimals) : VALUE_UNKNOWN} {from.symbol}
             </Text>
           </View>
 
@@ -508,6 +515,7 @@ export function SwapScreen({initialFromMint, onBack, onDone}: SwapScreenProps) {
         )}
         selectedMint={picker === 'from' ? fromMint : toMint}
         balances={{native: solBalance, ...tokenBalances}}
+        balancesKnown={balanceKnown}
         onSelect={mint => {
           if (picker === 'from') {
             setFromMint(mint);

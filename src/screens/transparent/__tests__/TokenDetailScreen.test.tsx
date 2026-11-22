@@ -255,6 +255,19 @@ describe('the chart on a build without pricing (devnet)', () => {
     expect(getByText('$150.00')).toBeTruthy();
     expect(mockPriceHistory).toHaveBeenCalledWith('solana', expect.any(String));
   });
+
+  it('r2-4: the wSOL detail is "wSOL" / "Wrapped SOL", priced from the SOL price, with the SOL chart', () => {
+    mockPriceHistory.mockClear();
+    const {getByText, getAllByText} = render(
+      withSafeArea(
+        <TokenDetailScreen mint="So11111111111111111111111111111111111111112" onBack={() => {}} onSend={jest.fn()} onReceive={() => {}} onSwap={jest.fn()} />,
+      ),
+    );
+    expect(getAllByText('wSOL').length).toBeGreaterThan(0);
+    expect(getByText('Wrapped SOL')).toBeTruthy();
+    expect(getByText('$150.00')).toBeTruthy();
+    expect(mockPriceHistory).toHaveBeenCalledWith('solana', expect.any(String));
+  });
 });
 
 describe('M1d — the holding is the selected account\'s (plan A6)', () => {

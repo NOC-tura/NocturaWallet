@@ -91,4 +91,12 @@ describe('TokenPickerSheet', () => {
     expect(getByText('2')).toBeTruthy(); // SOL balance: 2
     expect(getByText('5')).toBeTruthy(); // USDC balance: 5
   });
+
+  it('post-M1d §7: a sub-precision balance reads "<0.0001", never scientific notation', () => {
+    const {getByText, queryByText} = render(
+      <TokenPickerSheet visible title="Select token" tokens={tokens} selectedMint="native" balances={{native: '10'}} onSelect={() => {}} onClose={() => {}} />,
+    );
+    expect(getByText('<0.0001')).toBeTruthy();
+    expect(queryByText(/e-\d/)).toBeNull();
+  });
 });
