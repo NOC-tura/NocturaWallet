@@ -1,4 +1,4 @@
-import React, {useEffect, useMemo, useRef, useState} from 'react';
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
   View,
   TextInput,
@@ -23,7 +23,8 @@ import {MMKV_KEYS} from '../../constants/mmkvKeys';
 import {SWAP_TOKENS} from '../../modules/swap/swapTokens';
 import {TokenPickerSheet} from '../../components/TokenPickerSheet';
 import {mainBalanceIsStale, mainBalanceIsUnknown} from '../../modules/accounts/staleness';
-import {VALUE_UNKNOWN} from '../../copy/accounts';
+import {SEND_BALANCE_CHECKING, SEND_BALANCE_RETRY, SEND_BALANCE_STALE, VALUE_UNKNOWN} from '../../copy/accounts';
+import {forceSync} from '../../modules/backgroundSync/backgroundSyncModule';
 import {MainAccountLine} from '../../components/accounts/MainAccountLine';
 
 // ── Lazy imports — wrapped in try/catch so Jest/stub envs don't crash ─────────
@@ -94,7 +95,24 @@ function quoteOutText(outAmount: string, decimals: number): string {
 export function SwapScreen({initialFromMint, onBack, onDone}: SwapScreenProps) {
   const {solBalance, tokenBalances, lastSyncedAt, lastSyncFailedAt} = useWalletStore();
   // post-M1d Task 5 ruling: a stale or never-read main balance is not a figure to spend from — refuse it everywhere.
-  const balanceKnown = !mainBalanceIsStale(lastSyncedAt, lastSyncFailedAt) && !mainBalanceIsUnknown(lastSyncedAt, lastSyncFailedAt);
+  // fix round 1 #3: never read at all (lastSyncedAt null) is not a balance either — the hook calls it loading.
+  const balanceKnown =
+    lastSyncedAt !== null && !mainBalanceIsStale(lastSyncedAt, lastSyncFailedAt) && !mainBalanceIsUnknown(lastSyncedAt, lastSyncFailedAt);
+  const staleBalance = mainBalanceIsStale(lastSyncedAt, lastSyncFailedAt);
+  // fix round 1 #2: the note under the balance says why the swap is off; tapping it runs the main sync, one in flight.
+  const retryingRef = useRef(false);
+  const [retrying, setRetrying] = useState(false);
+  const retryBalance = useCallback(() => {
+    if (retryingRef.current) return;
+    retryingRef.current = true;
+    setRetrying(true);
+    forceSync()
+      .catch(() => undefined)
+      .finally(() => {
+        retryingRef.current = false;
+        if (isMountedRef.current) setRetrying(false);
+      });
+  }, []);
 
   const [fromMint, setFromMint] = useState<string>(
     initialFromMint && SWAP_TOKENS.some(t => t.mint === initialFromMint)
@@ -151,8 +169,9 @@ export function SwapScreen({initialFromMint, onBack, onDone}: SwapScreenProps) {
 
   const insufficient = (() => {
     try {
+      // fix round 1 #1: an amount is never judged against a balance that is stale or was never read
       return (
-        amountRaw !== '0' && BigInt(amountRaw) > BigInt(fromBalanceRaw || '0')
+        balanceKnown && amountRaw !== '0' && BigInt(amountRaw) > BigInt(fromBalanceRaw || '0')
       );
     } catch {
       return false;
@@ -405,6 +424,23 @@ export function SwapScreen({initialFromMint, onBack, onDone}: SwapScreenProps) {
             <Text variant="caption" className="text-fg-secondary">
               {balanceKnown ? formatBalanceForDisplay(fromBalanceRaw, from.decimals) : VALUE_UNKNOWN} {from.symbol}
             </Text>
+            {!balanceKnown ? (
+              <Pressable
+                onPress={retryBalance}
+                disabled={retrying || (lastSyncedAt === null && lastSyncFailedAt === null)}
+                accessibilityRole="button"
+                accessibilityState={{disabled: retrying, busy: retrying}}
+                testID="swap-balance-note"
+                hitSlop={8}>
+                <Text variant="body-sm" className="text-fg-secondary">
+                  {retrying || (lastSyncedAt === null && lastSyncFailedAt === null)
+                    ? SEND_BALANCE_CHECKING
+                    : staleBalance
+                      ? SEND_BALANCE_STALE
+                      : SEND_BALANCE_RETRY}
+                </Text>
+              </Pressable>
+            ) : null}
           </View>
 
           {/* ── Flip button ───────────────────────────────────────────────── */}
