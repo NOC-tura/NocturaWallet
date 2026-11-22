@@ -180,7 +180,7 @@ describe('backgroundSyncModule', () => {
       expect(s.lastSyncFailedAt).toBeNull();
     });
 
-    // review r1-3: this test MUST fail before Step 7 (today the old '222' is kept) — check that it does in Step 6
+    // Rule: a successful token read that lists no NOC account is a read of zero, never the previous figure.
     it('a full success whose token read holds no NOC account → nocBalance "0", never the previous figure', async () => {
       seedStore(); // nocBalance '222'
       mockGetBalance.mockResolvedValue(BigInt(1));
@@ -212,6 +212,82 @@ describe('backgroundSyncModule', () => {
       const result = await forceSync();
       expect(result.error).not.toContain(KEY);
       expect(result.error).toContain('<redacted>');
+    });
+
+    // Fix round 1 / 1: a throw after the write must not label the fresh figures stale
+    it('a throw after the balances were written does not set lastSyncFailedAt', async () => {
+      seedStore();
+      mockGetBalance.mockResolvedValue(BigInt(5));
+      mockGetTokenAccounts.mockResolvedValue([]);
+      const {loadCachedMetadata} = require('../../tokens/tokenMetadata');
+      (loadCachedMetadata as jest.Mock).mockImplementationOnce(() => {
+        throw new Error('cache broke');
+      });
+      const result = await forceSync();
+      expect(result.success).toBe(false);
+      expect(useWalletStore.getState().solBalance).toBe('5'); // positive control: the write happened
+      expect(useWalletStore.getState().lastSyncFailedAt).toBeNull();
+    });
+
+    // Fix round 1 / 2: a wallet reset/import while the reads are in flight
+    it('a wallet change mid-read writes nothing to the new store (success path)', async () => {
+      seedStore();
+      mockGetBalance.mockImplementation(async () => {
+        useWalletStore.getState().reset();
+        useWalletStore.getState().setPublicKey('NewWallet1111');
+        return BigInt(9);
+      });
+      mockGetTokenAccounts.mockResolvedValue([]);
+      const result = await forceSync();
+      expect(result).toMatchObject({success: false, partial: false, error: 'wallet changed'});
+      const s = useWalletStore.getState();
+      expect(s.publicKey).toBe('NewWallet1111');
+      expect(s.solBalance).toBe('0');
+      expect(s.lastSyncedAt).toBeNull();
+      expect(s.lastSyncFailedAt).toBeNull();
+    });
+
+    it('a wallet change mid-read: the old wallet\'s failure is not marked on the new store', async () => {
+      seedStore();
+      mockGetBalance.mockImplementation(async () => {
+        useWalletStore.getState().reset();
+        useWalletStore.getState().setPublicKey('NewWallet1111');
+        throw new Error('boom');
+      });
+      mockGetTokenAccounts.mockRejectedValue(new Error('boom'));
+      const result = await forceSync();
+      expect(result.error).toBe('wallet changed');
+      expect(useWalletStore.getState().lastSyncFailedAt).toBeNull();
+    });
+
+    it('a wallet change, then a throw before any write: the new store is not marked failed', async () => {
+      seedStore();
+      const {getConnection} = require('../../solana/connection');
+      (getConnection as jest.Mock).mockImplementationOnce(() => {
+        useWalletStore.getState().reset();
+        useWalletStore.getState().setPublicKey('NewWallet1111');
+        throw new Error('Connection failed');
+      });
+      await forceSync();
+      expect(useWalletStore.getState().lastSyncFailedAt).toBeNull();
+    });
+
+    it('a wallet change during the metadata fetch: the old wallet token list is not set on the new store', async () => {
+      seedStore();
+      mockGetBalance.mockResolvedValue(BigInt(5));
+      mockGetTokenAccounts.mockResolvedValue([]);
+      const {fetchTokenMetadata} = require('../../tokens/tokenMetadata');
+      (fetchTokenMetadata as jest.Mock).mockImplementationOnce(async () => {
+        useWalletStore.getState().reset();
+        useWalletStore.getState().setPublicKey('NewWallet1111');
+        return {};
+      });
+      const tm = require('../../tokens/tokenModule').TokenManager as jest.Mock;
+      const built = [{mint: 'X', symbol: 'X', name: 'X', decimals: 1, trust: 'verified'}];
+      (tm.mock.results as {value: {buildDisplayTokens: jest.Mock}}[]).forEach(r => r.value.buildDisplayTokens.mockReturnValue(built));
+      const result = await forceSync();
+      expect(result).toMatchObject({success: false, error: 'wallet changed'});
+      expect(useWalletStore.getState().tokens).toEqual([]);
     });
 
     it('no wallet: nothing is marked failed (there is no figure to be stale)', async () => {

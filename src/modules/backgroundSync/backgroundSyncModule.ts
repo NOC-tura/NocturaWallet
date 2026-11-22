@@ -26,6 +26,18 @@ export async function forceSync(): Promise<SyncResult> {
     return {success: false, partial: false, timestamp: Date.now(), error: 'No wallet loaded'};
   }
 
+  // Fix round 1 / 2: the wallet this sync belongs to. A wipe or import while the reads are in flight must
+  // not let the old wallet's figures (or its failure) land on the new store.
+  const walletChanged = (): boolean => useWalletStore.getState().publicKey !== publicKey;
+  const changedResult = (): SyncResult => ({
+    success: false,
+    partial: false,
+    timestamp: Date.now(),
+    error: 'wallet changed',
+  });
+  // Fix round 1 / 1: set once the balances are written; a later throw must not label them stale.
+  let wrote = false;
+
   try {
     const connection = getConnection();
     const pk = new PublicKey(publicKey);
@@ -39,6 +51,9 @@ export async function forceSync(): Promise<SyncResult> {
     // nothing — not the balances, not the token list — so every figure keeps the age of the last fully
     // successful sync, and a fresh half never sits under an old age. Both reasons are surfaced (rate limit /
     // wrong cluster / network down show differently on the two endpoints); identical ones are deduplicated.
+    if (walletChanged()) {
+      return changedResult();
+    }
     if (solBalance.status === 'rejected' || tokenAccounts.status === 'rejected') {
       const reasonOf = (r: PromiseSettledResult<unknown>): string | null =>
         r.status === 'rejected' ? (r.reason instanceof Error ? r.reason.message : String(r.reason)) : null;
@@ -71,6 +86,7 @@ export async function forceSync(): Promise<SyncResult> {
     const nocBalance = tokens[NOC_MINT] ?? '0';
 
     useWalletStore.getState().updateBalances(sol, nocBalance, tokens);
+    wrote = true;
 
     // Populate the dashboard's token-metadata list from the held accounts so
     // SPL tokens (USDC, etc.) actually render — updateBalances only stores the
@@ -97,6 +113,9 @@ export async function forceSync(): Promise<SyncResult> {
       // DAS unavailable — keep the cached metadata
     }
 
+    if (walletChanged()) {
+      return changedResult();
+    }
     useWalletStore
       .getState()
       .setTokens(tokenManager.buildDisplayTokens(tokenAccounts.value, meta));
@@ -113,7 +132,9 @@ export async function forceSync(): Promise<SyncResult> {
     if (__DEV__) {
       console.warn('[forceSync] threw:', msg);
     }
-    useWalletStore.getState().markSyncFailed();
+    if (!wrote && !walletChanged()) {
+      useWalletStore.getState().markSyncFailed();
+    }
     return {success: false, partial: false, timestamp: Date.now(), error: msg};
   }
 }
