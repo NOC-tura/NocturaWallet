@@ -30,6 +30,13 @@ export const SEND_BALANCE_RETRY = 'Balance unavailable · tap to retry';
 /** #12: shown while that re-read runs */
 export const SEND_BALANCE_CHECKING = 'Checking balance…';
 
+/** The dashboard header button that opens #26 */
+export const HISTORY_A11Y = 'Transaction history';
+/** #26: the read is running, failed (the tap re-reads), or finished with nothing */
+export const HISTORY_LOADING = 'Loading transactions…';
+export const HISTORY_ERROR = "Couldn't load transactions · tap to retry";
+export const HISTORY_EMPTY = 'No transactions yet';
+
 /** The linking warning on #12 (§4.4, M1 spec §10 C2) and its second tap */
 export const LINK_WARNING_TITLE = 'Sending between your own accounts links them on chain.';
 export const LINK_WARNING_BODY = 'Anyone can see that these two accounts belong to the same person.';

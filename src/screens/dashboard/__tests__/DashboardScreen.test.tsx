@@ -225,6 +225,14 @@ beforeEach(() => {
 });
 
 describe('DashboardScreen — transparent mode', () => {
+  it('M1d: the History button calls onHistory, in both modes', async () => {
+    const onHistory = jest.fn();
+    const r = await renderDashboard({onHistory});
+    expect(r.getByTestId('dashboard-history').props.accessibilityLabel).toBe('Transaction history');
+    fireEvent.press(r.getByTestId('dashboard-history'));
+    expect(onHistory).toHaveBeenCalledTimes(1);
+  });
+
   it('renders the dashboard root', async () => {
     const {getByTestId} = await renderDashboard();
     expect(getByTestId('dashboard-screen')).toBeTruthy();

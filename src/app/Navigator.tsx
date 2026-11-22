@@ -334,6 +334,7 @@ function DashboardScreenNav() {
       onBuy={presale ? () => dashNav.navigate('Presale') : undefined}
       onScan={() => rootNav.navigate('ScanModal')}
       onNotifications={() => rootNav.navigate('NotificationsModal')}
+      onHistory={() => rootNav.navigate('TransactionHistory')}
       onPresale={presale ? () => dashNav.navigate('Presale') : undefined}
       onFirstShieldedToggle={() => {
         if (isShieldedEnabled()) {

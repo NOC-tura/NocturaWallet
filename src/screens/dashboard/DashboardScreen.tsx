@@ -14,6 +14,7 @@ import {SafeAreaView} from 'react-native-safe-area-context';
 import {useFocusEffect} from '@react-navigation/native';
 import {
   Bell,
+  History,
   ScanLine,
   Eye,
   EyeOff,
@@ -31,7 +32,7 @@ import {Text} from '../../components/ui';
 import {useWalletStore} from '../../store/zustand/walletStore';
 import {useAccountList, useRefreshAccounts, useSelectAccount, useSelectedAccount} from '../../hooks/useSelectedAccount';
 import {NO_PUBLIC_DATA, useAccountPublicData} from '../../hooks/useAccountPublicData';
-import {ACCOUNTS_TITLE, PUBLIC_LOADING, REFRESH_ACCOUNT_FAILED, REFRESH_FAILED_TITLE, PUBLIC_UNAVAILABLE, VALUE_UNKNOWN, avatarA11y} from '../../copy/accounts';
+import {ACCOUNTS_TITLE, HISTORY_A11Y, PUBLIC_LOADING, REFRESH_ACCOUNT_FAILED, REFRESH_FAILED_TITLE, PUBLIC_UNAVAILABLE, VALUE_UNKNOWN, avatarA11y} from '../../copy/accounts';
 import {AccountsSheet} from '../../components/accounts/AccountsSheet';
 import {useShieldedStore} from '../../store/zustand/shieldedStore';
 import {usePublicSettingsStore} from '../../store/zustand/publicSettingsStore';
@@ -124,6 +125,7 @@ interface DashboardScreenProps {
   onBuy?: () => void;
   onScan?: () => void;
   onNotifications?: () => void;
+  onHistory?: () => void;
   onPresale?: () => void;
   onFirstShieldedToggle?: () => void;
   onTokenTap?: (mint: string) => void;
@@ -147,6 +149,7 @@ export function DashboardScreen({
   onBuy,
   onScan,
   onNotifications,
+  onHistory,
   onPresale,
   onFirstShieldedToggle,
   onTokenTap,
@@ -429,6 +432,7 @@ export function DashboardScreen({
             onBuy={onBuy}
             onScan={onScan}
             onNotifications={onNotifications}
+            onHistory={onHistory}
             isOffline={!isOnline}
             change24hPct={change24h}
             havePrices={havePrices}
@@ -525,6 +529,7 @@ interface DashboardHeaderProps {
   onBuy?: () => void;
   onScan?: () => void;
   onNotifications?: () => void;
+  onHistory?: () => void;
   isOffline: boolean;
   change24hPct: number | null;
   havePrices: boolean;
@@ -557,6 +562,7 @@ function DashboardHeader({
   onBuy,
   onScan,
   onNotifications,
+  onHistory,
   isOffline,
   change24hPct,
   havePrices,
@@ -599,6 +605,14 @@ function DashboardHeader({
           </View>
         ) : null}
         <View className="flex-row items-center gap-2">
+          <Pressable
+            onPress={onHistory}
+            accessibilityRole="button"
+            accessibilityLabel={HISTORY_A11Y}
+            testID="dashboard-history"
+            className="w-10 h-10 rounded-pill items-center justify-center active:bg-bg-surface-2">
+            <History size={22} color="#A8ACB5" strokeWidth={1.75} />
+          </Pressable>
           <Pressable
             onPress={onNotifications}
             accessibilityRole="button"
