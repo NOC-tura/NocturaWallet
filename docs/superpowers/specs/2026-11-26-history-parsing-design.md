@@ -1,6 +1,6 @@
 # PR 2 — Transaction history parsing, retroactive "linked" scan, presale stale label
 
-**Date:** 2026-11-26. **Revision:** r4. It folds in Fable spec review r3 (P1, m-a to m-g). r3 folded in review r2 (N1–N7, m1–m8). r2 folded in Fable spec review r1, which was NOT APPROVED (5 Critical, 13 Important, 10 Minor), and the owner's answers H7–H8.
+**Date:** 2026-11-26. **Revision:** r4, **Fable APPROVED** (review r4; minors q1–q3 folded). r4 folds in Fable spec review r3 (P1, m-a to m-g). r3 folded in review r2 (N1–N7, m1–m8). r2 folded in Fable spec review r1, which was NOT APPROVED (5 Critical, 13 Important, 10 Minor), and the owner's answers H7–H8.
 
 **Branch:** `feat/history-parsing`, from `main` at 7f3f235 (PR #127 merged).
 
@@ -81,7 +81,7 @@ The source list is read once per history session and on every pull-to-refresh. A
 
 ### 3.3 Reading transactions, and the cache (review I4, I5)
 - Raw parsed transactions are cached per signature under the TanStack key `['parsedTx', cluster, signature]`, with `staleTime: Infinity` and `gcTime: 24 h` (the client default of 5 min would collect them). A landed transaction does not change. A null answer is not cached. `onSecureMmkvReset` clears every `parsedTx` entry.
-- **The history query key** keeps today's prefix: `['txHistory', address, cluster, pageSize]`. #21 invalidates `['txHistory', address]` (`TransactionStatusScreen.tsx:132`), and that prefix must keep matching. An invalidation also drops the history session for that account. The `txHistory` query's own refetch (on mount after `staleTime`, or on focus) runs the §3.4 refresh, and loading the next page calls the session (review r3 m-c).
+- **The history query key** keeps today's prefix: `['txHistory', address, cluster, pageSize]`. #21 invalidates `['txHistory', address]` (`TransactionStatusScreen.tsx:132`), and that prefix must keep matching. An invalidation also drops the history session for that account. The `txHistory` query's own refetch (on mount after `staleTime`, or on focus) runs the §3.4 refresh, and loading the next page calls the session (review r3 m-c). That query has its own `staleTime` of 60 s, because a refresh can cost up to 25 signature calls (review r4 q1).
 - A page reads only the signatures not yet cached:
   - first with one `getParsedTransactions(signatures, {maxSupportedTransactionVersion: 0})`;
   - **if the batch call throws,** with single `getParsedTransaction` calls for the same signatures, one at a time through `rpcLimiter`.
@@ -103,7 +103,8 @@ The source list is read once per history session and on every pull-to-refresh. A
 
   Loaded older pages stay. The session is discarded and history restarts from the head, so no hole can be shown, when:
   - a refresh needs more than 5 pages for one source; or
-  - the source list gains a source the session does not know, such as a new token account.
+  - the source list gains a source the session does not know, such as a new token account; or
+  - a known source is missing from the re-read list, or is exhausted without meeting its `newest` (review r4 q2).
 - Rows are keyed and deduped by signature across pages.
 - **Every query key holds the cluster and the account address,** so switching accounts or networks never shows another account's rows.
 - "No transactions yet" shows only when the first merged page read successfully, every source is exhausted, and there are zero signatures.
@@ -197,7 +198,7 @@ Zero deltas are dropped.
 Rules apply in this order, first match wins. Rule 2 applies only when the build's cluster equals `A0.cluster`.
 
 1. `status == 'failed'` → **failed**.
-2. **Pool, decided by role and not by sign** (review C5, r2 m5). A top-level instruction that passes `isOurA0Ix` (program `A0.programId`, pool at account 0 **and** merkle tree at account 1). Its `data` is base58, and the first 8 decoded bytes are matched against the `deposit` / `withdraw_with_change` discriminators:
+2. **Pool, decided by role and not by sign** (review C5, r2 m5). A top-level instruction that passes `isOurA0Ix`, which is exported from `syncedTx.ts` and not copied (review r4 q3), (program `A0.programId`, pool at account 0 **and** merkle tree at account 1). Its `data` is base58, and the first 8 decoded bytes are matched against the `deposit` / `withdraw_with_change` discriminators:
    - a `deposit` whose `depositor` (`A0_DEPOSIT_ACCOUNTS`) is the account → **made-private**;
    - a `withdraw_with_change` whose `destination_token_account` is owned by the account in the token balances → **made-public**;
    - a pool instruction with neither → **unknown**.
