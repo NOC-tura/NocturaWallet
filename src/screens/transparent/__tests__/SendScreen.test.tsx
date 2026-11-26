@@ -247,6 +247,32 @@ describe('M1d — #12 sends from the account selected when it opened (spec §3.3
     expect(r.getAllByText('—').length).toBeGreaterThanOrEqual(2); // SOL and NOC rows
   });
 
+  // final review m3: while stale the token list keeps its (stale) labels — the selected token never falls back to SOL
+  const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+  const USDC_TOKEN = {mint: USDC_MINT, symbol: 'USDC', name: 'USD Coin', decimals: 6};
+  it('final review m3: stale + a non-SOL selected mint → the label stays that token, the balance is still refused', () => {
+    mockSendPublic.current = {...STALE_1_SOL, tokens: [USDC_TOKEN], tokenBalances: {[USDC_MINT]: '5000000'}};
+    const r = render(<SendScreen onReview={jest.fn()} initialMint={USDC_MINT} />);
+    expect(r.getByTestId('token-picker').props.accessibilityLabel).toBe('Token USDC, tap to change');
+    fill(r);
+    expect(r.getByTestId('review-button').props.accessibilityState?.disabled).toBe(true);
+    expect(r.getByTestId('max-button').props.accessibilityState?.disabled).toBe(true);
+    expect(r.queryByTestId('send-available')).toBeNull();
+    expect(r.queryByText(/5 USDC/)).toBeNull(); // the stale figure is never shown
+    fireEvent.changeText(r.getByTestId('amount-input'), '50');
+    expect(r.queryByText(/Insufficient balance/)).toBeNull();
+    expect(r.queryByText(/short by/i)).toBeNull();
+    fireEvent.press(r.getByTestId('token-picker'));
+    expect(r.getAllByText('USDC').length).toBeGreaterThanOrEqual(1);
+    expect(r.queryByText('5')).toBeNull(); // the picker row shows "—", not the stale figure
+  });
+
+  it('control (m3): error (no figure at all) → the stale list is not there; the selection falls back as before', () => {
+    mockSendPublic.current = {status: 'error'};
+    const r = render(<SendScreen onReview={jest.fn()} initialMint={USDC_MINT} />);
+    expect(r.getByTestId('token-picker').props.accessibilityLabel).toBe('Token SOL, tap to change');
+  });
+
   it('positive control: READY → the picker shows the real figures', () => {
     mockSendPublic.current = READY_1_SOL;
     const r = render(<SendScreen onReview={jest.fn()} />);

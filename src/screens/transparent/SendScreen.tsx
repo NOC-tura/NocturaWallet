@@ -175,7 +175,11 @@ export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
         setRetrying(false);
       });
   }, [sourceIsMain]);
-  const {solBalance, nocBalance, tokens: storeTokens, tokenBalances} = publicData.status === 'ready' ? publicData : NO_PUBLIC_DATA;
+  const {solBalance, nocBalance, tokenBalances} = publicData.status === 'ready' ? publicData : NO_PUBLIC_DATA;
+  // final review m3: while stale, the last read's token LIST (labels only) stays, so a selected USDC / TEST
+  // does not fall back to SOL; its balance is still refused (publicReady gates MAX, short-by and the CTA).
+  const storeTokens =
+    publicData.status === 'ready' || publicData.status === 'stale' ? publicData.tokens : NO_PUBLIC_DATA.tokens;
   const rootNav = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
   // Default token list: ALWAYS include SOL + NOC even if not in the dynamic
