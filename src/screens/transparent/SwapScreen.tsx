@@ -416,7 +416,11 @@ export function SwapScreen({initialFromMint, onBack, onDone}: SwapScreenProps) {
                 accessibilityState={{disabled: !balanceKnown}}
                 accessibilityRole="button"
                 accessibilityLabel="Max"
-                className="px-3 py-1.5 rounded-pill bg-accent-transparent-tint active:opacity-80">
+                testID="swap-max"
+                className={cn(
+                  'px-3 py-1.5 rounded-pill bg-accent-transparent-tint active:opacity-80',
+                  !balanceKnown && 'opacity-40', // phone pass 2026-11-26: a disabled MAX looks disabled, as on #12
+                )}>
                 <Text variant="overline" className="text-accent-transparent">
                   MAX
                 </Text>

@@ -152,6 +152,13 @@ describe('post-M1d Task 5 ruling: Swap refuses a stale or unknown main balance',
     expect(r.getByLabelText('Amount to swap').props.value).toBe('');
   });
 
+  // phone pass 2026-11-26: MAX stayed bright while refused (#12's MAX dims); a disabled MAX looks disabled
+  it.each(['fresh', 'stale', 'unknown'] as const)('%s: MAX is dimmed exactly when the balance is not known', state => {
+    mockStore.current = STATES[state];
+    const r = renderSwap();
+    expect(String(r.getByLabelText('Max').props.className ?? '').includes('opacity-40')).toBe(state !== 'fresh');
+  });
+
   it('fresh (control): the token picker shows balances', () => {
     const r = renderSwap();
     fireEvent.press(r.getByLabelText('From token SOL, tap to change'));
