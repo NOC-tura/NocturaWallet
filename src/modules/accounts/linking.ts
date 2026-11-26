@@ -19,3 +19,19 @@ export function linkingWarningApplies(seed: readonly SeedAccount[], source: stri
   }
   return EXIT_LIKE.has(s.role) || EXIT_LIKE.has(r.role);
 }
+
+/**
+ * post-M1d spec §4 (P3, R3): the accounts a Send links — the fresh-exit (or fresh-pending) accounts of
+ * this seed among its two ends, source first. Empty exactly when the warning does not apply; never the
+ * main account. Computed on #12 from the same registry read as the warning, carried in the intent, and
+ * tagged by #21 only on a confirmed outcome.
+ */
+export function linkedParticipants(seed: readonly SeedAccount[], source: string, recipient: string | null): string[] {
+  if (recipient === null || !linkingWarningApplies(seed, source, recipient)) {
+    return [];
+  }
+  return [source, recipient].filter(a => {
+    const entry = seed.find(x => x.address === a);
+    return entry !== undefined && EXIT_LIKE.has(entry.role);
+  });
+}

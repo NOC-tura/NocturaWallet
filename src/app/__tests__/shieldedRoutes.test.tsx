@@ -54,10 +54,34 @@ jest.mock('../../hooks/useSelectedAccount', () => ({
 }));
 
 // #11, stubbed: records the props DashboardScreenNav hands it (UX-A 7: the "Make public" entry).
-const mockDashboardProps: Array<{onMakePublic?: () => void; onShield?: () => void}> = [];
+const mockDashboardProps: Array<{onMakePublic?: () => void; onShield?: () => void; onHistory?: () => void}> = [];
 jest.mock('../../screens/dashboard/DashboardScreen', () => ({
-  DashboardScreen: (p: {onMakePublic?: () => void; onShield?: () => void}) => {
+  DashboardScreen: (p: {onMakePublic?: () => void; onShield?: () => void; onHistory?: () => void}) => {
     mockDashboardProps.push(p);
+    return null;
+  },
+}));
+
+// #26 History, #21 status and #27 detail, stubbed: they record the props the Navigator hands them (post-M1d §7
+// onHistory wiring, R9 the route's account). The real screens read TanStack Query, which this harness does not provide.
+const mockHistoryProps: Array<{onSelectTx: (signature: string, account: string) => void}> = [];
+jest.mock('../../screens/transparent/TransactionHistoryScreen', () => ({
+  TransactionHistoryScreen: (p: {onSelectTx: (signature: string, account: string) => void}) => {
+    mockHistoryProps.push(p);
+    return null;
+  },
+}));
+const mockStatusProps: Array<{onViewDetails?: (signature: string) => void}> = [];
+jest.mock('../../screens/transparent/TransactionStatusScreen', () => ({
+  TransactionStatusScreen: (p: {onViewDetails?: (signature: string) => void}) => {
+    mockStatusProps.push(p);
+    return null;
+  },
+}));
+const mockDetailProps: Array<{signature: string; account: string | null}> = [];
+jest.mock('../../screens/transparent/TransactionDetailScreen', () => ({
+  TransactionDetailScreen: (p: {signature: string; account: string | null}) => {
+    mockDetailProps.push(p);
     return null;
   },
 }));
@@ -197,6 +221,20 @@ describe('UX-A 7: the dashboard\'s "Make public" opens #16 on the unshield side 
     }
   });
 
+  it('post-M1d §7: the dashboard\'s onHistory opens TransactionHistory (the header button\'s only wiring)', async () => {
+    mockDashboardProps.length = 0;
+    const {ref} = routeNames({shielded: true});
+    await act(async () => {
+      (ref.navigate as (n: string, p?: object) => void)('MainTabs');
+    });
+    const props = mockDashboardProps[mockDashboardProps.length - 1];
+    expect(props?.onHistory).toBeInstanceOf(Function);
+    await act(async () => {
+      props!.onHistory!();
+    });
+    expect((ref.getCurrentRoute() as {name?: string} | undefined)?.name).toBe('TransactionHistory');
+  });
+
   it('production build (no unshield route): the dashboard gets no onMakePublic (positive control: onShield is still passed)', async () => {
     mockDashboardProps.length = 0;
     const {ref} = routeNames({shielded: false});
@@ -206,6 +244,68 @@ describe('UX-A 7: the dashboard\'s "Make public" opens #16 on the unshield side 
     const props = mockDashboardProps[mockDashboardProps.length - 1];
     expect(props?.onShield).toBeInstanceOf(Function);
     expect(props?.onMakePublic).toBeUndefined();
+  });
+});
+
+describe('post-M1d R9: the route to #27 carries the account it was opened from', () => {
+  const ACC = '9Y7FtteLhCJABAQtkYEFZs46rJgy1ixMA1JFMUepTki4';
+  type Route = {name?: string; params?: Record<string, unknown>} | undefined;
+
+  it('History: a tapped row opens TransactionDetail with {signature, account}, and #27 is handed that account', async () => {
+    jest.useFakeTimers();
+    try {
+      mockHistoryProps.length = 0;
+      mockDetailProps.length = 0;
+      const {ref} = routeNames({shielded: true});
+      await act(async () => {
+        (ref.navigate as (n: string, p?: object) => void)('MainTabs');
+      });
+      await act(async () => {
+        (ref.navigate as (n: string, p?: object) => void)('TransactionHistory');
+      });
+      const props = mockHistoryProps[mockHistoryProps.length - 1];
+      expect(props).toBeDefined();
+      await act(async () => {
+        props!.onSelectTx('SIG_FROM_HISTORY', ACC);
+        jest.advanceTimersByTime(150); // the Navigator dismisses the modal, then navigates after 100 ms
+      });
+      const route = ref.getCurrentRoute() as Route;
+      expect(route?.name).toBe('TransactionDetail');
+      expect(route?.params).toEqual({signature: 'SIG_FROM_HISTORY', account: ACC});
+      expect(mockDetailProps[mockDetailProps.length - 1]).toMatchObject({signature: 'SIG_FROM_HISTORY', account: ACC});
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('#21: "View details" opens TransactionDetail with the account the Send was made from', async () => {
+    mockStatusProps.length = 0;
+    mockDetailProps.length = 0;
+    const {ref} = routeNames({shielded: true});
+    await act(async () => {
+      (ref.navigate as (n: string, p?: object) => void)('SendModal', {
+        screen: 'TransactionStatus',
+        params: {intent: {from: {address: ACC}}},
+      });
+    });
+    const props = mockStatusProps[mockStatusProps.length - 1];
+    expect(props?.onViewDetails).toBeInstanceOf(Function);
+    await act(async () => {
+      props!.onViewDetails!('SIG_FROM_STATUS');
+    });
+    const route = ref.getCurrentRoute() as Route;
+    expect(route?.name).toBe('TransactionDetail');
+    expect(route?.params).toEqual({signature: 'SIG_FROM_STATUS', account: ACC});
+    expect(mockDetailProps[mockDetailProps.length - 1]).toMatchObject({account: ACC});
+  });
+
+  it('no account in the route (a deep link, an old route) → #27 is handed null: no direction is claimed', async () => {
+    mockDetailProps.length = 0;
+    const {ref} = routeNames({shielded: true});
+    await act(async () => {
+      (ref.navigate as (n: string, p?: object) => void)('SendModal', {screen: 'TransactionDetail', params: {signature: 'SIG_BARE'}});
+    });
+    expect(mockDetailProps[mockDetailProps.length - 1]).toEqual(expect.objectContaining({signature: 'SIG_BARE', account: null}));
   });
 });
 

@@ -12,17 +12,54 @@ const tokenManager = new TokenManager();
 
 export interface SyncResult {
   success: boolean;
+  /** true when exactly one of the two reads failed (success is false then) */
+  partial: boolean;
   solBalance?: string;
   tokenCount?: number;
   timestamp: number;
   error?: string;
 }
 
-export async function forceSync(): Promise<SyncResult> {
+/**
+ * Final review m1: ONE sync in flight. The dashboard, #12 Send, Swap and #16 Make private all call
+ * forceSync; without this, a slow read that succeeded after a newer one wrote the OLDER figures under a
+ * fresh lastSyncedAt (shown as current), and a slow failure marked a seconds-old figure stale. A caller
+ * during a running sync for the same wallet gets that sync's promise; the slot is cleared when it settles.
+ * A call for another wallet (wipe / import mid-read) starts its own read — the old one ends 'wallet changed'.
+ */
+let inFlight: {publicKey: string; promise: Promise<SyncResult>} | null = null;
+
+export function forceSync(): Promise<SyncResult> {
   const publicKey = useWalletStore.getState().publicKey;
   if (!publicKey) {
-    return {success: false, timestamp: Date.now(), error: 'No wallet loaded'};
+    return Promise.resolve({success: false, partial: false, timestamp: Date.now(), error: 'No wallet loaded'});
   }
+  if (inFlight && inFlight.publicKey === publicKey) {
+    return inFlight.promise;
+  }
+  const entry: {publicKey: string; promise: Promise<SyncResult>} = {
+    publicKey,
+    promise: runSync(publicKey).finally(() => {
+      if (inFlight === entry) inFlight = null;
+    }),
+  };
+  inFlight = entry;
+  return entry.promise;
+}
+
+async function runSync(publicKey: string): Promise<SyncResult> {
+
+  // Fix round 1 / 2: the wallet this sync belongs to. A wipe or import while the reads are in flight must
+  // not let the old wallet's figures (or its failure) land on the new store.
+  const walletChanged = (): boolean => useWalletStore.getState().publicKey !== publicKey;
+  const changedResult = (): SyncResult => ({
+    success: false,
+    partial: false,
+    timestamp: Date.now(),
+    error: 'wallet changed',
+  });
+  // Fix round 1 / 1: set once the balances are written; a later throw must not label them stale.
+  let wrote = false;
 
   try {
     const connection = getConnection();
@@ -33,81 +70,84 @@ export async function forceSync(): Promise<SyncResult> {
       getTokenAccounts(connection, pk),
     ]);
 
-    // If BOTH calls fail, surface BOTH underlying reasons so the UI shows the
-    // full picture (rate limit / wrong cluster / network down can manifest
-    // differently on the two endpoints). Dedup when identical.
-    if (solBalance.status === 'rejected' && tokenAccounts.status === 'rejected') {
-      const solReason = solBalance.reason instanceof Error
-        ? solBalance.reason.message
-        : String(solBalance.reason);
-      const tokenReason = tokenAccounts.reason instanceof Error
-        ? tokenAccounts.reason.message
-        : String(tokenAccounts.reason);
-      // Redacted here rather than at the display site: this string is returned
-      // into app state as well as shown in an Alert, and the RPC endpoint carries
-      // the Helius API key in its query string. Upstream error text is not ours
-      // to shape.
+    // post-M1d R1 / r2-5: a sync counts only when EVERY read succeeded. A partial or total failure writes
+    // nothing — not the balances, not the token list — so every figure keeps the age of the last fully
+    // successful sync, and a fresh half never sits under an old age. Both reasons are surfaced (rate limit /
+    // wrong cluster / network down show differently on the two endpoints); identical ones are deduplicated.
+    if (walletChanged()) {
+      return changedResult();
+    }
+    if (solBalance.status === 'rejected' || tokenAccounts.status === 'rejected') {
+      const reasonOf = (r: PromiseSettledResult<unknown>): string | null =>
+        r.status === 'rejected' ? (r.reason instanceof Error ? r.reason.message : String(r.reason)) : null;
+      const solReason = reasonOf(solBalance);
+      const tokenReason = reasonOf(tokenAccounts);
+      const partial = solReason === null || tokenReason === null;
+      // Redacted here rather than at the display site: this string is returned into app state as well as
+      // shown in an Alert, and the RPC endpoint carries the Helius API key in its query string.
       const reason = redactUrlSecrets(
-        solReason === tokenReason
-          ? solReason
-          : `sol: ${solReason}; tokens: ${tokenReason}`,
+        solReason !== null && tokenReason !== null
+          ? solReason === tokenReason
+            ? solReason
+            : `sol: ${solReason}; tokens: ${tokenReason}`
+          : solReason !== null
+            ? `sol: ${solReason}`
+            : `tokens: ${tokenReason}`,
       );
       if (__DEV__) {
-        console.warn('[forceSync] both RPC calls failed:', reason);
+        console.warn('[forceSync] a read failed:', reason);
       }
-      return {success: false, timestamp: Date.now(), error: reason};
+      useWalletStore.getState().markSyncFailed();
+      return {success: false, partial, timestamp: Date.now(), error: reason};
     }
 
-    const sol = solBalance.status === 'fulfilled' ? solBalance.value.toString() : useWalletStore.getState().solBalance;
-    // Sum per mint — an owner can hold one mint across several token accounts,
-    // which this wallet routinely does. Taking one account's amount (whether the
-    // last or the first) under-reports or zeroes the real balance.
-    const tokens = tokenAccounts.status === 'fulfilled'
-      ? sumTokenBalancesByMint(tokenAccounts.value)
-      : useWalletStore.getState().tokenBalances;
-
-    const nocBalance = tokenAccounts.status === 'fulfilled'
-      ? (tokens[NOC_MINT] ?? useWalletStore.getState().nocBalance)
-      : useWalletStore.getState().nocBalance;
+    const sol = solBalance.value.toString();
+    // Sum per mint — an owner can hold one mint across several token accounts, which this wallet routinely does.
+    const tokens = sumTokenBalancesByMint(tokenAccounts.value);
+    // review r1-3: the token read succeeded, so "no NOC account" is a read of zero — never the store's old
+    // figure (which would be shown as current under this sync's fresh lastSyncedAt)
+    const nocBalance = tokens[NOC_MINT] ?? '0';
 
     useWalletStore.getState().updateBalances(sol, nocBalance, tokens);
+    wrote = true;
 
     // Populate the dashboard's token-metadata list from the held accounts so
     // SPL tokens (USDC, etc.) actually render — updateBalances only stores the
-    // mint→amount map, not the per-token metadata the list iterates over. Only
-    // refresh when the fetch succeeded, so a failed sync never clobbers the list.
-    if (tokenAccounts.status === 'fulfilled') {
-      // Load the Jupiter verified list so verified (non-core) held tokens pass
-      // buildDisplayTokens' trust filter. Best-effort — it caches internally.
-      try {
-        await tokenManager.fetchVerifiedList();
-      } catch {
-        // verified list unavailable — only core tokens will show this sync
-      }
-
-      // Resolve name/symbol/logo for held non-core mints via Helius DAS, warm-
-      // starting from the MMKV cache so a failed/slow fetch still shows logos.
-      const heldMints = tokenAccounts.value
-        .filter(t => t.amount !== '0' && t.mint !== NOC_MINT)
-        .map(t => t.mint);
-      let meta = loadCachedMetadata();
-      try {
-        const resolved = await fetchTokenMetadata(heldMints);
-        meta = {...meta, ...resolved};
-        saveCachedMetadata(meta);
-      } catch {
-        // DAS unavailable — keep the cached metadata
-      }
-
-      useWalletStore
-        .getState()
-        .setTokens(tokenManager.buildDisplayTokens(tokenAccounts.value, meta));
+    // mint→amount map, not the per-token metadata the list iterates over.
+    // Load the Jupiter verified list so verified (non-core) held tokens pass
+    // buildDisplayTokens' trust filter. Best-effort — it caches internally.
+    try {
+      await tokenManager.fetchVerifiedList();
+    } catch {
+      // verified list unavailable — only core tokens will show this sync
     }
+
+    // Resolve name/symbol/logo for held non-core mints via Helius DAS, warm-
+    // starting from the MMKV cache so a failed/slow fetch still shows logos.
+    const heldMints = tokenAccounts.value
+      .filter(t => t.amount !== '0' && t.mint !== NOC_MINT)
+      .map(t => t.mint);
+    let meta = loadCachedMetadata();
+    try {
+      const resolved = await fetchTokenMetadata(heldMints);
+      meta = {...meta, ...resolved};
+      saveCachedMetadata(meta);
+    } catch {
+      // DAS unavailable — keep the cached metadata
+    }
+
+    if (walletChanged()) {
+      return changedResult();
+    }
+    useWalletStore
+      .getState()
+      .setTokens(tokenManager.buildDisplayTokens(tokenAccounts.value, meta));
 
     return {
       success: true,
+      partial: false,
       solBalance: sol,
-      tokenCount: tokenAccounts.status === 'fulfilled' ? tokenAccounts.value.length : 0,
+      tokenCount: tokenAccounts.value.length,
       timestamp: Date.now(),
     };
   } catch (e) {
@@ -115,7 +155,10 @@ export async function forceSync(): Promise<SyncResult> {
     if (__DEV__) {
       console.warn('[forceSync] threw:', msg);
     }
-    return {success: false, timestamp: Date.now(), error: msg};
+    if (!wrote && !walletChanged()) {
+      useWalletStore.getState().markSyncFailed();
+    }
+    return {success: false, partial: false, timestamp: Date.now(), error: msg};
   }
 }
 

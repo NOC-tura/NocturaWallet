@@ -12,6 +12,7 @@ const base: TransferIntent = {
   createAta: false,
   from: {scheme: 'slip10:0', address: 'GabcDEF123456789xxxxxxxxxxxxxxxxxxxxxxQMr9', label: 'Account 1', isMain: true}, // M1d: the intent carries its source (unused by isHighValueTransfer)
   sourceBalances: {solBalance: '0', tokenBalances: {}}, // M1d: the source's balances travel too (the rows pass their own)
+  linksAccounts: [], // post-M1d §4: no own-account link in this Send
 };
 
 describe('isHighValueTransfer', () => {

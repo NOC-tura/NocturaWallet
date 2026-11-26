@@ -88,6 +88,7 @@ const intent = {
   createAta: false,
   from: {scheme: 'slip10:0', address: 'So11111111111111111111111111111111111111112', label: 'Account 1', isMain: true}, // M1d: #20's From row is the intent's source
   sourceBalances: {solBalance: '10000000000', tokenBalances: {}}, // M1d (plan A8): the source's balances (were the walletStore mock's 10 SOL)
+  linksAccounts: [], // post-M1d §4: no own-account link in this Send
 };
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

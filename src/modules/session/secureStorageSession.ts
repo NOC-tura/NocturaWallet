@@ -2,6 +2,7 @@ import {keychainManager} from '../keychain/keychainModule';
 import {mnemonicToSeed} from '../keyDerivation/mnemonicUtils';
 import {deriveSecureStorageKey} from '../keychain/secureStorageKey';
 import {zeroize} from './zeroize';
+import {drainLinkQueue} from '../accounts/linkQueue';
 import {initSecureMmkv, mmkvSecure, mmkvPublic} from '../../store/mmkv/instances';
 import {MMKV_KEYS} from '../../constants/mmkvKeys';
 import {isShieldedEnabled} from '../../constants/features';
@@ -58,6 +59,15 @@ function startA0(seed: Uint8Array): void {
   ensureA0Startup(getConnection(), seed.slice()); // never rejects (its failure is a state)
 }
 
+/** The drain has its own catch-all; unlock still never leans on it. */
+function safeDrain(): void {
+  try {
+    drainLinkQueue();
+  } catch {
+    // a queued tag waits for the next drain; the unlock goes on
+  }
+}
+
 /**
  * Initialize the encrypted note-store MMKV for this session. Retrieves the seed
  * (biometric/keychain), derives the storage key, inits the store, zeroizes the
@@ -72,6 +82,7 @@ export async function unlockSecureStorage(): Promise<void> {
     seed = await mnemonicToSeed(mnemonic);
     initSecureMmkv(deriveSecureStorageKey(seed));
     dropV1ShieldedLeftovers();
+    safeDrain(); // post-M1d R2: "linked" tags queued by an earlier process
     await dropV1ViewKey();
     startA0(seed);
   } finally {
@@ -84,6 +95,7 @@ export function unlockSecureStorageWithSeed(seed: Uint8Array): void {
   if (mmkvSecure()) return;
   initSecureMmkv(deriveSecureStorageKey(seed));
   dropV1ShieldedLeftovers();
+  safeDrain(); // post-M1d R2
   dropV1ViewKey().catch(() => undefined); // never rejects; not awaited (onboarding is synchronous here)
   startA0(seed);
 }

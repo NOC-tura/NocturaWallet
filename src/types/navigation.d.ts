@@ -64,7 +64,7 @@ export type SendStackParamList = {
   TxSimulate: {intent: TransferIntent};
   TxConfirm: {intent: TransferIntent};
   TransactionStatus: {intent: TransferIntent};
-  TransactionDetail: {signature: string};
+  TransactionDetail: {signature: string; account?: string}; // post-M1d R9: the account the detail was opened from
 };
 
 export type SettingsStackParamList = {

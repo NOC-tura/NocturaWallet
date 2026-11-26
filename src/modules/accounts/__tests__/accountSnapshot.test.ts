@@ -53,8 +53,7 @@ it('reads the named address; sums a mint across token accounts; no NOC → "0"',
   expect(s.solBalance).toBe('3000000');
   expect(s.tokenBalances).toEqual({[USDC]: '3500000'});
   expect(s.nocBalance).toBe('0');
-  // M1d: pre-existing, parked — buildDisplayTokens (shared with the main path's forceSync) emits one
-  // entry per token ACCOUNT, so a mint held in two accounts lists twice. Not enshrined: only the set is asserted.
+  // post-M1d R6: buildDisplayTokens now lists a mint once (pinned in tokenModule.test.ts); this suite mocks it
   expect(new Set(s.tokens.map(t => t.mint))).toEqual(new Set([USDC]));
 });
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import {render} from '@testing-library/react-native';
+import {render, act} from '@testing-library/react-native';
 import {SafeAreaProvider} from 'react-native-safe-area-context';
 import {TokenDetailScreen} from '../TokenDetailScreen';
 
@@ -255,6 +255,19 @@ describe('the chart on a build without pricing (devnet)', () => {
     expect(getByText('$150.00')).toBeTruthy();
     expect(mockPriceHistory).toHaveBeenCalledWith('solana', expect.any(String));
   });
+
+  it('r2-4: the wSOL detail is "wSOL" / "Wrapped SOL", priced from the SOL price, with the SOL chart', () => {
+    mockPriceHistory.mockClear();
+    const {getByText, getAllByText} = render(
+      withSafeArea(
+        <TokenDetailScreen mint="So11111111111111111111111111111111111111112" onBack={() => {}} onSend={jest.fn()} onReceive={() => {}} onSwap={jest.fn()} />,
+      ),
+    );
+    expect(getAllByText('wSOL').length).toBeGreaterThan(0);
+    expect(getByText('Wrapped SOL')).toBeTruthy();
+    expect(getByText('$150.00')).toBeTruthy();
+    expect(mockPriceHistory).toHaveBeenCalledWith('solana', expect.any(String));
+  });
 });
 
 describe('M1d — the holding is the selected account\'s (plan A6)', () => {
@@ -269,10 +282,89 @@ describe('M1d — the holding is the selected account\'s (plan A6)', () => {
     mockTdPublic.current = {status: 'ready', syncedAt: 1, solBalance: '3000000', nocBalance: '0', tokenBalances: {}, tokens: []};
     expect(screen().getByText('0.003 SOL')).toBeTruthy();
   });
+  const TERTIARY = /(^|\s)text-fg-tertiary(\s|$)/;
+  const NOW = 1_800_000_000_000;
+  const STALE = {status: 'stale', syncedAt: NOW - 2 * 3_600_000, failedAt: NOW, solBalance: '1500000000', nocBalance: '0', tokenBalances: {}, tokens: []};
+  it('TD1 (R10): a stale holding shows the figure dimmed, with its age', () => {
+    jest.spyOn(Date, 'now').mockReturnValue(NOW);
+    try {
+      mockTdPublic.current = STALE;
+      const r = screen();
+      expect(r.getByText('1.5 SOL').props.className).toMatch(TERTIARY);
+      expect(r.getByTestId('token-detail-stale')).toHaveTextContent('Not updated · 2 h ago');
+    } finally {
+      jest.restoreAllMocks();
+    }
+  });
+  it('fix 1: the stale USD figure is dimmed too (control: not when ready)', () => {
+    jest.spyOn(Date, 'now').mockReturnValue(NOW);
+    try {
+      mockTdPublic.current = STALE;
+      const r = screen();
+      expect(r.getByText('$225.00').props.className).toMatch(TERTIARY);
+      r.unmount();
+      mockTdPublic.current = {...STALE, status: 'ready', syncedAt: 1};
+      expect(screen().getByText('$225.00').props.className).not.toMatch(TERTIARY);
+    } finally {
+      jest.restoreAllMocks();
+    }
+  });
+  it('TD2: control — a ready holding is not dimmed and has no stale line', () => {
+    mockTdPublic.current = {...STALE, status: 'ready', syncedAt: 1};
+    const r = screen();
+    expect(r.queryByTestId('token-detail-stale')).toBeNull();
+    expect(r.getByText('1.5 SOL').props.className).not.toMatch(TERTIARY);
+  });
+  it('TD3 (§7 pin): "<0.0001", never exponent notation', () => {
+    mockTdPublic.current = {status: 'ready', syncedAt: 1, solBalance: '10', nocBalance: '0', tokenBalances: {}, tokens: []};
+    const r = screen();
+    expect(r.getByText('<0.0001 SOL')).toBeTruthy();
+    expect(r.queryByText(/e-\d/)).toBeNull();
+  });
+  it('TD4 (r1-7, R16): the stale age is recomputed every 60 s while mounted', async () => {
+    jest.useFakeTimers({now: NOW}); // the fake clock is Date here
+    try {
+      mockTdPublic.current = {...STALE, syncedAt: NOW - 59 * 60_000};
+      const r = screen();
+      expect(r.getByTestId('token-detail-stale')).toHaveTextContent('Not updated · 59 min ago');
+      await act(async () => {
+        jest.advanceTimersByTime(60_000);
+      });
+      expect(r.getByTestId('token-detail-stale')).toHaveTextContent('Not updated · 1 h ago');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+  it('TD4b: the stale render owns exactly one timer more than a current one, and unmount clears it', () => {
+    // the screen owns another timer of its own (not ours), so the interval is measured as a difference
+    jest.useFakeTimers({now: NOW});
+    try {
+      mockTdPublic.current = {...STALE, status: 'ready', syncedAt: 1};
+      const ready = screen();
+      const base = jest.getTimerCount();
+      ready.unmount();
+      const afterReadyUnmount = jest.getTimerCount();
+      mockTdPublic.current = STALE;
+      const stale = screen();
+      expect(jest.getTimerCount()).toBe(base + 1);
+      stale.unmount();
+      expect(jest.getTimerCount()).toBe(afterReadyUnmount);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+  it('TD5 (r1-1 pin): a never-read main whose sync failed → "— SOL", never 0, no stale line', () => {
+    mockTdPublic.current = {status: 'error'};
+    const r = screen();
+    expect(r.getByText('— SOL')).toBeTruthy();
+    expect(r.queryByText('0 SOL')).toBeNull();
+    expect(r.queryByTestId('token-detail-stale')).toBeNull();
+  });
   it('Review Focus 4: not loaded → "— SOL", never 0', () => {
     mockTdPublic.current = {status: 'loading'};
     const r = screen();
     expect(r.getByText('— SOL')).toBeTruthy();
     expect(r.queryByText('0 SOL')).toBeNull();
+    expect(r.queryByText(/\$0\.00/)).toBeNull();
   });
 });

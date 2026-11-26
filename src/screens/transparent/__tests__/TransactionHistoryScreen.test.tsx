@@ -94,13 +94,18 @@ describe('TransactionHistoryScreen', () => {
     expect(getByText('↓')).toBeTruthy();
   });
 
-  it('I2: no selected account shows the loading text, never "No transactions yet"', () => {
+  // post-M1d §7 (final review m1): with no account nothing is being read — "Loading" would be a claim too
+  it('m1: no selected account → the list area is empty: no "Loading", no "No transactions yet", no retry', () => {
     mockHistSelected.current = null;
     mockQuery.isSuccess = false;
-    const {getByText, queryByText} = render(<TransactionHistoryScreen onSelectTx={onSelectTx} onBack={onBack} />);
-    expect(getByText('Loading transactions…')).toBeTruthy();
-    expect(queryByText('No transactions yet')).toBeNull();
-    mockHistSelected.current = {address: 'myPublicKey111111111111111111111111111111', label: 'Account 1'};
+    try {
+      const {queryByText, queryByTestId} = render(<TransactionHistoryScreen onSelectTx={onSelectTx} onBack={onBack} />);
+      expect(queryByText('Loading transactions…')).toBeNull();
+      expect(queryByText('No transactions yet')).toBeNull();
+      expect(queryByTestId('history-retry')).toBeNull();
+    } finally {
+      mockHistSelected.current = {address: 'myPublicKey111111111111111111111111111111', label: 'Account 1'};
+    }
   });
 
   it('I2: a read that has not completed (not loading, not error, no data) is not "empty"', () => {
@@ -162,9 +167,13 @@ describe('TransactionHistoryScreen', () => {
     mockQuery.isSuccess = false;
     mockQuery.isError = true;
     mockTxData = mockTxs;
-    const {getByTestId, getByText} = render(<TransactionHistoryScreen onSelectTx={onSelectTx} onBack={onBack} />);
+    const {getByTestId, getByText, queryByText} = render(<TransactionHistoryScreen onSelectTx={onSelectTx} onBack={onBack} />);
     expect(getByText("Couldn't load transactions · tap to retry")).toBeTruthy();
     expect(getByTestId('tx-row-sig1aaaaaaaaaaaaaaaaaaaaa')).toBeTruthy();
+    // post-M1d §7: the "cached rows plus a failed refetch" row
+    expect(getByTestId('tx-row-sig2bbbbbbbbbbbbbbbbbbbbb')).toBeTruthy(); // every cached row, not only the first
+    expect(queryByText('No transactions yet')).toBeNull();
+    expect(queryByText('Loading transactions…')).toBeNull();
   });
 
   it('Review Focus 5: no data for a non-main account shows the empty state after a good read', () => {
@@ -215,7 +224,7 @@ describe('TransactionHistoryScreen', () => {
       <TransactionHistoryScreen onSelectTx={onSelectTx} onBack={onBack} />,
     );
     fireEvent.press(getByTestId('tx-row-sig1aaaaaaaaaaaaaaaaaaaaa'));
-    expect(onSelectTx).toHaveBeenCalledWith('sig1aaaaaaaaaaaaaaaaaaaaa');
+    expect(onSelectTx).toHaveBeenCalledWith('sig1aaaaaaaaaaaaaaaaaaaaa', 'myPublicKey111111111111111111111111111111'); // post-M1d R9: the account the row was shown for
   });
   it('M1d: asks the history of the selected account and names it', () => {
     const {useTransactionHistory} = jest.requireMock('../../../hooks/useSolanaQueries') as {useTransactionHistory: jest.Mock};

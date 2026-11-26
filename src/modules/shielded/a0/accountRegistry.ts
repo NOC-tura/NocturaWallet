@@ -6,7 +6,8 @@
  * `WALLET_TRANSPARENT_DERIVATION`, whatever it is: `slip10:3` stays `slip10:3`, never renumbered;
  * no call here changes it), `fresh-pending` (a fresh exit account reserved when the user proceeds
  * to the unshield confirmation, §6.1) and `fresh-exit` (the reservation promoted when the unshield
- * landed, §6.8, or an exit account found by a restore, §7). A `fresh-pending` entry is removed on a
+ * landed, §6.8, or an exit account found by a restore, §7). `linked` on a `fresh-exit` is also set by
+ * `markA0AccountsLinked` after a confirmed own-account Send (post-M1d §4). A `fresh-pending` entry is removed on a
  * known non-landing (`releaseA0FreshAccount`); it is never shown in the switcher nor a Send source
  * (M1d's rule — this module only stores it).
  *
@@ -472,7 +473,11 @@ export function promoteA0FreshAccount(
   const next = [...entries];
   next[i] = {...e, role: 'fresh-exit', ...(options.linked === true || e.linked ? {linked: true as const} : {})};
   write(next, options.bound);
-  return e.role === 'fresh-exit' ? 'already' : 'promoted';
+  if (e.role === 'fresh-pending') {
+    firePromoted(); // post-M1d R3: a queued "linked" for this account can be applied now
+    return 'promoted';
+  }
+  return 'already';
 }
 
 /**
@@ -492,6 +497,59 @@ export function releaseA0FreshAccount(scheme: string, options: A0RegistryOptions
   }
   write(entries.filter((_e, j) => j !== i), options.bound);
   return true;
+}
+
+/**
+ * post-M1d spec §4 (P3): the tag after a confirmed Send between two accounts of this seed. Sets
+ * `linked` on every `fresh-exit` entry whose address is in `addresses` and returns how many changed
+ * (0 → nothing written). Never touches `main` or `fresh-pending` (the record's rules forbid the mark
+ * there). Needs no seed: the stored addresses are compared. The mark is never removed.
+ */
+export function markA0AccountsLinked(addresses: readonly string[], options: A0RegistryOptions = {}): number {
+  if (addresses.length === 0) {
+    return 0;
+  }
+  const entries = readRecord(options.bound);
+  if (entries === null) {
+    return 0;
+  }
+  const wanted = new Set(addresses);
+  let changed = 0;
+  const next = entries.map(e => {
+    if (e.role === 'fresh-exit' && e.linked !== true && wanted.has(e.address)) {
+      changed += 1;
+      return {...e, linked: true as const};
+    }
+    return e;
+  });
+  if (changed > 0) {
+    write(next, options.bound);
+  }
+  return changed;
+}
+
+const promotedListeners = new Set<() => void>();
+
+/**
+ * post-M1d R3: told after a write that promoted a `fresh-pending` entry to `fresh-exit` (a landed
+ * unshield) or added recovered exit accounts (a restore: new `fresh-exit` entries, or promotions). The link queue (`modules/accounts/linkQueue.ts`) registers here, so this
+ * module imports nothing of it. A listener that throws never fails the promotion.
+ */
+export function onA0AccountPromoted(listener: () => void): () => void {
+  promotedListeners.add(listener);
+  return () => {
+    promotedListeners.delete(listener);
+  };
+}
+
+function firePromoted(): void {
+  for (const listener of [...promotedListeners]) {
+    try {
+      listener();
+    } catch {
+      // the promotion is written; a listener's failure is its own
+    }
+  }
 }
 
 /**
@@ -535,6 +593,7 @@ export function addA0RecoveredExitAccounts(
   }
   if (changed.length > 0) {
     write(next, options.bound);
+    firePromoted(); // post-M1d R3
   }
   return changed;
 }

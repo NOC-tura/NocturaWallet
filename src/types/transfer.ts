@@ -30,4 +30,7 @@ export interface TransferIntent {
   createAta: boolean;
   from: SendSource;
   sourceBalances: SourceBalances;
+  /** post-M1d §4: the fresh-exit accounts this Send links (computed once on #12 from the registry read that
+   *  showed the warning); [] when the warning did not apply. #21 tags them only on a confirmed outcome. */
+  linksAccounts: string[];
 }

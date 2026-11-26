@@ -12,6 +12,7 @@ import {cn} from '../../utils/cn';
 import {useAccountRowBalances} from '../../hooks/useAccountRowBalances';
 import type {RowBalance} from '../../hooks/useAccountRowBalances';
 import {useWalletStore} from '../../store/zustand/walletStore';
+import {mainBalanceIsStale, mainBalanceIsUnknown} from '../../modules/accounts/staleness';
 import {withPoolToken} from '../../modules/accounts/poolToken';
 import {useResolvedPrices} from '../../hooks/useResolvedPrices';
 import {shortAccountAddress} from '../../modules/accounts/accountList';
@@ -31,6 +32,7 @@ import {
   TAG_MAIN,
   VALUE_HIDDEN,
   rowA11y,
+  staleRow,
 } from '../../copy/accounts';
 
 export interface AccountsSheetProps {
@@ -59,6 +61,7 @@ export function rowBalanceText(row: RowBalance | undefined, prices: Record<strin
   if (row.state === 'failed') {
     return ROW_UNAVAILABLE;
   }
+  // 'ready' and 'stale' carry a figure; the caller dims a stale one and adds " · not updated" (post-M1d §3.2)
   return formatSide(publicSide({status: 'ready', ...row.data, syncedAt: row.at}), prices, ' · ');
 }
 
@@ -72,6 +75,7 @@ export function AccountsSheet({visible, list, selectedScheme, hidden, onSelect, 
   const tokenBalances = useWalletStore(s => s.tokenBalances);
   const tokens = useWalletStore(s => s.tokens);
   const lastSyncedAt = useWalletStore(s => s.lastSyncedAt);
+  const lastSyncFailedAt = useWalletStore(s => s.lastSyncFailedAt);
   const others = list.accounts.filter(a => !a.isMain);
   const otherRows = useAccountRowBalances(
     others.map(a => a.address),
@@ -81,13 +85,21 @@ export function AccountsSheet({visible, list, selectedScheme, hidden, onSelect, 
     const out: Record<string, RowBalance> = {...otherRows};
     for (const a of list.accounts) {
       if (a.isMain) {
-        out[a.address] = lastSyncedAt
-          ? {state: 'ready', data: withPoolToken({solBalance, nocBalance, tokenBalances, tokens}), at: lastSyncedAt}
-          : {state: 'not-checked'};
+        if (mainBalanceIsUnknown(lastSyncedAt, lastSyncFailedAt)) {
+          out[a.address] = {state: 'failed'}; // review r1-1: a sync was tried, nothing was ever read → "Balance unavailable"
+        } else if (!lastSyncedAt) {
+          out[a.address] = {state: 'not-checked'};
+        } else {
+          const data = withPoolToken({solBalance, nocBalance, tokenBalances, tokens});
+          // R10: the main row reads walletStore, so it applies the main account's stale rule itself
+          out[a.address] = mainBalanceIsStale(lastSyncedAt, lastSyncFailedAt)
+            ? {state: 'stale', data, at: lastSyncedAt}
+            : {state: 'ready', data, at: lastSyncedAt};
+        }
       }
     }
     return out;
-  }, [otherRows, list.accounts, solBalance, nocBalance, tokenBalances, tokens, lastSyncedAt]);
+  }, [otherRows, list.accounts, solBalance, nocBalance, tokenBalances, tokens, lastSyncedAt, lastSyncFailedAt]);
   const {prices, havePrices} = useResolvedPrices();
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -110,7 +122,11 @@ export function AccountsSheet({visible, list, selectedScheme, hidden, onSelect, 
               {list.accounts.map(a => {
                 const checked = a.scheme === selectedScheme;
                 const tags = tagsOf(a);
-                const balanceText = hidden ? VALUE_HIDDEN : rowBalanceText(rows[a.address], havePrices ? prices : null);
+                const row = rows[a.address];
+                const stale = row?.state === 'stale';
+                const figure = hidden ? VALUE_HIDDEN : rowBalanceText(row, havePrices ? prices : null);
+                // hidden wins over stale: "•••", and the suffix still says the figure is not current
+                const balanceText = stale ? staleRow(figure) : figure;
                 return (
                   <Pressable
                     key={a.scheme}
@@ -142,7 +158,7 @@ export function AccountsSheet({visible, list, selectedScheme, hidden, onSelect, 
                       <Text variant="caption" mono className="text-fg-tertiary mt-0.5" testID={`accounts-row-${a.scheme}-address`}>
                         {shortAccountAddress(a.address)}
                       </Text>
-                      <Text variant="body-sm" numeral className="text-fg-secondary mt-0.5" testID={`accounts-row-${a.scheme}-balance`}>
+                      <Text variant="body-sm" numeral className={cn('mt-0.5', stale ? 'text-fg-tertiary' : 'text-fg-secondary')} testID={`accounts-row-${a.scheme}-balance`}>
                         {balanceText}
                       </Text>
                     </View>

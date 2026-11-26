@@ -30,8 +30,9 @@ import {getTransferMarkupLamports} from '../../modules/solana/transactionBuilder
 import {parseTokenAmount, formatTokenAmount} from '../../utils/parseTokenAmount';
 import {useAccountList, useRefreshAccounts, useSelectedAccount} from '../../hooks/useSelectedAccount';
 import {NO_PUBLIC_DATA, useAccountPublicData} from '../../hooks/useAccountPublicData';
-import {LINK_TAP_AGAIN, LINK_WARNING_BODY, LINK_WARNING_TITLE, SEND_BALANCE_CHECKING, SEND_BALANCE_RETRY, VALUE_UNKNOWN} from '../../copy/accounts';
-import {linkingWarningApplies} from '../../modules/accounts/linking';
+import {LINK_TAP_AGAIN, LINK_WARNING_BODY, LINK_WARNING_TITLE, SEND_BALANCE_CHECKING, SEND_BALANCE_RETRY, SEND_BALANCE_STALE, VALUE_UNKNOWN} from '../../copy/accounts';
+import {forceSync} from '../../modules/backgroundSync/backgroundSyncModule';
+import {linkedParticipants, linkingWarningApplies} from '../../modules/accounts/linking';
 import {addressBook} from '../../modules/addressBook/addressBookModule';
 import type {Contact} from '../../modules/addressBook/types';
 import {formatAddress} from '../../utils/formatAddress';
@@ -137,19 +138,48 @@ export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
   const {data: publicData, refetch: refetchPublic} = useAccountPublicData(source);
   const publicReady = publicData.status === 'ready';
   // owner 2A (2026-11-22): a failed read shows "tap to retry", never a figure; one read in flight at a time
-  // (review 2A m2: the row says "Checking balance…" while it runs, so a tap is never silent)
+  // (review 2A m2: the row says "Checking balance…" while it runs, so a tap is never silent).
+  // post-M1d R4: the MAIN account's figures are walletStore's — its retry is the main sync (refetch is a
+  // no-op for main). post-M1d §7 (final review m2): the in-flight flag belongs to ONE source account — a
+  // read started for one source can neither block nor later reset another's (as History's m5). The source
+  // moves only null → account and no retry row exists while it is null, so today the guard cannot bite;
+  // it is kept so a future source change cannot inherit a stale flag.
   const retryingRef = useRef(false);
   const [retrying, setRetrying] = useState(false);
+  const generationRef = useRef(0);
+  const sourceAddress = source?.address ?? null;
+  useEffect(() => {
+    generationRef.current += 1;
+    retryingRef.current = false;
+    setRetrying(false);
+  }, [sourceAddress]);
+  const refetchPublicRef = useRef(refetchPublic);
+  refetchPublicRef.current = refetchPublic;
+  const sourceIsMain = source?.isMain ?? null;
   const retryPublic = useCallback(() => {
-    if (retryingRef.current) return;
+    if (retryingRef.current || sourceIsMain === null) return;
     retryingRef.current = true;
     setRetrying(true);
-    refetchPublic().finally(() => {
-      retryingRef.current = false;
-      setRetrying(false);
-    });
-  }, [refetchPublic]);
-  const {solBalance, nocBalance, tokens: storeTokens, tokenBalances} = publicData.status === 'ready' ? publicData : NO_PUBLIC_DATA;
+    const generation = generationRef.current;
+    const read: Promise<boolean> = sourceIsMain
+      ? forceSync().then(
+          r => r.success,
+          () => false,
+        )
+      : refetchPublicRef.current();
+    read
+      .catch(() => false)
+      .finally(() => {
+        if (generation !== generationRef.current) return;
+        retryingRef.current = false;
+        setRetrying(false);
+      });
+  }, [sourceIsMain]);
+  const {solBalance, nocBalance, tokenBalances} = publicData.status === 'ready' ? publicData : NO_PUBLIC_DATA;
+  // final review m3: while stale, the last read's token LIST (labels only) stays, so a selected USDC / TEST
+  // does not fall back to SOL; its balance is still refused (publicReady gates MAX, short-by and the CTA).
+  const storeTokens =
+    publicData.status === 'ready' || publicData.status === 'stale' ? publicData.tokens : NO_PUBLIC_DATA.tokens;
   const rootNav = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
   // Default token list: ALWAYS include SOL + NOC even if not in the dynamic
@@ -388,8 +418,10 @@ export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
       createAta: selectedMint !== SOL_MINT,
       from: {scheme: source.scheme, address: source.address, label: source.label, isMain: source.isMain},
       sourceBalances: {solBalance, tokenBalances},
+      // post-M1d §4: the accounts this Send links, from the same registry read that showed the warning
+      linksAccounts: accountList !== null ? linkedParticipants(accountList.seed, source.address, recipientAddress) : [],
     });
-  }, [canReview, linkWarn, linkAck, source, recipient, amount, selectedMint, selectedToken.symbol, selectedToken.decimals, priorityLevel, onReview, solBalance, tokenBalances]);
+  }, [canReview, linkWarn, linkAck, source, recipient, amount, selectedMint, selectedToken.symbol, selectedToken.decimals, priorityLevel, onReview, solBalance, tokenBalances, accountList, recipientAddress]);
 
   const networkFeeDisplay = useMemo(() => {
     const feeSOL = formatTokenAmount(getTotalNetworkFee(priorityLevel), SOL_DECIMALS);
@@ -612,7 +644,7 @@ export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
                   </Text>
                 </Pressable>
               </View>
-              {publicData.status === 'error' ? (
+              {publicData.status === 'error' || publicData.status === 'stale' ? (
                 <Pressable
                   onPress={retryPublic}
                   disabled={retrying}
@@ -622,7 +654,11 @@ export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
                   className="flex-row items-center mt-2"
                   hitSlop={8}>
                   <Text variant="body-sm" className="text-fg-secondary">
-                    {retrying ? SEND_BALANCE_CHECKING : SEND_BALANCE_RETRY}
+                    {retrying
+                      ? SEND_BALANCE_CHECKING
+                      : publicData.status === 'stale'
+                        ? SEND_BALANCE_STALE // post-M1d §3.2: a stale figure is not usable for sending
+                        : SEND_BALANCE_RETRY}
                   </Text>
                 </Pressable>
               ) : (
@@ -748,6 +784,7 @@ export function SendScreen({onReview, onBack, initialMint}: SendScreenProps) {
         tokens={availableTokens}
         selectedMint={selectedMint}
         balances={{native: solBalance, [NOC_MINT]: nocBalance, ...tokenBalances}}
+        balancesKnown={publicReady}
         onSelect={mint => {
           setSelectedMint(mint);
           setAmount('');

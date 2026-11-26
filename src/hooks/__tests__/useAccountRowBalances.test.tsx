@@ -97,8 +97,17 @@ it('review r1 m2: closing the sheet (unmount, or active -> false) stops the wind
   expect(mockFetch).toHaveBeenCalledTimes(10);
 });
 
-it('review r1 m7: a failed re-read is "failed", never the older figure as current', async () => {
+it('post-M1d §3.1 / R5: a failed re-read of a row read earlier in this session is "stale" with that figure (was "failed")', async () => {
   qc.setQueryData(KEY('acc0'), SNAP, {updatedAt: Date.now() - 60_000});
+  const {result} = renderHook(() => useAccountRowBalances(['acc0'], true), {wrapper});
+  await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
+  await act(async () => {
+    pending.acc0!.reject(new Error('429'));
+  });
+  await waitFor(() => expect(result.current.acc0).toMatchObject({state: 'stale', data: SNAP, at: expect.any(Number)}));
+});
+
+it('R5: a row never read whose first read fails is "failed" (Balance unavailable)', async () => {
   const {result} = renderHook(() => useAccountRowBalances(['acc0'], true), {wrapper});
   await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
   await act(async () => {

@@ -4,6 +4,7 @@ import {Check} from 'lucide-react-native';
 import {Text} from './ui';
 import {TokenLogo} from './TokenLogo';
 import {formatBalanceForDisplay} from '../utils/parseTokenAmount';
+import {VALUE_UNKNOWN} from '../copy/accounts';
 import {NOC_MINT} from '../constants/programs';
 
 export interface PickerToken {
@@ -20,6 +21,8 @@ interface TokenPickerSheetProps {
   tokens: readonly PickerToken[];
   selectedMint: string;
   balances: Record<string, string>;
+  /** false → the balances are not known (stale / loading / error): each row shows "—", never "0". */
+  balancesKnown?: boolean;
   onSelect: (mint: string) => void;
   onClose: () => void;
 }
@@ -34,6 +37,7 @@ export function TokenPickerSheet({
   tokens,
   selectedMint,
   balances,
+  balancesKnown = true,
   onSelect,
   onClose,
 }: TokenPickerSheetProps) {
@@ -75,7 +79,7 @@ export function TokenPickerSheet({
                     </Text>
                   </View>
                   <Text variant="body-sm" numeral className="text-fg-secondary mr-2">
-                    {formatBalanceForDisplay(balances[t.mint] ?? '0', t.decimals)}
+                    {balancesKnown ? formatBalanceForDisplay(balances[t.mint] ?? '0', t.decimals) : VALUE_UNKNOWN}
                   </Text>
                   {t.mint === selectedMint ? <Check size={18} color="#B084FC" /> : null}
                 </Pressable>

@@ -60,6 +60,8 @@ const EXTRA_COPY = [
   path.join(ROOT, 'src/modules/solana/sendTransaction.ts'),
   // M1d (review r1 I2): the balance-card split's and the sheet rows' formatter
   path.join(ROOT, 'src/modules/accounts/valueLine.ts'),
+  // final review m2: the transactions copy (#27) — outside src/screens and src/components
+  path.join(ROOT, 'src/copy/transactions.ts'),
 ];
 
 /**
@@ -137,6 +139,8 @@ describe('shielded screens make no unsupported privacy claim', () => {
         // M1d (review r1 I2): the signer refusal #21 shows as it is
         'src/modules/solana/sendTransaction.ts',
         'src/modules/accounts/valueLine.ts',
+        // final review m2: the transactions copy module (#27) is in scope
+        'src/copy/transactions.ts',
       ]),
     );
     // part B Task 7 carry: each file is read once (EXTRA_COPY overlaps the walked directories)

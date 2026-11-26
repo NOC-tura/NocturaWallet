@@ -331,6 +331,25 @@ describe('buildDisplayTokens', () => {
   it('returns an empty list when no held tokens are core or verified', () => {
     expect(tm.buildDisplayTokens([acct(UNKNOWN_MINT, '999', 0)])).toEqual([]);
   });
+
+  // T1 (Review Focus 5)
+  it('R6: one entry per mint — a mint held in two token accounts lists once', () => {
+    const result = tm.buildDisplayTokens([acct(USDC_MINT, '1000000', 6), acct(USDC_MINT, '2500000', 6)]);
+    expect(result.map(t => t.mint)).toEqual([USDC_MINT]);
+  });
+
+  // T2 (Review Focus 5)
+  it('R6: an empty account before a funded one of the same mint → one entry; two empty ones → none', () => {
+    expect(tm.buildDisplayTokens([acct(USDC_MINT, '0', 6), acct(USDC_MINT, '5', 6)]).map(t => t.mint)).toEqual([USDC_MINT]);
+    expect(tm.buildDisplayTokens([acct(USDC_MINT, '0', 6), acct(USDC_MINT, '0', 6)])).toEqual([]);
+  });
+
+  it('R7: wrapped SOL is "Wrapped SOL" / "wSOL", never "SOL"', () => {
+    const WSOL = 'So11111111111111111111111111111111111111112';
+    expect(tm.buildDisplayTokens([acct(WSOL, '5', 9)])).toEqual([
+      {mint: WSOL, symbol: 'wSOL', name: 'Wrapped SOL', decimals: 9, logoUri: undefined, trust: 'core'},
+    ]);
+  });
 });
 
 describe('buildDisplayTokens enrichment', () => {

@@ -19,7 +19,7 @@ jest.mock('../../../hooks/useResolvedPrices', () => ({useResolvedPrices: () => m
 const mockFeatures = {shielded: true};
 jest.mock('../../../constants/features', () => ({isShieldedEnabled: () => mockFeatures.shielded}));
 
-import {AccountsSheet} from '../AccountsSheet';
+import {AccountsSheet, rowBalanceText} from '../AccountsSheet';
 import {useWalletStore} from '../../../store/zustand/walletStore';
 
 const MAIN = 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk';
@@ -49,7 +49,7 @@ jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
 beforeEach(() => {
   mockRows.current = {};
   mockRowArgs.length = 0;
-  useWalletStore.setState({publicKey: MAIN, solBalance: '0', nocBalance: '0', tokenBalances: {}, tokens: [], lastSyncedAt: null}); // M1d: the main row reads walletStore (review M11)
+  useWalletStore.setState({publicKey: MAIN, solBalance: '0', nocBalance: '0', tokenBalances: {}, tokens: [], lastSyncedAt: null, lastSyncFailedAt: null}); // M1d: the main row reads walletStore (review M11)
   mockPrices.current = {prices: {}, havePrices: false};
   mockFeatures.shielded = true;
 });
@@ -186,4 +186,73 @@ it('the list is at most 60% of the window high and shows its scrollbar (r1-5)', 
   expect(sv.props.style).toEqual(expect.objectContaining({maxHeight: 1200}));
   expect(sv.props.showsVerticalScrollIndicator).toBe(true);
   expect(sv.props.persistentScrollbar).toBe(true);
+});
+
+// post-M1d Task 3 replaces Task 2's interim "Balance unavailable" for a stale row with the dimmed figure
+const TERTIARY = /(^|\s)text-fg-tertiary(\s|$)/;
+const bal = (r: ReturnType<typeof sheet>['r'], scheme: string) => r.getByTestId(`accounts-row-${scheme}-balance`);
+const FIG = {solBalance: '500000000', nocBalance: '0', tokenBalances: {}, tokens: []};
+
+it('S1: a stale other row shows its figure, dimmed, with " · not updated"', () => {
+  mockRows.current = {[A3]: {state: 'stale', data: FIG, at: 1}};
+  const n = bal(sheet().r, 'slip10:3');
+  expect(n).toHaveTextContent('0.5 SOL · not updated');
+  expect(n.props.className).toMatch(TERTIARY);
+});
+
+it('S2: "Balance unavailable" only when nothing was read, and not dimmed', () => {
+  mockRows.current = {[A3]: {state: 'failed'}};
+  const n = bal(sheet().r, 'slip10:3');
+  expect(n).toHaveTextContent('Balance unavailable');
+  expect(n.props.className).not.toMatch(TERTIARY);
+});
+
+it('S3 (R10): the main row, read earlier and the last sync failed → the figure, dimmed, "· not updated"; control: no failure', () => {
+  useWalletStore.setState({solBalance: '2000000000', lastSyncedAt: 5, lastSyncFailedAt: 9});
+  const first = sheet().r;
+  let n = bal(first, 'slip10:0');
+  expect(n).toHaveTextContent('2 SOL · not updated');
+  expect(n.props.className).toMatch(TERTIARY);
+  first.unmount(); // before the store changes: a mounted sheet would re-render outside act()
+  useWalletStore.setState({lastSyncFailedAt: null});
+  n = bal(sheet().r, 'slip10:0');
+  expect(n).toHaveTextContent('2 SOL');
+  expect(n).not.toHaveTextContent('not updated');
+  expect(n.props.className).not.toMatch(TERTIARY);
+});
+
+it('S3b (ruling 1): the main row never read — a sync failed → "Balance unavailable"; still loading → "not checked yet"', () => {
+  useWalletStore.setState({solBalance: '0', lastSyncedAt: null, lastSyncFailedAt: 9});
+  const first = sheet().r;
+  const n = bal(first, 'slip10:0');
+  expect(n).toHaveTextContent('Balance unavailable');
+  expect(n).not.toHaveTextContent('0 SOL');
+  expect(n.props.className).not.toMatch(TERTIARY);
+  first.unmount(); // before the store changes: a mounted sheet would re-render outside act()
+  useWalletStore.setState({lastSyncedAt: null, lastSyncFailedAt: null});
+  expect(bal(sheet().r, 'slip10:0')).toHaveTextContent('not checked yet');
+});
+
+it('S4 (Review Focus 1): hidden wins over stale — "••• · not updated", no digit in the row or its label', () => {
+  mockRows.current = {[A3]: {state: 'stale', data: FIG, at: 1}};
+  const {r} = sheet({hidden: true});
+  expect(bal(r, 'slip10:3')).toHaveTextContent('••• · not updated');
+  const label = r.getByTestId('accounts-row-slip10:3').props.accessibilityLabel as string;
+  expect(label.endsWith('••• · not updated')).toBe(true);
+  expect(label).not.toMatch(/\d\.\d|SOL/);
+});
+
+it('S5: a stale row reads its figure and "not updated" to a screen reader', () => {
+  mockRows.current = {[A3]: {state: 'stale', data: FIG, at: 1}};
+  expect(sheet().r.getByTestId('accounts-row-slip10:3').props.accessibilityLabel).toMatch(/0\.5 SOL · not updated$/);
+});
+
+it('main row: read, no failed sync → the figure (control)', () => {
+  useWalletStore.setState({solBalance: '20000000', lastSyncedAt: 1, lastSyncFailedAt: null});
+  expect(sheet().r.getByTestId('accounts-row-slip10:0-balance')).toHaveTextContent('0.02 SOL');
+});
+
+it('rowBalanceText: a stale row returns the figure (the caller adds the suffix)', () => {
+  const snap = {solBalance: '20000000', nocBalance: '0', tokenBalances: {}, tokens: []};
+  expect(rowBalanceText({state: 'stale', data: snap, at: 1}, null)).toBe('0.02 SOL');
 });

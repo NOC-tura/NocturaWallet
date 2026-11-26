@@ -20,6 +20,7 @@ import type {TransferIntent} from '../../types/transfer';
 import {CancelledError} from '../../modules/solana/landedSignature';
 import {sendSchemeError} from '../../copy/accounts';
 import {queryClient} from '../../app/queryClient';
+import {recordConfirmedSendLinks} from '../../modules/accounts/linkQueue';
 import {parseA0Scheme} from '../../modules/shielded/a0/accountRegistry';
 
 // ── In-file constants ─────────────────────────────────────────────────────────
@@ -131,6 +132,22 @@ export function TransactionStatusScreen({
       queryClient.invalidateQueries({queryKey: ['txHistory', intent.from.address]}).catch(() => undefined);
     }
   }, [stage, intent.from.address]);
+
+  // post-M1d spec §4 (P3): a CONFIRMED Send between two accounts of this seed links them on chain — tag
+  // every fresh-exit account taking part. Only here: 'success' is a confirmed/finalized status with no err
+  // (or an adopted landed signature). Never on cancel, failure, a landed-but-failed tx (R14) or 'stuck';
+  // a late confirmation tags only while this screen is mounted (R15). The write never fails the Send.
+  const linksAccounts = intent.linksAccounts;
+  useEffect(() => {
+    if (stage !== 'success' || linksAccounts.length === 0) {
+      return;
+    }
+    try {
+      recordConfirmedSendLinks(linksAccounts);
+    } catch {
+      // the queue never throws; a mocked or broken one must not turn a successful Send into an error
+    }
+  }, [stage, linksAccounts]);
 
   useEffect(() => {
     let cancelled = false;

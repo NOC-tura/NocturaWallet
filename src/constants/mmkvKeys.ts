@@ -48,6 +48,8 @@ export const MMKV_KEYS = {
   ACCOUNTS_REGISTRY: 'v1_accounts',
   /** M1d: the selected account's scheme (`slip10:n` | `cli`). A choice among one's own accounts is itself a link (M1 spec I6): ENCRYPTED instance only. */
   ACCOUNTS_SELECTED: 'v1_accounts.selected',
+  /** post-M1d §4 / R2: addresses waiting for their "linked" tag (a JSON list). Own accounts → ENCRYPTED instance only. */
+  ACCOUNTS_LINK_PENDING: 'v1_accounts.linkPending',
 
   // ─── Address Book [S] ───────────────────────────────────────────────
   ADDRESS_BOOK_PREFIX: 'v1_contacts_',

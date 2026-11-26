@@ -1,4 +1,4 @@
-import React, {useEffect, useMemo, useRef, useState} from 'react';
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
   View,
   TextInput,
@@ -22,6 +22,9 @@ import {mmkvPublic} from '../../store/mmkv/instances';
 import {MMKV_KEYS} from '../../constants/mmkvKeys';
 import {SWAP_TOKENS} from '../../modules/swap/swapTokens';
 import {TokenPickerSheet} from '../../components/TokenPickerSheet';
+import {mainBalanceIsStale, mainBalanceIsUnknown} from '../../modules/accounts/staleness';
+import {SEND_BALANCE_CHECKING, SEND_BALANCE_RETRY, SEND_BALANCE_STALE, VALUE_UNKNOWN} from '../../copy/accounts';
+import {forceSync} from '../../modules/backgroundSync/backgroundSyncModule';
 import {MainAccountLine} from '../../components/accounts/MainAccountLine';
 
 // ── Lazy imports — wrapped in try/catch so Jest/stub envs don't crash ─────────
@@ -90,7 +93,28 @@ function quoteOutText(outAmount: string, decimals: number): string {
 }
 
 export function SwapScreen({initialFromMint, onBack, onDone}: SwapScreenProps) {
-  const {solBalance, tokenBalances} = useWalletStore();
+  const {solBalance, tokenBalances, lastSyncedAt, lastSyncFailedAt} = useWalletStore();
+  // post-M1d Task 5 ruling: a stale or never-read main balance is not a figure to spend from — refuse it everywhere.
+  // fix round 1 #3: never read at all (lastSyncedAt null) is not a balance either — the hook calls it loading.
+  const balanceKnown =
+    lastSyncedAt !== null && !mainBalanceIsStale(lastSyncedAt, lastSyncFailedAt) && !mainBalanceIsUnknown(lastSyncedAt, lastSyncFailedAt);
+  const staleBalance = mainBalanceIsStale(lastSyncedAt, lastSyncFailedAt);
+  // fix round 1 #2: the note under the balance says why the swap is off; tapping it runs the main sync, one in flight.
+  const retryingRef = useRef(false);
+  const [retrying, setRetrying] = useState(false);
+  const retryBalance = useCallback(() => {
+    if (retryingRef.current) return;
+    retryingRef.current = true;
+    setRetrying(true);
+    forceSync()
+      .catch(() => undefined)
+      .finally(() => {
+        retryingRef.current = false;
+        if (isMountedRef.current) setRetrying(false);
+      });
+  }, []);
+  // a first sync not settled yet: the note reads "Checking balance…" and offers no tap
+  const noteBusy = retrying || (lastSyncedAt === null && lastSyncFailedAt === null);
 
   const [fromMint, setFromMint] = useState<string>(
     initialFromMint && SWAP_TOKENS.some(t => t.mint === initialFromMint)
@@ -147,8 +171,9 @@ export function SwapScreen({initialFromMint, onBack, onDone}: SwapScreenProps) {
 
   const insufficient = (() => {
     try {
+      // fix round 1 #1: an amount is never judged against a balance that is stale or was never read
       return (
-        amountRaw !== '0' && BigInt(amountRaw) > BigInt(fromBalanceRaw || '0')
+        balanceKnown && amountRaw !== '0' && BigInt(amountRaw) > BigInt(fromBalanceRaw || '0')
       );
     } catch {
       return false;
@@ -170,6 +195,7 @@ export function SwapScreen({initialFromMint, onBack, onDone}: SwapScreenProps) {
   };
 
   const onMax = () => {
+    if (!balanceKnown) return;
     let raw: bigint;
     try { raw = BigInt(fromBalanceRaw || '0'); } catch { raw = 0n; }
     if (fromMint === 'native') {
@@ -188,7 +214,7 @@ export function SwapScreen({initialFromMint, onBack, onDone}: SwapScreenProps) {
   const onPickTo = () => setPicker('to');
 
   const canSwap =
-    quoteEnabled && quote.data != null && !quote.isLoading && !insufficient;
+    balanceKnown && quoteEnabled && quote.data != null && !quote.isLoading && !insufficient;
 
   const onSwap = async () => {
     const now = Date.now();
@@ -386,9 +412,15 @@ export function SwapScreen({initialFromMint, onBack, onDone}: SwapScreenProps) {
               />
               <Pressable
                 onPress={onMax}
+                disabled={!balanceKnown}
+                accessibilityState={{disabled: !balanceKnown}}
                 accessibilityRole="button"
                 accessibilityLabel="Max"
-                className="px-3 py-1.5 rounded-pill bg-accent-transparent-tint active:opacity-80">
+                testID="swap-max"
+                className={cn(
+                  'px-3 py-1.5 rounded-pill bg-accent-transparent-tint active:opacity-80',
+                  !balanceKnown && 'opacity-40', // phone pass 2026-11-26: a disabled MAX looks disabled, as on #12
+                )}>
                 <Text variant="overline" className="text-accent-transparent">
                   MAX
                 </Text>
@@ -396,8 +428,26 @@ export function SwapScreen({initialFromMint, onBack, onDone}: SwapScreenProps) {
             </View>
             {/* Balance line */}
             <Text variant="caption" className="text-fg-secondary">
-              {formatBalanceForDisplay(fromBalanceRaw, from.decimals)} {from.symbol}
+              {balanceKnown ? formatBalanceForDisplay(fromBalanceRaw, from.decimals) : VALUE_UNKNOWN} {from.symbol}
             </Text>
+            {!balanceKnown ? (
+              <Pressable
+                onPress={retryBalance}
+                disabled={noteBusy}
+                accessibilityRole="button"
+                // review m1: the announced state matches the real one (never an enabled-sounding "Checking…")
+                accessibilityState={{disabled: noteBusy, busy: noteBusy}}
+                testID="swap-balance-note"
+                hitSlop={8}>
+                <Text variant="body-sm" className="text-fg-secondary">
+                  {noteBusy
+                    ? SEND_BALANCE_CHECKING
+                    : staleBalance
+                      ? SEND_BALANCE_STALE
+                      : SEND_BALANCE_RETRY}
+                </Text>
+              </Pressable>
+            ) : null}
           </View>
 
           {/* ── Flip button ───────────────────────────────────────────────── */}
@@ -508,6 +558,7 @@ export function SwapScreen({initialFromMint, onBack, onDone}: SwapScreenProps) {
         )}
         selectedMint={picker === 'from' ? fromMint : toMint}
         balances={{native: solBalance, ...tokenBalances}}
+        balancesKnown={balanceKnown}
         onSelect={mint => {
           if (picker === 'from') {
             setFromMint(mint);

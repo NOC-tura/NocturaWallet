@@ -207,14 +207,12 @@ describe('getTransactionDetail', () => {
   it('parses a SOL transfer, skipping the Noctura fee-markup transfer', async () => {
     const d = await getTransactionDetail(parsedTxConn(), 'SIG');
     expect(d).not.toBeNull();
-    expect(d!.from).toBe('SENDER_ADDR');
-    expect(d!.to).toBe('RECIPIENT_ADDR');
-    expect(d!.amount).toBe('0.01');
-    expect(d!.tokenSymbol).toBe('SOL');
+    // post-M1d §5: TxDetail.transfer replaces the flat from/to/amount/tokenSymbol/type
+    expect(d!.transfer).toMatchObject({from: 'SENDER_ADDR', authority: null, to: 'RECIPIENT_ADDR', amount: '0.01', symbol: 'SOL', mint: 'native'});
+    expect(d!.feePayer).toBe('SENDER_ADDR');
     expect(d!.feeLamports).toBe(5005n);
     expect(d!.slot).toBe(271_408_924);
     expect(d!.status).toBe('confirmed');
-    expect(d!.type).toBe('Send');
   });
 
   it('marks a tx with meta.err as failed', async () => {

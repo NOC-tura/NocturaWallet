@@ -25,6 +25,9 @@ jest.mock('../../shielded/a0/startup', () => ({ensureA0Startup: jest.fn(async ()
 jest.mock('../../zkProver/nativeProverBridge', () => ({isProverSupported: jest.fn(() => true)}));
 jest.mock('../../solana/connection', () => ({getConnection: jest.fn(() => 'the-connection')}));
 jest.mock('../../../constants/features', () => ({isShieldedEnabled: jest.fn(() => false)}));
+// post-M1d R2: the link queue, observed here
+const mockDrain = jest.fn(() => 0);
+jest.mock('../../accounts/linkQueue', () => ({drainLinkQueue: () => mockDrain()}));
 import {unlockSecureStorage, unlockSecureStorageWithSeed} from '../secureStorageSession';
 import {initSecureMmkv, mmkvPublic, mmkvSecure} from '../../../store/mmkv/instances';
 import {ensureA0Startup} from '../../shielded/a0/startup';
@@ -34,6 +37,7 @@ import {mnemonicToSeed} from '../../keyDerivation/mnemonicUtils';
 import {keychainManager} from '../../keychain/keychainModule';
 
 beforeEach(() => {
+  mockDrain.mockImplementation(() => 0); // review nit: a failing throwing-drain test never leaks into the next
   jest.clearAllMocks();
 });
 
@@ -43,6 +47,40 @@ describe('unlockSecureStorage', () => {
     expect(initSecureMmkv).toHaveBeenCalledWith(expect.any(String));
     const key = (initSecureMmkv as jest.Mock).mock.calls[0][0];
     expect(key).toHaveLength(32); // 16-byte hex
+  });
+});
+
+describe('post-M1d R2: unlock drains the link queue once the encrypted store is open', () => {
+  it('unlockSecureStorage: once, after the encrypted store is opened', async () => {
+    await unlockSecureStorage();
+    expect(mockDrain).toHaveBeenCalledTimes(1);
+    expect(initSecureMmkv).toHaveBeenCalledTimes(1);
+    expect((initSecureMmkv as jest.Mock).mock.invocationCallOrder[0]!).toBeLessThan(mockDrain.mock.invocationCallOrder[0]!);
+  });
+
+  it('unlockSecureStorageWithSeed (onboarding): once, after the store is opened', () => {
+    unlockSecureStorageWithSeed(new Uint8Array(64).fill(9));
+    expect(mockDrain).toHaveBeenCalledTimes(1);
+    expect((initSecureMmkv as jest.Mock).mock.invocationCallOrder[0]!).toBeLessThan(mockDrain.mock.invocationCallOrder[0]!);
+  });
+
+  it('a drain that throws never fails the unlock: still resolves, still drops the v1 view key and starts A0', async () => {
+    (isShieldedEnabled as jest.Mock).mockReturnValue(true);
+    mockDrain.mockImplementation(() => {
+      throw new Error('queue');
+    });
+    await expect(unlockSecureStorage()).resolves.toBeUndefined();
+    expect(keychainManager.dropV1ViewKey).toHaveBeenCalledTimes(1);
+    expect(ensureA0Startup).toHaveBeenCalledTimes(1);
+    expect(() => unlockSecureStorageWithSeed(new Uint8Array(64).fill(9))).not.toThrow();
+    expect(ensureA0Startup).toHaveBeenCalledTimes(2);
+    mockDrain.mockImplementation(() => 0);
+  });
+
+  it('a store that is already open: nothing to drain here (the sheet drains when it opens)', async () => {
+    (mmkvSecure as jest.Mock).mockReturnValueOnce({});
+    await unlockSecureStorage();
+    expect(mockDrain).not.toHaveBeenCalled();
   });
 });
 

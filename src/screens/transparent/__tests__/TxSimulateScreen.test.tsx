@@ -99,6 +99,7 @@ const intent = {
   createAta: false,
   from: {scheme: 'slip10:0', address: 'GabcDEFGHIJKLMNOPQRSTUVWXYZ1234567890ABCDEF', label: 'Account 1', isMain: true}, // M1d: the sender is the intent's source (was the walletStore mock's publicKey)
   sourceBalances: {solBalance: '1000000000', tokenBalances: {}}, // M1d: "After" from the source's balances (was the walletStore mock's)
+  linksAccounts: [], // post-M1d §4: no own-account link in this Send
 };
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

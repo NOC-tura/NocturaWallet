@@ -1,8 +1,9 @@
 import {Connection, PublicKey} from '@solana/web3.js';
 import {rpcLimiter} from './rpcLimiter';
 import type {TokenAccount, ParsedTransaction} from './types';
-import {NOC_MINT, NOCTURA_FEE_TREASURY} from '../../constants/programs';
-import {formatTokenAmount} from '../../utils/parseTokenAmount';
+import {parseTxDetail} from './txDetail';
+import type {RawParsedTx, TxDetail} from './txDetail';
+import {trustedSymbol} from '../tokens/trustedSymbol';
 
 // TOKEN_PROGRAM_ID constant — matches @solana/web3.js export
 const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
@@ -129,100 +130,20 @@ export async function getAccountInfo(
   });
 }
 
-export interface TxDetail {
-  signature: string;
-  status: 'confirmed' | 'finalized' | 'failed';
-  type: string; // 'Send' | 'Transaction'
-  from: string;
-  to: string | null;
-  amount: string | null; // human
-  tokenSymbol: string; // 'SOL' | 'NOC' | ''
-  feeLamports: bigint;
-  slot: number;
-  blockTime: number | null;
-  memo: string | null;
-}
+export type {TxDetail} from './txDetail';
 
 /**
- * Fetch and parse a single transaction for the detail screen. Best-effort —
- * missing fields stay null/'' rather than throwing. Returns null when the RPC
- * has not indexed the signature yet (caller retries).
+ * Fetch and parse a single transaction for the detail screen (#27). The parsing is `parseTxDetail`
+ * (post-M1d §5) with the trusted symbol source. Returns null when the RPC has not indexed the
+ * signature yet (the caller retries).
  */
-export async function getTransactionDetail(
-  connection: Connection,
-  signature: string,
-): Promise<TxDetail | null> {
+export async function getTransactionDetail(connection: Connection, signature: string): Promise<TxDetail | null> {
+  // R11: the cast names exactly the fields parseTxDetail reads (RawParsedTx), token balances included
   const tx = (await connection.getParsedTransaction(signature, {
     maxSupportedTransactionVersion: 0,
-  })) as null | {
-    slot?: number;
-    blockTime?: number | null;
-    meta?: {fee?: number; err?: unknown} | null;
-    transaction?: {message?: {accountKeys?: Array<{pubkey?: unknown}>; instructions?: unknown[]}};
-  };
-  if (!tx) return null;
-
-  const meta = tx.meta ?? {};
-  const keys = tx.transaction?.message?.accountKeys ?? [];
-  const firstKey = keys[0]?.pubkey as unknown;
-  const from =
-    typeof firstKey === 'string'
-      ? firstKey
-      : (firstKey as {toString?: () => string})?.toString?.() ?? '';
-
-  let to: string | null = null;
-  let amount: string | null = null;
-  let tokenSymbol = '';
-  let type = 'Transaction';
-  let memo: string | null = null;
-
-  const instructions = (tx.transaction?.message?.instructions ?? []) as Array<{
-    program?: string;
-    parsed?: {type?: string; info?: Record<string, unknown>} | string;
-  }>;
-
-  for (const ix of instructions) {
-    if (ix.program === 'spl-memo') {
-      memo =
-        typeof ix.parsed === 'string'
-          ? ix.parsed
-          : ((ix.parsed?.info as unknown as string) ?? memo);
-      continue;
-    }
-    if (to) continue;
-    const parsed = typeof ix.parsed === 'object' ? ix.parsed : undefined;
-    const info = parsed?.info ?? {};
-    const destination = info.destination as string | undefined;
-    if (!destination || destination === NOCTURA_FEE_TREASURY) continue;
-
-    if (ix.program === 'system' && parsed?.type === 'transfer') {
-      to = destination;
-      amount = formatTokenAmount(BigInt((info.lamports as number) ?? 0), 9);
-      tokenSymbol = 'SOL';
-      type = 'Send';
-    } else if (
-      ix.program === 'spl-token' &&
-      (parsed?.type === 'transferChecked' || parsed?.type === 'transfer')
-    ) {
-      to = destination; // NOTE: SPL destination is the recipient ATA, not the owner wallet (v1 limitation)
-      const ta = info.tokenAmount as {uiAmountString?: string; amount?: string} | undefined;
-      amount = ta?.uiAmountString ?? ta?.amount ?? null;
-      tokenSymbol = info.mint === NOC_MINT ? 'NOC' : '';
-      type = 'Send';
-    }
+  })) as unknown as RawParsedTx | null;
+  if (!tx) {
+    return null;
   }
-
-  return {
-    signature,
-    status: meta.err ? 'failed' : 'confirmed',
-    type,
-    from,
-    to,
-    amount,
-    tokenSymbol,
-    feeLamports: BigInt(meta.fee ?? 0),
-    slot: tx.slot ?? 0,
-    blockTime: tx.blockTime ?? null,
-    memo,
-  };
+  return parseTxDetail(tx, signature, trustedSymbol);
 }

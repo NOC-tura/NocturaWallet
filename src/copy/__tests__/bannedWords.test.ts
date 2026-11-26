@@ -24,6 +24,8 @@ const EXTRA = [
   'src/modules/solana/sendTransaction.ts',
   // M1d (review r1 I2): the balance-card split's and the sheet rows' formatter
   'src/modules/accounts/valueLine.ts',
+  // final review m2: the transactions copy (#27)
+  'src/copy/transactions.ts',
 ];
 
 function sources(): Array<{file: string; text: string}> {

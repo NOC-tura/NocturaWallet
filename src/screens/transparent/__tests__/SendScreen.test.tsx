@@ -35,11 +35,20 @@ const READY_1_SOL = {status: 'ready', syncedAt: 1, solBalance: '1000000000', noc
 const mockSendSelected: {current: unknown} = {current: MAIN_SRC};
 const mockSendList: {current: unknown} = {current: null};
 const mockSendRefresh = jest.fn();
+// post-M1d §4: #12 must never write the tag (that is #21's)
+const mockRecordLinks = jest.fn((_a: readonly string[]) => 0);
+jest.mock('../../../modules/accounts/linkQueue', () => ({
+  recordConfirmedSendLinks: (a: readonly string[]) => mockRecordLinks(a),
+  drainLinkQueue: jest.fn(() => 0),
+}));
 jest.mock('../../../hooks/useSelectedAccount', () => ({
   useSelectedAccount: () => mockSendSelected.current,
   useAccountList: () => mockSendList.current,
   useRefreshAccounts: () => mockSendRefresh,
 }));
+// post-M1d R4: the main account's "tap to retry" runs the main sync (refetch is a no-op for main)
+const mockForceSync = jest.fn(() => Promise.resolve({success: true, partial: false, timestamp: 1}));
+jest.mock('../../../modules/backgroundSync/backgroundSyncModule', () => ({forceSync: () => mockForceSync()}));
 const mockSendPublic: {current: unknown} = {current: READY_1_SOL};
 const mockSendRefetch = jest.fn(() => Promise.resolve(true));
 jest.mock('../../../hooks/useAccountPublicData', () => ({
@@ -157,6 +166,7 @@ describe('M1d — #12 sends from the account selected when it opened (spec §3.3
         recipient: FOREIGN,
         from: {scheme: 'slip10:3', address: A3_SRC.address, label: 'Account 4', isMain: false},
         sourceBalances: {solBalance: '3000000', tokenBalances: {}},
+        linksAccounts: [], // post-M1d §4: a foreign recipient links nothing
       }),
     );
   });
@@ -181,6 +191,8 @@ describe('M1d — #12 sends from the account selected when it opened (spec §3.3
   });
 
   it('owner 2A (2026-11-22): a failed read of the source → "Balance unavailable · tap to retry", the tap re-reads, the CTA stays disabled', async () => {
+    // post-M1d R4: the refetch path is the non-main one — main retries through forceSync (its own row below)
+    mockSendSelected.current = A3_SRC;
     mockSendPublic.current = {status: 'error'};
     mockSendRefetch.mockClear();
     const r = render(<SendScreen onReview={jest.fn()} />);
@@ -209,6 +221,125 @@ describe('M1d — #12 sends from the account selected when it opened (spec §3.3
       fireEvent.press(r.getByTestId('send-balance-retry'));
     });
     expect(mockSendRefetch).toHaveBeenCalledTimes(2); // review 2A m4: the guard is released after a read settles
+  });
+
+  const STALE_1_SOL = {status: 'stale', syncedAt: 1, failedAt: 2, solBalance: '1000000000', nocBalance: '0', tokens: [], tokenBalances: {}};
+
+  it('post-M1d §3.2: a stale balance is not usable — "Not updated · tap to retry", no figure, CTA / MAX / "short by" off', () => {
+    mockSendPublic.current = STALE_1_SOL;
+    const r = render(<SendScreen onReview={jest.fn()} />);
+    fill(r);
+    expect(r.queryByTestId('send-available')).toBeNull(); // the stale 1 SOL is never offered as Available
+    expect(r.getByTestId('send-balance-retry')).toHaveTextContent('Not updated · tap to retry');
+    expect(r.getByTestId('review-button').props.accessibilityState?.disabled).toBe(true);
+    expect(r.getByTestId('max-button').props.accessibilityState?.disabled).toBe(true);
+    fireEvent.press(r.getByTestId('max-button'));
+    expect(r.getByTestId('amount-input').props.value).toBe('0.001'); // MAX filled nothing
+    fireEvent.changeText(r.getByTestId('amount-input'), '5'); // more than the stale 1 SOL
+    expect(r.queryByText(/Insufficient balance/)).toBeNull(); // never judged against a stale figure
+  });
+
+  it('post-M1d review: a stale balance → the token picker shows "—" for each balance, never "0"', () => {
+    mockSendPublic.current = STALE_1_SOL;
+    const r = render(<SendScreen onReview={jest.fn()} />);
+    fireEvent.press(r.getByTestId('token-picker'));
+    expect(r.queryByText('0')).toBeNull();
+    expect(r.getAllByText('—').length).toBeGreaterThanOrEqual(2); // SOL and NOC rows
+  });
+
+  // final review m3: while stale the token list keeps its (stale) labels — the selected token never falls back to SOL
+  const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+  const USDC_TOKEN = {mint: USDC_MINT, symbol: 'USDC', name: 'USD Coin', decimals: 6};
+  it('final review m3: stale + a non-SOL selected mint → the label stays that token, the balance is still refused', () => {
+    mockSendPublic.current = {...STALE_1_SOL, tokens: [USDC_TOKEN], tokenBalances: {[USDC_MINT]: '5000000'}};
+    const r = render(<SendScreen onReview={jest.fn()} initialMint={USDC_MINT} />);
+    expect(r.getByTestId('token-picker').props.accessibilityLabel).toBe('Token USDC, tap to change');
+    fill(r);
+    expect(r.getByTestId('review-button').props.accessibilityState?.disabled).toBe(true);
+    expect(r.getByTestId('max-button').props.accessibilityState?.disabled).toBe(true);
+    expect(r.queryByTestId('send-available')).toBeNull();
+    expect(r.queryByText(/5 USDC/)).toBeNull(); // the stale figure is never shown
+    fireEvent.changeText(r.getByTestId('amount-input'), '50');
+    expect(r.queryByText(/Insufficient balance/)).toBeNull();
+    expect(r.queryByText(/short by/i)).toBeNull();
+    fireEvent.press(r.getByTestId('token-picker'));
+    expect(r.getAllByText('USDC').length).toBeGreaterThanOrEqual(1);
+    expect(r.queryByText('5')).toBeNull(); // the picker row shows "—", not the stale figure
+  });
+
+  it('control (m3): error (no figure at all) → the stale list is not there; the selection falls back as before', () => {
+    mockSendPublic.current = {status: 'error'};
+    const r = render(<SendScreen onReview={jest.fn()} initialMint={USDC_MINT} />);
+    expect(r.getByTestId('token-picker').props.accessibilityLabel).toBe('Token SOL, tap to change');
+  });
+
+  it('positive control: READY → the picker shows the real figures', () => {
+    mockSendPublic.current = READY_1_SOL;
+    const r = render(<SendScreen onReview={jest.fn()} />);
+    fireEvent.press(r.getByTestId('token-picker'));
+    expect(r.queryAllByText('—')).toHaveLength(0);
+  });
+
+  it('positive control: the same figure as READY is usable', () => {
+    mockSendPublic.current = READY_1_SOL;
+    const r = render(<SendScreen onReview={jest.fn()} />);
+    fill(r);
+    expect(r.getByTestId('send-available')).toHaveTextContent('1 SOL');
+    expect(r.getByTestId('review-button').props.accessibilityState?.disabled).toBe(false);
+  });
+
+  it('R4: main + stale → the tap runs forceSync once (never the no-op refetch); a double tap reads once', async () => {
+    mockSendSelected.current = MAIN_SRC;
+    mockSendPublic.current = STALE_1_SOL;
+    mockSendRefetch.mockClear();
+    mockForceSync.mockClear();
+    let release: (v: {success: boolean; partial: boolean; timestamp: number}) => void = () => undefined;
+    mockForceSync.mockImplementationOnce(() => new Promise(res => (release = res)));
+    const r = render(<SendScreen onReview={jest.fn()} />);
+    await act(async () => {
+      fireEvent.press(r.getByTestId('send-balance-retry'));
+      fireEvent.press(r.getByTestId('send-balance-retry'));
+    });
+    expect(mockForceSync).toHaveBeenCalledTimes(1);
+    expect(mockSendRefetch).not.toHaveBeenCalled();
+    expect(r.getByTestId('send-balance-retry')).toHaveTextContent('Checking balance…');
+    await act(async () => {
+      release({success: false, partial: true, timestamp: 2});
+    });
+    expect(r.getByTestId('send-balance-retry')).toHaveTextContent('Not updated · tap to retry');
+  });
+
+  it('another account + stale → the tap re-reads that account (refetch), not the main sync', async () => {
+    mockSendSelected.current = A3_SRC;
+    mockSendPublic.current = STALE_1_SOL;
+    mockSendRefetch.mockClear();
+    mockForceSync.mockClear();
+    const r = render(<SendScreen onReview={jest.fn()} />);
+    await act(async () => {
+      fireEvent.press(r.getByTestId('send-balance-retry'));
+    });
+    expect(mockSendRefetch).toHaveBeenCalledTimes(1);
+    expect(mockForceSync).not.toHaveBeenCalled();
+  });
+
+  it('a rejected forceSync frees the retry (never stuck on "Checking balance…")', async () => {
+    mockSendSelected.current = MAIN_SRC;
+    mockSendPublic.current = STALE_1_SOL;
+    mockForceSync.mockImplementationOnce(() => Promise.reject(new Error('boom')));
+    const r = render(<SendScreen onReview={jest.fn()} />);
+    await act(async () => {
+      fireEvent.press(r.getByTestId('send-balance-retry'));
+    });
+    expect(r.getByTestId('send-balance-retry')).toHaveTextContent('Not updated · tap to retry');
+  });
+
+  // UNTESTED INVARIANT (race unconstructible): the generation guard itself has no test that can make it bite — the
+  // source moves only null → account. This row pins the condition that makes it safe, not the guard.
+  it('final review m2: no retry can start while the source is unknown (the guard is keyed on the source)', () => {
+    mockSendSelected.current = null;
+    mockSendPublic.current = {status: 'loading'};
+    const r = render(<SendScreen onReview={jest.fn()} />);
+    expect(r.queryByTestId('send-balance-retry')).toBeNull();
   });
 
   it('review 2A I1: while loading, MAX does not fill a 0 and no "short by" is shown', () => {
@@ -320,16 +451,47 @@ describe('M1d — the linking warning and its second tap (spec §4.4)', () => {
     expect(onReview.mock.calls[0]![0]).toMatchObject({recipient: MAIN, from: {address: A3}});
   });
 
-  // M1d: known limit, owner question (final review I1) — an acknowledged own-account Send does NOT mark the
-  // account "linked" in the sheet: the tag comes only from a landed exit (M1c). This row pins today's behaviour.
-  it('M1d: known limit, owner question — an acknowledged exit → main Send leaves the account\'s tags unchanged (no "linked" is recorded)', () => {
+  // post-M1d P3 (owner): the limit this row used to pin is closed — the intent now names the accounts to tag
+  it('post-M1d §4: exit → main, second tap → the intent carries linksAccounts = [the exit]; never the main account', () => {
     const {r, onReview} = setup(MAIN);
     tap(r);
     tap(r);
-    expect(onReview).toHaveBeenCalledTimes(1);
-    expect(mockSendSelected.current).toBe(A3_SRC);
-    expect(Object.keys(onReview.mock.calls[0]![0].from).sort()).toEqual(['address', 'isMain', 'label', 'scheme']); // no "linking" flag travels with the intent for #21 to record
-    expect(A3_SRC.linked).toBe(false);
+    expect(onReview.mock.calls[0]![0].linksAccounts).toEqual([A3]);
+  });
+
+  it('post-M1d §4 / R3: exit → a fresh-pending reservation → both travel (the pending one is queued by #21)', () => {
+    const {r, onReview} = setup(A1);
+    tap(r);
+    tap(r);
+    expect(onReview.mock.calls[0]![0].linksAccounts).toEqual([A3, A1]);
+  });
+
+  it('post-M1d §4: a Pay URI recipient (solana:<exit>) → linksAccounts names the exit address, not the raw string', () => {
+    const {r, onReview} = setup(`solana:${A1}`);
+    tap(r);
+    tap(r);
+    expect(onReview.mock.calls[0]![0].linksAccounts).toEqual([A3, A1]);
+  });
+
+  it('post-M1d §4: a foreign recipient → linksAccounts is empty', () => {
+    const {r, onReview} = setup(FOREIGN);
+    tap(r);
+    expect(onReview.mock.calls[0]![0].linksAccounts).toEqual([]);
+  });
+
+  it('post-M1d §4: no registry known (list null) → empty, never a guess', () => {
+    mockSendList.current = null;
+    const {r, onReview} = setup(MAIN);
+    tap(r);
+    expect(onReview.mock.calls[0]![0].linksAccounts).toEqual([]);
+  });
+
+  // pin (passes before the change): #12 never imported the queue. It keeps a later edit from moving the write here.
+  it('post-M1d §4: #12 itself writes nothing — the tag belongs to #21', () => {
+    const {r} = setup(MAIN);
+    tap(r);
+    tap(r);
+    expect(mockRecordLinks).not.toHaveBeenCalled();
   });
 
   it('the debounce still holds: a second tap within 500 ms is not the second tap', () => {

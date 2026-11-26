@@ -5,6 +5,9 @@ import {ArrowLeft, AlertTriangle, Shield, RefreshCw} from 'lucide-react-native';
 import {Text} from '../../components/ui';
 import {AmountLimitHint, DetailsDisclosure, overLimit} from '../../components/private';
 import {useWalletStore} from '../../store/zustand/walletStore';
+import {mainBalanceIsStale, mainBalanceIsUnknown} from '../../modules/accounts/staleness';
+import {SEND_BALANCE_CHECKING, SEND_BALANCE_RETRY, SEND_BALANCE_STALE, VALUE_UNKNOWN} from '../../copy/accounts';
+import {forceSync} from '../../modules/backgroundSync/backgroundSyncModule';
 import {cn} from '../../utils/cn';
 import {parseTokenAmount, formatTokenAmount, groupInteger} from '../../utils/parseTokenAmount';
 import {
@@ -106,7 +109,36 @@ function parseAmount(text: string): Parsed {
 }
 
 export function ShieldUnshieldScreen({onBack, onShield, onUnshield, initialDirection, focusKey}: ShieldUnshieldScreenProps) {
-  const {tokenBalances, solBalance} = useWalletStore();
+  const {tokenBalances, solBalance, lastSyncedAt, lastSyncFailedAt} = useWalletStore();
+  // final review I1 (as #12 Send / Swap): the shield side spends from the MAIN account's walletStore figure,
+  // so a stale or never-read one is not a balance — shown as unknown, never judged against, never 0.
+  // (The Make public side reads only the private balance; nothing below touches it.)
+  const balanceKnown =
+    lastSyncedAt !== null && !mainBalanceIsStale(lastSyncedAt, lastSyncFailedAt) && !mainBalanceIsUnknown(lastSyncedAt, lastSyncFailedAt);
+  const staleBalance = mainBalanceIsStale(lastSyncedAt, lastSyncFailedAt);
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+  // the note under the balance says why; tapping it runs the main sync, one in flight
+  const balanceRetryRef = useRef(false);
+  const [balanceRetrying, setBalanceRetrying] = useState(false);
+  const retryBalance = useCallback(() => {
+    if (balanceRetryRef.current) return;
+    balanceRetryRef.current = true;
+    setBalanceRetrying(true);
+    forceSync()
+      .catch(() => undefined)
+      .finally(() => {
+        balanceRetryRef.current = false;
+        if (mountedRef.current) setBalanceRetrying(false);
+      });
+  }, []);
+  // a first sync not settled yet: "Checking balance…", no tap
+  const noteBusy = balanceRetrying || (lastSyncedAt === null && lastSyncFailedAt === null);
   // fixed for the life of the screen: no setter, a later prop does not flip it (owner phone pass 2026-11-21)
   const [direction] = useState<Direction>(initialDirection === 'public' ? 'public' : 'private');
   const {view, checkAgain, refusal} = useA0Shielded();
@@ -134,15 +166,16 @@ export function ShieldUnshieldScreen({onBack, onShield, onUnshield, initialDirec
   const parsed = parseAmount(amount);
   const hasAmount = parsed.kind === 'ok';
   const units = parsed.kind === 'ok' ? parsed.units : 0n;
-  const insufficient = overLimit(hasAmount ? units : null, available);
-  const solShort = sol < SOL_NEEDED;
+  const insufficient = balanceKnown && overLimit(hasAmount ? units : null, available);
+  const solShort = balanceKnown && sol < SOL_NEEDED;
   const ready = view.kind === 'ready';
-  const canSubmit = ready && hasAmount && !insufficient && !solShort;
+  const canSubmit = balanceKnown && ready && hasAmount && !insufficient && !solShort;
+  const maxEnabled = balanceKnown && available > 0n;
 
   const handleMax = useCallback(() => {
-    if (available <= 0n) return;
+    if (!maxEnabled) return;
     setAmount(formatTokenAmount(available, A0_TOKEN.decimals));
-  }, [available]);
+  }, [available, maxEnabled]);
 
   const handleSubmit = useCallback(() => {
     const now = Date.now();
@@ -207,7 +240,25 @@ export function ShieldUnshieldScreen({onBack, onShield, onUnshield, initialDirec
                 'rounded-lg bg-bg-surface-1 border p-5 mb-4',
                 insufficient ? 'border-danger' : 'border-bg-surface-3',
               )}>
-              <BalanceRow label={PUBLIC_BALANCE} value={`${displayAmount(available, A0_TOKEN.decimals)} ${sym}`} testID="shield-balance" />
+              <BalanceRow
+                label={PUBLIC_BALANCE}
+                value={`${balanceKnown ? displayAmount(available, A0_TOKEN.decimals) : VALUE_UNKNOWN} ${sym}`}
+                testID="shield-balance"
+              />
+              {!balanceKnown ? (
+                <Pressable
+                  onPress={retryBalance}
+                  disabled={noteBusy}
+                  accessibilityRole="button"
+                  accessibilityState={{disabled: noteBusy, busy: noteBusy}}
+                  testID="shield-balance-note"
+                  hitSlop={8}
+                  className="items-end -mt-2 mb-3">
+                  <Text variant="caption" className="text-fg-secondary">
+                    {noteBusy ? SEND_BALANCE_CHECKING : staleBalance ? SEND_BALANCE_STALE : SEND_BALANCE_RETRY}
+                  </Text>
+                </Pressable>
+              ) : null}
               {/* UX-A 3 (the design's .amount-line: baseline, gap 8, centred): the input is sized to
                   its content — no min width — so the symbol sits right after the figure */}
               <View className="flex-row items-baseline justify-center gap-2 mb-3" testID="shield-amount-row">
@@ -245,14 +296,15 @@ export function ShieldUnshieldScreen({onBack, onShield, onUnshield, initialDirec
                     onPress={handleMax}
                     accessibilityRole="button"
                     accessibilityLabel="Max"
-                    disabled={available <= 0n}
+                    disabled={!maxEnabled}
+                    accessibilityState={{disabled: !maxEnabled}}
                     className={cn(
                       'px-3 py-1.5 rounded-pill',
-                      available > 0n ? 'bg-[rgba(91,227,194,0.16)] active:opacity-80' : 'bg-bg-surface-3',
+                      maxEnabled ? 'bg-[rgba(91,227,194,0.16)] active:opacity-80' : 'bg-bg-surface-3',
                     )}>
                     <Text
                       variant="overline"
-                      className={available > 0n ? 'text-accent-shielded' : 'text-fg-disabled'}>
+                      className={maxEnabled ? 'text-accent-shielded' : 'text-fg-disabled'}>
                       MAX
                     </Text>
                   </Pressable>

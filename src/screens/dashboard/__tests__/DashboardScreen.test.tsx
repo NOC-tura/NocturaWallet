@@ -63,6 +63,10 @@ jest.mock('../../../hooks/useAccountPublicData', () => ({
 const mockUnlock = jest.fn(() => Promise.resolve());
 jest.mock('../../../modules/session/secureStorageSession', () => ({unlockSecureStorage: () => mockUnlock()}));
 
+// post-M1d §4 / R2: the link queue, observed here
+const mockDrain = jest.fn(() => 0);
+jest.mock('../../../modules/accounts/linkQueue', () => ({drainLinkQueue: () => mockDrain()}));
+
 // M1d (spec §4.1): the Accounts sheet, stubbed — records its props, renders a marker
 const mockSheetProps: Array<Record<string, unknown>> = [];
 jest.mock('../../../components/accounts/AccountsSheet', () => ({
@@ -96,14 +100,19 @@ const mockMode = {current: 'transparent' as 'transparent' | 'shielded'};
 // M1d Task 5: stable, so a tap on a split column is observable
 const mockSetMode = jest.fn();
 
+// post-M1d ruling 2: the refresh alert reads lastSyncedAt (written in this sync?) through getState
+const mockStoreSync: {lastSyncedAt: number | null} = {lastSyncedAt: null};
 jest.mock('../../../store/zustand/walletStore', () => ({
-  useWalletStore: () => ({
-    publicKey: 'AbCdEfAbCdEf',
-    solBalance: '1000000000',
-    nocBalance: '2000000000',
-    tokens: [],
-    tokenBalances: {},
-  }),
+  useWalletStore: Object.assign(
+    () => ({
+      publicKey: 'AbCdEfAbCdEf',
+      solBalance: '1000000000',
+      nocBalance: '2000000000',
+      tokens: [],
+      tokenBalances: {},
+    }),
+    {getState: () => ({lastSyncedAt: mockStoreSync.lastSyncedAt})},
+  ),
 }));
 
 jest.mock('../../../store/zustand/shieldedStore', () => ({
@@ -183,6 +192,9 @@ jest.mock('../../../components/PresaleBanner', () => ({
 // ── Subject ──────────────────────────────────────────────────────────────────
 // Import AFTER all mocks are registered.
 import {DashboardScreen} from '../DashboardScreen';
+import {computePortfolio} from '../../../modules/prices/portfolio';
+import {mmkvPublic} from '../../../store/mmkv/instances';
+import {MMKV_KEYS} from '../../../constants/mmkvKeys';
 
 // ── Helper ───────────────────────────────────────────────────────────────────
 // Render + flush all async effects (fetchAnonymitySet promise) in one go so
@@ -223,6 +235,7 @@ beforeEach(() => {
   mockSecure.current = null; // M1d: the encrypted store closed unless a row says otherwise
   mockA0Args.length = 0; // M1d: the private-balance hook's recorded arguments
   mockFeatures.shielded = true; // M1d: the shielded build unless a row says otherwise
+  mockStoreSync.lastSyncedAt = null;
   mockResolved.current = {prices: {native: {usd: 150, change24h: 1.5}}, havePrices: true}; // M1d: priced SOL unless a row says otherwise
 });
 
@@ -249,6 +262,30 @@ describe('DashboardScreen — transparent mode', () => {
     mockMode.current = 'transparent';
     const {queryByText} = await renderDashboard();
     expect(queryByText('Nothing private yet')).toBeNull(); // part B: Nothing shielded yet → Nothing private yet
+  });
+
+  // controller ruling 2026-11-22 — pin: the MAIN account in 'loading' takes the same branch a non-main account does
+  it('main never read, no failed sync yet (the hook\'s "loading") → "—" and "Loading balances…", never $0.00 or "No tokens yet"', async () => {
+    mockSelected.current = MAIN_ACCOUNT;
+    mockPublic.current = {status: 'loading'};
+    const r = await renderDashboard();
+    expect(r.getByTestId('dashboard-public-balance')).toHaveTextContent('—');
+    expect(r.getByTestId('dashboard-public-empty')).toHaveTextContent('Loading balances…');
+    expect(r.getByTestId('dashboard-sub-sol')).toHaveTextContent('—');
+    expect(r.getAllByTestId('dashboard-split-public-line').map(l => l.props.children)).toEqual(['—']);
+    expect(r.queryByText(/\$0\.00/)).toBeNull();
+    expect(r.queryByText('No tokens yet · pull to refresh')).toBeNull();
+  });
+
+  // review r1-1 — pin: the real state is pinned in useAccountPublicData.test.tsx
+  it('post-M1d §3.1: main never read + a failed sync (the hook\'s "error") → "—" and "Balance unavailable", never $0.00', async () => {
+    mockPublic.current = {status: 'error'};
+    const r = await renderDashboard();
+    expect(r.getByTestId('dashboard-public-balance')).toHaveTextContent('—');
+    expect(r.getByTestId('dashboard-public-empty')).toHaveTextContent('Balance unavailable · pull to refresh');
+    expect(r.getByTestId('dashboard-sub-sol')).toHaveTextContent('—');
+    expect(r.queryByText(/\$0\.00/)).toBeNull();
+    expect(r.queryByText(/^0 SOL$/)).toBeNull();
   });
 });
 
@@ -688,6 +725,17 @@ describe('M1d — the Public | Private split inside the balance card (spec §4.5
 });
 
 describe('M1d — the numbered avatar opens the Accounts sheet (spec §4.1, D5)', () => {
+  it('post-M1d §4 / R2: opening the sheet drains the link queue BEFORE the list is re-read (the tag shows at once)', async () => {
+    const r = await renderDashboard();
+    mockRefreshAccounts.mockClear();
+    mockDrain.mockClear();
+    await act(async () => {
+      fireEvent.press(r.getByTestId('dashboard-avatar'));
+    });
+    expect(mockDrain).toHaveBeenCalledTimes(1);
+    expect(mockDrain.mock.invocationCallOrder[0]!).toBeLessThan(mockRefreshAccounts.mock.invocationCallOrder[0]!);
+  });
+
   it('the avatar shows the selected account\'s number and says what it does', async () => {
     mockSelected.current = EXIT_ACCOUNT;
     const r = await renderDashboard();
@@ -827,5 +875,326 @@ describe('M1d review M2 — the pull-to-refresh alert speaks for the account sho
     await pull(r);
     expect(alert).toHaveBeenCalledWith('Could not refresh balance', "This account's balance could not be read. Pull down to try again.");
     alert.mockRestore();
+  });
+});
+
+// the token row's own Text (the split column repeats the same words under a testID)
+const rowText = (r: Awaited<ReturnType<typeof renderDashboard>>, text: string) =>
+  r.getAllByText(text).find(n => !String(n.props.testID ?? '').endsWith('-line')) ?? r.getByText(text);
+const TERTIARY = /(^|\s)text-fg-tertiary(\s|$)/;
+
+describe('post-M1d §3.2 — a stale public balance', () => {
+  const NOW = 1_800_000_000_000;
+  const STALE_MAIN: AccountPublicData = {
+    status: 'stale',
+    syncedAt: NOW - 5 * 60_000,
+    failedAt: NOW - 1000,
+    solBalance: '1000000000',
+    nocBalance: '2000000000',
+    tokens: [{mint: 'USDCMINT', symbol: 'USDC', name: 'USD Coin', decimals: 6, trust: 'core'}],
+    tokenBalances: {USDCMINT: '5000000'},
+  };
+  const LINE = 'Not updated · 5 min ago · pull to refresh';
+  beforeEach(() => {
+    jest.spyOn(Date, 'now').mockReturnValue(NOW);
+    mockPublic.current = STALE_MAIN;
+    (computePortfolio as jest.Mock).mockReturnValue({totalUsd: 150, change24hPct: 1.5, perToken: {USDCMINT: {usd: 5, change24h: 0.1}}});
+  });
+  afterEach(() => {
+    jest.restoreAllMocks();
+    (computePortfolio as jest.Mock).mockReturnValue({totalUsd: 150, change24hPct: 1.5, perToken: {}});
+  });
+
+  it('D1: the hero shows the figure, dimmed', async () => {
+    const r = await renderDashboard();
+    expect(r.getByTestId('dashboard-public-balance')).toHaveTextContent('$150.00');
+    expect(r.getByText('$150').props.className).toMatch(TERTIARY);
+  });
+
+  it('D2: the stale line carries the age and the way out', async () => {
+    const r = await renderDashboard();
+    expect(r.getByTestId('dashboard-stale-line')).toHaveTextContent(LINE);
+  });
+
+  it('D3: the 24h line is hidden while stale (control: shown when ready)', async () => {
+    let r = await renderDashboard();
+    expect(r.queryByText(/· 24h/)).toBeNull();
+    r.unmount();
+    mockPublic.current = READY_MAIN;
+    r = await renderDashboard();
+    expect(r.getByText(/· 24h/)).toBeTruthy();
+  });
+
+  it('D4: the sub-balances are dimmed', async () => {
+    const r = await renderDashboard();
+    expect(r.getByTestId('dashboard-sub-sol')).toHaveTextContent('1');
+    expect(r.getByTestId('dashboard-sub-noc')).toHaveTextContent('2');
+    expect(r.getByTestId('dashboard-sub-sol').props.className).toMatch(TERTIARY);
+    expect(r.getByTestId('dashboard-sub-noc').props.className).toMatch(TERTIARY);
+  });
+
+  it('D5: a token row keeps its figures, dimmed, without the 24h change (R16); control: ready shows it', async () => {
+    let r = await renderDashboard();
+    expect(rowText(r, '5 USDC').props.className).toMatch(TERTIARY);
+    expect(r.getByText('$5.00').props.className).toMatch(TERTIARY);
+    expect(r.queryByText('+0.1%')).toBeNull();
+    r.unmount();
+    mockPublic.current = {...STALE_MAIN, status: 'ready'} as AccountPublicData;
+    r = await renderDashboard();
+    expect(r.getByText('+0.1%')).toBeTruthy();
+    expect(rowText(r, '5 USDC').props.className).not.toMatch(TERTIARY);
+  });
+
+  it('D6 (Review Focus 1): hidden wins — the stale line stays, no digit of any figure appears', async () => {
+    mockHide.current = true;
+    const r = await renderDashboard();
+    expect(r.getByTestId('dashboard-stale-line')).toHaveTextContent(LINE);
+    expect(r.queryByText(/\$150/)).toBeNull();
+    expect(r.getByTestId('dashboard-sub-sol')).toHaveTextContent('••••');
+    expect(r.queryByText(/5 USDC|\$5\.00|\$150/)).toBeNull();
+    const label = r.getByTestId('dashboard-split-public').props.accessibilityLabel as string;
+    expect(label).toBe('Public, •••, not updated');
+    expect(label).not.toMatch(/\d/);
+    for (const l of r.getAllByTestId('dashboard-split-public-line')) {
+      expect(l.props.children).not.toMatch(/\d/);
+    }
+  });
+
+  it('D7 (Review Focus 4): a later good read removes every stale mark', async () => {
+    const tree = () => (
+      <SafeAreaProvider initialMetrics={{frame: {x: 0, y: 0, width: 390, height: 844}, insets: {top: 0, left: 0, right: 0, bottom: 0}}}>
+        <DashboardScreen />
+      </SafeAreaProvider>
+    );
+    const r = render(tree());
+    await act(async () => {});
+    expect(r.getByTestId('dashboard-stale-line')).toBeTruthy();
+    mockPublic.current = READY_MAIN;
+    r.rerender(tree()); // a fresh element: the same reference would bail out
+    await act(async () => {});
+    expect(r.queryByTestId('dashboard-stale-line')).toBeNull();
+    expect(r.getByText(/· 24h/)).toBeTruthy();
+    expect(r.getByText('$150').props.className).not.toMatch(TERTIARY);
+  });
+
+  it('D8: the public split column shows the same lines as a ready figure, dimmed, with "not updated" in its label', async () => {
+    const r = await renderDashboard();
+    const lines = r.getAllByTestId('dashboard-split-public-line');
+    expect(lines.map(l => l.props.children)).toEqual(['5 USDC', '2 NOC', '+1 more']);
+    for (const l of lines) {
+      expect(l.props.className).toMatch(TERTIARY);
+    }
+    expect(r.getByTestId('dashboard-split-public').props.accessibilityLabel).toBe('Public, 5 USDC, 2 NOC, +1 more, not updated');
+    for (const l of r.getAllByTestId('dashboard-split-private-line')) {
+      expect(l.props.className).not.toMatch(TERTIARY);
+    }
+  });
+
+  it('D9: Private mode has no stale line, but the public column is still dimmed and says "not updated"', async () => {
+    mockMode.current = 'shielded';
+    const r = await renderDashboard();
+    expect(r.queryByTestId('dashboard-stale-line')).toBeNull();
+    expect(r.getByTestId('dashboard-split-public').props.accessibilityLabel).toMatch(/, not updated, switch to Public$/);
+    for (const l of r.getAllByTestId('dashboard-split-public-line')) {
+      expect(l.props.className).toMatch(TERTIARY);
+    }
+  });
+
+  it('D10: a non-main account gets the same display', async () => {
+    mockSelected.current = EXIT_ACCOUNT;
+    const r = await renderDashboard();
+    expect(r.getByText('$150').props.className).toMatch(TERTIARY);
+    expect(r.getByTestId('dashboard-stale-line')).toHaveTextContent(LINE);
+  });
+
+  it('fix 2: the hero cents are dimmed while stale (control: not when ready)', async () => {
+    let r = await renderDashboard();
+    expect(r.getByText('.00').props.className).toMatch(TERTIARY);
+    r.unmount();
+    mockPublic.current = READY_MAIN;
+    r = await renderDashboard();
+    expect(r.getByText('.00').props.className).not.toMatch(TERTIARY);
+  });
+
+  it.each(['transparent', 'shielded'] as const)('fix 3: the Public column carries a visible "not updated" caption (%s mode), hidden too, and the label is unchanged', async mode => {
+    mockMode.current = mode;
+    let r = await renderDashboard();
+    const cap = r.getByTestId('dashboard-split-public-stale');
+    expect(cap).toHaveTextContent('not updated');
+    expect(cap.props.className).toMatch(TERTIARY);
+    expect(r.queryByTestId('dashboard-split-private-stale')).toBeNull();
+    r.unmount();
+    mockHide.current = true;
+    r = await renderDashboard();
+    expect(r.getByTestId('dashboard-split-public-stale')).toHaveTextContent('not updated');
+    expect(r.getByTestId('dashboard-split-public').props.accessibilityLabel).toMatch(/^Public, •••, not updated/);
+    r.unmount();
+    mockHide.current = false;
+    mockPublic.current = READY_MAIN;
+    r = await renderDashboard();
+    expect(r.queryByTestId('dashboard-split-public-stale')).toBeNull();
+  });
+
+  it('fix 4: a (re)focus ticks once at once, so the age never lags', async () => {
+    let clock = NOW;
+    jest.spyOn(Date, 'now').mockImplementation(() => clock);
+    // the focus effect starts its interval, then the clock has moved on by the time the screen re-renders
+    jest.spyOn(global, 'setInterval').mockImplementation((() => {
+      clock = NOW + 60_000;
+      return 1;
+    }) as unknown as typeof setInterval);
+    const r = await renderDashboard();
+    expect(r.getByTestId('dashboard-stale-line')).toHaveTextContent('Not updated · 6 min ago · pull to refresh');
+  });
+
+  it('D11 (R16): the age ticks every 60 s', async () => {
+    // No jest fake timers here: under Node 22 (CI) `useFakeTimers` + `await act(async…)` never settled and hung
+    // the whole CI job. The 60 s intervals are captured instead and fired by hand, with the clock moved on.
+    let clock = NOW;
+    jest.spyOn(Date, 'now').mockImplementation(() => clock);
+    const minuteTicks: Array<() => void> = [];
+    const realSetInterval = global.setInterval;
+    jest.spyOn(global, 'setInterval').mockImplementation(((fn: () => void, ms?: number) => {
+      if (ms === 60_000) {
+        minuteTicks.push(fn);
+        return 0;
+      }
+      return realSetInterval(fn, ms);
+    }) as unknown as typeof setInterval);
+    const r = await renderDashboard();
+    expect(r.getByTestId('dashboard-stale-line')).toHaveTextContent(LINE);
+    expect(minuteTicks.length).toBeGreaterThan(0);
+    clock = NOW + 60_000;
+    await act(async () => {
+      minuteTicks.forEach(fn => fn());
+    });
+    expect(r.getByTestId('dashboard-stale-line')).toHaveTextContent('Not updated · 6 min ago · pull to refresh');
+  });
+});
+
+describe('post-M1d — the pull-to-refresh alert', () => {
+  const forceSyncMock = () => (jest.requireMock('../../../modules/backgroundSync/backgroundSyncModule') as {forceSync: jest.Mock}).forceSync;
+  const pull = async (r: Awaited<ReturnType<typeof renderDashboard>>) => {
+    await act(async () => {
+      await (r.UNSAFE_getByType(RefreshControl).props.onRefresh as () => Promise<void>)();
+    });
+  };
+  afterEach(() => jest.restoreAllMocks());
+
+  it('D12 (pin): a partial failure still alerts, with the failed read named', async () => {
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    const r = await renderDashboard();
+    forceSyncMock().mockResolvedValueOnce({success: false, partial: true, error: 'tokens: timeout', timestamp: 1});
+    await pull(r);
+    expect(alert).toHaveBeenCalledTimes(1);
+    expect(alert).toHaveBeenCalledWith('Could not refresh balance', expect.stringContaining('tokens: timeout'));
+  });
+
+  it('ruling 2: "wallet changed" shows no alert (it is not an RPC failure)', async () => {
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    const r = await renderDashboard();
+    forceSyncMock().mockResolvedValueOnce({success: false, partial: false, error: 'wallet changed', timestamp: 1});
+    await pull(r);
+    expect(alert).not.toHaveBeenCalled();
+  });
+
+  it('ruling 2: a failure after the balances were written in THIS sync shows no alert', async () => {
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    const r = await renderDashboard();
+    jest.spyOn(Date, 'now').mockReturnValue(2_000_000);
+    forceSyncMock().mockImplementationOnce(async () => {
+      mockStoreSync.lastSyncedAt = 2_000_001; // written during this sync
+      return {success: false, partial: false, error: 'post-write boom', timestamp: 1};
+    });
+    await pull(r);
+    expect(alert).not.toHaveBeenCalled();
+  });
+
+  it('ruling 2 control: an old lastSyncedAt does not silence a real failure', async () => {
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    mockStoreSync.lastSyncedAt = 5;
+    const r = await renderDashboard();
+    jest.spyOn(Date, 'now').mockReturnValue(2_000_000);
+    forceSyncMock().mockResolvedValueOnce({success: false, partial: false, error: 'boom', timestamp: 1});
+    await pull(r);
+    expect(alert).toHaveBeenCalledWith('Could not refresh balance', expect.stringContaining('RPC error: boom'));
+  });
+});
+
+describe('post-M1d §7 coverage — dashboard pins', () => {
+  it('K1: "<0.0001" on the token row and the sub-balance, never exponent notation', async () => {
+    mockPublic.current = {
+      ...(READY_MAIN as Extract<AccountPublicData, {status: 'ready'}>),
+      solBalance: '10',
+      tokens: [{mint: 'USDCMINT', symbol: 'USDC', name: 'USD Coin', decimals: 6, trust: 'core'}],
+      tokenBalances: {USDCMINT: '10'},
+    };
+    const r = await renderDashboard();
+    expect(r.getByTestId('dashboard-sub-sol')).toHaveTextContent('<0.0001');
+    expect(rowText(r, '<0.0001 USDC')).toBeTruthy();
+    expect(r.queryByText(/e-\d/)).toBeNull();
+  });
+
+  it('K2: a split-column tap fires first-private onboarding once, then switches', async () => {
+    try {
+      mmkvPublic.remove(MMKV_KEYS.SHIELDED_EXPLAINED);
+      const onFirst = jest.fn();
+      let r = await renderDashboard({onFirstShieldedToggle: onFirst});
+      fireEvent.press(r.getByTestId('dashboard-split-private'));
+      expect(onFirst).toHaveBeenCalledTimes(1);
+      expect(mockSetMode).not.toHaveBeenCalled();
+      r.unmount();
+      mmkvPublic.set(MMKV_KEYS.SHIELDED_EXPLAINED, true);
+      r = await renderDashboard({onFirstShieldedToggle: onFirst});
+      fireEvent.press(r.getByTestId('dashboard-split-private'));
+      expect(mockSetMode).toHaveBeenCalledWith('shielded');
+      expect(onFirst).toHaveBeenCalledTimes(1);
+    } finally {
+      mmkvPublic.remove(MMKV_KEYS.SHIELDED_EXPLAINED);
+    }
+  });
+});
+
+describe('post-M1d R7 / r2-4 — the native row is keyed by the mint, not by the symbol', () => {
+  const WSOL = 'So11111111111111111111111111111111111111112';
+  const withWsol = (solBalance: string): AccountPublicData => ({
+    status: 'ready', syncedAt: 1, solBalance, nocBalance: '0',
+    tokens: [{mint: WSOL, symbol: 'wSOL', name: 'Wrapped SOL', decimals: 9, trust: 'core'}],
+    tokenBalances: {[WSOL]: '500000000'},
+  });
+
+  it('SOL and wSOL are two rows: "1 SOL" (native only) and "0.5 wSOL" (its own amount)', async () => {
+    mockPublic.current = withWsol('1000000000');
+    const r = await renderDashboard();
+    expect(r.getByText('1 SOL')).toBeTruthy();
+    expect(r.getByText('0.5 wSOL')).toBeTruthy();
+    expect(r.getByText('Wrapped SOL')).toBeTruthy();
+    expect(r.queryByText('1.5 SOL')).toBeNull();
+  });
+
+  it('Review Focus 5: wSOL held and 0 native SOL → the SOL row is still there, reading "0 SOL"', async () => {
+    mockPublic.current = withWsol('0');
+    const r = await renderDashboard();
+    expect(r.getByText('0 SOL')).toBeTruthy();
+    expect(r.getByText('0.5 wSOL')).toBeTruthy();
+  });
+
+  it('a row that merely CALLS itself "SOL" is not the native row: it shows its own mint\'s amount', async () => {
+    mockPublic.current = {
+      status: 'ready', syncedAt: 1, solBalance: '1000000000', nocBalance: '0',
+      tokens: [{mint: 'FAKEMINT', symbol: 'SOL', name: 'Not Solana', decimals: 9, trust: 'verified'}],
+      tokenBalances: {FAKEMINT: '7000000000'},
+    };
+    const r = await renderDashboard();
+    expect(r.getAllByText('7 SOL').length).toBeGreaterThan(0);
+    expect(r.getAllByText('1 SOL')).toHaveLength(2); // the native row + the sub-balance line; a symbol-named row is not given the native amount (a third)
+  });
+
+  // pin: publicSide already folds wSOL; the list rows stop folding, the split keeps folding
+  it('the split\'s Public column keeps folding wSOL into SOL (a summary, R7)', async () => {
+    mockPublic.current = withWsol('1000000000');
+    mockResolved.current = {prices: {}, havePrices: false};
+    const r = await renderDashboard();
+    expect(r.getAllByTestId('dashboard-split-public-line').map(l => l.props.children)).toEqual(['1.5 SOL']);
   });
 });
