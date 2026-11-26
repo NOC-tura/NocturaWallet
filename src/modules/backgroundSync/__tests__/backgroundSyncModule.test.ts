@@ -400,6 +400,25 @@ describe('backgroundSyncModule', () => {
       await expect(old).resolves.toMatchObject({error: 'wallet changed'});
       await expect(fresh).resolves.toMatchObject({success: true, solBalance: '4'});
     });
+
+    it("an old wallet's sync settling does not clear the new wallet's in-flight slot", async () => {
+      useWalletStore.getState().setPublicKey(TEST_PUBLIC_KEY);
+      const oldBal = deferred<bigint>();
+      const newBal = deferred<bigint>();
+      mockGetBalance.mockImplementationOnce(() => oldBal.promise);
+      mockGetTokenAccounts.mockResolvedValue([]);
+      const old = forceSync();
+      useWalletStore.getState().reset();
+      useWalletStore.getState().setPublicKey('NewWallet1111');
+      mockGetBalance.mockImplementationOnce(() => newBal.promise);
+      const fresh = forceSync();
+      oldBal.resolve(BigInt(9));
+      await old; // its finally runs here; the slot belongs to the new wallet's sync
+      expect(forceSync()).toBe(fresh);
+      newBal.resolve(BigInt(5));
+      await expect(fresh).resolves.toMatchObject({success: true, solBalance: '5'});
+      expect(mockGetBalance).toHaveBeenCalledTimes(2);
+    });
   });
 
   describe('registerBackgroundTask', () => {
