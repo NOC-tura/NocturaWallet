@@ -22,12 +22,22 @@ jest.mock('../../../hooks/useA0Shielded', () => ({
   retryA0Startup: () => mockRetry(),
 }));
 
-let mockBalances: {tokenBalances: Record<string, string>; solBalance: string} = {
+let mockBalances: {
+  tokenBalances: Record<string, string>;
+  solBalance: string;
+  lastSyncedAt?: number | null;
+  lastSyncFailedAt?: number | null;
+} = {
   tokenBalances: {},
   solBalance: '1000000000',
 };
+// final review I1: the main figure's age (a successful read by default; a test overrides it)
 jest.mock('../../../store/zustand/walletStore', () => ({
-  useWalletStore: () => mockBalances,
+  useWalletStore: () => ({lastSyncedAt: 1, lastSyncFailedAt: null, ...mockBalances}),
+}));
+const mockForceSync = jest.fn();
+jest.mock('../../../modules/backgroundSync/backgroundSyncModule', () => ({
+  forceSync: () => mockForceSync(),
 }));
 
 const mockPoolCount = jest.fn();
@@ -46,6 +56,8 @@ beforeEach(() => {
   mockBalances = {tokenBalances: {[A0.mint]: '2000000000'}, solBalance: '1000000000'}; // 2 TEST, 1 SOL
   mockPoolCount.mockResolvedValue({status: 'ok', count: 17});
   mockRetry.mockReset();
+  mockForceSync.mockReset();
+  mockForceSync.mockResolvedValue({success: true, partial: false, timestamp: 0});
   Object.assign(mockCheck, {disabled: false, checking: false, note: null});
   mockCheck.run.mockReset();
   onShield.mockReset();
@@ -207,6 +219,64 @@ describe('#16 shield side — the design', () => {
     expect(r.getByText('Summary')).toBeTruthy();
     expect(r.queryByText('Fees')).toBeNull();
     expect(r.getByText("You'll make private")).toBeTruthy();
+  });
+});
+
+describe('#16 — final review I1: the public balance is the main figure, refused when not current', () => {
+  it('READY control: a current read shows the figure, no note, MAX and the CTA work', () => {
+    mockBalances = {tokenBalances: {[A0.mint]: '2000000000'}, solBalance: '1000000000', lastSyncedAt: 5, lastSyncFailedAt: null};
+    const r = screen();
+    expect(r.getByTestId('shield-balance-value').props.children).toBe('2 TEST');
+    expect(r.queryByTestId('shield-balance-note')).toBeNull();
+    fireEvent.press(r.getByLabelText('Max'));
+    expect(ctaDisabled(r)).toBe(false);
+    fireEvent.press(r.getByTestId('shield-cta'));
+    expect(onShield).toHaveBeenCalledWith('2000000000');
+  });
+
+  it('stale (the last sync failed after a good read): the figure is not shown as current, MAX/CTA off, the note taps forceSync', async () => {
+    mockBalances = {tokenBalances: {[A0.mint]: '2000000000'}, solBalance: '1000000000', lastSyncedAt: 5, lastSyncFailedAt: 9};
+    const r = screen();
+    expect(r.getByTestId('shield-balance-value').props.children).toBe('— TEST');
+    expect(r.queryByText('2 TEST')).toBeNull();
+    const max = r.getByLabelText('Max');
+    expect(max.props.accessibilityState?.disabled).toBe(true);
+    fireEvent.press(max);
+    expect(r.getByTestId('shield-amount-input').props.value).toBe('');
+    fireEvent.changeText(r.getByTestId('shield-amount-input'), '1');
+    expect(ctaDisabled(r)).toBe(true);
+    fireEvent.press(r.getByTestId('shield-cta'));
+    expect(onShield).not.toHaveBeenCalled();
+    // an amount over the old figure is not judged against it either
+    fireEvent.changeText(r.getByTestId('shield-amount-input'), '5');
+    expect(r.queryByTestId('shield-over-max')).toBeNull();
+    const note = r.getByTestId('shield-balance-note');
+    expect(note).toHaveTextContent('Not updated · tap to retry');
+    fireEvent.press(note);
+    expect(mockForceSync).toHaveBeenCalledTimes(1);
+    await act(async () => {});
+  });
+
+  it('never read (this session\'s sync failed, no good read ever): no "0 TEST", no "not enough SOL", the retry note', () => {
+    mockBalances = {tokenBalances: {}, solBalance: '0', lastSyncedAt: null, lastSyncFailedAt: 9};
+    const r = screen();
+    expect(r.queryByText(/(^|\s)0 TEST/)).toBeNull();
+    expect(r.getByTestId('shield-balance-value').props.children).toBe('— TEST');
+    fireEvent.changeText(r.getByTestId('shield-amount-input'), '1');
+    expect(r.queryByText(/Not enough SOL/)).toBeNull();
+    expect(r.queryByTestId('shield-over-max')).toBeNull();
+    expect(ctaDisabled(r)).toBe(true);
+    expect(r.getByTestId('shield-balance-note')).toHaveTextContent('Balance unavailable · tap to retry');
+  });
+
+  it('a first sync not settled yet: "Checking balance…", no tap', () => {
+    mockBalances = {tokenBalances: {}, solBalance: '0', lastSyncedAt: null, lastSyncFailedAt: null};
+    const r = screen();
+    const note = r.getByTestId('shield-balance-note');
+    expect(note).toHaveTextContent('Checking balance…');
+    fireEvent.press(note);
+    expect(mockForceSync).not.toHaveBeenCalled();
+    expect(ctaDisabled(r)).toBe(true);
   });
 });
 

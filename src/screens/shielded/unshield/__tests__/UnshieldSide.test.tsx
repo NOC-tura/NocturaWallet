@@ -37,7 +37,7 @@ const OTHER = web3.Keypair.fromSeed(new Uint8Array(32).fill(2)).publicKey.toBase
 const OFF_CURVE = web3.PublicKey.findProgramAddressSync([Buffer.from('off-curve')], web3.SystemProgram.programId)[0].toBase58();
 
 jest.mock('../../../../store/zustand/walletStore', () => ({
-  useWalletStore: () => ({tokenBalances: mockTokenBalances, solBalance: '1000000000', publicKey: mockMain}),
+  useWalletStore: () => ({tokenBalances: mockTokenBalances, solBalance: '1000000000', publicKey: mockMain, lastSyncedAt: 1, lastSyncFailedAt: null}), // final review I1: a current main read
 }));
 let mockMain: string | null = null;
 /** the main account's token balances — only the MAX-colour row (owner phone pass 2026-11-21) sets them */
