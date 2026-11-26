@@ -1,6 +1,6 @@
 # PR 2 — Transaction history parsing, retroactive "linked" scan, presale stale label
 
-**Date:** 2026-11-26. **Revision:** r2. It folds in Fable spec review r1, which was NOT APPROVED (5 Critical, 13 Important, 10 Minor), and the owner's answers H7–H8.
+**Date:** 2026-11-26. **Revision:** r3. It folds in Fable spec review r2 (N1–N7, m1–m8). r2 folded in Fable spec review r1, which was NOT APPROVED (5 Critical, 13 Important, 10 Minor), and the owner's answers H7–H8.
 
 **Branch:** `feat/history-parsing`, from `main` at 7f3f235 (PR #127 merged).
 
@@ -58,32 +58,50 @@ An SPL transfer into a token account that already exists does not list the recip
 
 The source list is read once per history session and on every pull-to-refresh. A token account closed earlier is no longer owned, so its transactions are not found (§9).
 
-### 3.2 The merged stream
-- Each source is paged by `getSignaturesForAddress(source, {limit: 20, before: cursor[source]})`.
-- The streams are merged newest first by `(slot desc, signature)`, and signatures are deduped.
-- **A merged page:** take sources whose next item is the newest until 20 unique signatures are collected, or until every source is exhausted.
-- **A source is exhausted** when it returns fewer than its `limit`.
-- **The end of history** is reached when every source is exhausted.
-- **Page cost:** one signature call per source that still has items, plus the transaction reads in §3.3. For a typical wallet with 1–4 token accounts that is 2–5 signature calls per page.
+### 3.2 The merged stream (review r2 N5)
+**State.** A **history session** object lives outside the query cache, in `src/modules/solana/historySession.ts`. It is keyed by cluster and account, and it is dropped on an account switch, on a network switch, and on `onSecureMmkvReset`. Per source it holds `{buffer, cursor, exhausted}`:
+- `buffer`: signatures fetched but not yet emitted, in the order the source returned them;
+- `cursor`: the last signature **fetched** from that source, used as `before` for the next fetch;
+- `exhausted`: the last fetch returned fewer than its `limit` (20).
+
+**A source is fetched** (`getSignaturesForAddress(source, {limit: 20, before: cursor})`) only when its buffer is empty and it is not exhausted. Un-emitted items stay in the buffer and are never fetched again.
+
+**Building a page.**
+- Repeatedly take the newest head across all buffers, compared by `slot`, and append it unless its signature was already emitted (dedupe across sources and pages).
+- Stop at 20 rows or when every source is exhausted and empty.
+- A page's rows are then sorted by `(slot desc, signature asc)`. The order within one slot is fixed, but it is not chain order.
+- **The end of history** is reached when every source is exhausted and every buffer is empty.
+
+**Bound on sources.**
+- Sources are ordered: the wallet first, then token accounts with a non-zero balance, then zero-balance token accounts.
+- At most **25 sources** are read.
+- When a wallet owns more, the list footer reads "History from 25 of {m} token accounts" (§9).
+- **Page 1 cost:** one signature call per source, up to 25, plus the transaction reads (§3.3). Later pages fetch only sources whose buffer ran out.
+- Plan Task 1 measures a page 1 with 25 sources on mainnet.
 
 ### 3.3 Reading transactions, and the cache (review I4, I5)
-- Raw parsed transactions are cached per signature under the TanStack key `['parsedTx', cluster, signature]`. A non-null answer never goes stale (`staleTime: Infinity`), because a landed transaction does not change. A null answer is not cached.
+- Raw parsed transactions are cached per signature under the TanStack key `['parsedTx', cluster, signature]`, with `staleTime: Infinity` and `gcTime: 24 h` (the client default of 5 min would collect them). A landed transaction does not change. A null answer is not cached. `onSecureMmkvReset` clears every `parsedTx` entry.
+- **The history query key** keeps today's prefix: `['txHistory', address, cluster, pageSize]`. #21 invalidates `['txHistory', address]` (`TransactionStatusScreen.tsx:132`), and that prefix must keep matching. An invalidation also drops the history session for that account.
 - A page reads only the signatures not yet cached:
   - first with one `getParsedTransactions(signatures, {maxSupportedTransactionVersion: 0})`;
   - **if the batch call throws,** with single `getParsedTransaction` calls for the same signatures, one at a time through `rpcLimiter`.
 - **Cost, stated honestly:** a batch is one HTTP call carrying N JSON-RPC requests. Providers count and rate-limit each one, so a page of 20 new transactions costs 20 provider requests either way. The batch saves round trips, not quota.
-- **The limiter key** for any history read contains the method, the cluster, and the source with its cursor, or the first and last signature of the batch. `rpcLimiter` dedupes in flight by key, and a key without these would hand one page's answer to another.
+- **The limiter key** for any history read contains the method and the cluster, plus:
+  - for a signature read, the source and its cursor;
+  - for a transaction read, a hash of **every** signature in the batch.
+
+  `rpcLimiter` dedupes in flight by key. A key with less would hand one page's answer to another, or one retry's answer to another (review r2 m2).
 - **Plan Task 1 measures this first** against both the devnet and the mainnet endpoint: a 20-item batch, and 20 sequential calls. It records the latency and any refusal before the screen work starts. If the batch is refused, the sequential path is the product path.
 
 ### 3.4 Partial pages, refresh and identity
 - A signature whose transaction comes back null (not indexed yet) or failed to read **still shows a row**. It has the date and status from the signature list, the title "Transaction", and "—" for the amount. It is never dropped, and never becomes a Sent.
-- **Pull-to-refresh:**
+- **Pull-to-refresh** (review r2 N6):
   - re-reads the source list;
-  - re-reads every source from its head;
-  - merges what is new at the top;
+  - pages each source from its head with `before` until it meets a signature already emitted for that source, or the source is exhausted;
+  - merges all of that at the top;
   - re-tries every loaded row that is still unparsed.
 
-  Loaded older pages stay.
+  Loaded older pages stay. The refresh reads at most 5 pages per source. When that cap is hit before the loaded rows are met, the session is discarded and history restarts from the head, so no hole can be shown.
 - Rows are keyed and deduped by signature across pages.
 - **Every query key holds the cluster and the account address,** so switching accounts or networks never shows another account's rows.
 - "No transactions yet" shows only when the first merged page read successfully, every source is exhausted, and there are zero signatures.
@@ -91,31 +109,35 @@ The source list is read once per history session and on every pull-to-refresh. A
 ## 4. Classifying a transaction (H2, H3)
 
 ### 4.1 Types
-`src/modules/solana/activity.ts` holds the pure function `classifyActivity(raw, account, ctx) → ActivityRow`, beside `txDetail.ts`.
+`src/modules/solana/activity.ts` holds the pure function `classifyActivity(raw, account, status, ctx) → ActivityRow`, beside `txDetail.ts`.
+
+`status` is passed in from the signature-list item (review r2 m1). A parsed transaction carries no confirmation level; `meta.err` set overrides it to `'failed'`.
 
 `RawParsedTx` is extended with:
 - `meta.preBalances` / `meta.postBalances` (number[]);
 - `RawTokenBalance.uiTokenAmount.amount` (string, base units);
-- the top-level instructions' unparsed form `{programId, accounts, data}`.
+- `meta.innerInstructions` (`Array<{index, instructions}>`);
+- every instruction's two forms: parsed `{program, programId, parsed: {type, info}}` and unparsed `{programId, accounts, data}`.
 
 Amounts are read **only** from `uiTokenAmount.amount`, never from `uiAmount`. `accountKeys` in a parsed response already includes lookup-table addresses, and every index is over that full list.
 
 ```
 ActivityRow {
   signature; slot; blockTime: number | null;
-  status: 'confirmed' | 'finalized' | 'failed';          // from the transaction; a partial row (§3.4) takes it from the signature list
+  status: 'confirmed' | 'finalized' | 'failed';
   kind: 'sent' | 'received' | 'swap' | 'made-private' | 'made-public' | 'wrap' | 'unwrap'
       | 'account-setup' | 'no-funds-moved' | 'failed' | 'unknown';
   primary: Delta | null;            // the asset the row shows (§4.4)
   secondary: Delta | null;          // a swap's incoming leg; null otherwise
-  extraAssets: number;              // assets moved besides primary/secondary, not counting rent/fee (the "+N more")
+  extraAssets: number;              // other deltas with role 'moved' (the "+N more")
   deltas: Delta[];                  // every net change of this account, ordered (§4.4) — #27 lists them
   counterparty: string | null;      // §4.5
   via: 'Jupiter' | null;
   feePaidByAccount: bigint | null;  // the fee when the account is index 0; null when someone else paid (a relayer)
   incomplete: boolean;              // a balance entry could not be attributed (§4.2) — never 'no-funds-moved'
 }
-Delta { mint: 'native' | string; symbol: string; raw: bigint; decimals: number; isRent: boolean }
+Delta { mint: 'native' | string; symbol: string; raw: bigint; decimals: number;
+        role: 'moved' | 'rent' | 'markup' | 'grant' }
 ```
 
 `ctx` carries:
@@ -124,25 +146,46 @@ Delta { mint: 'native' | string; symbol: string; raw: bigint; decimals: number; 
 - the A0 constants;
 - `NOCTURA_FEE_TREASURY`;
 - `A0_RELAYER.feePayer`;
-- the Jupiter v6 program id `JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4`.
+- the Jupiter v6 program id `JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4`;
+- `ownTokenAccounts: ReadonlySet<string>`, the account's token-account sources (§3.1).
 
 A row's kind is `'failed'` exactly when `status` is `'failed'`.
 
-### 4.2 Net change (review C3, C4, I11)
-**SOL.** For the account's own index `i`: `native = post[i] − pre[i]`, plus `fee` when `i == 0`. The fee is never part of the delta. `feePaidByAccount = fee` when `i == 0`, else null.
+### 4.2 Net change (review C3, C4, I11; r2 N1, N2, N3)
 
-**Rent.** A lamport movement is rent when it is the creation or closing of an account in this transaction: an index with `pre == 0 && post > 0` (created) or `pre > 0 && post == 0` (closed) that is not a wallet of the user. The account's native delta is split into:
-- **rent paid:** the sum of `post` of the accounts it created. The payer is read from the system `createAccount` or the ATA `create` instruction's `source`/`payer`, matched to the account. Without such an instruction, nothing is treated as rent.
-- **rent refunded:** a close whose destination is the account.
-- the rest.
+**SOL.** For the account's own index `i`: `native = post[i] − pre[i]`, plus `fee` when `i == 0`. The fee is never part of a delta. `feePaidByAccount = fee` when `i == 0`, else null.
 
-Rent is a `Delta` with `isRent: true`. It is never the row's primary asset.
+**Proven creations and closes (r2 N2).** An account counts as created or closed **only** when one of these instructions names it. Instructions are read **top-level and inner** (`meta.innerInstructions`).
 
-**Tokens.** The account's tokens are every entry in `pre`/`postTokenBalances` whose `owner` is the account; a missing side counts as 0. Their net change per mint is `post.amount − pre.amount` as BigInt. Token and Token-2022 are read alike.
+| Program | Parsed `type` | Payer / destination field | Account field | Meaning |
+|---|---|---|---|---|
+| System | `createAccount` | `source` | `newAccount` | created, paid by `source` |
+| System | `createAccountWithSeed` | `source` | `newAccount` | created, paid by `source` |
+| Associated Token | `create` | `source` | `account` | created, paid by `source` |
+| Associated Token | `createIdempotent` | `source` | `account` | created, paid by `source`, only when that account's `pre` lamports are 0 |
+| Token / Token-2022 | `closeAccount` | `destination` | `account` | closed, lamports to `destination` |
+
+There is no inference from `pre == 0` / `post == 0` alone (r2 N4).
+
+**Rent amounts (r2 N1).** For a proven account at index `j`, where `w` is that account's token amount when its mint is wSOL and 0 otherwise:
+- **created:** `rent = post[j] − w`, with `w` from its post token balance;
+- **closed:** `refund = pre[j] − w`, with `w` from its pre token balance;
+- created and closed in the same transaction (`pre[j] == post[j] == 0`, a swap's temporary wSOL account): contributes nothing.
+
+**Splitting the account's native delta.** In this order:
+- `rent` deltas (role `rent`, negative): the rent of every account the account paid to create;
+- refund deltas (role `rent`, positive): the refund of every close whose destination is the account;
+- `markup` (negative, r2 N3): a top-level system `transfer` with `source == account` and `destination == NOCTURA_FEE_TREASURY`, when the account has another `moved` delta. The amount comes from `info.lamports`. When the account has no other `moved` delta, the treasury transfer stays `moved`, as in PR 1.
+- `grant` (positive, r2 N3): in a rule-2 `made-public` transaction whose index 0 is `A0_RELAYER.feePayer`, the account's remaining positive native change;
+- the remainder: role `moved`.
+
+**The rho marker (r2 N3).** In a rule-2 `made-private` transaction, the lamports of the `rho_marker` index (`A0_DEPOSIT_ACCOUNTS`) when its `pre == 0` are the depositor's rent, role `rent`, even when no system instruction is parsed for it.
+
+**Tokens.** The account's tokens are every entry in `pre`/`postTokenBalances` whose `owner` is the account; a missing side counts as 0. Their net change per mint is `post.amount − pre.amount` as BigInt, with role `moved`. Token and Token-2022 are read alike.
 
 **Unattributable.** Some entries cannot be attributed:
-- an entry with **no owner** whose token account is one of the history sources (§3.1);
-- an entry with unknown decimals.
+- an entry with **no owner** whose token account is in `ctx.ownTokenAccounts`;
+- an entry of the account with unknown decimals.
 
 Either sets `incomplete: true`. An incomplete row is never `no-funds-moved` and never `account-setup`.
 
@@ -152,67 +195,71 @@ Zero deltas are dropped.
 Rules apply in this order, first match wins. Rule 2 applies only when the build's cluster equals `A0.cluster`.
 
 1. `status == 'failed'` → **failed**.
-2. **Pool, decided by role and not by sign** (review C5). A top-level instruction of `A0.programId` whose pool account is `A0.pool`, read at the IDL positions `syncedTx.ts` already uses (`A0_DEPOSIT_ACCOUNTS`, the withdraw table):
-   - a `deposit` whose `depositor` is the account → **made-private**;
+2. **Pool, decided by role and not by sign** (review C5, r2 m5). A top-level instruction that passes `isOurA0Ix` (program `A0.programId`, pool at account 0 **and** merkle tree at account 1). Its `data` is base58, and the first 8 decoded bytes are matched against the `deposit` / `withdraw_with_change` discriminators:
+   - a `deposit` whose `depositor` (`A0_DEPOSIT_ACCOUNTS`) is the account → **made-private**;
    - a `withdraw_with_change` whose `destination_token_account` is owned by the account in the token balances → **made-public**;
    - a pool instruction with neither → **unknown**.
 
-   The primary asset is the account's `A0.mint` delta. The rho-marker rent the depositor pays, and the relayer's SOL gas grant on a withdrawal, are listed in #27 only.
-3. **Wrap or unwrap** (review C4). The only non-rent deltas are native and wSOL (`So11111111111111111111111111111111111111112`), with opposite signs, and `|native| == |wSOL|` once rent is split out (§4.2):
+   `primary` is the account's `A0.mint` delta. When the account has none, `primary` is null and the amount reads "—".
+3. **Wrap or unwrap** (review C4). The only `moved` deltas are native and wSOL (`So11111111111111111111111111111111111111112`), with opposite signs and `|native| == |wSOL|` (rent is already split out by §4.2):
    - native − and wSOL + → **wrap**;
    - native + and wSOL − → **unwrap**.
-
-   An unwrap by closing the wSOL account has the account's rent refund as a rent delta.
-4. **Swap.** Ignoring rent, at least one negative and at least one positive delta. `via` is `'Jupiter'` when a top-level instruction is Jupiter v6's program.
-5. **Sent.** Ignoring rent, only negative deltas.
-6. **Received.** Ignoring rent, only positive deltas.
-7. **Account setup** (review C4). The only deltas are rent: creating one's own token account, or closing an empty one. Title "Transaction", secondary "Account setup", with the true amount.
+4. **Swap.** Among `moved` deltas, at least one negative and at least one positive. `via` is `'Jupiter'` when a top-level instruction is Jupiter v6's program.
+5. **Sent.** `moved` deltas exist and all are negative.
+6. **Received.** `moved` deltas exist and all are positive.
+7. **Account setup** (review C4). No `moved` deltas, and at least one `rent` delta. Title "Transaction", secondary "Account setup", with the true amount. This includes a non-token `createAccount` paid by the account, such as a stake account (§9).
 8. **No funds moved.** No deltas at all, and `incomplete` is false.
 9. Anything else → **unknown**.
 
-### 4.4 Which asset a row shows (review C5)
+### 4.4 Which asset a row shows (review C5, r2 N3)
 `deltas` is ordered:
-1. non-rent before rent;
+1. by role: `moved`, `markup`, `grant`, `rent`;
 2. non-native before native;
-3. among those, by mint string.
+3. by mint string.
 
-Then:
-- `primary`:
-  - **sent / received:** `deltas[0]`;
-  - **swap:** the first negative non-rent delta. `secondary` is the first positive non-rent delta.
-  - **made-private / made-public:** the `A0.mint` delta.
-  - **wrap / unwrap:** the native delta.
-  - **account-setup:** the rent delta.
-  - **failed / no-funds-moved / unknown:** null.
-- `extraAssets`: the number of non-rent deltas besides `primary` and `secondary`.
-- **The markup fee.** A native movement to `NOCTURA_FEE_TREASURY` is a separate SOL delta when the account paid it. On a token send it is therefore not `deltas[0]`, because non-native comes first. On a SOL send the treasury part is subtracted, as in PR 1: a treasury transfer is markup when another transfer exists. #27 shows it as "Noctura fee".
+`primary` per kind:
+- **sent / received:** `deltas[0]`;
+- **swap:** the first negative `moved` delta; `secondary` is the first positive `moved` delta;
+- **made-private / made-public:** the `A0.mint` delta (§4.3 rule 2);
+- **wrap / unwrap:** the native `moved` delta;
+- **account-setup:** the first `rent` delta;
+- **failed / no-funds-moved / unknown:** null.
 
-### 4.5 Counter-party (review C3)
-The counter-party is computed for `primary` only, and only for **sent** and **received**:
-- **SOL primary:** the candidates are every index other than the account's whose lamports moved the opposite way, after:
-  - adding the fee back to index 0;
-  - excluding every index named in `pre`/`postTokenBalances` (token accounts);
-  - excluding accounts created or closed in this transaction (rent, §4.2);
-  - excluding `NOCTURA_FEE_TREASURY` when another candidate exists;
-  - excluding `A0_RELAYER.feePayer`.
+`extraAssets` is the number of `moved` deltas besides `primary` and `secondary`. Markup, grant and rent never count, so a Make private, a relayed Make public, and a token send with markup each show no "+1 more".
 
-  Exactly one candidate → it. Otherwise → null.
-- **Token primary:** the candidates are the owners of every token entry in the same mint that moved the opposite way, minus the account. Exactly one owner → it. Otherwise, including an entry with no owner → null.
-- **The fee payer.** Being the fee payer neither qualifies nor disqualifies an address. In an ordinary receive the sender is index 0 and is the counter-party.
+#27 labels the roles: "Noctura fee" (markup), "gas grant" (grant), "account rent" (rent).
+
+### 4.5 Counter-party (review C3, r2 N4)
+The counter-party is computed for `primary` only, and only for **sent** and **received**.
+
+**SOL primary.** The candidates are every index other than the account's whose lamports moved the opposite way, after:
+- adding the fee back to index 0;
+- excluding every index named in `pre`/`postTokenBalances` (token accounts);
+- excluding accounts **proven** created or closed by the §4.2 table. A plain system transfer to a wallet with 0 lamports before it, or from a wallet left at 0, keeps that wallet as a candidate.
+- excluding `NOCTURA_FEE_TREASURY` when another candidate exists;
+- excluding `A0_RELAYER.feePayer`.
+
+Exactly one candidate → it. Otherwise → null.
+
+**Token primary.** The candidates are the owners of every token entry in the same mint that moved the opposite way, minus the account. Exactly one owner → it. Otherwise, including an entry with no owner → null.
+
+**The fee payer.** Being the fee payer neither qualifies nor disqualifies an address. In an ordinary receive the sender is index 0 and is the counter-party.
 
 **Shown as:**
 - a wallet of this seed → its label from the registry ("Account 2", "Account 1 (main)"); with an unreadable registry, the short form;
 - any other wallet → `shortAccountAddress`, first 6 … last 6 (review I9, `screen.md` §0; a 4…4 form collides with the recorded poisoning address).
 
-### 4.6 #27 (review I8)
-- **Hero.** It comes from `classifyActivity` for the account the detail was opened from. It needs the raw transaction, so #27 reads `['parsedTx', cluster, signature]` (§3.3) and runs both `classifyActivity` and `parseTxDetail` on it. The route already carries `{signature, account}`.
+### 4.6 #27 (review I8, r2 N7)
+- **Hero.** It comes from `classifyActivity` for the account the detail was opened from. It needs the raw transaction, so #27 reads `['parsedTx', cluster, signature]` (§3.3) and runs both `classifyActivity` and `parseTxDetail` on it. The route already carries `{signature, account}`. The status is `'failed'` when `meta.err` is set, else `'confirmed'`, as `parseTxDetail` gives it today. A parsed transaction carries no finalized level.
 - **Eyebrow:** SENT, RECEIVED, SWAPPED, MADE PRIVATE, MADE PUBLIC, WRAPPED SOL, UNWRAPPED SOL, FAILED, or TRANSACTION.
 - **Hero amount:** `primary` **without a sign**, with its symbol, as in PR 1 and `screen.md` §27. A swap shows "{out} {sym} → {in} {sym}". With no `primary` there is no amount line.
-- **From / To / Authorized by (PR 1 rows)** show only when `parseTxDetail`'s transfer agrees with the hero:
+- **From / To / Authorized by (PR 1 rows)** show only when `parseTxDetail`'s transfer agrees with the row on all of these:
   - same mint as `primary`;
-  - the account is the transfer's `from` for sent, or its `to` for received.
+  - the account is the transfer's `from` for sent, or its `to` for received;
+  - `row.counterparty` is not null and equals the transfer's other side (`to` for sent, `from` for received);
+  - `toIsTokenAccount` is false.
 
-  Otherwise those rows are replaced by "Fee payer" and a **"Balance changes"** list of every delta ("−0.0001 TEST", "−0.00204 SOL · account rent", "+0.002 SOL · gas grant"). The relayer's grant is labelled when the fee payer is `A0_RELAYER.feePayer`.
+  Otherwise those rows are replaced by "Fee payer" and a **"Balance changes"** list of every delta, with role labels ("−0.0001 TEST", "−0.00204 SOL · account rent", "+0.002 SOL · gas grant", "−0.00002 SOL · Noctura fee").
 - **"≈ ${x} at today's price"** sits under the hero when a price for `primary` is known (H7). It is absent otherwise.
 - **Deep link.** With a null account, the hero is "TRANSACTION" with no amount, as in PR 1.
 
@@ -251,11 +298,11 @@ Copy lives in `src/copy/transactions.ts`, which is inside both copy guards. No g
 
 - Chips filter the rows loaded so far. They are 44 dp touch targets.
 - **While older pages exist**, a chip with no loaded match shows "No {chip} transactions in the last {n}", where `{n}` is the number of loaded transactions, and an explicit **"Load older"** button.
-- **Automatic loading** on scroll is capped at 3 pages per chip selection. After that only "Load older" loads.
+- **Automatic loading** on scroll stops after 3 consecutive pages that added no row visible under the active chip. The count resets when a page adds one, and when the chip changes. After that, only "Load older" loads (review r2 m4). The All chip never stops, because every page adds rows.
 - "No {chip} transactions yet" shows only at the end of history.
 
 ### 5.3 Sections, loading and states (review I12)
-- `sectionOf(blockTime, now, tz)` is pure, and `now` and `tz` are passed in. Calendar days are in the device's zone, and a week starts on Monday:
+- `sectionOf(blockTime, now, tz)` is pure, and `now` and `tz` are passed in. `tz` is an IANA zone name (for example `Europe/Ljubljana`), never a fixed offset, so old dates across a DST change fall on the right day (review r2 m7). Calendar days are in the device's zone, and a week starts on Monday:
   - **Today:** the same calendar day as `now`.
   - **Yesterday:** the previous calendar day.
   - **This week:** an earlier day in the same Monday-start week as `now`.
@@ -290,7 +337,9 @@ Scanned accounts are role `fresh-exit` with `linked !== true` only; `fresh-pendi
 ### 6.3 Sources, cursor and paging (review C2, I1, I2)
 - **Sources.** As in §3.1: the exit wallet and every token account it owns (classic and Token-2022). Each has its own cursor.
 - **The cursor** is the newest **finalized** signature fully scanned for that source. It is stored in **encrypted** MMKV under the new key `v1_linkScanCursors` as `{[exit]: {[source]: signature}}`, and cleared through `onSecureMmkvReset`.
-- **Reading a source.** Page backwards with `before`, 20 at a time, until the cursor is reached or the source is exhausted. The first scan has no cursor and a hard cap of 300 signatures per source. Transactions are read as in §3.3, and the cache is shared with history.
+- **Reading a source.** Page backwards with `before`, 20 at a time, until a signature equal to the stored cursor is met (matched by value, not by `until`) or the source is exhausted. Transactions are read as in §3.3, and the cache is shared with history.
+- **Cap.** Every scan of a source, first or later, reads at most 300 signatures (review r2 m6). A first scan stopped by the cap sets the cursor (§9). A later scan stopped by the cap returns `failed` for that source and does not move its cursor.
+- **A failed source** does not stop the exit's other sources: a link may still be found there.
 - **Stopping at a link.** A link found → `markA0AccountsLinked([exit])`, and the scan of that exit ends. No cursor is needed after a link.
 - **Any null or failed transaction read** → the result is `failed`, and no cursor for that source moves.
 - **A clean source** moves its cursor to the newest finalized signature read. A confirmed-but-not-finalized signature is scanned but never becomes the cursor, so it is scanned again next time.
@@ -347,10 +396,16 @@ Scanned accounts are role `fresh-exit` with `linked !== true` only; `fresh-pendi
 - An owner-less entry sets `incomplete`.
 - `A0_RELAYER.feePayer` is never the counter-party.
 - A Token-2022 delta is read.
+- Both wrap fixtures assert the exact rent delta (r2 N1).
+- A `createIdempotent` ATA, and a token account created by CPI (inner instruction), are rent (r2 N2).
+- The deposit row and the `54J9kjQ8…` row have `extraAssets == 0`. A token send with markup has `extraAssets == 0` (r2 N3).
+- A SOL send to a wallet with 0 lamports before it names that wallet. A receive from a wallet left at 0 names it (r2 N4).
 
 ### History reading
 - `QAgzVzY6…` appears in main's history through main's token-account source.
-- Merge order and dedupe across sources and pages.
+- Merge order and dedupe across sources and pages: three sources with interleaved slots across two pages lose no row and repeat none (r2 N5).
+- Refresh: 45 new signatures on one source all appear, in order, above the old rows. Past the 5-page cap, the session restarts (r2 N6).
+- The 25-source bound and its footer line.
 - The limiter key differs per page.
 - The batch path, and the fallback when the batch throws.
 - A partial row.
@@ -367,7 +422,7 @@ Scanned accounts are role `fresh-exit` with `linked !== true` only; `fresh-pendi
 
 ### #27
 - The hero equals the row for the same fixture and account.
-- From/To are hidden when they disagree, and the balance-changes list shows instead.
+- From/To are hidden when they disagree, and the balance-changes list shows instead. A two-recipient send shows no To (r2 N7).
 - "at today's price" appears only with a price.
 
 ### Link scan
@@ -400,6 +455,8 @@ Stale, unknown and never-synced states, each with a fresh control, and the MAX d
 - **A Make public row** on the receiving account shows no source, because the pool hides it.
 - **"via"** is named only for Jupiter v6. Other programs read just "Swapped".
 - **Presale's float conversions** are pre-existing.
+- **Large wallets:** history reads at most 25 sources, so a wallet with more token accounts says so in the list footer.
+- **A stake or other non-token account** created and paid by the account reads "Transaction · Account setup" with its full amount. That is true, but terse.
 - **The RPC provider** sees every request, as #17 already says. History and the scan send one request per signature read.
 
 ## 10. Design files
@@ -434,3 +491,5 @@ Make dated backups (`*.bak-2026-11-26c`, or the next free letter), then change t
 | Screen title "Activity" and the tab bar | Kept as "Transaction History" with Back | The screen is reached from the dashboard's History button (M1d). The Explore tab is not built. |
 | #41 empty-activity screen | The existing "No transactions yet" line | #41 is not built. Deferred. |
 | Asset in the title, symbol-less amount, icons | As designed (H8) | |
+| Date format "May 6" | "6 May" | Day-first, as the app's other dates (PR 1 History rows). |
+| Sections end at "This week" | Adds "This month", "{Month YYYY}" and "Date unknown" | Longer histories need them. |
