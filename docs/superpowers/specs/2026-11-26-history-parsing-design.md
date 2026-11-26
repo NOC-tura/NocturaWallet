@@ -1,6 +1,6 @@
 # PR 2 — Transaction history parsing, retroactive "linked" scan, presale stale label
 
-**Date:** 2026-11-26. **Revision:** r3. It folds in Fable spec review r2 (N1–N7, m1–m8). r2 folded in Fable spec review r1, which was NOT APPROVED (5 Critical, 13 Important, 10 Minor), and the owner's answers H7–H8.
+**Date:** 2026-11-26. **Revision:** r4. It folds in Fable spec review r3 (P1, m-a to m-g). r3 folded in review r2 (N1–N7, m1–m8). r2 folded in Fable spec review r1, which was NOT APPROVED (5 Critical, 13 Important, 10 Minor), and the owner's answers H7–H8.
 
 **Branch:** `feat/history-parsing`, from `main` at 7f3f235 (PR #127 merged).
 
@@ -64,7 +64,7 @@ The source list is read once per history session and on every pull-to-refresh. A
 - `cursor`: the last signature **fetched** from that source, used as `before` for the next fetch;
 - `exhausted`: the last fetch returned fewer than its `limit` (20).
 
-**A source is fetched** (`getSignaturesForAddress(source, {limit: 20, before: cursor})`) only when its buffer is empty and it is not exhausted. Un-emitted items stay in the buffer and are never fetched again.
+**A source is fetched** (`getSignaturesForAddress(source, {limit: 20, before: cursor})`) exactly when its buffer is empty and it is not exhausted. Before each take, every such source is fetched, so no row surfaces a page late (review r3 m-b). Un-emitted items stay in the buffer and are never fetched again.
 
 **Building a page.**
 - Repeatedly take the newest head across all buffers, compared by `slot`, and append it unless its signature was already emitted (dedupe across sources and pages).
@@ -75,13 +75,13 @@ The source list is read once per history session and on every pull-to-refresh. A
 **Bound on sources.**
 - Sources are ordered: the wallet first, then token accounts with a non-zero balance, then zero-balance token accounts.
 - At most **25 sources** are read.
-- When a wallet owns more, the list footer reads "History from 25 of {m} token accounts" (§9).
+- When a wallet owns more, the list footer reads "History from 24 of {m} token accounts" (§9). The wallet itself is the 25th source.
 - **Page 1 cost:** one signature call per source, up to 25, plus the transaction reads (§3.3). Later pages fetch only sources whose buffer ran out.
 - Plan Task 1 measures a page 1 with 25 sources on mainnet.
 
 ### 3.3 Reading transactions, and the cache (review I4, I5)
 - Raw parsed transactions are cached per signature under the TanStack key `['parsedTx', cluster, signature]`, with `staleTime: Infinity` and `gcTime: 24 h` (the client default of 5 min would collect them). A landed transaction does not change. A null answer is not cached. `onSecureMmkvReset` clears every `parsedTx` entry.
-- **The history query key** keeps today's prefix: `['txHistory', address, cluster, pageSize]`. #21 invalidates `['txHistory', address]` (`TransactionStatusScreen.tsx:132`), and that prefix must keep matching. An invalidation also drops the history session for that account.
+- **The history query key** keeps today's prefix: `['txHistory', address, cluster, pageSize]`. #21 invalidates `['txHistory', address]` (`TransactionStatusScreen.tsx:132`), and that prefix must keep matching. An invalidation also drops the history session for that account. The `txHistory` query's own refetch (on mount after `staleTime`, or on focus) runs the §3.4 refresh, and loading the next page calls the session (review r3 m-c).
 - A page reads only the signatures not yet cached:
   - first with one `getParsedTransactions(signatures, {maxSupportedTransactionVersion: 0})`;
   - **if the batch call throws,** with single `getParsedTransaction` calls for the same signatures, one at a time through `rpcLimiter`.
@@ -97,11 +97,13 @@ The source list is read once per history session and on every pull-to-refresh. A
 - A signature whose transaction comes back null (not indexed yet) or failed to read **still shows a row**. It has the date and status from the signature list, the title "Transaction", and "—" for the amount. It is never dropped, and never becomes a Sent.
 - **Pull-to-refresh** (review r2 N6):
   - re-reads the source list;
-  - pages each source from its head with `before` until it meets a signature already emitted for that source, or the source is exhausted;
-  - merges all of that at the top;
+  - pages each source from its head with `before` until it meets that source's `newest`, or the source is exhausted. `newest` is the first signature ever fetched for the source in this session, kept in the session (review r3 P1);
+  - takes only the signatures newer than `newest`, sets `newest` to the new head, and merges them at the top;
   - re-tries every loaded row that is still unparsed.
 
-  Loaded older pages stay. The refresh reads at most 5 pages per source. When that cap is hit before the loaded rows are met, the session is discarded and history restarts from the head, so no hole can be shown.
+  Loaded older pages stay. The session is discarded and history restarts from the head, so no hole can be shown, when:
+  - a refresh needs more than 5 pages for one source; or
+  - the source list gains a source the session does not know, such as a new token account.
 - Rows are keyed and deduped by signature across pages.
 - **Every query key holds the cluster and the account address,** so switching accounts or networks never shows another account's rows.
 - "No transactions yet" shows only when the first merged page read successfully, every source is exhausted, and there are zero signatures.
@@ -167,8 +169,8 @@ A row's kind is `'failed'` exactly when `status` is `'failed'`.
 
 There is no inference from `pre == 0` / `post == 0` alone (r2 N4).
 
-**Rent amounts (r2 N1).** For a proven account at index `j`, where `w` is that account's token amount when its mint is wSOL and 0 otherwise:
-- **created:** `rent = post[j] − w`, with `w` from its post token balance;
+**Rent amounts (r2 N1).** Proven accounts are a set keyed by index. Each is counted once, even when an ATA `create` and its inner `createAccount`, or the rho rule and an inner instruction, both prove it (review r3 m-a). For a proven account at index `j`, where `w` is that account's token amount when its mint is wSOL and 0 otherwise:
+- **created:** `rent = post[j] − pre[j] − w`, with `w` from its post token balance (`pre[j]` is 0 except for an ATA created at an address that already held lamports);
 - **closed:** `refund = pre[j] − w`, with `w` from its pre token balance;
 - created and closed in the same transaction (`pre[j] == post[j] == 0`, a swap's temporary wSOL account): contributes nothing.
 
@@ -262,6 +264,8 @@ Exactly one candidate → it. Otherwise → null.
   Otherwise those rows are replaced by "Fee payer" and a **"Balance changes"** list of every delta, with role labels ("−0.0001 TEST", "−0.00204 SOL · account rent", "+0.002 SOL · gas grant", "−0.00002 SOL · Noctura fee").
 - **"≈ ${x} at today's price"** sits under the hero when a price for `primary` is known (H7). It is absent otherwise.
 - **Deep link.** With a null account, the hero is "TRANSACTION" with no amount, as in PR 1.
+- **`ownTokenAccounts`.** #27 passes the history session's sources when one exists for the account. Otherwise (opened from #21 or a deep link) it passes an empty set, so an owner-less entry does not set `incomplete` (review r3 m-f).
+- **State 27f's second case** ("Authorized by" with From "—") is not reachable under the agreement rule. A null `from` always gives the Balance-changes form (review r3 m-e; §11).
 
 ## 5. The #26 screen
 
@@ -338,7 +342,7 @@ Scanned accounts are role `fresh-exit` with `linked !== true` only; `fresh-pendi
 - **Sources.** As in §3.1: the exit wallet and every token account it owns (classic and Token-2022). Each has its own cursor.
 - **The cursor** is the newest **finalized** signature fully scanned for that source. It is stored in **encrypted** MMKV under the new key `v1_linkScanCursors` as `{[exit]: {[source]: signature}}`, and cleared through `onSecureMmkvReset`.
 - **Reading a source.** Page backwards with `before`, 20 at a time, until a signature equal to the stored cursor is met (matched by value, not by `until`) or the source is exhausted. Transactions are read as in §3.3, and the cache is shared with history.
-- **Cap.** Every scan of a source, first or later, reads at most 300 signatures (review r2 m6). A first scan stopped by the cap sets the cursor (§9). A later scan stopped by the cap returns `failed` for that source and does not move its cursor.
+- **Cap.** Every scan of a source, first or later, reads at most 300 signatures (review r2 m6). A first scan stopped by the cap sets the cursor (§9). A later scan stopped by the cap is treated as a first scan: it sets the cursor to the newest finalized signature read, and §9's "older history is not scanned" covers the rest (review r3 m-d).
 - **A failed source** does not stop the exit's other sources: a link may still be found there.
 - **Stopping at a link.** A link found → `markA0AccountsLinked([exit])`, and the scan of that exit ends. No cursor is needed after a link.
 - **Any null or failed transaction read** → the result is `failed`, and no cursor for that source moves.
@@ -405,6 +409,7 @@ Scanned accounts are role `fresh-exit` with `linked !== true` only; `fresh-pendi
 - `QAgzVzY6…` appears in main's history through main's token-account source.
 - Merge order and dedupe across sources and pages: three sources with interleaved slots across two pages lose no row and repeat none (r2 N5).
 - Refresh: 45 new signatures on one source all appear, in order, above the old rows. Past the 5-page cap, the session restarts (r2 N6).
+- Refresh with two sources, where the second has emitted nothing yet, takes only signatures newer than its `newest` and does not restart. A new token account in the source list restarts the session (r3 P1).
 - The 25-source bound and its footer line.
 - The limiter key differs per page.
 - The batch path, and the fallback when the batch throws.
@@ -455,6 +460,7 @@ Stale, unknown and never-synced states, each with a fresh control, and the MAX d
 - **A Make public row** on the receiving account shows no source, because the pool hides it.
 - **"via"** is named only for Jupiter v6. Other programs read just "Swapped".
 - **Presale's float conversions** are pre-existing.
+- **Cache size:** raw transactions stay cached for 24 h with no count bound. A large swap is tens of kB, so a long history session uses memory in proportion (review r3 m-g).
 - **Large wallets:** history reads at most 25 sources, so a wallet with more token accounts says so in the list footer.
 - **A stake or other non-token account** created and paid by the account reads "Transaction · Account setup" with its full amount. That is true, but terse.
 - **The RPC provider** sees every request, as #17 already says. History and the scan send one request per signature read.
@@ -491,5 +497,6 @@ Make dated backups (`*.bak-2026-11-26c`, or the next free letter), then change t
 | Screen title "Activity" and the tab bar | Kept as "Transaction History" with Back | The screen is reached from the dashboard's History button (M1d). The Explore tab is not built. |
 | #41 empty-activity screen | The existing "No transactions yet" line | #41 is not built. Deferred. |
 | Asset in the title, symbol-less amount, icons | As designed (H8) | |
+| #27 state 27f, second case ("Authorized by" with From "—") | Not reachable; the Balance-changes form shows instead | The §4.6 agreement rule. |
 | Date format "May 6" | "6 May" | Day-first, as the app's other dates (PR 1 History rows). |
 | Sections end at "This week" | Adds "This month", "{Month YYYY}" and "Date unknown" | Longer histories need them. |
