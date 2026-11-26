@@ -20,11 +20,34 @@ export interface SyncResult {
   error?: string;
 }
 
-export async function forceSync(): Promise<SyncResult> {
+/**
+ * Final review m1: ONE sync in flight. The dashboard, #12 Send, Swap and #16 Make private all call
+ * forceSync; without this, a slow read that succeeded after a newer one wrote the OLDER figures under a
+ * fresh lastSyncedAt (shown as current), and a slow failure marked a seconds-old figure stale. A caller
+ * during a running sync for the same wallet gets that sync's promise; the slot is cleared when it settles.
+ * A call for another wallet (wipe / import mid-read) starts its own read — the old one ends 'wallet changed'.
+ */
+let inFlight: {publicKey: string; promise: Promise<SyncResult>} | null = null;
+
+export function forceSync(): Promise<SyncResult> {
   const publicKey = useWalletStore.getState().publicKey;
   if (!publicKey) {
-    return {success: false, partial: false, timestamp: Date.now(), error: 'No wallet loaded'};
+    return Promise.resolve({success: false, partial: false, timestamp: Date.now(), error: 'No wallet loaded'});
   }
+  if (inFlight && inFlight.publicKey === publicKey) {
+    return inFlight.promise;
+  }
+  const entry: {publicKey: string; promise: Promise<SyncResult>} = {
+    publicKey,
+    promise: runSync(publicKey).finally(() => {
+      if (inFlight === entry) inFlight = null;
+    }),
+  };
+  inFlight = entry;
+  return entry.promise;
+}
+
+async function runSync(publicKey: string): Promise<SyncResult> {
 
   // Fix round 1 / 2: the wallet this sync belongs to. A wipe or import while the reads are in flight must
   // not let the old wallet's figures (or its failure) land on the new store.

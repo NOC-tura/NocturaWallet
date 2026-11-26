@@ -338,6 +338,70 @@ describe('backgroundSyncModule', () => {
     });
   });
 
+  // final review m1: one sync in flight — a caller during a running sync shares it
+  describe('forceSync single-flight', () => {
+    const deferred = <T,>() => {
+      let resolve!: (v: T) => void;
+      const promise = new Promise<T>(r => {
+        resolve = r;
+      });
+      return {promise, resolve};
+    };
+
+    it('two concurrent calls → one RPC read, both get the same result; a call after it settles reads again', async () => {
+      useWalletStore.getState().setPublicKey(TEST_PUBLIC_KEY);
+      const bal = deferred<bigint>();
+      mockGetBalance.mockImplementationOnce(() => bal.promise);
+      mockGetTokenAccounts.mockResolvedValue([]);
+
+      const a = forceSync();
+      const b = forceSync();
+      expect(b).toBe(a);
+      bal.resolve(BigInt(7));
+      const [ra, rb] = await Promise.all([a, b]);
+      expect(ra).toBe(rb);
+      expect(ra.success).toBe(true);
+      expect(ra.solBalance).toBe('7');
+      expect(mockGetBalance).toHaveBeenCalledTimes(1);
+      expect(mockGetTokenAccounts).toHaveBeenCalledTimes(1);
+
+      mockGetBalance.mockResolvedValueOnce(BigInt(8));
+      const c = forceSync();
+      expect(c).not.toBe(a);
+      const rc = await c;
+      expect(rc.solBalance).toBe('8');
+      expect(mockGetBalance).toHaveBeenCalledTimes(2);
+    });
+
+    it('a failed sync clears the in-flight slot too (the next call reads again)', async () => {
+      useWalletStore.getState().setPublicKey(TEST_PUBLIC_KEY);
+      mockGetBalance.mockRejectedValueOnce(new Error('boom'));
+      mockGetTokenAccounts.mockResolvedValue([]);
+      const r1 = await forceSync();
+      expect(r1.success).toBe(false);
+      mockGetBalance.mockResolvedValueOnce(BigInt(3));
+      const r2 = await forceSync();
+      expect(r2.success).toBe(true);
+      expect(mockGetBalance).toHaveBeenCalledTimes(2);
+    });
+
+    it('a call for ANOTHER wallet while the old one is in flight is not handed the old wallet\'s sync', async () => {
+      useWalletStore.getState().setPublicKey(TEST_PUBLIC_KEY);
+      const bal = deferred<bigint>();
+      mockGetBalance.mockImplementationOnce(() => bal.promise);
+      mockGetTokenAccounts.mockResolvedValue([]);
+      const old = forceSync();
+      useWalletStore.getState().reset();
+      useWalletStore.getState().setPublicKey('NewWallet1111');
+      mockGetBalance.mockResolvedValueOnce(BigInt(4));
+      const fresh = forceSync();
+      expect(fresh).not.toBe(old);
+      bal.resolve(BigInt(9));
+      await expect(old).resolves.toMatchObject({error: 'wallet changed'});
+      await expect(fresh).resolves.toMatchObject({success: true, solBalance: '4'});
+    });
+  });
+
   describe('registerBackgroundTask', () => {
     it('does not throw', () => {
       expect(() => registerBackgroundTask()).not.toThrow();
