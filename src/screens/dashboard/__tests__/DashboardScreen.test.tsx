@@ -1048,17 +1048,27 @@ describe('post-M1d §3.2 — a stale public balance', () => {
   });
 
   it('D11 (R16): the age ticks every 60 s', async () => {
-    jest.useFakeTimers({now: NOW});
-    try {
-      const r = await renderDashboard();
-      expect(r.getByTestId('dashboard-stale-line')).toHaveTextContent(LINE);
-      await act(async () => {
-        jest.advanceTimersByTime(60_000);
-      });
-      expect(r.getByTestId('dashboard-stale-line')).toHaveTextContent('Not updated · 6 min ago · pull to refresh');
-    } finally {
-      jest.useRealTimers();
-    }
+    // No jest fake timers here: under Node 22 (CI) `useFakeTimers` + `await act(async…)` never settled and hung
+    // the whole CI job. The 60 s intervals are captured instead and fired by hand, with the clock moved on.
+    let clock = NOW;
+    jest.spyOn(Date, 'now').mockImplementation(() => clock);
+    const minuteTicks: Array<() => void> = [];
+    const realSetInterval = global.setInterval;
+    jest.spyOn(global, 'setInterval').mockImplementation(((fn: () => void, ms?: number) => {
+      if (ms === 60_000) {
+        minuteTicks.push(fn);
+        return 0;
+      }
+      return realSetInterval(fn, ms);
+    }) as unknown as typeof setInterval);
+    const r = await renderDashboard();
+    expect(r.getByTestId('dashboard-stale-line')).toHaveTextContent(LINE);
+    expect(minuteTicks.length).toBeGreaterThan(0);
+    clock = NOW + 60_000;
+    await act(async () => {
+      minuteTicks.forEach(fn => fn());
+    });
+    expect(r.getByTestId('dashboard-stale-line')).toHaveTextContent('Not updated · 6 min ago · pull to refresh');
   });
 });
 
