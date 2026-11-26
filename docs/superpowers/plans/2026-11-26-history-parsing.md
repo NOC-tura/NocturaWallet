@@ -25,17 +25,35 @@ whole spec before any task. Its review trail (why each rule is as it is):
 
 **Branch:** `feat/history-parsing` (from `main` 7f3f235; this plan was written at 5588ce7).
 
+**Revision r2 (2026-11-26)** folds the plan review r1
+(`.superpowers/sdd/2026-11-26-history-parsing-plan-review-r1.md`): I2–I6 and m1–m12. What each became, and the
+mutation that proves each new test, is in `.superpowers/sdd/2026-11-26-history-parsing-plan-fold-r1.md`. It also
+folds **the owner's answers to the review's three questions** (given 2026-11-26, relayed by the controller; they
+are recorded under "Owner decisions" below and settle I1):
+**Q1** the fifth chip reads "Private", and the badge on the two pool rows is an icon with no word;
+**Q2** the dashboard's hide-balances eye also hides every figure on #26 and #27;
+**Q3** the controller may measure the app's own RPC provider (read-only, from a copy of the env file, the URL never
+printed) and may make the missing wrap transaction on devnet from a throwaway keypair.
+
 **How the code in this plan was checked (2026-11-26).** Every code block of Tasks 2–11 was applied, in task order, to
 a throwaway clone of 5588ce7 holding the Task 1 fixtures (fetched the same day from the public endpoints), and the
-gates were run there: `npx jest` on Node 24 and on Node 22 (3530 tests in 230 suites passing on each; 1 skipped — the
-live ZK-manifest suite, as before this plan), `npx tsc --noEmit` = 0, `npm run lint:ci`
+gates were run there: `npx jest` on Node 24 and on Node 22
+(3557 tests in 230 suites passing on each; 1 skipped — the live ZK-manifest suite, as before this plan),
+`npx tsc --noEmit` = 0, `npm run lint:ci`
 = `✖ 143 problems (0 errors, 143 warnings)`, `node scripts/check-no-tge-date.mjs` = 0; after each task `tsc` and
 that task's own tests were green too. The classifier's and the scan's tests were also mutation-checked by hand
 (about forty single-line changes to the rules of §4.2–§4.5 and §6.2–§6.3: each makes a test fail, except three
-that change nothing observable — which of two proofs of one account is kept, twice, and the cap's `slice`). So a
+that change nothing observable — which of two proofs of one account is kept, twice, and the cap's `slice`). The
+review then ran 73 single-line mutations across every module; 13 survived. For r2 each survivor the review named
+as a finding was run again on the replayed clone, against the test added for it: the test passes on the plan's
+code, fails with the mutation, and passes again once it is undone (the fold log lists every one). So a
 block that does not compile, or a test that does not pass as written, means the repository has drifted from
 5588ce7 or a block was mistyped — **stop and report; do not improvise a different implementation.** What was NOT
-checked: anything on a device, and anything against the app's own RPC provider (Tasks 1 and 12 do that).
+checked: anything on a device, and anything against the app's own RPC provider (Tasks 1 and 12 do that). Of Task
+1's scripts, `count-tx-versions.mjs` was run as written (its figures are in finding 1);
+`measure-history-rpc.mjs` was run on the public endpoints, and its new env-file path only against a made-up file
+(to see that nothing of the URL is printed); `make-wrap-new.mjs` was run with `--dry-run` only — the node
+simulated its three instructions without error, and **nothing was sent**.
 
 ## Global Constraints
 
@@ -46,7 +64,12 @@ checked: anything on a device, and anything against the app's own RPC provider (
 - Every user-visible string lives in `src/copy/` (new ones in `src/copy/transactions.ts`). The guard tests
   `src/copy/__tests__/bannedWords.test.ts` and `src/screens/shielded/__tests__/privacyClaims.test.ts` keep their
   regexes unchanged. **The words Shield / Unshield / Shielded / Transparent / Vault never appear in a user-visible
-  string** — the pool rows and their chip read "Private" / "Made private" / "Made public" (ruling 1).
+  string** — the pool rows read "Made private" / "Made public" and their chip "Private"; their badge is an icon
+  with no word (owner decision Q1).
+- **Hide balances (owner decision Q2).** `usePublicSettingsStore(s => s.hideBalances)` — the dashboard's own
+  setting, the only source — also covers #26 and #27: every FIGURE reads "••••" (`TX_HIDDEN`): a row's amount with
+  its "+N more" and the line under it; on #27 the hero, "≈ $x at today's price", each balance-change figure and
+  the network fee. Titles, counter-parties, addresses, dates, the status and the role labels stay.
 - The source guard `src/modules/shielded/__tests__/noSelfRelay.test.ts` stays unchanged: the withdraw discriminator
   (`withdrawWithChange`) is named only in `a0/constants.ts`, `a0/relayerClient.ts` and `a0/syncedTx.ts` (ruling 2).
 - Gates, each with a real exit code, **after every task and at the end**:
@@ -58,7 +81,9 @@ checked: anything on a device, and anything against the app's own RPC provider (
     already carry stay exactly where they are (`TransactionDetailScreen.tsx` `{fontSize: 28}`, `PresaleScreen.tsx`
     the pay-chip inline style, `DashboardScreen.tsx` `{paddingBottom: 24}`);
   - `node scripts/check-no-tge-date.mjs` = 0.
-- **No test combines jest fake timers with async `act`** (that hung CI in PR 1). This plan uses no fake timers at all.
+- **No test combines jest fake timers with async `act`** (that hung CI in PR 1). This plan uses no fake timers at all:
+  a time limit is tested by HANDING IN a short one (30 ms) against a promise that never settles, and the clock by
+  the `now` prop or a `Date.now` spy.
 - A test that creates a `QueryClient` calls `client.clear()` in `afterEach` (a `parsedTx` entry holds a 24 h timer).
 - Never run `npx prettier --write`. Never edit a `.env` file. No new npm dependency.
 - Exact values (spec §3, §6), used as named constants and never retyped:
@@ -67,6 +92,8 @@ checked: anything on a device, and anything against the app's own RPC provider (
     accounts); a refresh restarts past 5 pages per source (`HISTORY_REFRESH_MAX_PAGES`);
   - query keys `['txHistory', address, cluster, 20]` (`staleTime` 60 s) and `['parsedTx', cluster, signature]`
     (`staleTime: Infinity`, `gcTime` 24 h);
+  - every chain call of the history, the detail and the link scan has a limit of 20 s
+    (`HISTORY_READ_TIMEOUT_MS`), raced INSIDE the `rpcLimiter` function (ruling 19);
   - the link scan reads at most 300 signatures per source per scan (`LINK_SCAN_CAP`), 20 at a time, at most once per
     60 s per exit (`LINK_SCAN_MIN_INTERVAL_MS`); its cursors are the encrypted-MMKV key `v1_linkScanCursors`;
   - Jupiter v6 `JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4`; wSOL `So11111111111111111111111111111111111111112`;
@@ -84,7 +111,7 @@ checked: anything on a device, and anything against the app's own RPC provider (
   - `src/modules/solana/txDetail.ts`: Task 2 only (types). Tasks 4, 5, 8, 9 import from it.
   - `src/modules/shielded/a0/syncedTx.ts`: Task 2 only.
   - `src/modules/solana/historySession.ts`: Task 3 only. Tasks 4, 6, 8, 9 import from it.
-  - `src/modules/solana/queries.ts`: Task 4 only.
+  - `src/modules/solana/queries.ts`, `src/modules/solana/withTimeout.ts`: Task 4 only.
   - `src/copy/transactions.ts`, `src/modules/solana/activityView.ts`, `jest.config.js`: Task 5 only.
   - `src/hooks/useSolanaQueries.ts`: Task 7 (removes `useTransactionHistory`), then Task 8 (removes
     `useTransactionDetail`).
@@ -102,53 +129,66 @@ checked: anything on a device, and anything against the app's own RPC provider (
 
 ## Review Focus
 
-Five conditions the spec implies but does not spell out, most likely first. Each has a test in its owning task.
+Six conditions the spec implies but does not spell out, most likely first. Each has a test in its owning task.
 
 1. **A transaction the node will not serve.** One signature of a page that is refused — a transaction of a version
    above 0 (they exist on both clusters today, see "Findings"), or one rate-limited inside the batch — makes
    web3.js throw for the whole batch. The page must still show every other row parsed and that one as a partial row
-   ("Transaction", "—"), never an empty or failed list (Task 4, tests R14 and H7).
+   ("Transaction", "—"), never an empty or failed list (Task 4, tests R14 and H7). And a signature that is NEVER
+   served must not sit in the batch of every later page: rows still unparsed are read apart from the page a load
+   adds (Task 4, test H9).
 2. **Amounts at the edges.** A figure below the shown precision reads "<0.0001" with its sign, never "0" or
    scientific notation; a token amount above 2^53 stays exact; lamports the JSON can no longer hold exactly, or a
    response without balances, make the row `incomplete` — never a wrong figure, never "No funds moved"
    (Task 2, tests A40–A42; Task 5, test V19).
 3. **Something changes while a read is in flight.** A page loaded for the account that was selected a moment ago is
    not written into the new account's list (Task 6, test K8); a retry in flight does not block the new account's
-   (Task 7, test T17); a wipe or import during a link scan drops that scan's tag and cursor (Task 10, tests N6
-   and N12).
+   (Task 7, test T17); a wipe or import during a link scan drops that scan's tag (Task 10, tests N6 and N12) and
+   its cursor — a list of the old wallet's account addresses that must not reach the next wallet's store (tests
+   N13 and N14).
 4. **The clock.** A list left open past midnight, a summer date read in winter (DST), a block time ahead of the
    device clock, and no block time at all: each row falls under the right section, and the time never reads from
-   another day (Task 5, tests V1–V7; Task 7, test T21).
+   another day (Task 5, tests V1–V7; Task 7, test T21). T21 proves the `now` prop; in the app the clock is read
+   again when the data changes and when the app returns to the foreground (test T21b). A list that stays in the
+   foreground through midnight with no new data keeps its sections until one of the two happens ("Known limits").
 5. **A wallet at the bounds.** More than 24 token accounts (funded ones are read first and the footer says how
    many were read), no transactions at all, and a chip with no match on a list too short to scroll — which must not
-   read the whole history in a burst (Task 4, test R2; Task 3, test S4; Task 7, tests T7, T9, T13, T18).
+   read the whole history in a burst (Task 4, test R2; Task 3, test S4; Task 7, tests T7, T9, T9b, T13, T18).
+   An empty list, or an empty chip, of a wallet whose token accounts were only partly read says so beside the
+   empty line (Task 7, tests T18b and T18c).
+6. **A request that never settles.** React Native's fetch has no time limit and the session serialises its reads:
+   one hung request would block that account's "Load older" and pull-to-refresh for good, and a hung source-list
+   read would hold every later link scan. Each chain call is raced against 20 s inside the limiter's function, so
+   the limiter's slot and in-flight key are freed too and the retry is a new request (Task 4, tests R16–R20, H8,
+   H11). A batch that timed out is not followed by twenty single reads.
 
 ## File map
 
 | File | Task | Responsibility after this plan |
 |---|---|---|
-| `src/modules/solana/__tests__/fixtures/*.json` (15 new) | 1 | verbatim `getTransaction` (jsonParsed) responses |
+| `src/modules/solana/__tests__/fixtures/*.json` (15 new, and the wrap of Task 1 Step 3) | 1 | verbatim `getTransaction` (jsonParsed) responses |
 | `src/modules/solana/txDetail.ts` | 2 | + the response fields the classifier reads (`RawParsedTx`, `RawInstruction`, `keyString` exported) |
 | `src/modules/shielded/a0/syncedTx.ts` | 2 | `isOurA0Ix` exported; + `a0PoolInstructionKind` |
 | `src/modules/solana/activity.ts` (new) | 2 | `classifyActivity` — net changes, kind, primary, counter-party |
 | `src/modules/solana/historySession.ts` (new) | 3 | the merged signature stream of one account: pages, refresh, restart; the session registry |
-| `src/modules/solana/queries.ts` | 4 | + `getToken2022Accounts` |
-| `src/modules/solana/historyReads.ts` (new) | 4 | source list, a signature page, parsed transactions + the `parsedTx` cache, limiter keys |
+| `src/modules/solana/queries.ts` | 4 | `tokenAccountsOf` exported (one program's accounts, the bare read); `getTokenAccounts` unchanged |
+| `src/modules/solana/withTimeout.ts` | 4 | rejects with a `TimeoutError` (same message) |
+| `src/modules/solana/historyReads.ts` (new) | 4 | source list (classic + Token-2022), a signature page, parsed transactions + the `parsedTx` cache, limiter keys, the 20 s limit |
 | `src/modules/solana/history.ts` (new) | 4 | `loadHistory` — session + reads + classifier → the snapshot #26 shows |
 | `src/modules/solana/activityContext.ts` (new) | 4 | the app's constants for the classifier |
-| `src/copy/transactions.ts` | 5 | + every word of the #26 rows, chips, sections, and of #27's new parts |
-| `src/modules/solana/activityView.ts` (new) | 5 | what a row says (pure): `rowView`, `sectionOf`, `rowTime`, chips, counter-party label; #27's hero / parties / change lines |
+| `src/copy/transactions.ts` | 5 | + every word of the #26 rows, chips, sections, and of #27's new parts; the badge's screen-reader label; the hidden-amount mark |
+| `src/modules/solana/activityView.ts` (new) | 5 | what a row says (pure): `rowView` (shown or hidden), `sectionOf`, `rowTime`, chips, counter-party label; #27's hero / parties / change lines |
 | `jest.globalSetup.js` (new), `jest.config.js` | 5 | `TZ=UTC` for every test |
 | `src/hooks/useActivityHistory.ts` (new) | 6 | the history query: key, 60 s, load older, account switch |
 | `src/app/queryClient.ts` | 6 | `parsedTx` defaults; an invalidation of `txHistory` drops the session; a wipe clears both |
-| `src/screens/transparent/TransactionHistoryScreen.tsx` | 7 | #26: rows, sections, chips, skeleton, load older, footer |
+| `src/screens/transparent/TransactionHistoryScreen.tsx` | 7 | #26: rows, sections, chips, skeleton, load older, footer; the icon-only badge; hide balances |
 | `src/hooks/useSolanaQueries.ts` | 7, 8 | the two replaced hooks removed |
 | `src/hooks/useParsedTx.ts` (new) | 8 | #27's read of the raw transaction from the shared cache |
-| `src/screens/transparent/TransactionDetailScreen.tsx` | 8 | #27: hero from the classifier, "at today's price", From / To only on agreement, "Balance changes" |
+| `src/screens/transparent/TransactionDetailScreen.tsx` | 8 | #27: hero from the classifier, "at today's price", From / To only on agreement, "Balance changes"; hide balances |
 | `src/modules/accounts/linkScan.ts` (new) | 9 | the linked rule and the paged scan of one exit (pure) |
 | `src/constants/mmkvKeys.ts` | 10 | + `LINK_SCAN_CURSORS` |
-| `src/modules/accounts/linkScanRunner.ts` (new) | 10 | when the scan runs: single-flight, interval, generation; cursors; wiring |
-| `src/screens/dashboard/DashboardScreen.tsx` | 10 | starts the scan when the Accounts sheet opens |
+| `src/modules/accounts/linkScanRunner.ts` (new) | 10 | when the scan runs: single-flight, interval, generation; cursors; wiring; the write guard |
+| `src/screens/dashboard/DashboardScreen.tsx` | 10 | starts the scan when the Accounts sheet opens, and again after an unlock |
 | `src/screens/PresaleScreen.tsx` | 11 | a stale / unknown main balance: "—", the note, MAX and Buy off |
 
 ---
@@ -160,7 +200,9 @@ last bullet.
 
 The controller does this itself: it needs the network, and every later task only reads what it leaves behind.
 Everything here is **read-only** against the **public** endpoints `https://api.devnet.solana.com` and
-`https://api.mainnet-beta.solana.com`. No `.env` file is read.
+`https://api.mainnet-beta.solana.com`, with two exceptions the owner allowed on 2026-11-26 (Q3): Step 3b may SEND
+one devnet transaction from a throwaway keypair, and Step 4 reads the app's own provider through a COPY of an env
+file. No `.env` file is ever edited, and none is read in place.
 
 **Files:**
 - Create: 15 files in `src/modules/solana/__tests__/fixtures/` (table below)
@@ -172,8 +214,8 @@ Everything here is **read-only** against the **public** endpoints `https://api.d
   `{"jsonrpc":"2.0","result":{…},"id":1}` of `getTransaction(signature, {encoding: "jsonParsed",
   maxSupportedTransactionVersion: 0})`, as the three files already in that directory are. Later tasks load them as
   `JSON.parse(file).result`.
-- Produces: the measurement and its judgement, recorded in the ledger (Steps 4–5). Task 4 proceeds as written
-  unless Step 5 says to stop.
+- Produces: the measurements and their judgement, recorded in the ledger (Steps 4–6). Task 4 proceeds as written
+  unless Step 6 says to stop.
 
 **The fixtures.** Devnet ones are the wallet's own accounts (main `Da83cAfGUrsm896FUghCkNKutgFc96WNGWN73bZxe31B`,
 Account 2 `9Y7FtteLhCJABAQtkYEFZs46rJgy1ixMA1JFMUepTki4`, Account 3 `5H8T9XjLHXL3hUtHo5hKNvgHkWKny484GdVEVxg2rZF7`,
@@ -205,7 +247,7 @@ Already in the repository from PR 1 — **do not fetch them again**: `tx-sol-tra
 Not in the list, and why (rulings 4 and 5): no relayed **failed** transaction exists (the relayer
 `3jvhiz9qcJAe2zGHvRAiRYXiaFCdjEQrB9KuE5NuFaGe` has 19 signatures on devnet, none failed); and no wrap into a
 brand-new wSOL account was found as a whole transaction in about 700 mainnet blocks (wallets wrap inside a swap).
-Step 3 looks once more.
+Step 3 looks again and, if it finds none, makes one on devnet (plan review r1 m11; owner decision Q3).
 
 - [ ] **Step 1: Fetch the 15 files.** From the repository root:
 
@@ -303,12 +345,13 @@ process.exit(bad === 0 ? 0 : 1);
       transaction — every expected value in Tasks 2, 4, 8 and 9 is computed from these exact ones. Report to the
       owner; the plan's author must re-find a transaction of that shape and recompute the values.
 
-- [ ] **Step 3 (optional, at most 15 minutes): look once more for a wrap into a NEW wSOL account.** Task 2 tests
-      that shape with a case DERIVED from `33qVTEpP…` (test A23, three stated field changes), because no real one
-      was found. A real one is better evidence. Save and run:
+- [ ] **Step 3 (required): a real wrap into a NEW wSOL account — found, or made.** Task 2 tests that shape with
+      a case DERIVED from `33qVTEpP…` (test A23, three stated field changes), because no real one was found, and
+      spec §8 asks for verbatim chain responses. A real one is the evidence the spec means.
+      **3a — look for one.** Save and run:
 
 ```python
-# Plan Task 1 Step 3 (optional): look for a wrap of SOL into a NEW wSOL account that is the whole transaction.
+# Plan Task 1 Step 3: look for a wrap of SOL into a NEW wSOL account that is the whole transaction.
 # Read-only, public mainnet endpoint, stdlib only.   python3 find-wrap-new.py <blocks>
 import json, sys, time, urllib.request
 
@@ -371,16 +414,170 @@ while done < blocks:
 print('none in', blocks, 'blocks')
 ```
 
-      Run: `python3 <scratchpad>/find-wrap-new.py 400`
-      Expected: `none in 400 blocks` (then nothing changes — go to Step 4), or `FOUND <signature> payer <wallet>`.
-      If FOUND: fetch it as Step 1 does into `tx-wrap-new-<first 8 characters of the signature>.json`, write the
-      signature and the payer into the ledger, and **after Task 2's review** append this test to
+      Run: `python3 <scratchpad>/find-wrap-new.py 400` (about ten minutes; it stops at the first one found).
+      Expected: `FOUND <signature> payer <wallet>`, or `none in 400 blocks`.
+      If FOUND: fetch it as Step 1 does (cluster `mainnet`) into
+      `tx-wrap-new-<first 8 characters of the signature>.json` and go on at "Then" below.
+
+      **3b — if 3a found none: make one on devnet** (owner decision Q3b). The payer is a FRESH throwaway keypair
+      funded by the devnet airdrop only. **Never the main wallet, never Accounts 2–5, no transfer from any wallet
+      of the seed** — the script holds no other key and cannot. Save the script below as `make-wrap-new.mjs` in
+      the scratchpad (not committed):
+
+```js
+// History plan Task 1 Step 3b (owner, Q3b) — MAKE the one transaction no search found: a wrap of SOL into a NEW
+// wSOL account that is the whole transaction, on DEVNET, from a fresh throwaway keypair funded by the devnet
+// airdrop. It touches no wallet of the owner's seed. Run from the repository root (it uses the repo's web3.js):
+//   node <scratchpad>/make-wrap-new.mjs --dry-run <any funded devnet address>   simulate only: nothing is sent
+//   node <scratchpad>/make-wrap-new.mjs <key file> <fixtures directory>         airdrop, send, save the fixture
+// The key file is created (mode 600) if it does not exist, so a run the faucet refused can be repeated with the
+// same throwaway address. Delete it afterwards: `rm -f <key file>`.
+import {createRequire} from 'node:module';
+import {chmodSync, existsSync, readFileSync, writeFileSync} from 'node:fs';
+import {join} from 'node:path';
+
+const require = createRequire(join(process.cwd(), 'package.json'));
+const {Connection, Keypair, PublicKey, SystemProgram, Transaction, TransactionInstruction, sendAndConfirmTransaction} = require('@solana/web3.js');
+
+const URL = 'https://api.devnet.solana.com';
+const WSOL = new PublicKey('So11111111111111111111111111111111111111112');
+const TOKEN = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
+const ATA = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
+const WRAPPED = 10_000_000; // 0.01 SOL
+const AIRDROP = 100_000_000; // 0.1 SOL: the wrap, the account's rent (about 0.002) and the fee
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const connection = new Connection(URL, 'confirmed');
+
+/** create the owner's wSOL account, move SOL into it, sync — the three instructions find-wrap-new.py looks for */
+function wrapIntoNewAccount(owner) {
+  const [account] = PublicKey.findProgramAddressSync([owner.toBuffer(), TOKEN.toBuffer(), WSOL.toBuffer()], ATA);
+  const create = new TransactionInstruction({
+    programId: ATA,
+    keys: [
+      {pubkey: owner, isSigner: true, isWritable: true},
+      {pubkey: account, isSigner: false, isWritable: true},
+      {pubkey: owner, isSigner: false, isWritable: false},
+      {pubkey: WSOL, isSigner: false, isWritable: false},
+      {pubkey: SystemProgram.programId, isSigner: false, isWritable: false},
+      {pubkey: TOKEN, isSigner: false, isWritable: false},
+    ],
+    data: Buffer.alloc(0), // AssociatedTokenAccountInstruction::Create
+  });
+  const fund = SystemProgram.transfer({fromPubkey: owner, toPubkey: account, lamports: WRAPPED});
+  const sync = new TransactionInstruction({programId: TOKEN, keys: [{pubkey: account, isSigner: false, isWritable: true}], data: Buffer.from([17])}); // SyncNative
+  return {account, transaction: new Transaction().add(create, fund, sync)};
+}
+
+const args = process.argv.slice(2);
+if (args[0] === '--dry-run' && args[1]) {
+  const owner = new PublicKey(args[1]);
+  const {account, transaction} = wrapIntoNewAccount(owner);
+  transaction.feePayer = owner;
+  if ((await connection.getAccountInfo(account)) !== null) {
+    console.log(`${args[1]} already has a wSOL account: pick an address that has none`);
+    process.exit(2);
+  }
+  const result = await connection.simulateTransaction(transaction);
+  console.log(`simulation: ${result.value.err ? 'ERROR ' + JSON.stringify(result.value.err) : 'ok'}`);
+  for (const line of result.value.logs ?? []) {
+    console.log('  ' + line);
+  }
+  process.exit(result.value.err ? 1 : 0);
+}
+const [keyFile, fixtures] = args;
+if (!keyFile || !fixtures || !existsSync(fixtures)) {
+  console.error('usage: node make-wrap-new.mjs --dry-run <funded devnet address> | <key file> <fixtures directory>');
+  process.exit(2);
+}
+let payer;
+if (existsSync(keyFile)) {
+  payer = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(readFileSync(keyFile, 'utf8'))));
+} else {
+  payer = Keypair.generate();
+  writeFileSync(keyFile, JSON.stringify([...payer.secretKey]), {mode: 0o600});
+  chmodSync(keyFile, 0o600);
+}
+console.log(`throwaway payer ${payer.publicKey.toBase58()} (devnet)`);
+
+if ((await connection.getBalance(payer.publicKey)) < WRAPPED * 2) {
+  let funded = false;
+  for (let attempt = 1; attempt <= 5 && !funded; attempt++) {
+    try {
+      const signature = await connection.requestAirdrop(payer.publicKey, AIRDROP);
+      const latest = await connection.getLatestBlockhash();
+      await connection.confirmTransaction({signature, ...latest}, 'confirmed');
+      funded = true;
+    } catch (e) {
+      console.log(`airdrop attempt ${attempt} refused: ${String(e?.message ?? e).slice(0, 120)}`);
+      await sleep(15_000 * attempt);
+    }
+  }
+  if (!funded) {
+    console.log('the devnet faucet refused five times. Run this again later with the SAME key file — nothing was sent.');
+    process.exit(1);
+  }
+}
+
+const {account, transaction} = wrapIntoNewAccount(payer.publicKey);
+if ((await connection.getAccountInfo(account)) !== null) {
+  console.log('this throwaway already wrapped once: delete the key file and start with a new one');
+  process.exit(1);
+}
+const signature = await sendAndConfirmTransaction(connection, transaction, [payer], {commitment: 'confirmed'});
+console.log(`sent ${signature}`);
+
+// the fixture is the node's own answer, byte for byte (as Step 1's curl saves it) — asked for until it is there
+const body = JSON.stringify({jsonrpc: '2.0', id: 1, method: 'getTransaction', params: [signature, {encoding: 'jsonParsed', maxSupportedTransactionVersion: 0}]});
+for (let attempt = 1; attempt <= 20; attempt++) {
+  await sleep(3000);
+  const text = await (await fetch(URL, {method: 'POST', headers: {'content-type': 'application/json'}, body})).text();
+  let result = null;
+  try {
+    result = JSON.parse(text).result ?? null;
+  } catch {
+    result = null;
+  }
+  if (result !== null) {
+    const file = `tx-wrap-new-${signature.slice(0, 8)}.json`;
+    writeFileSync(join(fixtures, file), text);
+    console.log(`FOUND ${signature} payer ${payer.publicKey.toBase58()}`);
+    console.log(`saved ${file} — wSOL account ${account.toBase58()}, slot ${result.slot}`);
+    process.exit(0);
+  }
+}
+console.log(`the node does not serve ${signature} yet: fetch it later as Step 1 does, into tx-wrap-new-${signature.slice(0, 8)}.json`);
+process.exit(1);
+```
+
+      Run from the repository root, `S` being the scratchpad directory:
+
+```bash
+node "$S/make-wrap-new.mjs" --dry-run <a funded devnet address with no wSOL account>   # optional: simulate only
+node "$S/make-wrap-new.mjs" "$S/wrap-throwaway.json" src/modules/solana/__tests__/fixtures
+rm -f "$S/wrap-throwaway.json"                                                          # after it printed FOUND
+```
+
+      Expected: `throwaway payer <address> (devnet)`, `sent <signature>`, `FOUND <signature> payer <address>`,
+      `saved tx-wrap-new-<8>.json — …`. The dry run was done while this plan was revised: the node simulated the
+      three instructions (create the associated wSOL account, a 0.01 SOL transfer into it, `syncNative`) without
+      error; nothing was sent then. If the faucet refuses five times the script says so and has sent nothing: run
+      the same command again later (the key file keeps the same throwaway address), and do not delete the key file
+      until `FOUND` was printed. If devnet's faucet stays shut for the day, write that into the ledger and go on
+      with A23 derived — then tell the owner in Task 12 Step 6 that the real fixture is still missing.
+
+      **Then** (found in 3a or made in 3b): open the saved file and check by eye that `result.meta.err` is null and
+      that its top-level instructions are exactly `create`, `transfer`, `syncNative` (plus compute-budget ones on a
+      mainnet find). Write the signature, the cluster and the payer into the ledger, and **after Task 2's review**
+      append this test to
       `src/modules/solana/__tests__/activity.test.ts` inside `describe('wrap / unwrap …')`, with the two constants
-      filled in from the ledger. Its expected values are computed from the file itself, by the spec's formula
-      (§4.2: `rent = post[j] − pre[j] − w`):
+      filled in from the ledger (the file name and the payer are the only two values this plan cannot know before
+      the transaction exists). Its expected values are computed from the file itself, by the spec's formula
+      (§4.2: `rent = post[j] − pre[j] − w`). The derived A23 stays beside it: it pins the three field changes, the
+      real one pins that the chain agrees. For a file from devnet (3b) replace `MAINNET` by `{}` in the `classify`
+      call — rule 2 looks at the pool's cluster and this transaction names no pool, so the row is the same:
 
 ```ts
-  // A23r (r2 N1): a REAL wrap into a new wSOL account (found by the controller, plan Task 1 Step 3)
+  // A23r (r2 N1; owner decision Q3b): a REAL wrap into a new wSOL account (found or made by the controller, plan Task 1 Step 3)
   it('a real wrap into a NEW wSOL account: the rent is post − pre − the wrapped amount', () => {
     const FILE = 'tx-wrap-new-XXXXXXXX.json'; // the file Task 1 Step 3 saved
     const PAYER = 'the payer Task 1 Step 3 printed';
@@ -403,19 +600,41 @@ print('none in', blocks, 'blocks')
 ```js
 // History spec §3.2 / §3.3 — Plan Task 1 measurement. Read-only. Prints timings and refusals, never the endpoint URL.
 //   node measure-history-rpc.mjs <devnet|mainnet> <wallet>
-// The endpoint is the PUBLIC one of the cluster unless RPC_URL is set in the environment (never echoed).
+// The endpoint is the PUBLIC one of the cluster, unless RPC_ENV_FILE names a COPY of an env file: then the script
+// reads HELIUS_RPC_URL from that copy itself. The URL holds the key: it is never printed, never put on a command
+// line, and every message this script prints is passed through redact() first.
+import {readFileSync} from 'node:fs';
+
 const [cluster, wallet] = process.argv.slice(2);
 const PUBLIC = {devnet: 'https://api.devnet.solana.com', mainnet: 'https://api.mainnet-beta.solana.com'};
 if (!PUBLIC[cluster] || !wallet) {
   console.error('usage: node measure-history-rpc.mjs <devnet|mainnet> <wallet>');
   process.exit(2);
 }
-const url = process.env.RPC_URL || PUBLIC[cluster];
-const label = process.env.RPC_URL ? `${cluster} (RPC_URL from the environment)` : `${cluster} (public endpoint)`;
+function providerUrl(file) {
+  const line = readFileSync(file, 'utf8').split('\n').find(l => l.startsWith('HELIUS_RPC_URL='));
+  const value = (line ?? '').slice('HELIUS_RPC_URL='.length).trim().replace(/^["']|["']$/g, '');
+  if (!/^https:\/\//.test(value)) {
+    console.error('RPC_ENV_FILE holds no https HELIUS_RPC_URL');
+    process.exit(2);
+  }
+  return value;
+}
+const keyed = Boolean(process.env.RPC_ENV_FILE);
+const url = keyed ? providerUrl(process.env.RPC_ENV_FILE) : PUBLIC[cluster];
+const label = keyed ? `${cluster} (the app's provider, from RPC_ENV_FILE)` : `${cluster} (public endpoint)`;
 const TOKEN = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
 const TOKEN_2022 = 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb';
 const TX_CONFIG = {encoding: 'jsonParsed', maxSupportedTransactionVersion: 0};
-const redact = s => String(s).split(url).join('<endpoint>');
+/** the URL, its host, and every path or query part of it longer than 7 characters (the key, wherever it sits) */
+const SECRETS = keyed ? [url, new URL(url).host, ...url.split(/[/?&=]/).filter(part => part.length > 7 && !part.startsWith('https'))] : [];
+const redact = s => SECRETS.reduce((text, secret) => text.split(secret).join('<redacted>'), String(s));
+const fail = e => {
+  console.log(`FAILED: ${redact(e?.message ?? e)}${e?.cause ? ` (${redact(e.cause.code ?? e.cause.message ?? '')})` : ''}`);
+  process.exit(1);
+};
+process.on('uncaughtException', fail);
+process.on('unhandledRejection', fail);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 async function post(body) {
@@ -529,36 +748,192 @@ node <scratchpad>/measure-history-rpc.mjs mainnet F1hVXLM73vvUUi55wFdUuBr8grSrrf
       The mainnet wallet is a stranger's with 29 token accounts on 2026-11-26 (3 classic + 26 Token-2022), so page 1
       reads the full 25 sources. Paste both outputs into the ledger, with the time of day.
 
-      **What this does and does not measure.** These are the PUBLIC endpoints — what the app falls back to when
-      `HELIUS_RPC_URL` is missing from a build (`connection.ts`), not what a correctly built app uses. The app's
-      own provider is NOT measured here, because its URL holds the key and the controller does not read `.env`
-      files. A first try while writing this plan (2026-11-26, from a machine that had sent about two thousand
+      **What these two runs measure.** The PUBLIC endpoints — what the app falls back to when
+      `HELIUS_RPC_URL` is missing from a build (`connection.ts`), not what a correctly built app uses.
+      A first try while writing this plan (2026-11-26, from a machine that had sent about two thousand
       requests in the hour, so NOT a clean measurement) gave, on both public endpoints: page-1 signature calls not
       refused; a batch of 20 answered in about 1–1.5 s but with 11 of its 20 items refused
       (`429 Too many requests for a specific RPC call`); the 20 sequential reads then refused by HTTP 429.
-      **With the owner's explicit OK in chat**, and only then, the same script can be pointed at the app's provider
-      without the URL ever being printed (the script redacts it, and prints timings and error codes only):
-      `RPC_URL="$(grep -m1 '^HELIUS_RPC_URL=' .env.devnet | cut -d= -f2-)" node <scratchpad>/measure-history-rpc.mjs devnet Da83cAfGUrsm896FUghCkNKutgFc96WNGWN73bZxe31B`.
-      Without that OK, the app's provider is judged on the phone in Task 12 (rows parsed, not all "Transaction —").
 
-- [ ] **Step 5: Judge the result against the spec's rule and write the judgement into the ledger.** The rule: "If
+      **Then the app's own provider** (owner decision Q3a: allowed, read-only, before Task 4). Its URL holds the
+      key, so: the env file is COPIED (mode 600) into the scratchpad, the script reads `HELIUS_RPC_URL` from that
+      copy itself — the URL is never on a command line, never in a variable of the shell, never printed (every
+      line the script prints passes its `redact()`; a failure prints `FAILED: …` with the URL, its host and its
+      key removed) — and the copy is deleted at once. **The original `.env` files are never edited.** `S` is the
+      scratchpad directory:
+
+```bash
+install -m 600 .env.devnet "$S/env.devnet-measure"
+RPC_ENV_FILE="$S/env.devnet-measure" node "$S/measure-history-rpc.mjs" devnet Da83cAfGUrsm896FUghCkNKutgFc96WNGWN73bZxe31B | tee "$S/measure-provider-devnet.txt"
+rm -f "$S/env.devnet-measure"
+grep -c -i -E 'https?://|api-key|helius' "$S/measure-provider-devnet.txt"   # must print 0 before the file is pasted anywhere
+```
+
+      Expected: the first line reads `# devnet (the app's provider, from RPC_ENV_FILE) — wallet Da83cA…`, then the
+      same six kinds of lines as the public run; the last command prints `0`. If it prints anything else, do not
+      paste the output: delete it and report. Paste the output into the ledger with the time of day.
+      **Mainnet's provider** is measured the same way only if a mainnet env file exists in the repository root
+      (`ls .env.production .env.mainnet 2>/dev/null`): `install -m 600 <that file> "$S/env.mainnet-measure"`, the
+      same command with `mainnet F1hVXLM73vvUUi55wFdUuBr8grSrrf9BDFVy35UwcFQK`, `rm -f`, the same `grep`. If there
+      is none, say so in the ledger; the mainnet provider is then judged on a mainnet build, if one is made.
+
+- [ ] **Step 5: Count the transactions the app cannot read** (plan review r1 I5). The app reads with
+      `maxSupportedTransactionVersion: 0` (spec §3.3, fixed); a transaction of a higher version is refused by the
+      node and shows as "Transaction —" for good. Whether that is rare decides how useful #26 is, so it is counted
+      before the screen work. Save the script below as `count-tx-versions.mjs` in the scratchpad (not committed):
+
+```js
+// History plan Task 1 Step 5 (plan review r1 I5c) — how many transactions have a version above 0?
+// The app reads with maxSupportedTransactionVersion: 0; a transaction of a higher version is refused and shows as
+// "Transaction —". Read-only, public endpoints, prints counts only.
+//   node count-tx-versions.mjs blocks <devnet|mainnet> <how many recent blocks>
+//   node count-tx-versions.mjs wallet <devnet|mainnet> <wallet>
+const [mode, cluster, arg] = process.argv.slice(2);
+const PUBLIC = {devnet: 'https://api.devnet.solana.com', mainnet: 'https://api.mainnet-beta.solana.com'};
+if (!['blocks', 'wallet'].includes(mode) || !PUBLIC[cluster] || !arg) {
+  console.error('usage: node count-tx-versions.mjs blocks <devnet|mainnet> <n> | wallet <devnet|mainnet> <wallet>');
+  process.exit(2);
+}
+const url = PUBLIC[cluster];
+const TOKEN = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
+const TOKEN_2022 = 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb';
+/** the highest version this script asks for: everything the node can hand over comes back with its `version` */
+const ANY_VERSION = 255;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+async function call(method, params) {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const res = await fetch(url, {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({jsonrpc: '2.0', id: 1, method, params})});
+    if (res.status === 429) {
+      await sleep(2000 * (attempt + 1));
+      continue;
+    }
+    if (res.status !== 200) {
+      return {error: `HTTP ${res.status}`};
+    }
+    const j = await res.json();
+    return j.error ? {error: `${j.error.code} ${j.error.message}`} : {result: j.result};
+  }
+  return {error: 'HTTP 429 five times'};
+}
+const VOTE = 'Vote111111111111111111111111111111111111111';
+/** validators' vote transactions are most of a block and are in no wallet's history: counted apart */
+const counts = {votes: new Map(), others: new Map()};
+const count = (version, isVote) => {
+  const m = isVote ? counts.votes : counts.others;
+  m.set(String(version), (m.get(String(version)) ?? 0) + 1);
+};
+function report(what) {
+  console.log(`# ${cluster} — ${what}`);
+  for (const [name, m] of Object.entries(counts)) {
+    const total = [...m.values()].reduce((a, b) => a + b, 0);
+    const above = [...m].filter(([v]) => v !== 'legacy' && v !== '0').reduce((a, [, n]) => a + n, 0);
+    const versions = [...m].sort().map(([v, n]) => `${v}: ${n}`).join(', ') || 'none';
+    console.log(`${name} — ${versions} — above 0: ${above} of ${total}${total > 0 ? ` (${((100 * above) / total).toFixed(2)} %)` : ''}`);
+  }
+}
+
+if (mode === 'blocks') {
+  const n = Number(arg);
+  const tip = await call('getSlot', [{commitment: 'finalized'}]);
+  if (tip.error) {
+    console.log(`getSlot: ${tip.error}`);
+    process.exit(1);
+  }
+  let read = 0;
+  let skipped = 0;
+  // every 5th slot back from the tip: a sample spread over a few minutes, not one burst
+  for (let slot = tip.result; read < n && skipped < n * 3; slot -= 5) {
+    const block = await call('getBlock', [slot, {encoding: 'json', transactionDetails: 'accounts', rewards: false, maxSupportedTransactionVersion: ANY_VERSION}]);
+    await sleep(400);
+    if (block.error || block.result === null) {
+      skipped += 1; // a skipped slot, or one the node no longer has
+      continue;
+    }
+    for (const tx of block.result.transactions ?? []) {
+      const keys = (tx.transaction?.accountKeys ?? []).map(k => (typeof k === 'string' ? k : k.pubkey));
+      count(tx.version ?? 'legacy', keys.includes(VOTE));
+    }
+    read += 1;
+  }
+  report(`${read} blocks ending at slot ${tip.result} (${skipped} slots had no block)`);
+} else {
+  const wallet = arg;
+  const sources = [wallet];
+  for (const programId of [TOKEN, TOKEN_2022]) {
+    const r = await call('getTokenAccountsByOwner', [wallet, {programId}, {encoding: 'jsonParsed'}]);
+    if (r.error) {
+      console.log(`source list: ${r.error}`);
+      process.exit(1);
+    }
+    sources.push(...r.result.value.map(v => v.pubkey));
+  }
+  const signatures = new Set();
+  for (const source of sources.slice(0, 25)) {
+    const r = await call('getSignaturesForAddress', [source, {limit: 1000}]);
+    await sleep(400);
+    if (r.error) {
+      console.log(`signatures of ${source.slice(0, 6)}…: ${r.error}`);
+      process.exit(1);
+    }
+    r.result.forEach(s => signatures.add(s.signature));
+  }
+  let unread = 0;
+  for (const signature of signatures) {
+    const r = await call('getTransaction', [signature, {encoding: 'json', maxSupportedTransactionVersion: ANY_VERSION}]);
+    await sleep(400);
+    if (r.error || r.result === null) {
+      unread += 1;
+      continue;
+    }
+    count(r.result.version ?? 'legacy', false);
+  }
+  report(`${signatures.size} transactions of ${wallet} (its address and ${sources.length - 1} token accounts; ${unread} could not be read)`);
+}
+```
+
+      Run (read-only, public endpoints; the same quiet-minute rule as Step 4):
+
+```bash
+node <scratchpad>/count-tx-versions.mjs blocks mainnet 50
+node <scratchpad>/count-tx-versions.mjs blocks devnet 50
+node <scratchpad>/count-tx-versions.mjs wallet devnet Da83cAfGUrsm896FUghCkNKutgFc96WNGWN73bZxe31B
+```
+
+      The third line is main's own history: its address and every token account it owns, each transaction asked
+      for once. Paste the three outputs into the ledger. A first, small sample while this plan was revised
+      (2026-11-26) is under "Findings for the owner", finding 1: on mainnet 3,638 of 7,955 transactions in 20
+      blocks were version 1; in main's own devnet history, none of 58.
+
+- [ ] **Step 6: Judge the results against the spec's rule and write the judgement into the ledger.** The rule: "If
       the batch is refused, the sequential path is the product path."
   - Task 4 builds what §3.3 describes: the batch first, and the same signatures one at a time when the batch
     throws. That is right whenever the batch works, and also when single items of it are refused (the fallback
     handles them, at the cost of one wasted call per page). **Per-item 429s on the public endpoints therefore
     change nothing.**
-  - Only if the batch is refused **as a whole** on a quiet endpoint — an HTTP error, or a JSON-RPC error in place
-    of an array — on the endpoint the app really uses (the keyed run above, or the phone in Task 12 showing every
-    page slow and every first read failing) does the rule bite: the batch call must then be skipped. **Stop before
-    Task 4 and tell the owner.** Skipping it is a small amendment to Task 4 (the reader's first attempt, and the
-    test expectations that count batch calls: R7, R8, R11, R13, H2); it is not pre-written because nothing
-    measured so far points there.
+  - **The provider's run is the one that decides** (plan review r1 I5a). On the app's own provider, measured
+    quiet, the rule bites in two cases, and in both the batch call must be skipped — the sequential path is then
+    the product path: (1) the batch is refused **as a whole** — an HTTP error, or a JSON-RPC error in place of an
+    array; (2) **single items** of the batch are refused (the line reads `batch of 20: … N errors` with N > 0,
+    and the error is a rate limit, not a version) while the sequential run of the same 20 reads them all.
+    Case 2 matters because web3.js throws for the whole batch on one refused item: every page would then cost the
+    batch AND 20 single reads. In either case **stop before Task 4 and tell the owner.** Skipping the batch is a
+    small amendment to Task 4 (the reader's first attempt, and the test expectations that count batch calls: R7,
+    R8, R11, R13, R18, H2, H9); it is not pre-written because nothing measured so far points there.
+  - If the sequential run on the provider is refused too, or page 1's 25 signature calls are: stop and tell the
+    owner — the history cannot be read at the provider's limits as planned, whatever the path.
+  - **The version count (Step 5).** If main's own history holds ANY transaction above version 0, or more than
+    1 in 20 of the sampled mainnet transactions are above 0: **tell the owner before Task 4 starts**, with the
+    three outputs. The plan stays correct either way — such a row is a partial row, never a wrong one, and Task 4
+    keeps it out of every later page's batch (test H9) — but how many rows read "Transaction —" is a product
+    question, and reading those transactions is outside this spec (finding 1).
   - Either way, add the measured figures to the PR description in Task 12.
 
-- [ ] **Step 6: Gates and commit.** The fixtures are data: nothing else may change.
+- [ ] **Step 7: Gates and commit.** The fixtures are data: nothing else may change.
 
 ```bash
-git status --short            # exactly the 15 new files (16 if Step 3 found one)
+git status --short            # exactly the 15 new files, and tx-wrap-new-<8>.json if Step 3 found or made one
+ls "$S"/env.*-measure "$S"/wrap-throwaway.json 2>/dev/null   # must print nothing: both were deleted
 node scripts/check-no-tge-date.mjs
 npx jest src/modules/solana --forceExit      # the existing suites still pass: nothing reads the new files yet
 git add src/modules/solana/__tests__/fixtures
@@ -919,6 +1294,16 @@ describe('the pool (§4.3 rule 2)', () => {
     expect(r.primary).toEqual({mint: TEST_MINT, symbol: 'TEST', raw: 10000n, decimals: 9, role: 'moved'});
     // the relayer paid for the new token account (an idempotent create of a NEW account): no rent of this account
     expect(deltas(r)).toEqual(['moved:TEST:10000', 'grant:SOL:3000000']);
+  });
+
+  // A17b (plan review r1 m5) — 54J9kjQ8… read by a build whose relayer is ANOTHER key, so that this transaction's
+  // fee payer (index 0) is not the relayer; the transaction itself is unchanged
+  it('SOL received on a Make public whose fee payer is not the relayer is not called a gas grant', () => {
+    const r = classify('tx-unshield-relayed-54J9kjQ8.json', ACC_3, {relayerFeePayer: TREASURY});
+    expect(r.kind).toBe('made-public');
+    expect(r.deltas.some(d => d.role === 'grant')).toBe(false);
+    expect(deltas(r)).toEqual(['moved:TEST:10000', 'moved:SOL:3000000']);
+    expect(r.extraAssets).toBe(1); // it is a second asset that moved: "+1 more", never a labelled grant
   });
 
   // A18
@@ -1816,17 +2201,19 @@ export function classifyActivity(raw: RawParsedTx, account: string, status: Acti
 }
 ```
 
-- [ ] **Step 6: Run the tests.** The Step 2 command. Expected: PASS (48 tests). Then the neighbours this task
+- [ ] **Step 6: Run the tests.** The Step 2 command. Expected: PASS (49 tests). Then the neighbours this task
       touched: `npx jest src/modules/solana src/modules/shielded/__tests__/noSelfRelay.test.ts src/modules/shielded/a0 --forceExit`
       Expected: PASS — in particular `noSelfRelay.test.ts` ("the withdraw_with_change discriminator lives in
       constants, the sync's decoder and the relayer client only") and every `txDetail.test.ts` case.
 
-- [ ] **Step 7: Prove the tests are tests (mutation, by hand, three of them).** For each line below: make the
+- [ ] **Step 7: Prove the tests are tests (mutation, by hand, four of them).** For each line below: make the
       change in `activity.ts`, run the Step 2 command, see at least one test FAIL, and undo the change.
   - `lamportChange(i) + (i === 0 ? fee : 0n)` → `lamportChange(i)` (the fee becomes part of the delta);
   - `if (k >= 0 && lamports(pre, k) === 0n) {` → `if (k >= 0) {` (an existing account counts as created);
-  - `if (ctx.cluster === ctx.a0.cluster) {` → `if (true) {` (rule 2 on every cluster).
-      Report the three failing test names in the task report. `git diff src/modules/solana/activity.ts` must be
+  - `if (ctx.cluster === ctx.a0.cluster) {` → `if (true) {` (rule 2 on every cluster);
+  - `pool === 'made-public' && keys[0] === ctx.relayerFeePayer && rest > 0n` → `pool === 'made-public' && rest > 0n`
+    (A17b must fail: SOL from anyone on a Make public would be called the relayer's gas grant; plan review r1 m5).
+      Report the four failing test names in the task report. `git diff src/modules/solana/activity.ts` must be
       empty against Step 5's content afterwards.
 
 - [ ] **Step 8: Gates.**
@@ -1875,10 +2262,16 @@ token (spec §3.1; the repo's own `tx-test-to-main.json` never names main). The 
 several lists, each paged on its own. This object holds only signatures and cursors — no React, no RPC client, no
 transactions: its two reads are handed in, which is what makes the paging testable with scripted sources.
 
-Three properties a reviewer should check against the code, each pinned by a test:
+Five properties a reviewer should check against the code, each pinned by a test:
 - a source is fetched **exactly** when its buffer is empty and it is not exhausted, and before every take (S3);
-- a page that fails loses nothing: what was taken stays in `carry`, what was fetched stays buffered (S5);
-- a refresh commits only when **every** source was read, and restarts instead of showing a hole (S6–S11).
+- a page that fails loses nothing: what was fetched stays buffered (S5 — the failure is the first fetch), and
+  what was already TAKEN for the page stays in `carry` (S5b — the failure comes after three rows were taken;
+  they are in `emitted`, so a `carry` that was dropped would lose them for good);
+- a refresh commits only when **every** source was read, and restarts instead of showing a hole (S6–S11);
+- a refresh dedupes against what was emitted: a token send is in the wallet's list AND in its token account's,
+  and must be one row (S6b);
+- a refresh moves `newest` to the new head, so the next one pages down to it and not to the first one — without
+  that, 100 signatures accumulated over several refreshes would restart the session and drop the older pages (S6c).
 
 - [ ] **Step 1: Write the failing test.** Create `src/modules/solana/__tests__/historySession.test.ts`:
 
@@ -2000,6 +2393,27 @@ it('a failed source fails the page and loses nothing: the retry returns every ro
   expect(sigs(s)).toEqual([...T, ...W].map(x => x.signature));
 });
 
+// S5b (plan review r1 I3): the failure comes AFTER rows were taken for the page
+it('a source that fails in the middle of a page loses nothing: the rows already taken come back, once, on the retry', async () => {
+  const W = run('w', 100, 45);
+  const T = run('t', 1000, 3); // all newer than W
+  const {deps, world} = chain({W, T});
+  const s = new HistorySession(deps);
+  await s.loadNextPage(); // t1000…t998 and w100…w84; W's buffer keeps w83, w82, w81
+  world.failOn = 'W';
+  // page 2 takes those three, W's buffer runs out, and the fetch that follows fails
+  await expect(s.loadNextPage()).rejects.toThrow('rpc down');
+  expect(s.items).toHaveLength(20);
+  expect(s.pagesLoaded).toBe(1);
+  expect(s.endReached).toBe(false);
+  world.failOn = null;
+  await s.loadNextPage();
+  expect(sigs(s)).toEqual([...T, ...W.slice(0, 37)].map(x => x.signature)); // w83…w81 are there, and nothing twice
+  await s.loadNextPage();
+  expect(sigs(s)).toEqual([...T, ...W].map(x => x.signature));
+  expect(s.endReached).toBe(true);
+});
+
 // S6 (r2 N6)
 it('refresh: 45 new signatures on one source all appear, in order, above the old rows', async () => {
   const W = run('w', 100, 30);
@@ -2016,6 +2430,42 @@ it('refresh: 45 new signatures on one source all appear, in order, above the old
   // the older paging is untouched: the next page continues after w81
   await s.loadNextPage();
   expect(sigs(s).slice(-10)).toEqual(run('w', 80, 10).map(x => x.signature));
+});
+
+// S6b (plan review r1 I3): every token send is in the wallet's list AND in its token account's
+it('refresh: one new signature present on two sources appears once', async () => {
+  const W = run('w', 100, 5);
+  const T = run('t', 50, 2);
+  const {deps, world} = chain({W, T});
+  const s = new HistorySession(deps);
+  await s.loadNextPage();
+  const old = sigs(s);
+  const sent = item('sent', 999);
+  world.sources.W = [sent, ...W];
+  world.sources.T = [sent, ...T];
+  await s.refresh();
+  expect(sigs(s)).toEqual(['sent', ...old]);
+});
+
+// S6c (plan review r1 m7; spec §3.4 "sets `newest` to the new head")
+it('refresh moves `newest` to the new head: the next refresh pages down to it, not to the first one', async () => {
+  const W = run('w', 100, 30);
+  const {deps, calls, world} = chain({W});
+  const s = new HistorySession(deps);
+  await s.loadNextPage();
+  const id = s.id;
+  const first = run('a', 500, 60);
+  world.sources.W = [...first, ...W];
+  calls.length = 0;
+  await s.refresh();
+  expect(calls).toHaveLength(4); // 3 full pages of new signatures, and the page that meets w100
+  const second = run('b', 900, 60);
+  world.sources.W = [...second, ...first, ...W];
+  calls.length = 0;
+  await s.refresh();
+  expect(calls).toHaveLength(4); // down to a500 — paging down to w100 would be 120 signatures, past the 5-page cap
+  expect(s.id).toBe(id); // so no false restart: the older rows stay
+  expect(sigs(s)).toEqual([...second, ...first, ...W.slice(0, 20)].map(x => x.signature));
 });
 
 // S7 (r2 N6)
@@ -2169,7 +2619,7 @@ it('the registry: one session per cluster and account; drops by account, by exce
  * source in this session — what a refresh pages down to).
  *
  * It lives OUTSIDE the query cache and holds signatures only: transactions are read and cached per
- * signature elsewhere (`parsedTx.ts`). Every method that reads the chain is serialised (`run`): a
+ * signature elsewhere (`historyReads.ts`). Every method that reads the chain is serialised (`run`): a
  * refresh and a "load older" never interleave.
  *
  * NOTHING IS LOST ON A FAILURE: a page that throws keeps what it had taken (`carry`) and what every
@@ -2456,13 +2906,23 @@ export function dropHistorySessionsExcept(account: string | null): void {
 }
 ```
 
-- [ ] **Step 4: Run it.** The Step 2 command. Expected: PASS (14 tests).
+- [ ] **Step 4: Run it.** The Step 2 command. Expected: PASS (17 tests).
 
-- [ ] **Step 5: Gates.**
+- [ ] **Step 5: Prove three tests are tests (mutation, by hand).** Make each change in `historySession.ts`, run
+      the Step 2 command, see the named test FAIL, undo:
+  - in `buildPage`, add `this.carry = [];` as the line after `const sources = this.sources!;` (S5b must fail:
+    w83, w82 and w81 are gone);
+  - in `doRefresh`'s commit, replace the `if (!this.emitted.has(item.signature)) { … }` block by
+    `added.push(item);` (S6b must fail: "sent" twice);
+  - in the same commit, delete `this.state.get(source)!.newest = fresh[0]!.signature;` (S6c must fail: the second
+    refresh restarts).
+      `git diff src/modules/solana/historySession.ts` must be empty against Step 3's content afterwards.
+
+- [ ] **Step 6: Gates.**
       `npx tsc --noEmit && npm run lint:ci && npx jest && node scripts/check-no-tge-date.mjs`, then
       `/usr/bin/node node_modules/.bin/jest src/modules/solana/__tests__/historySession.test.ts --forceExit`.
 
-- [ ] **Step 6: Commit.**
+- [ ] **Step 7: Commit.**
 
 ```bash
 git add src/modules/solana/historySession.ts src/modules/solana/__tests__/historySession.test.ts
@@ -2474,10 +2934,11 @@ git commit -m "feat(history): the history session — one account's sources merg
 ### Task 4: The chain reads, the per-signature cache, and `loadHistory`
 
 Spec: §3.1 (sources, Token-2022), §3.2 (the bound and the order of sources), §3.3 (the cache, the batch and its
-fallback, the limiter keys), §3.4 (partial rows), §8 "History reading"; Review Focus 1 and 5.
+fallback, the limiter keys), §3.4 (partial rows), §8 "History reading"; Review Focus 1, 5 and 6.
 
 **Files:**
 - Modify: `src/modules/solana/queries.ts:42-72` (`getTokenAccounts`)
+- Modify: `src/modules/solana/withTimeout.ts` (the rejection becomes a `TimeoutError`)
 - Create: `src/modules/solana/historyReads.ts`
 - Create: `src/modules/solana/activityContext.ts`
 - Create: `src/modules/solana/history.ts`
@@ -2491,19 +2952,28 @@ fallback, the limiter keys), §3.4 (partial rows), §8 "History reading"; Review
 - Consumes (existing): `rpcLimiter` (`./rpcLimiter`; `execute(key, fn)` dedupes in flight by key and does not retry
   unless told to), `TokenAccount` (`./types`: `{mint, owner, amount: string, decimals, address}`), `trustedSymbol`
   (`../tokens/trustedSymbol`), `NETWORK` and `NOCTURA_FEE_TREASURY` (`../../constants/programs`), `A0` and
-  `A0_RELAYER` (`../shielded/a0/constants`), `sha256` from `@noble/hashes/sha2.js`.
+  `A0_RELAYER` (`../shielded/a0/constants`), `sha256` from `@noble/hashes/sha2.js`; `withTimeout(promise, ms, label)`
+  (`./withTimeout`; its one existing user is `shielded/a0/treeSync.ts`); `TOKEN_PROGRAM_ID` and
+  `TOKEN_2022_PROGRAM_ID` (strings) from `./activity`.
 - Produces, from `src/modules/solana/queries.ts`:
-  - `export async function getToken2022Accounts(connection: Connection, owner: PublicKey): Promise<TokenAccount[]>`
-    (`getTokenAccounts` keeps its signature and behaviour).
+  - `export async function tokenAccountsOf(connection: Connection, owner: PublicKey, programId: PublicKey): Promise<TokenAccount[]>`
+    — one program's accounts, with no limiter key and no time limit (`getTokenAccounts` keeps its signature, its
+    key and its behaviour).
+- Produces, from `src/modules/solana/withTimeout.ts`:
+  - `export class TimeoutError extends Error` — what `withTimeout` now rejects with (the message is unchanged).
 - Produces, from `src/modules/solana/historyReads.ts`:
-  - `export const PARSED_TX_KEY = 'parsedTx'`, `PARSED_TX_GC_MS = 24 * 60 * 60 * 1000`
+  - `export const PARSED_TX_KEY = 'parsedTx'`, `PARSED_TX_GC_MS = 24 * 60 * 60 * 1000`,
+    `HISTORY_READ_TIMEOUT_MS = 20_000`. Every read below takes a last, optional `timeoutMs` (that constant by
+    default); tests hand in 30.
   - `export const parsedTxKey: (cluster: string, signature: string) => readonly [string, string, string]`
   - `export function applyParsedTxDefaults(client: QueryClient): void`
   - `export function orderSources(wallet: string, tokenAccounts: readonly TokenAccount[]): SourceList`
-  - `export async function listHistorySources(connection: Connection, wallet: string): Promise<SourceList>`
-  - `export async function getSignaturePage(connection: Pick<Connection, 'getSignaturesForAddress'>, cluster: string, source: string, before: string | undefined, limit: number): Promise<SignatureItem[]>`
-  - `export async function readParsedTransaction(connection: Pick<Connection, 'getParsedTransaction'>, cluster: string, signature: string): Promise<RawParsedTx | null>`
-  - `export async function readParsedTransactions(connection: Pick<Connection, 'getParsedTransactions' | 'getParsedTransaction'>, client: QueryClient, cluster: string, signatures: readonly string[]): Promise<Map<string, RawParsedTx>>`
+  - `export async function readOwnedTokenAccounts(connection: Connection, cluster: string, owner: string, timeoutMs?: number): Promise<TokenAccount[]>`
+    — classic AND Token-2022 (Task 10's scan uses it too).
+  - `export async function listHistorySources(connection: Connection, cluster: string, wallet: string, timeoutMs?: number): Promise<SourceList>`
+  - `export async function getSignaturePage(connection: Pick<Connection, 'getSignaturesForAddress'>, cluster: string, source: string, before: string | undefined, limit: number, timeoutMs?: number): Promise<SignatureItem[]>`
+  - `export async function readParsedTransaction(connection: Pick<Connection, 'getParsedTransaction'>, cluster: string, signature: string, timeoutMs?: number): Promise<RawParsedTx | null>`
+  - `export async function readParsedTransactions(connection: Pick<Connection, 'getParsedTransactions' | 'getParsedTransaction'>, client: QueryClient, cluster: string, signatures: readonly string[], timeoutMs?: number): Promise<Map<string, RawParsedTx>>`
     — a signature that could not be read is ABSENT from the map and is not cached.
 - Produces, from `src/modules/solana/activityContext.ts`:
   - `export function activityContext(ownTokenAccounts?: ReadonlySet<string>): ActivityContext`
@@ -2511,12 +2981,28 @@ fallback, the limiter keys), §3.4 (partial rows), §8 "History reading"; Review
   - `export interface HistoryRow {item: SignatureItem; activity: ActivityRow | null}` — `activity: null` is the
     partial row of §3.4.
   - `export interface HistorySnapshot {sessionId: number; rows: HistoryRow[]; endReached: boolean; coverage: {read: number; total: number}}`
-  - `export interface HistoryEnv {connection: Connection; client: QueryClient; cluster: string; context: (ownTokenAccounts: ReadonlySet<string>) => ActivityContext}`
+  - `export interface HistoryEnv {connection: Connection; client: QueryClient; cluster: string; context: (ownTokenAccounts: ReadonlySet<string>) => ActivityContext; timeoutMs?: number}`
   - `export async function loadHistory(account: string, step: 'head' | 'older', env: HistoryEnv): Promise<HistorySnapshot>`
 
 **Why:**
 - `getTokenAccounts` (`queries.ts:46`) asks only the classic Token program. Token-2022 accounts are a second call
-  (§3.1); the dashboard balances keep reading the classic program alone (spec §9 — do not change them here).
+  (§3.1); the dashboard balances keep reading the classic program alone (spec §9 — do not change them here). The
+  history reads BOTH programs itself (`readOwnedTokenAccounts`), under its own limiter keys — they hold the cluster
+  (spec §3.3 "any history read"; plan review r1 m10), and a history read never joins the dashboard's
+  `getTokenAccounts:` request, which has no time limit (ruling 21).
+- **Every chain call has a time limit, inside the limiter** (plan review r1 I6, Review Focus 6). React Native's
+  fetch has none; the session runs its reads one after another; `rpcLimiter` keeps a request under its key until
+  it settles. So a request that never settles would (1) block that account's "Load older" and refresh, (2) hold
+  one of the limiter's 10 slots, and (3) be JOINED by every retry with the same key. Racing the call inside the
+  function handed to `rpcLimiter.execute` ends all three: the function rejects, the slot and the key are freed,
+  the retry is a new request. A rejected read is already handled everywhere (nothing is committed; the retry
+  works). `withTimeout` gains a `TimeoutError` so the reader can tell "no answer" from "an error answer":
+  after a batch that timed out it does NOT read the same 20 signatures one at a time (20 more limits in a row,
+  with the list held all the while), and the one-at-a-time path stops at its first timeout.
+- **Rows that are still unparsed are read apart from the page a load adds** (plan review r1 I5). One signature
+  the node never serves would otherwise sit in the batch of every later page, fail it (the next bullet), and turn
+  each page into 20 single reads. Apart, it costs its own two calls per load (a batch of one, refused, then the
+  single read) and no new page pays for it (test H9, ruling 20).
 - web3.js `getParsedTransactions` throws if ANY item of the batch came back as an error, so one refused signature
   loses the whole answer. The fallback reads the same signatures one at a time; the one that fails is simply absent
   (Review Focus 1). A null answer is never cached: an unindexed transaction must be asked for again.
@@ -2531,26 +3017,33 @@ fallback, the limiter keys), §3.4 (partial rows), §8 "History reading"; Review
 /**
  * History spec §3.1, §3.3, §8 "History reading": the source list, a signature page, and the parsed
  * transaction read with its cache — against a scripted connection. The real rpcLimiter runs (its
- * keys are what is tested); it is reset between tests.
+ * keys are what is tested); it is reset between tests. The time limit is HANDED IN (30 ms against a
+ * promise that never settles): real timers, no fake ones.
  */
 import {QueryClient} from '@tanstack/react-query';
 import {Connection} from '@solana/web3.js';
 import {rpcLimiter, _resetRateLimitersForTest} from '../rpcLimiter';
 import {
+  HISTORY_READ_TIMEOUT_MS,
   PARSED_TX_GC_MS,
   applyParsedTxDefaults,
   getSignaturePage,
   listHistorySources,
   orderSources,
   parsedTxKey,
+  readParsedTransaction,
   readParsedTransactions,
 } from '../historyReads';
+import {TimeoutError} from '../withTimeout';
 import type {RawParsedTx} from '../txDetail';
 import type {TokenAccount} from '../types';
 
 const WALLET = 'Da83cAfGUrsm896FUghCkNKutgFc96WNGWN73bZxe31B';
 const ta = (address: string, amount: string): TokenAccount => ({address, amount, mint: 'M', owner: WALLET, decimals: 9});
 const tx = (slot: number): RawParsedTx => ({slot, meta: {fee: 5000}});
+/** a request the node never answers */
+const never = <T,>(): Promise<T> => new Promise<T>(() => undefined);
+const SHORT = 30;
 
 let client: QueryClient;
 beforeEach(() => {
@@ -2596,7 +3089,7 @@ describe('listHistorySources', () => {
     (connection.getParsedTokenAccountsByOwner as jest.Mock).mockImplementation(async (_owner: unknown, filter: {programId: {toBase58: () => string}}) => ({
       value: filter.programId.toBase58() === 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb' ? [account('T22', '3')] : [account('Classic', '0')],
     }));
-    expect(await listHistorySources(connection, WALLET)).toEqual({sources: [WALLET, 'T22', 'Classic'], tokenAccountsTotal: 2});
+    expect(await listHistorySources(connection, 'devnet', WALLET)).toEqual({sources: [WALLET, 'T22', 'Classic'], tokenAccountsTotal: 2});
     expect(connection.getParsedTokenAccountsByOwner).toHaveBeenCalledTimes(2);
   });
 
@@ -2609,7 +3102,36 @@ describe('listHistorySources', () => {
       }
       return {value: []};
     });
-    await expect(listHistorySources(connection, WALLET)).rejects.toThrow('rpc down');
+    await expect(listHistorySources(connection, 'devnet', WALLET)).rejects.toThrow('rpc down');
+  });
+
+  // R15 (plan review r1 m10; spec §3.3 "any history read")
+  it('the limiter keys are the history\'s own and hold the cluster, the owner and the program', async () => {
+    const spy = jest.spyOn(rpcLimiter, 'execute');
+    const connection = new Connection('https://x');
+    (connection.getParsedTokenAccountsByOwner as jest.Mock).mockResolvedValue({value: []});
+    await listHistorySources(connection, 'devnet', WALLET);
+    await listHistorySources(connection, 'mainnet-beta', WALLET);
+    expect(spy.mock.calls.map(c => c[0])).toEqual([
+      `historyTokenAccounts:devnet:${WALLET}:TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA`,
+      `historyTokenAccounts:devnet:${WALLET}:TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb`,
+      `historyTokenAccounts:mainnet-beta:${WALLET}:TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA`,
+      `historyTokenAccounts:mainnet-beta:${WALLET}:TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb`,
+    ]);
+    spy.mockRestore();
+  });
+
+  // R16 (plan review r1 I6)
+  it('a source-list read that never answers fails after its time limit, and the retry is a new request', async () => {
+    const connection = new Connection('https://x');
+    const read = connection.getParsedTokenAccountsByOwner as jest.Mock;
+    read.mockImplementation((_owner: unknown, filter: {programId: {toBase58: () => string}}) =>
+      filter.programId.toBase58() === 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb' ? never() : Promise.resolve({value: []}),
+    );
+    await expect(listHistorySources(connection, 'devnet', WALLET, SHORT)).rejects.toBeInstanceOf(TimeoutError);
+    // the SAME key again: were the hung request still the limiter's in-flight entry, this would join it and time out too
+    read.mockImplementation(async () => ({value: [account('T', '1')]}));
+    expect(await listHistorySources(connection, 'devnet', WALLET, SHORT)).toEqual({sources: [WALLET, 'T'], tokenAccountsTotal: 1});
   });
 });
 
@@ -2643,6 +3165,19 @@ describe('getSignaturePage', () => {
     expect(keys[0]).toBe(`getSignaturesForAddress:devnet:${WALLET}:head:20`);
     expect(new Set(keys).size).toBe(4);
     spy.mockRestore();
+  });
+
+  // R17 (plan review r1 I6)
+  it('a signature read that never answers fails after its time limit; the same page can then be read', async () => {
+    const connection = {getSignaturesForAddress: jest.fn((_address: unknown, _options: unknown): Promise<unknown[]> => never())};
+    await expect(getSignaturePage(connection as never, 'devnet', WALLET, undefined, 20, SHORT)).rejects.toBeInstanceOf(TimeoutError);
+    connection.getSignaturesForAddress.mockResolvedValueOnce([{signature: 'a', slot: 3, blockTime: 30, confirmationStatus: 'finalized', err: null}]);
+    expect(await getSignaturePage(connection as never, 'devnet', WALLET, undefined, 20, SHORT)).toHaveLength(1);
+    expect(connection.getSignaturesForAddress).toHaveBeenCalledTimes(2);
+  });
+
+  it('the default time limit is 20 s', () => {
+    expect(HISTORY_READ_TIMEOUT_MS).toBe(20_000);
   });
 });
 
@@ -2767,6 +3302,42 @@ describe('readParsedTransactions', () => {
     expect(connection.getParsedTransactions.mock.calls.map(c => c[0].length)).toEqual([20, 20, 5]);
   });
 
+  // R18 (plan review r1 I6)
+  it('a batch that never answers: its signatures stay unread and uncached, and are NOT asked for one at a time', async () => {
+    const connection = {
+      getParsedTransactions: jest.fn((_s: string[]): Promise<Array<RawParsedTx | null>> => never()),
+      getParsedTransaction: jest.fn(async () => tx(1)),
+    };
+    const many = Array.from({length: 45}, (_, k) => `s${k}`);
+    const got = await readParsedTransactions(connection as never, client, 'devnet', many, SHORT);
+    expect(got.size).toBe(0);
+    expect(connection.getParsedTransaction).not.toHaveBeenCalled();
+    expect(connection.getParsedTransactions).toHaveBeenCalledTimes(1); // no second batch after a timeout
+    expect(client.getQueryCache().find({queryKey: parsedTxKey('devnet', 's0')})).toBeUndefined();
+    // the next read asks again, and is answered
+    connection.getParsedTransactions.mockImplementation(async (s: string[]) => s.map(() => tx(2)));
+    expect((await readParsedTransactions(connection as never, client, 'devnet', ['s0', 's1'], SHORT)).size).toBe(2);
+  });
+
+  // R19 (plan review r1 I6)
+  it('the one-at-a-time path stops at the first read that never answers; what was read before it is kept', async () => {
+    const connection = {
+      getParsedTransactions: jest.fn(async () => {
+        throw new Error('batch requests are not allowed');
+      }),
+      getParsedTransaction: jest.fn((s: string): Promise<RawParsedTx | null> => (s === 'b' ? never() : Promise.resolve(tx(1)))),
+    };
+    const got = await readParsedTransactions(connection as never, client, 'devnet', ['a', 'b', 'c', 'd'], SHORT);
+    expect([...got.keys()]).toEqual(['a']);
+    expect(connection.getParsedTransaction.mock.calls.map(c => c[0])).toEqual(['a', 'b']);
+  });
+
+  // R20 (plan review r1 I6): #27's read
+  it('a single read that never answers rejects with a TimeoutError', async () => {
+    const connection = {getParsedTransaction: jest.fn((_s: string): Promise<RawParsedTx | null> => never())};
+    await expect(readParsedTransaction(connection as never, 'devnet', 'a', SHORT)).rejects.toBeInstanceOf(TimeoutError);
+  });
+
   // R12
   it('nothing to read: no call at all', async () => {
     const connection = {getParsedTransactions: jest.fn(), getParsedTransaction: jest.fn()};
@@ -2782,6 +3353,7 @@ describe('readParsedTransactions', () => {
 /**
  * History spec §3, §8 "History reading": `loadHistory` against a scripted chain built from the REAL
  * fixtures. The connection is a plain object; the query client is real (the per-signature cache).
+ * Real timers only: where a time limit is tested it is handed in (`env.timeoutMs`).
  */
 import {readFileSync} from 'fs';
 import {join} from 'path';
@@ -2955,6 +3527,74 @@ it("an account switch never shows the old account's rows: sessions and rows are 
   expect(b.sessionId).not.toBe(a.sessionId);
 });
 
+// H9 (plan review r1 I5): web3.js fails a whole batch for one refused item
+it('a signature the node never serves does not sit in the batch of a later page: it is read apart', async () => {
+  const many = [sig('refused', 500), ...Array.from({length: 44}, (_, k) => sig(`s${44 - k}`, 44 - k))];
+  const {connection} = world({[MAIN]: many}, {});
+  const batches: string[][] = [];
+  connection.getParsedTransactions.mockImplementation(async (signatures: string[]) => {
+    batches.push(signatures);
+    if (signatures.includes('refused')) {
+      throw new Error('failed to get transactions: Transaction version (1) is not supported');
+    }
+    return signatures.map(() => FIXTURES['2bGS']!);
+  });
+  const singles: string[] = [];
+  connection.getParsedTransaction.mockImplementation((async (s: string) => {
+    singles.push(s);
+    if (s === 'refused') {
+      throw new Error('Transaction version (1) is not supported');
+    }
+    return FIXTURES['2bGS']!;
+  }) as never);
+  const p1 = await loadHistory(MAIN, 'head', env(connection));
+  expect(p1.rows.filter(r => r.activity === null).map(r => r.item.signature)).toEqual(['refused']);
+  expect(singles).toHaveLength(20); // page 1 holds it: that page, and only that one, is read one at a time
+  batches.length = 0;
+  singles.length = 0;
+  const p2 = await loadHistory(MAIN, 'older', env(connection));
+  expect(p2.rows).toHaveLength(40);
+  expect(batches[0]).toHaveLength(20); // the new page's own batch …
+  expect(batches[0]).not.toContain('refused'); // … without the old unparsed row, so it is answered whole
+  expect(batches.slice(1)).toEqual([['refused']]);
+  expect(singles).toEqual(['refused']); // no row of the new page was read one at a time
+  expect(p2.rows.filter(r => r.activity === null).map(r => r.item.signature)).toEqual(['refused']);
+});
+
+// H10 (plan review r1 m6; spec §4.6): the session's token accounts reach the classifier
+it("the session's token accounts are handed to the classifier: an owner-less entry of one of them is incomplete", async () => {
+  // DERIVED from QAgzVzY6…: main's token entries lose their `owner` (the classifier's test A35)
+  const ownerless = load('tx-test-to-main.json');
+  delete ownerless.meta!.preTokenBalances![1]!.owner;
+  delete ownerless.meta!.postTokenBalances![1]!.owner;
+  FIXTURES.ownerless = ownerless;
+  const {connection} = world({[MAIN]: [], [MAIN_TA]: [sig('ownerless', 300)]}, {[MAIN]: [MAIN_TA]});
+  const snap = await loadHistory(MAIN, 'head', env(connection));
+  delete FIXTURES.ownerless;
+  // with an empty set the same transaction reads "no funds moved" (A35's second half): a wrong row
+  expect(snap.rows[0]!.activity).toMatchObject({kind: 'unknown', incomplete: true, primary: null});
+});
+
+// H8 (plan review r1 I6): the session serialises its reads — one that never settles must not block the next
+it('a signature read that never answers fails the load after the time limit; the next load is not stuck behind it', async () => {
+  const {connection} = world({[MAIN]: [sig('2bGS', 100)]}, {});
+  connection.getSignaturesForAddress.mockImplementationOnce(() => new Promise<never>(() => undefined));
+  await expect(loadHistory(MAIN, 'head', {...env(connection), timeoutMs: 30})).rejects.toThrow('timed out');
+  const ok = await loadHistory(MAIN, 'head', {...env(connection), timeoutMs: 30});
+  expect(ok.rows.map(r => r.item.signature)).toEqual(['2bGS']);
+});
+
+// H11 (plan review r1 I6)
+it('transaction reads that never answer leave partial rows after the time limit: the list is shown, not held', async () => {
+  const {connection} = world({[MAIN]: [sig('2bGS', 100)]}, {});
+  connection.getParsedTransactions.mockImplementationOnce(() => new Promise<never>(() => undefined));
+  const snap = await loadHistory(MAIN, 'head', {...env(connection), timeoutMs: 30});
+  expect(snap.rows.map(r => [r.item.signature, r.activity === null])).toEqual([['2bGS', true]]);
+  expect(connection.getParsedTransaction).not.toHaveBeenCalled();
+  const again = await loadHistory(MAIN, 'head', {...env(connection), timeoutMs: 30}); // the refresh re-tries it
+  expect(again.rows[0]!.activity).toMatchObject({kind: 'sent'});
+});
+
 // H6 (§3.4)
 it('a failed signature read throws: nothing is claimed about an account that was not read', async () => {
   const {connection} = world({[MAIN]: []}, {});
@@ -2969,8 +3609,8 @@ it('a failed signature read throws: nothing is claimed about an account that was
       `npx jest src/modules/solana/__tests__/historyReads.test.ts src/modules/solana/__tests__/history.test.ts --forceExit`
       Expected: FAIL — `Cannot find module '../historyReads'` and `'../history'`.
 
-- [ ] **Step 3: Add the Token-2022 read to `src/modules/solana/queries.ts`.** One edit: `getTokenAccounts` keeps its
-      name, key and result; its body moves into a helper both programs use.
+- [ ] **Step 3: Two small edits to existing files.** In `src/modules/solana/queries.ts`, `getTokenAccounts` keeps
+      its name, key and result; its body moves into an exported helper that takes the program:
 
 **The edit — `src/modules/solana/queries.ts`. Find:**
 
@@ -3017,10 +3657,12 @@ export interface GetTransactionHistoryOptions {
 ```ts
 }
 
-/** The Token-2022 program: its token accounts are a separate read (history spec §3.1). */
-const TOKEN_2022_PROGRAM_ID = new PublicKey('TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb');
-
-async function tokenAccountsOf(connection: Connection, owner: PublicKey, programId: PublicKey): Promise<TokenAccount[]> {
+/**
+ * One token program's accounts of an owner — the bare read: no limiter key and no time limit. The
+ * history's source list (`historyReads.ts`, history spec §3.1) calls it under its own keys and its
+ * own time limit; `getTokenAccounts` below is the dashboard's read and is unchanged.
+ */
+export async function tokenAccountsOf(connection: Connection, owner: PublicKey, programId: PublicKey): Promise<TokenAccount[]> {
   // getParsedTokenAccountsByOwner returns jsonParsed data with typed info,
   // avoiding manual binary decoding of SPL Token account layout.
   const response = await connection.getParsedTokenAccountsByOwner(owner, {programId});
@@ -3051,15 +3693,56 @@ export async function getTokenAccounts(
   return rpcLimiter.execute(`getTokenAccounts:${owner.toBase58()}`, () => tokenAccountsOf(connection, owner, TOKEN_PROGRAM_ID));
 }
 
-/**
- * History spec §3.1: the owner's Token-2022 token accounts. Read for the history's sources and the
- * link scan only — the dashboard balances still read the classic program alone (spec §9).
+export interface GetTransactionHistoryOptions {
+```
+
+      In `src/modules/solana/withTimeout.ts`, the rejection becomes a `TimeoutError` with the same message (its
+      one existing user, `treeSync.ts`, reads only the message):
+
+**Edit 1 of 2 — `src/modules/solana/withTimeout.ts`. Find:**
+
+```ts
+ * Wrap latency-sensitive calls with this so a stall rejects instead of blocking.
  */
-export async function getToken2022Accounts(connection: Connection, owner: PublicKey): Promise<TokenAccount[]> {
-  return rpcLimiter.execute(`getToken2022Accounts:${owner.toBase58()}`, () => tokenAccountsOf(connection, owner, TOKEN_2022_PROGRAM_ID));
+export function withTimeout<T>(
+  promise: Promise<T>,
+```
+
+**Replace with:**
+
+```ts
+ * Wrap latency-sensitive calls with this so a stall rejects instead of blocking.
+ */
+/** What `withTimeout` rejects with: a caller can tell "no answer in time" from an answer that is an error. */
+export class TimeoutError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'TimeoutError';
+  }
 }
 
-export interface GetTransactionHistoryOptions {
+export function withTimeout<T>(
+  promise: Promise<T>,
+```
+
+**Edit 2 of 2 — `src/modules/solana/withTimeout.ts`. Find:**
+
+```ts
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer)) as Promise<T>;
+```
+
+**Replace with:**
+
+```ts
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new TimeoutError(`${label} timed out after ${ms}ms`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer)) as Promise<T>;
 ```
 
 - [ ] **Step 4: Create `src/modules/solana/historyReads.ts`:**
@@ -3075,8 +3758,19 @@ export interface GetTransactionHistoryOptions {
  * signature is simply absent from the result, and the caller shows a partial row or retries.
  *
  * THE LIMITER KEY (`rpcLimiter` dedupes in flight by key) holds the method and the cluster, plus the
- * source and its cursor for a signature read, and a hash of EVERY signature for a batch — a shorter
- * key would hand one page's answer to another (review r2 m2).
+ * owner and the token program for a source-list read, the source and its cursor for a signature
+ * read, and a hash of EVERY signature for a batch — a shorter key would hand one page's answer to
+ * another (review r2 m2). The source list has its OWN keys (not the dashboard's `getTokenAccounts:`):
+ * a history read never joins a read that has no time limit.
+ *
+ * THE TIME LIMIT (plan review r1 I6): React Native's fetch has none, and the session serialises its
+ * reads — one request that never settles would block "Load older" and pull-to-refresh for good.
+ * Every chain call here is raced against HISTORY_READ_TIMEOUT_MS INSIDE the limiter's function, so
+ * a timeout also frees the limiter's slot and its in-flight key (the retry is a new request, not a
+ * join of the hung one). A read that times out is a failed read: nothing is cached, a retry works.
+ * When the BATCH times out the node is not answering: the same signatures are NOT asked for one at
+ * a time (20 more limits in a row); they stay unread until the next load. The one-at-a-time path
+ * stops at its first timeout for the same reason.
  *
  * COST, stated honestly: a batch is one HTTP call carrying N JSON-RPC requests; providers count each.
  * The batch saves round trips, not quota.
@@ -3086,7 +3780,9 @@ import type {Connection} from '@solana/web3.js';
 import type {QueryClient} from '@tanstack/react-query';
 import {sha256} from '@noble/hashes/sha2.js';
 import {rpcLimiter} from './rpcLimiter';
-import {getToken2022Accounts, getTokenAccounts} from './queries';
+import {tokenAccountsOf} from './queries';
+import {TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID} from './activity';
+import {TimeoutError, withTimeout} from './withTimeout';
 import {HISTORY_MAX_SOURCES, HISTORY_PAGE_SIZE} from './historySession';
 import type {SignatureItem, SourceList} from './historySession';
 import type {RawParsedTx} from './txDetail';
@@ -3094,6 +3790,8 @@ import type {TokenAccount} from './types';
 
 export const PARSED_TX_KEY = 'parsedTx';
 export const PARSED_TX_GC_MS = 24 * 60 * 60 * 1000;
+/** the limit of ONE chain call of the history, the detail and the link scan (the sync's own default, `treeSync.ts`) */
+export const HISTORY_READ_TIMEOUT_MS = 20_000;
 export const parsedTxKey = (cluster: string, signature: string): readonly [string, string, string] => [PARSED_TX_KEY, cluster, signature];
 
 /** The client default `gcTime` (5 min) would collect them: every `parsedTx` entry lives 24 h and never goes stale. */
@@ -3113,11 +3811,33 @@ export function orderSources(wallet: string, tokenAccounts: readonly TokenAccoun
   return {sources: [wallet, ...all.slice(0, HISTORY_MAX_SOURCES - 1)], tokenAccountsTotal: all.length};
 }
 
-/** §3.1: the wallet and every token account it owns — classic AND Token-2022. Either read failing fails the list. */
-export async function listHistorySources(connection: Connection, wallet: string): Promise<SourceList> {
-  const owner = new PublicKey(wallet);
-  const [classic, token2022] = await Promise.all([getTokenAccounts(connection, owner), getToken2022Accounts(connection, owner)]);
-  return orderSources(wallet, [...classic, ...token2022]);
+/**
+ * §3.1: every token account `owner` holds — classic AND Token-2022 — for the history's sources and
+ * the link scan's. Either read failing (or timing out) fails the whole: a partial list would hide rows.
+ */
+export async function readOwnedTokenAccounts(
+  connection: Connection,
+  cluster: string,
+  owner: string,
+  timeoutMs: number = HISTORY_READ_TIMEOUT_MS,
+): Promise<TokenAccount[]> {
+  const key = new PublicKey(owner);
+  const read = (program: string): Promise<TokenAccount[]> =>
+    rpcLimiter.execute(`historyTokenAccounts:${cluster}:${owner}:${program}`, () =>
+      withTimeout(tokenAccountsOf(connection, key, new PublicKey(program)), timeoutMs, 'history source list'),
+    );
+  const [classic, token2022] = await Promise.all([read(TOKEN_PROGRAM_ID), read(TOKEN_2022_PROGRAM_ID)]);
+  return [...classic, ...token2022];
+}
+
+/** §3.1: the wallet and every token account it owns. */
+export async function listHistorySources(
+  connection: Connection,
+  cluster: string,
+  wallet: string,
+  timeoutMs: number = HISTORY_READ_TIMEOUT_MS,
+): Promise<SourceList> {
+  return orderSources(wallet, await readOwnedTokenAccounts(connection, cluster, wallet, timeoutMs));
 }
 
 /** One page of a source's signatures, newest first. */
@@ -3127,13 +3847,14 @@ export async function getSignaturePage(
   source: string,
   before: string | undefined,
   limit: number,
+  timeoutMs: number = HISTORY_READ_TIMEOUT_MS,
 ): Promise<SignatureItem[]> {
   return rpcLimiter.execute(`getSignaturesForAddress:${cluster}:${source}:${before ?? 'head'}:${limit}`, async () => {
     const options: {limit: number; before?: string} = {limit};
     if (before !== undefined) {
       options.before = before;
     }
-    const signatures = await connection.getSignaturesForAddress(new PublicKey(source), options);
+    const signatures = await withTimeout(connection.getSignaturesForAddress(new PublicKey(source), options), timeoutMs, 'getSignaturesForAddress');
     return signatures.map(s => ({
       signature: s.signature,
       slot: s.slot,
@@ -3151,50 +3872,68 @@ function hashOf(signatures: readonly string[]): string {
 
 const READ_CONFIG = {maxSupportedTransactionVersion: 0} as const;
 
-/** One batch of at most HISTORY_PAGE_SIZE signatures: the batch call, else one at a time. Index-aligned; null = no answer. */
+/**
+ * One batch of at most HISTORY_PAGE_SIZE signatures: the batch call, else one at a time. `answers` is
+ * index-aligned; null = no answer. A batch that TIMED OUT is not followed by single reads, and the
+ * single reads stop at the first one that times out (`timedOut`): a node that does not answer is not
+ * asked twenty more times.
+ */
 async function readChunk(
   connection: Pick<Connection, 'getParsedTransactions' | 'getParsedTransaction'>,
   cluster: string,
   chunk: string[],
-): Promise<Array<RawParsedTx | null>> {
+  timeoutMs: number,
+): Promise<{answers: Array<RawParsedTx | null>; timedOut: boolean}> {
   try {
     const answers = (await rpcLimiter.execute(`getParsedTransactions:${cluster}:${hashOf(chunk)}`, () =>
-      connection.getParsedTransactions(chunk, READ_CONFIG),
+      withTimeout(connection.getParsedTransactions(chunk, READ_CONFIG), timeoutMs, 'getParsedTransactions'),
     )) as unknown as Array<RawParsedTx | null>;
     if (Array.isArray(answers) && answers.length === chunk.length) {
-      return answers;
+      return {answers, timedOut: false};
     }
-  } catch {
+  } catch (e) {
+    if (e instanceof TimeoutError) {
+      return {answers: chunk.map(() => null), timedOut: true};
+    }
     // refused or failed (one refused item fails the whole batch in web3.js): the same signatures, one at a time
   }
-  const answers: Array<RawParsedTx | null> = [];
-  for (const signature of chunk) {
-    answers.push(await readParsedTransaction(connection, cluster, signature).catch(() => null));
+  const answers: Array<RawParsedTx | null> = chunk.map(() => null);
+  for (let at = 0; at < chunk.length; at++) {
+    try {
+      answers[at] = await readParsedTransaction(connection, cluster, chunk[at]!, timeoutMs);
+    } catch (e) {
+      if (e instanceof TimeoutError) {
+        return {answers, timedOut: true};
+      }
+    }
   }
-  return answers;
+  return {answers, timedOut: false};
 }
 
-/** One transaction, uncached: null when the node has not indexed it. Throws when the read fails. */
+/** One transaction, uncached: null when the node has not indexed it. Throws when the read fails or times out. */
 export async function readParsedTransaction(
   connection: Pick<Connection, 'getParsedTransaction'>,
   cluster: string,
   signature: string,
+  timeoutMs: number = HISTORY_READ_TIMEOUT_MS,
 ): Promise<RawParsedTx | null> {
   return (await rpcLimiter.execute(`getParsedTransaction:${cluster}:${signature}`, () =>
-    connection.getParsedTransaction(signature, READ_CONFIG),
+    withTimeout(connection.getParsedTransaction(signature, READ_CONFIG), timeoutMs, 'getParsedTransaction'),
   )) as unknown as RawParsedTx | null;
 }
 
 /**
  * §3.3: the parsed transactions of `signatures`, from the cache where it has them. The rest is read
- * in batches of HISTORY_PAGE_SIZE: ONE batch call each; if a batch throws, one at a time. A signature the node answers null for, or
- * whose single read fails, is absent from the result and is not cached.
+ * in batches of HISTORY_PAGE_SIZE: ONE batch call each; if a batch throws, one at a time. A signature
+ * the node answers null for, or whose read fails or times out, is absent from the result and is not
+ * cached. After a timeout no further batch is started: what is left stays unread until the next call.
  */
 export async function readParsedTransactions(
   connection: Pick<Connection, 'getParsedTransactions' | 'getParsedTransaction'>,
   client: QueryClient,
   cluster: string,
   signatures: readonly string[],
+  timeoutMs: number = HISTORY_READ_TIMEOUT_MS,
 ): Promise<Map<string, RawParsedTx>> {
   const out = new Map<string, RawParsedTx>();
   const missing: string[] = [];
@@ -3211,7 +3950,7 @@ export async function readParsedTransactions(
   }
   for (let from = 0; from < missing.length; from += HISTORY_PAGE_SIZE) {
     const chunk = missing.slice(from, from + HISTORY_PAGE_SIZE);
-    const answers = await readChunk(connection, cluster, chunk);
+    const {answers, timedOut} = await readChunk(connection, cluster, chunk, timeoutMs);
     chunk.forEach((signature, at) => {
       const tx = answers[at] ?? null;
       if (tx !== null) {
@@ -3219,6 +3958,9 @@ export async function readParsedTransactions(
         out.set(signature, tx);
       }
     });
+    if (timedOut) {
+      break;
+    }
   }
   return out;
 }
@@ -3264,12 +4006,18 @@ export function activityContext(ownTokenAccounts: ReadonlySet<string> = NO_ACCOU
  * §3.4: a signature whose transaction is not readable yet STILL has a row (`activity: null` — the
  * "partial" row: date and status from the signature list, "Transaction", "—"). It is never dropped,
  * and every load re-tries every row that is still unparsed.
+ *
+ * TWO READS PER LOAD (plan review r1 I5): the signatures this load ADDED are one read, and the rows
+ * loaded before that are still unparsed are another. web3.js fails a whole batch for one refused
+ * item, so a signature the node will never serve (a transaction of a version above 0) would
+ * otherwise sit in the batch of every later page and turn each into 20 single reads. Apart, it costs
+ * its own two calls per load and touches no new page.
  */
 import type {Connection} from '@solana/web3.js';
 import type {QueryClient} from '@tanstack/react-query';
 import {classifyActivity} from './activity';
 import type {ActivityContext, ActivityRow} from './activity';
-import {getSignaturePage, listHistorySources, readParsedTransactions} from './historyReads';
+import {HISTORY_READ_TIMEOUT_MS, getSignaturePage, listHistorySources, readParsedTransactions} from './historyReads';
 import {historySession} from './historySession';
 import type {SignatureItem} from './historySession';
 
@@ -3296,31 +4044,38 @@ export interface HistoryEnv {
   cluster: string;
   /** the classifier's constants for this account's token accounts (`activityContext`) */
   context: (ownTokenAccounts: ReadonlySet<string>) => ActivityContext;
+  /** the limit of each chain call; HISTORY_READ_TIMEOUT_MS when absent (tests hand in a short one) */
+  timeoutMs?: number;
 }
 
 /**
  * 'head': the first page, or — once a page is loaded — the §3.4 refresh. 'older': the next page.
- * Throws when a signature list (or the source list) cannot be read; a transaction that cannot be
- * read is a partial row, never an error.
+ * Throws when a signature list (or the source list) cannot be read or does not answer in time; a
+ * transaction that cannot be read is a partial row, never an error.
  */
 export async function loadHistory(account: string, step: 'head' | 'older', env: HistoryEnv): Promise<HistorySnapshot> {
+  const timeoutMs = env.timeoutMs ?? HISTORY_READ_TIMEOUT_MS;
   const session = historySession(env.cluster, account, {
-    listSources: () => listHistorySources(env.connection, account),
-    fetchSignatures: (source, before, limit) => getSignaturePage(env.connection, env.cluster, source, before, limit),
+    listSources: () => listHistorySources(env.connection, env.cluster, account, timeoutMs),
+    fetchSignatures: (source, before, limit) => getSignaturePage(env.connection, env.cluster, source, before, limit, timeoutMs),
   });
+  const idBefore = session.id;
+  const loadedBefore = new Set(session.items.map(x => x.signature));
   if (step === 'older' || session.pagesLoaded === 0) {
     await session.loadNextPage();
   } else {
     await session.refresh();
   }
   const items = [...session.items];
-  // only the uncached ones are read: a new page's, and every loaded row still unparsed
-  const raws = await readParsedTransactions(
-    env.connection,
-    env.client,
-    env.cluster,
-    items.map(x => x.signature),
-  );
+  // a restart replaced every row: all of them are this load's
+  const isNew = (signature: string): boolean => session.id !== idBefore || !loadedBefore.has(signature);
+  const added = items.map(x => x.signature).filter(isNew);
+  const loaded = items.map(x => x.signature).filter(s => !isNew(s));
+  // only the uncached ones are read — this load's rows first, then (apart) every older row still unparsed
+  const raws = await readParsedTransactions(env.connection, env.client, env.cluster, added, timeoutMs);
+  for (const [signature, raw] of await readParsedTransactions(env.connection, env.client, env.cluster, loaded, timeoutMs)) {
+    raws.set(signature, raw);
+  }
   const ctx = env.context(session.tokenAccountSources);
   return {
     sessionId: session.id,
@@ -3342,9 +4097,9 @@ export async function loadHistory(account: string, step: 'head' | 'older', env: 
 ```
 
 - [ ] **Step 7: Run them.** The Step 2 command. Expected: PASS
-      (14 + 7 tests). Also
-      `npx jest src/modules/solana/__tests__/queries.test.ts src/modules/accounts src/modules/backgroundSync --forceExit`
-      — every existing user of `getTokenAccounts` still passes.
+      (21 + 11 tests). Also
+      `npx jest src/modules/solana/__tests__/queries.test.ts src/modules/accounts src/modules/backgroundSync src/modules/shielded/a0/__tests__/treeSync.test.ts --forceExit`
+      — every existing user of `getTokenAccounts` and of `withTimeout` still passes.
 
 - [ ] **Step 8: Gates.**
       `npx tsc --noEmit && npm run lint:ci && npx jest && node scripts/check-no-tge-date.mjs`, then
@@ -3353,9 +4108,10 @@ export async function loadHistory(account: string, step: 'head' | 'older', env: 
 - [ ] **Step 9: Commit.**
 
 ```bash
-git add src/modules/solana/queries.ts src/modules/solana/historyReads.ts src/modules/solana/activityContext.ts \
-  src/modules/solana/history.ts src/modules/solana/__tests__/historyReads.test.ts src/modules/solana/__tests__/history.test.ts
-git commit -m "feat(history): sources incl. Token-2022, the per-signature transaction cache, and loadHistory"
+git add src/modules/solana/queries.ts src/modules/solana/withTimeout.ts src/modules/solana/historyReads.ts \
+  src/modules/solana/activityContext.ts src/modules/solana/history.ts \
+  src/modules/solana/__tests__/historyReads.test.ts src/modules/solana/__tests__/history.test.ts
+git commit -m "feat(history): sources incl. Token-2022, the per-signature transaction cache, time limits, and loadHistory"
 ```
 
 ---
@@ -3385,11 +4141,13 @@ Review Focus 2 and 4.
   `export type HistoryChipId = 'all' | 'sent' | 'received' | 'swaps' | 'private'`,
   `HISTORY_CHIPS: ReadonlyArray<{id: HistoryChipId; label: string}>`, `historyChipNoneLoaded(chipLabel, loaded)`,
   `historyChipNone(chipLabel)`, `HISTORY_LOAD_OLDER`, `historyCoverage(read, total)`, `SECTION_TODAY`,
-  `SECTION_YESTERDAY`, `TX_PRIVATE_BADGE`, `TX_BALANCE_CHANGES`, `txAtTodaysPrice(usd: string)`.
+  `SECTION_YESTERDAY`, `TX_POOL_BADGE_LABEL` ('Pool transaction' — the screen-reader label of the icon-only
+  badge), `TX_HIDDEN` ('••••'), `TX_BALANCE_CHANGES`, `txAtTodaysPrice(usd: string)`.
 - Produces, from `src/modules/solana/activityView.ts`:
   - `export type RowIcon = 'sent' | 'received' | 'swap' | 'private' | 'setup' | 'failed' | 'dot'`
   - `export interface RowView {icon: RowIcon; title: string; badge: boolean; secondary: string; amount: string; amountTone: 'default' | 'success' | 'tertiary'; note: string | null; sub: string | null}`
-  - `export function rowView(row: HistoryRow, labelOf: (address: string) => string, now: number, tz: string): RowView`
+  - `export function rowView(row: HistoryRow, labelOf: (address: string) => string, now: number, tz: string, hidden?: boolean): RowView`
+    — `hidden` (the hide-balances setting) turns every figure of the row into "••••".
   - `export function sectionOf(blockTime: number | null, now: number, tz: string): {key: string; title: string}` —
     keys `'today' | 'yesterday' | 'week' | 'month' | 'YYYY-MM' | 'unknown'`; `blockTime` in seconds, `now` in ms.
   - `export function rowTime(blockTime: number | null, now: number, tz: string): string`
@@ -3399,16 +4157,25 @@ Review Focus 2 and 4.
   - `export function deviceTimeZone(): string`, `zonedDate(ms: number, tz: string)`
   - for #27: `activityWord(row: ActivityRow | null): string`, `heroAmount(row: ActivityRow | null): string | null`,
     `partiesAgree(transfer: TxTransfer | null, row: ActivityRow | null, account: string | null): boolean`,
-    `changeLine(d: Delta): string`, `primaryUsdToday(row: ActivityRow | null, usdOf: (mint: string) => number | null): number | null`,
+    `changeLine(d: Delta, hidden?: boolean): string`, `primaryUsdToday(row: ActivityRow | null, usdOf: (mint: string) => number | null): number | null`,
     `exactAmount(d: Delta): string`, `unsignedAmount(d: Delta): string`.
 
 **Why:**
 - A screen test cannot cover eleven row forms, six sections and a DST change without becoming unreadable. Everything
   a row SAYS is a pure function here, and the screens of Tasks 7 and 8 only place it.
-- **The fifth chip and the badge read "Private".** The design (`index.html` #26, `screen.md` §26) and spec §5.2 call
-  them "Shielded", but that word is banned from every user-visible string since UX part B
-  (`bannedWords.test.ts`, whose regexes this PR must not change), and the app's one vocabulary is
-  "Private" / "Made private" / "Made public" (`src/copy/modes.ts`). The chip id in code is `'private'` (ruling 1).
+- **The fifth chip reads "Private"; the badge has no word** (owner decision Q1). The design (`index.html` #26,
+  `screen.md` §26) and spec §5.2 call them "Shielded", but that word is banned from every user-visible string
+  since UX part B (`bannedWords.test.ts`, whose regexes this PR must not change), and the app's one vocabulary is
+  "Private" / "Made private" / "Made public" (`src/copy/modes.ts`). The chip id in code is `'private'`. The badge
+  on the two pool rows is an ICON ALONE: a deposit and a withdrawal are public on chain (who, how much, where
+  to), and a word like "Private" beside an amount would read as a claim about that transaction. A screen reader
+  gets `TX_POOL_BADGE_LABEL` — "Pool transaction": what the row is, and no claim. It is in `src/copy/transactions.ts`,
+  so both copy guards read it (Step 7).
+- **Hide balances is part of what a row says** (owner decision Q2), so it is a parameter of the pure functions
+  here and is tested here (V20b, V27): `rowView(…, hidden)` and `changeLine(d, hidden)`. A FIGURE becomes "••••"
+  (`TX_HIDDEN`): the amount with its "+N more", the incoming leg of a swap, the fee under a failed row. What is
+  not a figure stays: "—", "No funds moved", " · incomplete", the role label of a balance change. A hidden
+  received amount also loses its green.
 - **Rows use the shared 4-place formatter** (spec §5.1 "Formatting"), so 0.00001 TEST reads "<0.0001" there; **#27
   shows the exact figure** as PR 1 did ("0.00001 TEST"), and so do the balance-change lines (the spec's own example
   "−0.00204 SOL · account rent" has five places) (ruling 6).
@@ -3657,6 +4424,25 @@ describe('rowView (§5.1)', () => {
     expect(rowView(row({kind: 'sent', primary: TEST, counterparty: 'CP'}, null), label, NOW, LJ).secondary).toBe('to <CP>');
     expect(rowView(row(null, null), label, NOW, LJ).secondary).toBe('');
   });
+
+  // V20b (owner, Q2): the dashboard's hide-balances setting
+  it('hidden: every figure reads "••••" — the amount with its "+N more", and the line under it; words stay', () => {
+    const hide = (r: HistoryRow) => rowView(r, label, NOW, LJ, true);
+    const sent = row({kind: 'sent', primary: TEST, counterparty: 'CP', extraAssets: 2, incomplete: true});
+    expect(hide(sent)).toEqual({...view(sent), amount: '••••', amountTone: 'default'});
+    expect(hide(sent)).toMatchObject({title: 'Sent TEST', secondary: 'to <CP> · 09:14', note: ' · incomplete'});
+    // a received amount loses its green too
+    expect(hide(row({kind: 'received', primary: SOL_IN}))).toMatchObject({title: 'Received SOL', amount: '••••', amountTone: 'default'});
+    // the incoming leg of a swap, and the fee of a failed transaction, are figures
+    expect(hide(row({kind: 'swap', primary: delta('native', 'SOL', -1n), secondary: delta('N', 'NOC', 5n)}))).toMatchObject({amount: '••••', sub: '••••'});
+    expect(hide(row({kind: 'failed', feePaidByAccount: 5000n}))).toMatchObject({title: 'Failed', amount: '—', sub: '••••'});
+    expect(hide(row({kind: 'account-setup', primary: delta('native', 'SOL', -1_488_440n, 9, 'rent')})).amount).toBe('••••');
+    // what is not an amount stays as it is
+    expect(hide(row({kind: 'no-funds-moved'}))).toEqual(view(row({kind: 'no-funds-moved'})));
+    expect(hide(row({kind: 'unknown'})).amount).toBe('—');
+    expect(hide(row(null)).amount).toBe('—');
+    expect(hide(row({kind: 'failed'})).sub).toBeNull();
+  });
 });
 
 describe('chipMatches (§5.2)', () => {
@@ -3771,6 +4557,9 @@ describe('the detail (#27, §4.6)', () => {
     expect(changeLine(delta('native', 'SOL', 1_488_440n, 9, 'rent'))).toBe('+0.00148844 SOL · account rent');
     expect(changeLine(delta('native', 'SOL', 2_000_000n, 9, 'grant'))).toBe('+0.002 SOL · gas grant');
     expect(changeLine(delta('native', 'SOL', -20_000n, 9, 'markup'))).toBe('−0.00002 SOL · Noctura fee');
+    // hidden (owner, Q2): the figure goes, the role stays
+    expect(changeLine(delta('MINT', 'TEST', -100000n), true)).toBe('••••');
+    expect(changeLine(delta('native', 'SOL', -2_040_000n, 9, 'rent'), true)).toBe('•••• · account rent');
   });
 
   // V28 (H7)
@@ -3805,8 +4594,10 @@ describe('the detail (#27, §4.6)', () => {
 ```ts
 /**
  * History spec (2026-11-26) §5, §4.6: the words of the history rows (#26) and of the new #27 parts.
- * One vocabulary (`modes.ts`): the pool moves are "Made private" / "Made public" and their chip and
- * badge read "Private" — the design's older word for them is banned from every user-visible string.
+ * One vocabulary (`modes.ts`): the pool moves are "Made private" / "Made public" and their chip reads
+ * "Private" — the design's older word for them is banned from every user-visible string. Their badge
+ * is an icon with no word (owner, Q1): both transactions are public on chain, and a word beside an
+ * amount would read as a claim about that transaction.
  */
 export const TX_SWAPPED = 'Swapped';
 export const TX_MADE_PRIVATE = 'Made private';
@@ -3822,8 +4613,10 @@ export const TX_AMOUNT_UNKNOWN = '—';
 export const TX_VIA_JUPITER = 'via Jupiter';
 /** After the amount of a row with a balance entry that could not be attributed */
 export const TX_INCOMPLETE = 'incomplete';
-/** The badge on the two pool rows */
-export const TX_PRIVATE_BADGE = 'Private';
+/** What a screen reader says for the icon-only badge of the two pool rows: what the row is, no claim about it */
+export const TX_POOL_BADGE_LABEL = 'Pool transaction';
+/** An amount while the dashboard's hide-balances eye is on (owner, Q2): #26 rows and #27 */
+export const TX_HIDDEN = '••••';
 
 export function txSentTitle(symbol: string): string {
   return `${TX_SENT} ${symbol}`;
@@ -3926,6 +4719,7 @@ import {
   TX_ACCOUNT_SETUP,
   TX_AMOUNT_UNKNOWN,
   TX_FAILED,
+  TX_HIDDEN,
   TX_INCOMPLETE,
   TX_MADE_PRIVATE,
   TX_MADE_PUBLIC,
@@ -3957,7 +4751,7 @@ export type RowIcon = 'sent' | 'received' | 'swap' | 'private' | 'setup' | 'fail
 export interface RowView {
   icon: RowIcon;
   title: string;
-  /** the private-mode badge beside the title (the two pool rows) */
+  /** the pool badge beside the title (the two pool rows): an icon, no word */
   badge: boolean;
   /** "to {cp} · {time}" — may be '' when neither is known */
   secondary: string;
@@ -4131,8 +4925,27 @@ function signedAmount(d: Delta): string {
 
 const joined = (...parts: Array<string | null>): string => parts.filter(p => p !== null && p !== '').join(' · ');
 
-/** §5.1: one row. `labelOf` names a counter-party (`counterpartyLabel`). */
-export function rowView(row: HistoryRow, labelOf: (address: string) => string, now: number, tz: string): RowView {
+/**
+ * §5.1: one row. `labelOf` names a counter-party (`counterpartyLabel`). `hidden` is the dashboard's
+ * hide-balances setting (owner, Q2): every FIGURE of the row reads "••••" — the amount with its
+ * "+N more", and the line under it. The title, the counter-party, the time and the icon stay, and so
+ * do "—" and "No funds moved", which are not amounts.
+ */
+export function rowView(row: HistoryRow, labelOf: (address: string) => string, now: number, tz: string, hidden = false): RowView {
+  const view = shownRow(row, labelOf, now, tz);
+  if (!hidden) {
+    return view;
+  }
+  const figure = row.activity !== null && row.activity.primary !== null;
+  return {
+    ...view,
+    amount: figure ? TX_HIDDEN : view.amount,
+    amountTone: figure ? 'default' : view.amountTone,
+    sub: view.sub === null ? null : TX_HIDDEN,
+  };
+}
+
+function shownRow(row: HistoryRow, labelOf: (address: string) => string, now: number, tz: string): RowView {
   const time = rowTime(row.item.blockTime, now, tz);
   const a = row.activity;
   const plain: RowView = {icon: 'dot', title: TX_NEUTRAL, badge: false, secondary: time, amount: TX_AMOUNT_UNKNOWN, amountTone: 'default', note: null, sub: null};
@@ -4251,9 +5064,9 @@ export function partiesAgree(transfer: TxTransfer | null, row: ActivityRow | nul
 
 const ROLE_LABEL: Record<Delta['role'], string | null> = {moved: null, markup: TX_ROLE_MARKUP, grant: TX_ROLE_GRANT, rent: TX_ROLE_RENT};
 
-/** One line of "Balance changes": "−0.0001 TEST", "−0.00204 SOL · account rent". */
-export function changeLine(d: Delta): string {
-  return joined(`${d.raw < 0n ? MINUS : '+'}${exactAmount(d)} ${d.symbol}`, ROLE_LABEL[d.role]);
+/** One line of "Balance changes": "−0.0001 TEST", "−0.00204 SOL · account rent"; hidden: "••••", "•••• · account rent". */
+export function changeLine(d: Delta, hidden = false): string {
+  return joined(hidden ? TX_HIDDEN : `${d.raw < 0n ? MINUS : '+'}${exactAmount(d)} ${d.symbol}`, ROLE_LABEL[d.role]);
 }
 
 /** H7: today's value of `primary`, for the "≈ $x at today's price" line; null with no price. Display float. */
@@ -4313,7 +5126,7 @@ TZ=Asia/Tokyo npx jest src/modules/solana/__tests__/timezone.test.ts src/modules
 /usr/bin/node node_modules/.bin/jest src/modules/solana/__tests__/timezone.test.ts src/modules/solana/__tests__/activityView.test.ts --forceExit
 ```
 
-      Expected: PASS each time (1 + 28 tests).
+      Expected: PASS each time (1 + 29 tests).
 
 - [ ] **Step 7: The copy guards.** `npx jest src/copy src/screens/shielded/__tests__/privacyClaims.test.ts --forceExit`
       Expected: PASS, with both test files unchanged (`git diff --stat src/copy/__tests__ src/screens/shielded/__tests__`
@@ -4374,6 +5187,10 @@ Review Focus 3.
 - `onSecureMmkvReset` already clears `accountSnapshot` and `txHistory`. Raw transactions (kept 24 h) and sessions
   belong to the wallet that is gone too.
 - The existing `queryClient.test.ts` is kept: its two tests are the first two of the new file, unchanged.
+- `staleTime` 60 s is asserted where it acts (test K2b): a second mount inside that time reads nothing — the test
+  client's default is 0, so without the hook's own value that mount would read again.
+- A read that never settles is not this hook's to guard: every chain call under `loadHistory` has a time limit
+  (Task 4), so `loadHistory` always settles, and `olderRef` / `loadingOlder` are released in the `finally`.
 
 - [ ] **Step 1: Write the failing tests.** Replace the whole of `src/app/__tests__/queryClient.test.ts` with:
 
@@ -4460,7 +5277,7 @@ it("invalidating ['txHistory', address] drops that account's history session, an
 import React from 'react';
 import {renderHook, waitFor, act} from '@testing-library/react-native';
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
-import {useActivityHistory, historyQueryKey} from '../useActivityHistory';
+import {HISTORY_STALE_MS, useActivityHistory, historyQueryKey} from '../useActivityHistory';
 import {dropHistorySessionOnInvalidate} from '../../app/queryClient';
 import {dropHistorySessions, historySession, peekHistorySession} from '../../modules/solana/historySession';
 import type {HistorySnapshot} from '../../modules/solana/history';
@@ -4503,6 +5320,25 @@ it('reads the head for the account and exposes the snapshot', async () => {
   await waitFor(() => expect(result.current.isSuccess).toBe(true));
   expect(mockLoad).toHaveBeenCalledWith(A, 'head', expect.objectContaining({cluster: 'mainnet-beta', client}));
   expect(result.current.data!.rows.map(r => r.item.signature)).toEqual(['s1', 's2']);
+});
+
+// K2b (plan review r1 m2; spec §3.3: a refresh can cost up to 25 signature calls)
+it('the history stays fresh for 60 s: a second mount inside that time reads nothing', async () => {
+  expect(HISTORY_STALE_MS).toBe(60_000);
+  mockLoad.mockResolvedValue(snap(['s1']));
+  const first = renderHook(() => useActivityHistory(A), {wrapper});
+  await waitFor(() => expect(first.result.current.isSuccess).toBe(true));
+  const query = client.getQueryCache().find({queryKey: historyQueryKey(A)})!;
+  expect(query.isStaleByTime(HISTORY_STALE_MS)).toBe(false);
+  expect(query.observers[0]!.options.staleTime).toBe(60_000);
+  first.unmount();
+  // the test client's default staleTime is 0: without the hook's own, this mount would read again
+  const second = renderHook(() => useActivityHistory(A), {wrapper});
+  expect(second.result.current.data!.rows).toHaveLength(1);
+  await act(async () => {
+    await Promise.resolve();
+  });
+  expect(mockLoad).toHaveBeenCalledTimes(1);
 });
 
 // K3
@@ -4777,7 +5613,7 @@ export function useActivityHistory(account: string | null): ActivityHistory {
 ```
 
 - [ ] **Step 5: Run them.** The Step 2 command. Expected: PASS
-      (5 + 8 tests). Jest may print "A worker process has failed to exit
+      (5 + 9 tests). Jest may print "A worker process has failed to exit
       gracefully" for the hook suite with `--forceExit`; that line is not a failure. Then the one screen that
       invalidates the key: `npx jest src/screens/transparent/__tests__/TransactionStatusScreen.test.tsx --forceExit`
       Expected: PASS, unchanged.
@@ -4813,7 +5649,9 @@ Every element of the design, and what this task does with it — nothing is drop
 | Chips All / Sent / Received / Swaps / "Shielded", 44 dp | built; the fifth reads **"Private"** (Task 5, ruling 1), mint-tinted when active |
 | Date sections Today / Yesterday / This week | built, plus "This month", "{Month YYYY}", "Date unknown" (spec §5.3) |
 | `TxRow`: 40 dp round icon, title, secondary line, amount with a line under it | built: `rowView` (Task 5) says what, this screen places it |
-| the mode badge on pool rows | built ("Private", with a lock) |
+| the pool rows' icon and the mode badge (`#i-shield-lock`: a shield holding a lock) | built with lucide's `Shield` in both places — the glyph the app's other private-side screens already draw for that symbol (lucide has no shield-with-lock). **The badge is the icon alone — the design's word in it is NOT shown** (owner decision Q1); a screen reader hears "Pool transaction" |
+| (not in the design) hide balances | every figure of a row reads "••••" while the dashboard's eye is closed (owner decision Q2); Task 12 draws it |
+| the footer of a wallet with more than 24 token accounts (spec §3.2) | built under the rows, and ALSO under "No transactions yet" and under an empty chip's line (plan review r1 I4 — not in the design; Task 12 draws it) |
 | 5-row skeleton across 2 sections (26a) | built |
 | Pull-to-refresh | built (the §3.4 refresh) |
 | The account label under the title | kept (M1d) |
@@ -4835,9 +5673,12 @@ Every element of the design, and what this task does with it — nothing is drop
   from `src/hooks/useActivityHistory`.
 - Consumes (Task 5): `rowView`, `groupSections`, `chipMatches`, `counterpartyLabel`, `deviceTimeZone`, `RowIcon`,
   `RowView` from `src/modules/solana/activityView`; `HISTORY_CHIPS`, `HistoryChipId`, `HISTORY_LOAD_OLDER`,
-  `SECTION_TODAY`, `SECTION_YESTERDAY`, `TX_PRIVATE_BADGE`, `historyChipNone`, `historyChipNoneLoaded`,
+  `SECTION_TODAY`, `SECTION_YESTERDAY`, `TX_POOL_BADGE_LABEL`, `historyChipNone`, `historyChipNoneLoaded`,
   `historyCoverage` from `src/copy/transactions`.
 - Consumes (Tasks 3, 4): `HISTORY_PAGE_SIZE` (20); `HistoryRow`, `HistorySnapshot`.
+- Consumes (Task 5): `rowView(row, labelOf, now, tz, hidden)` — the fifth argument is the hide-balances setting.
+- Consumes (existing): `usePublicSettingsStore(s => s.hideBalances)` from `src/store/zustand/publicSettingsStore`
+  — the setting the dashboard's eye toggles; this screen only reads it (no second source, no toggle here).
 - Consumes (existing): `useSelectedAccount()` and `useAccountList()` from `src/hooks/useSelectedAccount`;
   `HISTORY_EMPTY` ('No transactions yet'), `HISTORY_ERROR` ("Couldn't load transactions · tap to retry"),
   `HISTORY_LOADING` ('Loading transactions…') from `src/copy/accounts`; `Text` from `src/components/ui`
@@ -4854,9 +5695,21 @@ Every element of the design, and what this task does with it — nothing is drop
   the empty state; one read in flight at a time (a ref guard, because two taps can land before a re-render); a retry
   started for one account neither blocks nor resets another account's (the generation counter).
 - **"No transactions yet" needs three things at once:** a successful read, the end of history, zero rows.
+- **And it is never said alone about a history that was only partly read** (spec §1.2; plan review r1 I4). When
+  the wallet owns more token accounts than the 24 that are read, the unread ones are exactly where a received
+  token would be. The coverage line ("History from 24 of 31 token accounts") is therefore one element, shown
+  under the rows, under "No transactions yet" and under an empty chip's line (tests T18, T18b, T18c).
+- **The badge claims nothing** (owner decision Q1): an icon, `accessibilityRole="image"`, labelled "Pool
+  transaction"; the row's own label reads "Made private TEST, Pool transaction, 09:14, −0.0001" (test T1).
+- **Hide balances** (owner decision Q2): the row's figures come from `rowView(…, hidden)`, so the row's
+  accessibility label is hidden with them (test T1b; its control shows the same rows unhidden).
+- **The clock** the sections are cut by is read when the data changes and when the app returns to the foreground
+  (`AppState` → `'active'`): a list left open overnight is right when it is looked at again (test T21b). The
+  `now` prop is for tests (T21).
 - **An empty chip cannot be scrolled**, and a list shorter than the screen makes `onEndReached` fire again and
   again. So scrolling loads the next page only while fewer than 3 consecutive pages added nothing under the active
-  chip; after that only the explicit "Load older" loads. The All chip never stops (every page adds rows).
+  chip; after that only the explicit "Load older" loads. The All chip never stops (every page adds rows). A chip
+  change starts the count again (test T9b).
 - A `SectionList` renders 10 rows at first by default; a page is 20, so `initialNumToRender` is the page size.
 - Styling is NativeWind classes only. **No inline `style={{…}}`** (each would add a lint warning and break the
   exact-143 gate) and no `StyleSheet` — the old screen's `StyleSheet` goes with it.
@@ -4872,6 +5725,7 @@ Every element of the design, and what this task does with it — nothing is drop
  * (retry single-flight, no claim without a read). Real timers only.
  */
 import React from 'react';
+import {AppState} from 'react-native';
 import {render, fireEvent, act} from '@testing-library/react-native';
 import {TransactionHistoryScreen} from '../TransactionHistoryScreen';
 import type {ActivityKind, ActivityRow, Delta} from '../../../modules/solana/activity';
@@ -4910,6 +5764,12 @@ const mockHistory: {
 const mockUseActivityHistory = jest.fn((_account: string | null) => mockHistory);
 jest.mock('../../../hooks/useActivityHistory', () => ({useActivityHistory: (account: string | null) => mockUseActivityHistory(account)}));
 
+// owner, Q2: the dashboard's hide-balances setting, controlled here (the store's one field this screen reads)
+const mockHide = {current: false};
+jest.mock('../../../store/zustand/publicSettingsStore', () => ({
+  usePublicSettingsStore: (sel: (s: {hideBalances: boolean}) => unknown) => sel({hideBalances: mockHide.current}),
+}));
+
 const delta = (mint: string, symbol: string, raw: bigint, role: Delta['role'] = 'moved'): Delta => ({mint, symbol, raw, decimals: 9, role});
 let n = 0;
 function row(kind: ActivityKind | null, over: Partial<ActivityRow> = {}, blockTime: number | null = at('2026-11-26T08:14:00Z')): HistoryRow {
@@ -4940,6 +5800,7 @@ const screen = () => render(<TransactionHistoryScreen onSelectTx={onSelectTx} on
 beforeEach(() => {
   jest.clearAllMocks();
   n = 0;
+  mockHide.current = false;
   mockHistSelected.current = {address: ME, label: 'Account 1'};
   mockHistory.data = undefined;
   mockHistory.isSuccess = false;
@@ -4987,10 +5848,14 @@ describe('rows (§5.1)', () => {
 
     expect(getByTestId('tx-row-priv-icon-private')).toBeTruthy();
     expect(text('tx-row-priv-title')).toHaveTextContent('Made private TEST');
-    expect(getByTestId('tx-row-priv-badge')).toHaveTextContent('Private');
+    // owner, Q1: the badge is an icon with no word — the transaction is public on chain, the badge claims nothing
+    expect(getByTestId('tx-row-priv-badge')).toHaveTextContent('');
+    expect(getByTestId('tx-row-priv-badge').props.accessibilityLabel).toBe('Pool transaction');
+    expect(getByTestId('tx-row-priv').props.accessibilityLabel).toBe('Made private TEST, Pool transaction, 09:14, −0.0001');
     expect(text('tx-row-pub-title')).toHaveTextContent('Made public TEST');
-    expect(getByTestId('tx-row-pub-badge')).toBeTruthy();
+    expect(getByTestId('tx-row-pub-badge')).toHaveTextContent('');
     expect(queryByTestId('tx-row-sent-badge')).toBeNull();
+    expect(getByTestId('tx-row-sent').props.accessibilityLabel).toBe('Sent TEST, to EfHSPx…mwXGgk · 09:14, −0.0001');
 
     expect(text('tx-row-wrap-title')).toHaveTextContent('Wrapped SOL');
     expect(text('tx-row-wrap-amount')).toHaveTextContent('−2');
@@ -5013,6 +5878,37 @@ describe('rows (§5.1)', () => {
     expect(getByTestId('tx-row-partial-icon-dot')).toBeTruthy();
     expect(text('tx-row-partial-title')).toHaveTextContent('Transaction');
     expect(text('tx-row-partial-amount')).toHaveTextContent('—');
+  });
+
+  // T1b (owner, Q2)
+  it('hide balances: every figure of a row reads "••••"; title, counter-party, time and status stay', () => {
+    const rows = () => [
+      row('sent', {signature: 'sent', primary: delta('M', 'TEST', -100000n), counterparty: OUTSIDE}),
+      row('swap', {signature: 'swap', primary: delta('native', 'SOL', -1_200_000_000n), secondary: delta('N', 'NOC', 9_524_100_000_000n), via: 'Jupiter'}),
+      row('failed', {signature: 'fail', feePaidByAccount: 5000n}),
+      row('no-funds-moved', {signature: 'none'}),
+    ];
+    mockHide.current = true;
+    show(rows());
+    const hidden = screen();
+    expect(hidden.getByTestId('tx-row-sent-amount')).toHaveTextContent('••••');
+    expect(hidden.getByTestId('tx-row-sent-title')).toHaveTextContent('Sent TEST');
+    expect(hidden.getByTestId('tx-row-sent-secondary')).toHaveTextContent('to EfHSPx…mwXGgk · 09:14');
+    expect(hidden.getByTestId('tx-row-sent').props.accessibilityLabel).toBe('Sent TEST, to EfHSPx…mwXGgk · 09:14, ••••');
+    expect(hidden.getByTestId('tx-row-swap-amount')).toHaveTextContent('••••');
+    expect(hidden.getByTestId('tx-row-swap-sub')).toHaveTextContent('••••');
+    expect(hidden.getByTestId('tx-row-fail-title')).toHaveTextContent('Failed');
+    expect(hidden.getByTestId('tx-row-fail-sub')).toHaveTextContent('••••');
+    expect(hidden.getByTestId('tx-row-none-amount')).toHaveTextContent('No funds moved');
+    expect(hidden.queryByText(/0\.0001|1\.2|9,524|0\.000005/)).toBeNull();
+    hidden.unmount();
+    mockHide.current = false; // control: the same rows, shown
+    n = 0;
+    show(rows());
+    const shown = screen();
+    expect(shown.getByTestId('tx-row-sent-amount')).toHaveTextContent('−0.0001');
+    expect(shown.getByTestId('tx-row-swap-sub')).toHaveTextContent('+9,524.1 NOC');
+    expect(shown.getByTestId('tx-row-fail-sub')).toHaveTextContent('fee 0.000005 SOL');
   });
 
   // T2
@@ -5141,6 +6037,27 @@ describe('chips (§5.2)', () => {
     expect(mockHistory.loadOlder).toHaveBeenCalledTimes(6);
   });
 
+  // T9b (plan review r1 m3)
+  it('a chip change starts the count again: scrolling under the new chip loads', async () => {
+    const base = [row('sent', {signature: 's', primary: delta('M', 'TEST', -1n)}), row('received', {signature: 'r', primary: delta('M', 'TEST', 1n)})];
+    show(base, false);
+    mockHistory.loadOlder = jest.fn(async () => snapshot([...base, row('swap', {primary: delta('M', 'TEST', -1n), secondary: delta('N', 'NOC', 1n)})], false));
+    const view = screen();
+    const reachEnd = async () => {
+      await act(async () => {
+        fireEvent(view.getByTestId('history-list'), 'endReached');
+      });
+    };
+    fireEvent.press(view.getByTestId('history-chip-received'));
+    for (let k = 0; k < 5; k++) {
+      await reachEnd();
+    }
+    expect(mockHistory.loadOlder).toHaveBeenCalledTimes(3); // stopped under Received
+    fireEvent.press(view.getByTestId('history-chip-sent'));
+    await reachEnd();
+    expect(mockHistory.loadOlder).toHaveBeenCalledTimes(4); // Sent has its own three
+  });
+
   // T10 (r2 m4)
   it('the All chip never stops loading on scroll', async () => {
     show([row('sent', {primary: delta('M', 'TEST', -1n)})], false);
@@ -5258,6 +6175,40 @@ describe('states (§5.3)', () => {
     expect(screen().queryByTestId('history-coverage')).toBeNull();
   });
 
+  // T18b (plan review r1 I4; spec §1.2)
+  it('"No transactions yet" is never said alone about a history that was only partly read', () => {
+    show([], true, {read: 24, total: 31});
+    const partly = screen();
+    expect(partly.getByText('No transactions yet')).toBeTruthy();
+    expect(partly.getByTestId('history-coverage')).toHaveTextContent('History from 24 of 31 token accounts');
+    partly.unmount();
+    show([], true, {read: 3, total: 3}); // control: everything was read
+    const whole = screen();
+    expect(whole.getByText('No transactions yet')).toBeTruthy();
+    expect(whole.queryByTestId('history-coverage')).toBeNull();
+  });
+
+  // T18c (plan review r1 I4)
+  it('an empty chip also names the bound — at the end of history and before it', () => {
+    show([row('sent', {primary: delta('M', 'TEST', -1n)})], true, {read: 24, total: 31});
+    const atEnd = screen();
+    fireEvent.press(atEnd.getByTestId('history-chip-received'));
+    expect(atEnd.getByText('No Received transactions yet')).toBeTruthy();
+    expect(atEnd.getAllByTestId('history-coverage')).toHaveLength(1);
+    expect(atEnd.getByTestId('history-coverage')).toHaveTextContent('History from 24 of 31 token accounts');
+    atEnd.unmount();
+    show([row('sent', {primary: delta('M', 'TEST', -1n)})], false, {read: 24, total: 31});
+    const before = screen();
+    fireEvent.press(before.getByTestId('history-chip-received'));
+    expect(before.getByText('No Received transactions in the last 1')).toBeTruthy();
+    expect(before.getByTestId('history-coverage')).toBeTruthy();
+    before.unmount();
+    show([row('sent', {primary: delta('M', 'TEST', -1n)})], true, {read: 3, total: 3}); // control
+    const whole = screen();
+    fireEvent.press(whole.getByTestId('history-chip-received'));
+    expect(whole.queryByTestId('history-coverage')).toBeNull();
+  });
+
   // T19
   it('pull-to-refresh runs the refetch (the §3.4 refresh), one at a time', async () => {
     show([row('sent', {primary: delta('M', 'TEST', -1n)})]);
@@ -5283,6 +6234,28 @@ describe('states (§5.3)', () => {
     expect(view.queryByTestId('history-section-today')).toBeNull();
     expect(view.getByTestId('history-section-week')).toBeTruthy(); // Saturday: Thursday is "This week"
     expect(view.getByTestId('tx-row-a-secondary')).toHaveTextContent('26 Nov');
+  });
+
+  // T21b (plan review r1 m8): the product path — no `now` prop; the clock is the device's, read again on foreground
+  it('coming back to the foreground re-reads the clock: yesterday\'s "Today" moves on without a reload', () => {
+    const clock = jest.spyOn(Date, 'now').mockReturnValue(NOW);
+    // react-native's jest setup makes AppState.addEventListener a jest.fn: its calls hold the screen's listener
+    const listen = AppState.addEventListener as unknown as jest.Mock<unknown, [string, (state: string) => void]>;
+    try {
+      show([row('unknown', {signature: 'a'}, at('2026-11-26T08:00:00Z'))]);
+      const view = render(<TransactionHistoryScreen onSelectTx={onSelectTx} onBack={onBack} timeZone={LJ} />);
+      expect(view.getByTestId('history-section-today')).toBeTruthy();
+      clock.mockReturnValue(NOW + 86_400_000);
+      const onChange = listen.mock.calls.filter(c => c[0] === 'change').map(c => c[1]);
+      expect(onChange.length).toBeGreaterThan(0);
+      act(() => onChange.forEach(f => f('background')));
+      expect(view.getByTestId('history-section-today')).toBeTruthy(); // going away re-reads nothing
+      act(() => onChange.forEach(f => f('active')));
+      expect(view.queryByTestId('history-section-today')).toBeNull();
+      expect(view.getByTestId('history-section-yesterday')).toBeTruthy();
+    } finally {
+      clock.mockRestore();
+    }
   });
 
   // T22
@@ -5324,6 +6297,16 @@ describe('states (§5.3)', () => {
  * NEVER A CLAIM THAT WAS NOT READ (§1.2): "No transactions yet" only after a successful read that
  * reached the end of history with zero rows; a chip with no match among the loaded rows says so
  * ("in the last {n}") and offers "Load older"; with no account resolved the list area is empty.
+ * When the wallet owns more token accounts than were read, the line saying so ("History from 24 of
+ * 31 token accounts") stands under the rows AND under either empty line: "no transactions" is never
+ * said alone about a history that was only partly read.
+ *
+ * HIDE BALANCES (owner, Q2): with the dashboard's eye closed every figure of a row reads "••••";
+ * the title, the counter-party, the time and the status stay.
+ *
+ * THE CLOCK the sections are cut by is read again when the data changes and when the app comes back
+ * to the foreground (a list left open overnight). A list that stays in the foreground through
+ * midnight with no new data keeps its sections until one of the two happens.
  *
  * LOADING OLDER (§5.2): reaching the end of the list loads the next page, but stops after 3
  * consecutive pages that added no row under the active chip (an empty chip cannot be scrolled, and a
@@ -5331,8 +6314,8 @@ describe('states (§5.3)', () => {
  * "Load older" loads. The All chip never stops: every page adds rows.
  */
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import {ActivityIndicator, Pressable, RefreshControl, ScrollView, SectionList, View} from 'react-native';
-import {ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Circle, Lock, Settings, TriangleAlert} from 'lucide-react-native';
+import {ActivityIndicator, AppState, Pressable, RefreshControl, ScrollView, SectionList, View} from 'react-native';
+import {ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Circle, Settings, Shield, TriangleAlert} from 'lucide-react-native';
 import {Text} from '../../components/ui';
 import {cn} from '../../utils/cn';
 import {useAccountList, useSelectedAccount} from '../../hooks/useSelectedAccount';
@@ -5347,12 +6330,13 @@ import {
   HISTORY_LOAD_OLDER,
   SECTION_TODAY,
   SECTION_YESTERDAY,
-  TX_PRIVATE_BADGE,
+  TX_POOL_BADGE_LABEL,
   historyChipNone,
   historyChipNoneLoaded,
   historyCoverage,
 } from '../../copy/transactions';
 import type {HistoryChipId} from '../../copy/transactions';
+import {usePublicSettingsStore} from '../../store/zustand/publicSettingsStore';
 
 interface Props {
   onSelectTx: (signature: string, account: string) => void;
@@ -5384,7 +6368,7 @@ function RowGlyph({icon}: {icon: RowIcon}) {
     case 'swap':
       return <ArrowLeftRight size={20} color="#7DA8FF" />;
     case 'private':
-      return <Lock size={20} color="#5BE3C2" />;
+      return <Shield size={20} color="#5BE3C2" />;
     case 'setup':
       return <Settings size={20} color="#A8ACB5" />;
     case 'failed':
@@ -5407,7 +6391,7 @@ function HistoryRowItem({signature, view, onPress}: {signature: string; view: Ro
       testID={id}
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={[view.title, view.badge ? TX_PRIVATE_BADGE : '', view.secondary, `${view.amount}${view.note ?? ''}`, view.sub ?? ''].filter(s => s !== '').join(', ')}
+      accessibilityLabel={[view.title, view.badge ? TX_POOL_BADGE_LABEL : '', view.secondary, `${view.amount}${view.note ?? ''}`, view.sub ?? ''].filter(s => s !== '').join(', ')}
       className="flex-row items-center gap-3 px-5 py-3 min-h-touch-lg active:bg-bg-surface-1">
       <View testID={`${id}-icon-${view.icon}`} className={cn('w-10 h-10 rounded-pill items-center justify-center', ICON_SHELL[view.icon])}>
         <RowGlyph icon={view.icon} />
@@ -5418,11 +6402,14 @@ function HistoryRowItem({signature, view, onPress}: {signature: string; view: Ro
             {view.title}
           </Text>
           {view.badge ? (
-            <View testID={`${id}-badge`} className="flex-row items-center gap-1 px-1.5 py-0.5 rounded-pill bg-accent-shielded-tint">
-              <Lock size={10} color="#5BE3C2" />
-              <Text variant="overline" className="text-accent-shielded">
-                {TX_PRIVATE_BADGE}
-              </Text>
+            // owner, Q1: an icon and no word — both pool transactions are public on chain
+            <View
+              testID={`${id}-badge`}
+              accessible
+              accessibilityRole="image"
+              accessibilityLabel={TX_POOL_BADGE_LABEL}
+              className="w-5 h-5 rounded-pill items-center justify-center bg-accent-shielded-tint">
+              <Shield size={10} color="#5BE3C2" />
             </View>
           ) : null}
         </View>
@@ -5487,6 +6474,8 @@ export function TransactionHistoryScreen({onSelectTx, onBack, now, timeZone}: Pr
   const accountList = useAccountList();
   const publicKey = selected?.address ?? null;
   const {data, isSuccess, isError, refetch, loadOlder, loadingOlder} = useActivityHistory(publicKey);
+  // owner, Q2: the dashboard's hide-balances setting (its one source) also hides the figures of these rows
+  const hidden = usePublicSettingsStore(s => s.hideBalances);
   const [chip, setChip] = useState<HistoryChipId>('all');
   const chipLabel = HISTORY_CHIPS.find(c => c.id === chip)!.label;
 
@@ -5546,11 +6535,20 @@ export function TransactionHistoryScreen({onSelectTx, onBack, now, timeZone}: Pr
   const rows = useMemo(() => data?.rows ?? [], [data]);
   const visible = useMemo(() => rows.filter(r => chipMatches(chip, r)), [rows, chip]);
   const endReached = data?.endReached ?? false;
-  // the clock the sections are cut by: read again whenever the data changes (a list left open past midnight)
+  // the clock the sections are cut by: read again whenever the data changes, and when the app comes back to the
+  // foreground (a list left open past midnight)
   const [clock, setClock] = useState(() => now ?? Date.now());
   useEffect(() => {
     setClock(now ?? Date.now());
   }, [now, data]);
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', state => {
+      if (state === 'active') {
+        setClock(now ?? Date.now());
+      }
+    });
+    return () => subscription.remove();
+  }, [now]);
   const zone = useMemo(() => timeZone ?? deviceTimeZone(), [timeZone]);
   const sections = useMemo(() => groupSections(visible, clock, zone), [visible, clock, zone]);
   const labelOf = useCallback((address: string) => counterpartyLabel(accountList, address), [accountList]);
@@ -5588,6 +6586,14 @@ export function TransactionHistoryScreen({onSelectTx, onBack, now, timeZone}: Pr
       </Pressable>
     ) : null;
 
+  // §3.2: said wherever the list says anything about what exists — under the rows and under either empty line
+  const coverageLine =
+    data !== undefined && data.coverage.read < data.coverage.total ? (
+      <Text variant="caption" className="text-fg-tertiary text-center px-5 pt-4" testID="history-coverage">
+        {historyCoverage(data.coverage.read, data.coverage.total)}
+      </Text>
+    ) : null;
+
   const empty =
     // post-M1d §7 (m1): with no account resolved nothing is being read, so nothing is claimed
     publicKey === null ? null : data === undefined ? (
@@ -5600,6 +6606,7 @@ export function TransactionHistoryScreen({onSelectTx, onBack, now, timeZone}: Pr
         <Text variant="body" className="text-fg-tertiary">
           {HISTORY_EMPTY}
         </Text>
+        {coverageLine}
       </View>
     ) : rows.length === 0 ? null : (
       <View className="items-center mt-12 px-6" testID="history-chip-empty">
@@ -5607,6 +6614,7 @@ export function TransactionHistoryScreen({onSelectTx, onBack, now, timeZone}: Pr
           {endReached ? historyChipNone(chipLabel) : historyChipNoneLoaded(chipLabel, rows.length)}
         </Text>
         {loadOlderButton}
+        {coverageLine}
       </View>
     );
 
@@ -5623,11 +6631,7 @@ export function TransactionHistoryScreen({onSelectTx, onBack, now, timeZone}: Pr
         ) : (
           loadOlderButton
         )}
-        {data.coverage.read < data.coverage.total ? (
-          <Text variant="caption" className="text-fg-tertiary text-center px-5 pt-4" testID="history-coverage">
-            {historyCoverage(data.coverage.read, data.coverage.total)}
-          </Text>
-        ) : null}
+        {coverageLine}
       </View>
     );
 
@@ -5688,7 +6692,7 @@ export function TransactionHistoryScreen({onSelectTx, onBack, now, timeZone}: Pr
         renderItem={({item}) => (
           <HistoryRowItem
             signature={item.item.signature}
-            view={rowView(item, labelOf, clock, zone)}
+            view={rowView(item, labelOf, clock, zone, hidden)}
             onPress={() => {
               if (publicKey !== null) {
                 onSelectTx(item.item.signature, publicKey);
@@ -5796,7 +6800,7 @@ export function useTransactionHistory(
  * Retries with 4s interval until the tx is indexed by RPC.
 ```
 
-- [ ] **Step 5: Run it.** The Step 2 command. Expected: PASS (22 tests). Then
+- [ ] **Step 5: Run it.** The Step 2 command. Expected: PASS (27 tests). Then
       `grep -rn "useTransactionHistory" src` — expected: no output.
 
 - [ ] **Step 6: The copy guards and the route.**
@@ -5836,6 +6840,7 @@ mockups in `index.html` (search `27a · transparent-send`; states 27a–27f). Do
 | "Authorized by" (27f) | kept for a delegated transfer; its second case (From "—") is **not reachable** any more (spec §11) |
 | [View on explorer], [Save to address book] | kept; the contact button only when From / To are shown and the recipient is not this account |
 | OriginBadge | **NOT shown** (spec §11) |
+| (not in the design) hide balances | the hero, "≈ $x at today's price", each balance-change figure and the network fee read "••••" while the dashboard's eye is closed (owner decision Q2); Task 12 draws it |
 | "token account" caption under an address | **no longer reachable** — a recipient that is only a token account now shows the balance-changes form (ruling 8) |
 
 **Files:**
@@ -5854,6 +6859,9 @@ mockups in `index.html` (search `27a · transparent-send`; states 27a–27f). Do
 - Consumes (Task 5): `activityWord`, `heroAmount`, `partiesAgree`, `changeLine`, `primaryUsdToday` from
   `src/modules/solana/activityView`; `TX_BALANCE_CHANGES`, `txAtTodaysPrice(usd)` (and the existing `TX_FEE_PAYER`,
   `TX_AUTHORIZED_BY`) from `src/copy/transactions`.
+- Consumes (Task 5): `TX_HIDDEN` ('••••'); `changeLine(d, hidden)`.
+- Consumes (existing): `usePublicSettingsStore(s => s.hideBalances)` (`src/store/zustand/publicSettingsStore`) —
+  the dashboard's setting, read only.
 - Consumes (existing): `useResolvedPrices(): {prices: Record<string, {usd: number; change24h: number | null}>; havePrices: boolean}`;
   `priceKeyFor(mint)` (`src/modules/prices/portfolio`: wSOL → `'native'`); `formatUsdString(n)` → `"$1,234.56"`
   (`src/utils/formatUsd`); `BELOW_ONE_CENT` (`'<$0.01'`, `src/copy/accounts`); `trustedSymbol`; `NETWORK`.
@@ -5877,6 +6885,16 @@ mockups in `index.html` (search `27a · transparent-send`; states 27a–27f). Do
 - **The one inline style in this file (`style={{fontSize: 28}}` on the amount) must stay exactly once**: it is one
   of the 143 lint warnings, and the gate is exact.
 - With no account (a deep link) nothing is claimed: "Transaction", no amount, the fee payer.
+- **Hide balances** (owner decision Q2): four places hold a figure — the hero, today's value, the balance
+  changes, the network fee. Each reads "••••" (a change keeps its role: "•••• · gas grant"). The eyebrow word,
+  the status, the addresses, the hash and the block stay. A hero that would not be shown anyway (no primary) is
+  not replaced by a mask (test D22, with the same transaction unhidden as its control).
+- Opened from #26, the history session of that account exists, and its token accounts are handed to the
+  classifier (`peekHistorySession(…)?.tokenAccountSources`): an owner-less entry of one of them makes the row
+  incomplete here exactly as on #26 (test D21; plan review r1 m6). Opened from #21 or a deep link there is no
+  session and the set is empty (spec §4.6, r3 m-f).
+- The read behind `useParsedTx` has Task 4's 20 s limit: a request that gets no answer becomes the "Couldn't load
+  this transaction" state and is asked for again 4 s later.
 
 - [ ] **Step 1: Write the failing tests.** Create `src/hooks/__tests__/useParsedTx.test.tsx`:
 
@@ -5972,6 +6990,8 @@ import {join} from 'path';
 import {TransactionDetailScreen} from '../TransactionDetailScreen';
 import {classifyActivity} from '../../../modules/solana/activity';
 import {heroAmount} from '../../../modules/solana/activityView';
+import {dropHistorySessions, historySession} from '../../../modules/solana/historySession';
+import {NETWORK} from '../../../constants/programs';
 import type {ActivityContext} from '../../../modules/solana/activity';
 import type {RawParsedTx} from '../../../modules/solana/txDetail';
 
@@ -5979,6 +6999,12 @@ import type {RawParsedTx} from '../../../modules/solana/txDetail';
 
 const mockParsed: {raw: RawParsedTx | undefined; isLoading: boolean; notFound: boolean} = {raw: undefined, isLoading: false, notFound: false};
 jest.mock('../../../hooks/useParsedTx', () => ({useParsedTx: jest.fn(() => mockParsed)}));
+
+// owner, Q2: the dashboard's hide-balances setting, controlled here (the store's one field this screen reads)
+const mockHide = {current: false};
+jest.mock('../../../store/zustand/publicSettingsStore', () => ({
+  usePublicSettingsStore: (sel: (s: {hideBalances: boolean}) => unknown) => sel({hideBalances: mockHide.current}),
+}));
 
 const mockPrices: {current: Record<string, {usd: number; change24h: null}>} = {current: {}};
 jest.mock('../../../hooks/useResolvedPrices', () => ({useResolvedPrices: () => ({prices: mockPrices.current, havePrices: true})}));
@@ -6058,6 +7084,7 @@ beforeEach(() => {
   mockParsed.isLoading = false;
   mockParsed.notFound = false;
   mockPrices.current = {};
+  mockHide.current = false;
 });
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -6218,6 +7245,33 @@ describe('the hero is the row (§4.6)', () => {
     expect(r.getByTestId('tx-detail-amount')).toHaveTextContent('0.00151384 SOL');
     expect(changes(r)).toEqual(['−0.00151384 SOL · account rent']);
   });
+
+  // D21 (plan review r1 m6; spec §4.6, r3 m-f) — DERIVED from pXiTRFpg… as the classifier's test A37 is: a second,
+  // owner-less token entry is added at account key 4
+  it("opened from #26, the history session's token accounts reach the classifier: an incomplete row is not shown as account setup", async () => {
+    const OWNER = 'BUpWiWy8Tqed4jy86dr7ZpoaE747DpQsrGnwmtpMwfBr';
+    const KEY_4 = '6rRptDJnoTGfZzCpFqERAkNt6kCjXzTJcdwtCPYppump';
+    const derived = (): RawParsedTx => {
+      const tx = load('tx-ata-own-pXiTRFpg.json');
+      tx.meta!.postTokenBalances!.push({accountIndex: 4, mint: 'M', uiTokenAmount: {amount: '1', decimals: 6}});
+      return tx;
+    };
+    dropHistorySessions();
+    // control — no session (the detail opened from #21): the entry is not known to be this account's
+    const without = screen(derived(), OWNER);
+    expect(without.getByTestId('tx-detail-amount')).toHaveTextContent('0.00151384 SOL');
+    without.unmount();
+    // #26 was open for this account, and its session reads KEY_4 as one of the account's token accounts
+    const session = historySession(NETWORK, OWNER, {
+      listSources: async () => ({sources: [OWNER, KEY_4], tokenAccountsTotal: 1}),
+      fetchSignatures: async () => [],
+    });
+    await session.loadNextPage();
+    const r = screen(derived(), OWNER);
+    expect(r.getByTestId('tx-detail-direction')).toHaveTextContent('Transaction');
+    expect(r.queryByTestId('tx-detail-amount')).toBeNull(); // unattributed: no figure is claimed
+    dropHistorySessions();
+  });
 });
 
 describe('From / To only when the transfer agrees with the row (§4.6, r2 N7)', () => {
@@ -6271,6 +7325,36 @@ describe('From / To only when the transfer agrees with the row (§4.6, r2 N7)', 
     expect(r.queryByText('From')).toBeNull();
     expect(r.queryByText('Authorized by')).toBeNull();
     expect(changes(r)).toEqual(['+0.0002 TEST']);
+  });
+});
+
+describe('hide balances (owner, Q2)', () => {
+  // D22
+  it('every figure reads "••••": the hero, today\'s value, each balance change, the fee — words and addresses stay', () => {
+    mockPrices.current = {native: {usd: 150, change24h: null}};
+    mockHide.current = true;
+    const hidden = screen('tx-sol-to-empty-2bGSoVSG.json', MAIN); // main sent 0.001 SOL
+    expect(hidden.getByTestId('tx-detail-direction')).toHaveTextContent('Sent');
+    expect(hidden.getByTestId('tx-detail-amount')).toHaveTextContent('••••');
+    expect(hidden.getByTestId('tx-detail-usd')).toHaveTextContent('••••');
+    expect(hidden.queryByText(/SOL|\$/)).toBeNull(); // no figure anywhere: not the hero, not the value, not the fee
+    expect(hidden.getByText('Network fee')).toBeTruthy();
+    expect(hidden.getByText('From')).toBeTruthy();
+    expect(hidden.getAllByText('Confirmed').length).toBeGreaterThanOrEqual(1);
+    hidden.unmount();
+    const changesHidden = screen('tx-unshield-relayed-54J9kjQ8.json', ACC_3);
+    expect(changesHidden.getByTestId('tx-detail-direction')).toHaveTextContent('Made public');
+    expect(changes(changesHidden)).toEqual(['••••', '•••• · gas grant']);
+    changesHidden.unmount();
+    // a row with no amount has no line to mask
+    const none = screen('tx-test-to-main.json', OUTSIDE);
+    expect(none.queryByTestId('tx-detail-amount')).toBeNull();
+    none.unmount();
+    mockHide.current = false; // control: the same transaction, shown
+    const shown = screen('tx-sol-to-empty-2bGSoVSG.json', MAIN);
+    expect(shown.getByTestId('tx-detail-amount')).toHaveTextContent('0.001 SOL');
+    expect(shown.getByTestId('tx-detail-usd')).toHaveTextContent("≈ $0.15 at today's price");
+    expect(shown.getAllByText(/ SOL$/).length).toBeGreaterThanOrEqual(2); // the hero and the fee
   });
 });
 
@@ -6385,7 +7469,8 @@ import {peekHistorySession} from '../../modules/solana/historySession';
 import {activityWord, changeLine, heroAmount, partiesAgree, primaryUsdToday} from '../../modules/solana/activityView';
 import {priceKeyFor} from '../../modules/prices/portfolio';
 import {trustedSymbol} from '../../modules/tokens/trustedSymbol';
-import {TX_FEE_PAYER, TX_AUTHORIZED_BY, TX_BALANCE_CHANGES, txAtTodaysPrice} from '../../copy/transactions';
+import {TX_FEE_PAYER, TX_AUTHORIZED_BY, TX_BALANCE_CHANGES, TX_HIDDEN, txAtTodaysPrice} from '../../copy/transactions';
+import {usePublicSettingsStore} from '../../store/zustand/publicSettingsStore';
 import {BELOW_ONE_CENT} from '../../copy/accounts';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -6468,7 +7553,11 @@ export function TransactionDetailScreen({signature, account, onBack}: Props) {
   }, [raw, account]);
   const transfer = tx?.transfer ?? null;
   const directionWord = activityWord(row);
-  const hero = heroAmount(row);
+  // owner, Q2: the dashboard's hide-balances setting (the one source — `publicSettingsStore`) also covers every
+  // figure here: the hero, today's value, the balance changes and the fee. Words, addresses and the hash stay.
+  const hidden = usePublicSettingsStore(s => s.hideBalances);
+  const shownHero = heroAmount(row);
+  const hero = shownHero !== null && hidden ? TX_HIDDEN : shownHero;
   // From / To only when the transfer the parser read IS the row (§4.6); then both wallets are known
   const parties = transfer !== null && transfer.from !== null && partiesAgree(transfer, row, account) ? {...transfer, from: transfer.from} : null;
   const {prices} = useResolvedPrices();
@@ -6568,7 +7657,7 @@ export function TransactionDetailScreen({signature, account, onBack}: Props) {
             {/* H7: only today's price is known — the line says so, and is absent with no price */}
             {usdToday !== null ? (
               <Text variant="body-sm" numeral className="text-fg-secondary mt-1" testID="tx-detail-usd">
-                {txAtTodaysPrice(usdToday < 0.005 ? BELOW_ONE_CENT : formatUsdString(usdToday))}
+                {hidden ? TX_HIDDEN : txAtTodaysPrice(usdToday < 0.005 ? BELOW_ONE_CENT : formatUsdString(usdToday))}
               </Text>
             ) : null}
 
@@ -6635,7 +7724,7 @@ export function TransactionDetailScreen({signature, account, onBack}: Props) {
                       <View className="items-end" testID="tx-detail-changes">
                         {row.deltas.map((d, k) => (
                           <Text key={`${d.role}-${d.mint}-${k}`} variant="body-sm" numeral className="text-fg-primary text-right" testID={`tx-detail-change-${k}`}>
-                            {changeLine(d)}
+                            {changeLine(d, hidden)}
                           </Text>
                         ))}
                       </View>
@@ -6653,7 +7742,7 @@ export function TransactionDetailScreen({signature, account, onBack}: Props) {
             <DetailRow label="Block" value={String(tx.slot)} />
             <DetailRow
               label="Network fee"
-              value={`${formatTokenAmount(tx.feeLamports, 9)} SOL`}
+              value={hidden ? TX_HIDDEN : `${formatTokenAmount(tx.feeLamports, 9)} SOL`}
             />
             {tx.memo ? (
               <DetailRow label="Memo" value={tx.memo} />
@@ -6740,7 +7829,7 @@ export function useTransactionDetail(signature: string | null) {
 ```
 
 - [ ] **Step 6: Run them.** The Step 2 command. Expected: PASS
-      (4 + 20 tests). Then
+      (4 + 22 tests). Then
       `grep -rn "useTransactionDetail\|useSolanaQueries'" src --include=*.tsx --include=*.ts | grep -v "useBalance\|useTokenAccounts"`
       — expected: no line names `useTransactionDetail`.
 
@@ -6809,7 +7898,7 @@ Spec: §6.1 (the module), §6.2 (the rule, H4), §6.3 (sources, cursor, paging, 
  */
 import {readFileSync} from 'fs';
 import {join} from 'path';
-import {LINK_SCAN_CAP, scanExitForLinks, transactionLinks} from '../linkScan';
+import {LINK_SCAN_CAP, LINK_SCAN_PAGE, scanExitForLinks, transactionLinks} from '../linkScan';
 import type {LinkScanDeps} from '../linkScan';
 import type {RawParsedTx} from '../../solana/txDetail';
 import type {SignatureItem} from '../../solana/historySession';
@@ -7007,12 +8096,16 @@ describe('scanExitForLinks (§6.3)', () => {
     world.linking.add('s350'); // beyond the cap: not found (spec §9)
     expect(await scan(deps)).toBe('clean');
     expect(world.readCount).toBe(LINK_SCAN_CAP);
+    // the cap also ends the PAGING: 15 signature pages of 20, not the source's whole list (21 fetches)
+    expect(world.fetched).toHaveLength(LINK_SCAN_CAP / LINK_SCAN_PAGE);
     expect(world.cursors[`${ACC_2}/${ACC_2}`]).toBe('s1');
     // a LATER scan with more than 300 new signatures above the cursor is capped the same way
     world.sources[ACC_2] = [...run('n', 320), ...world.sources[ACC_2]!];
     world.readCount = 0;
+    world.fetched.length = 0;
     expect(await scan(deps)).toBe('clean');
     expect(world.readCount).toBe(LINK_SCAN_CAP);
+    expect(world.fetched).toHaveLength(LINK_SCAN_CAP / LINK_SCAN_PAGE);
     expect(world.cursors[`${ACC_2}/${ACC_2}`]).toBe('n1');
   });
 
@@ -7192,11 +8285,13 @@ export async function scanExitForLinks(exit: string, seedWallets: ReadonlySet<st
 
 - [ ] **Step 4: Run it.** The Step 2 command. Expected: PASS (18 tests).
 
-- [ ] **Step 5: Prove two tests are tests (mutation, by hand).** Make each change in `linkScan.ts`, run the Step 2
+- [ ] **Step 5: Prove three tests are tests (mutation, by hand).** Make each change in `linkScan.ts`, run the Step 2
       command, see a test FAIL, undo:
   - in `transactionLinks`, delete the loop that adds the token-balance owners to `present` (L1 and L5 must fail:
     main is not an account key);
-  - `fresh.find(x => x.finalized)` → `fresh[0]` (L11 must fail: a confirmed-only signature becomes the cursor).
+  - `fresh.find(x => x.finalized)` → `fresh[0]` (L11 must fail: a confirmed-only signature becomes the cursor);
+  - in the loop's last `if`, delete `|| read >= LINK_SCAN_CAP` (L15 must fail: 21 signature pages are fetched, not
+    15 — without the cap the scan pages a source's whole list; plan review r1 m4).
 
 - [ ] **Step 6: Gates.**
       `npx tsc --noEmit && npm run lint:ci && npx jest && node scripts/check-no-tge-date.mjs`, then
@@ -7226,8 +8321,9 @@ Spec: §6.1 (who is scanned, `seedWallets`), §6.3 (the cursor's storage), §6.4
 **Interfaces:**
 - Consumes (Task 9): `scanExitForLinks(exit, seedWallets, deps)`, `LinkScanResult`, `LinkScanDeps` from `./linkScan`.
 - Consumes (Task 4): `getSignaturePage(connection, cluster, source, before, limit)`,
-  `readParsedTransactions(connection, client, cluster, signatures)` from `src/modules/solana/historyReads`;
-  `getTokenAccounts`, `getToken2022Accounts` from `src/modules/solana/queries`.
+  `readParsedTransactions(connection, client, cluster, signatures)`,
+  `readOwnedTokenAccounts(connection, cluster, owner)` (classic AND Token-2022) from
+  `src/modules/solana/historyReads` — each with the 20 s limit of Task 4.
 - Consumes (Task 6): the app's `queryClient` from `src/app/queryClient` (the shared `parsedTx` cache).
 - Consumes (existing): `mmkvSecure()`, `onSecureMmkvReset(hook)` (`src/store/mmkv/instances`);
   `markA0AccountsLinked(addresses: readonly string[], options?: {bound?: MMKV | null}): number` — tags `fresh-exit`
@@ -7243,6 +8339,8 @@ Spec: §6.1 (who is scanned, `seedWallets`), §6.3 (the cursor's storage), §6.4
   - `export function readLinkScanCursor(store: MMKV, exit: string, source: string): string | undefined`,
     `writeLinkScanCursor(store: MMKV, exit: string, source: string, signature: string): void`
   - `export async function linkScanSources(connection: Connection, exit: string): Promise<string[]>`
+  - `export function linkScanDepsFor(store: MMKV, connection: Connection, client: QueryClient, live: () => boolean): LinkScanDeps`
+    — the chain reads and the two guarded writes of one wallet's scans
   - `export function scanLinksForWallet(mainAddress: string | null, client: QueryClient): Promise<number>` (never rejects)
 
 **Why:**
@@ -7254,7 +8352,15 @@ Spec: §6.1 (who is scanned, `seedWallets`), §6.3 (the cursor's storage), §6.4
   in-memory state: the generation, the in-flight scan, the interval. Ruling 9.)
 - A scan can outlive its wallet (wipe + import in one process). Its tag and cursor writes are dropped twice over:
   the generation the scan captured no longer matches, and the encrypted instance it captured is no longer the
-  open one (`markA0AccountsLinked` would also refuse a `bound` that is not the open store).
+  open one (`markA0AccountsLinked` would also refuse a `bound` that is not the open store). **The cursor has no
+  such second refusal**: `writeLinkScanCursor` writes through the handle it is given, and a stale handle still
+  reaches the same file — so without the guard the old wallet's account addresses would land in the store the
+  next wallet opens (plan review r1 I2). Test N13 holds a CLEAN scan at its transaction read, wipes, opens
+  another store, releases, and reads the new store. Every replacement of the instance also bumps the generation,
+  so through `scanLinksForWallet` the guard's two halves always fail together; `linkScanDepsFor` takes `live` as
+  an argument so that test N14 can show each half alone refuses.
+- The open that has to UNLOCK the store (PR 1's r1 m7) finds it closed when the scan is first started, so that
+  scan reads nothing; the scan is started again when the unlock resolves (H5; plan review r1 m1).
 - Hook registration happens on first use, not at import — a screen test that stubs `instances` loads this module
   too (the pattern of `linkQueue.ts`).
 - `DashboardScreen` already reads `publicKey` from `useWalletStore()` — that is the MAIN account whichever account
@@ -7277,6 +8383,7 @@ import {storeTransparentScheme} from '../../keyDerivation/derivationScheme';
 import {loadA0AccountRegistry} from '../../shielded/a0/accountRegistry';
 import {
   LINK_SCAN_MIN_INTERVAL_MS,
+  linkScanDepsFor,
   readLinkScanCursor,
   runLinkScans,
   scanLinksForWallet,
@@ -7545,11 +8652,72 @@ describe('scanLinksForWallet', () => {
     expect(exitEntry().linked).toBeUndefined();
     client.clear();
   });
+
+  /** a CLEAN scan of the dev exit, held open at its transaction read; resolves once the read was asked for */
+  async function heldCleanScan(client: QueryClient): Promise<{scan: Promise<number>; release: () => void}> {
+    devRegistry();
+    mockChain.signatures = {[DEV_EXIT]: [finalized('5i53')]};
+    mockChain.transactions = {'5i53': fixture('tx-test-to-outside.json')};
+    let release: () => void = () => undefined;
+    const asked = new Promise<void>(reached => {
+      mockConnection.getParsedTransactions.mockImplementationOnce(async (signatures: string[]) => {
+        reached();
+        await new Promise<void>(r => {
+          release = r;
+        });
+        return signatures.map(s => mockChain.transactions[s] ?? null);
+      });
+    });
+    const scan = scanLinksForWallet(DEV_MAIN, client);
+    await asked;
+    return {scan, release: () => release()};
+  }
+
+  // N13 (plan review r1 I2): the CURSOR write after a wipe — N12's wipe case writes a tag, never a cursor
+  it('a wipe while a clean scan is reading: its cursor is not written into the store the next wallet opens', async () => {
+    const client = new QueryClient();
+    // control: the same held scan, with no wipe, does write the cursor
+    const control = await heldCleanScan(client);
+    control.release();
+    expect(await control.scan).toBe(0);
+    expect(readLinkScanCursor(mmkvSecure()!, DEV_EXIT, DEV_EXIT)).toBe('5i53');
+
+    clearAllStores();
+    initSecureMmkv('test-key');
+    storeTransparentScheme({kind: 'slip10', account: 0});
+    client.clear(); // the transaction is asked for again, so the scan can be held at it
+    const held = await heldCleanScan(client);
+    clearAllStores(); // the wallet is gone …
+    initSecureMmkv('the-next-wallet'); // … and another one is open
+    held.release();
+    expect(await held.scan).toBe(0);
+    // the old wallet's account addresses must not be in the new wallet's store
+    expect(mmkvSecure()!.getString('v1_linkScanCursors')).toBeUndefined();
+    client.clear();
+  });
+
+  // N14 (plan review r1 I2): the second half of the guard. Every replacement of the instance also bumps the
+  // generation, so through scanLinksForWallet the two halves always fail together; here `live` is handed in.
+  it('the write guard needs BOTH: a live generation and the same encrypted instance', () => {
+    const captured = mmkvSecure()!;
+    const deps = (live: boolean) => linkScanDepsFor(captured, mockConnection as never, {} as never, () => live);
+    deps(true).setCursor(DEV_EXIT, 'src', 'sigA');
+    expect(readLinkScanCursor(mmkvSecure()!, DEV_EXIT, 'src')).toBe('sigA'); // control: live and the same instance
+    deps(false).setCursor(DEV_EXIT, 'src', 'sigB');
+    expect(readLinkScanCursor(mmkvSecure()!, DEV_EXIT, 'src')).toBe('sigA'); // an older generation writes nothing
+    clearAllStores();
+    initSecureMmkv('the-next-wallet');
+    devRegistry();
+    deps(true).setCursor(DEV_EXIT, 'src', 'sigC'); // `live` alone is not enough: the instance is another one
+    expect(mmkvSecure()!.getString('v1_linkScanCursors')).toBeUndefined();
+    deps(true).markLinked(DEV_EXIT);
+    expect(exitEntry().linked).toBeUndefined();
+  });
 });
 ```
 
       In `src/screens/dashboard/__tests__/DashboardScreen.test.tsx`, two insertions (a mock beside the link
-      queue's, and two tests beside the link queue's):
+      queue's, and three tests beside the link queue's):
 
 **Edit 1 of 2 — `src/screens/dashboard/__tests__/DashboardScreen.test.tsx`. Find:**
 
@@ -7599,6 +8767,33 @@ jest.mock('../../../modules/accounts/linkScanRunner', () => ({scanLinksForWallet
     expect(mockScanLinks.mock.calls[0]![0]).toBe('AbCdEfAbCdEf'); // walletStore.publicKey: the MAIN account, whichever is selected
     expect(mockDrain.mock.invocationCallOrder[0]!).toBeLessThan(mockScanLinks.mock.invocationCallOrder[0]!);
     expect(r.getByTestId('mock-accounts-sheet')).toBeTruthy();
+  });
+
+  it('history spec H5: an open that has to unlock the encrypted store starts the scan again once it is open', async () => {
+    mockListUnreadable.current = true; // the registry cannot be read: the store is closed (mockSecure.current === null)
+    const r = await renderDashboard();
+    mockScanLinks.mockClear();
+    mockRefreshAccounts.mockClear();
+    let opened: () => void = () => undefined;
+    mockUnlock.mockImplementationOnce(() => new Promise<void>(resolve => { opened = resolve; }));
+    await act(async () => {
+      fireEvent.press(r.getByTestId('dashboard-avatar'));
+    });
+    expect(mockScanLinks).toHaveBeenCalledTimes(1); // at the open: with the store closed this one reads nothing
+    await act(async () => {
+      opened();
+    });
+    expect(mockScanLinks).toHaveBeenCalledTimes(2); // after the unlock
+    expect(mockScanLinks.mock.calls[1]![0]).toBe('AbCdEfAbCdEf');
+    expect(mockRefreshAccounts.mock.invocationCallOrder[1]!).toBeLessThan(mockScanLinks.mock.invocationCallOrder[1]!);
+    // control: a readable list unlocks nothing and scans once
+    mockListUnreadable.current = false;
+    mockScanLinks.mockClear();
+    const r2 = await renderDashboard();
+    await act(async () => {
+      fireEvent.press(r2.getByTestId('dashboard-avatar'));
+    });
+    expect(mockScanLinks).toHaveBeenCalledTimes(1);
   });
 
   it('history spec §6.4: a scan that rejects is silent', async () => {
@@ -7661,7 +8856,6 @@ jest.mock('../../../modules/accounts/linkScanRunner', () => ({scanLinksForWallet
  * a list of one's own accounts and their token accounts is itself a link. A wipe removes them with
  * the store.
  */
-import {PublicKey} from '@solana/web3.js';
 import type {Connection} from '@solana/web3.js';
 import type {QueryClient} from '@tanstack/react-query';
 import type {MMKV} from 'react-native-mmkv';
@@ -7669,13 +8863,12 @@ import {mmkvSecure, onSecureMmkvReset} from '../../store/mmkv/instances';
 import {MMKV_KEYS} from '../../constants/mmkvKeys';
 import {NETWORK} from '../../constants/programs';
 import {getConnection} from '../solana/connection';
-import {getToken2022Accounts, getTokenAccounts} from '../solana/queries';
-import {getSignaturePage, readParsedTransactions} from '../solana/historyReads';
+import {getSignaturePage, readOwnedTokenAccounts, readParsedTransactions} from '../solana/historyReads';
 import {markA0AccountsLinked} from '../shielded/a0/accountRegistry';
 import type {AccountList} from './accountList';
 import {readAccountList, refreshAccounts} from './selectedAccount';
 import {scanExitForLinks} from './linkScan';
-import type {LinkScanResult} from './linkScan';
+import type {LinkScanDeps, LinkScanResult} from './linkScan';
 
 export const LINK_SCAN_MIN_INTERVAL_MS = 60_000;
 const KEY = MMKV_KEYS.LINK_SCAN_CURSORS;
@@ -7794,9 +8987,34 @@ export function writeLinkScanCursor(store: MMKV, exit: string, source: string, s
 
 /** §6.3: the exit wallet and EVERY token account it owns, classic and Token-2022 (no bound: the cap is per source). */
 export async function linkScanSources(connection: Connection, exit: string): Promise<string[]> {
-  const owner = new PublicKey(exit);
-  const [classic, token2022] = await Promise.all([getTokenAccounts(connection, owner), getToken2022Accounts(connection, owner)]);
-  return [...new Set([exit, ...classic.map(a => a.address), ...token2022.map(a => a.address)])];
+  const owned = await readOwnedTokenAccounts(connection, NETWORK, exit);
+  return [...new Set([exit, ...owned.map(a => a.address)])];
+}
+
+/**
+ * The chain reads and the two writes of ONE wallet's scans. `store` is the encrypted instance the
+ * scan started with. A write belongs to the wallet the scan started for, so it needs BOTH: the same
+ * generation (`live()`) AND `store` still being the open instance — a cursor written through a stale
+ * handle would put the old wallet's account addresses into the store the next wallet opens.
+ */
+export function linkScanDepsFor(store: MMKV, connection: Connection, client: QueryClient, live: () => boolean): LinkScanDeps {
+  const mayWrite = (): boolean => live() && mmkvSecure() === store;
+  return {
+    listSources: e => linkScanSources(connection, e),
+    fetchSignatures: (source, before, limit) => getSignaturePage(connection, NETWORK, source, before, limit),
+    readTransactions: signatures => readParsedTransactions(connection, client, NETWORK, signatures),
+    getCursor: (e, source) => readLinkScanCursor(store, e, source),
+    setCursor: (e, source, signature) => {
+      if (mayWrite()) {
+        writeLinkScanCursor(store, e, source, signature);
+      }
+    },
+    markLinked: e => {
+      if (mayWrite()) {
+        markA0AccountsLinked([e], {bound: store});
+      }
+    },
+  };
 }
 
 /**
@@ -7810,31 +9028,13 @@ export function scanLinksForWallet(mainAddress: string | null, client: QueryClie
     return Promise.resolve(0);
   }
   const connection = getConnection();
-  // a write belongs to the wallet the scan started for: same generation AND the same encrypted instance
-  const mayWrite = (live: () => boolean): boolean => live() && mmkvSecure() === store;
   return runLinkScans({
     accounts: () => readAccountList(mainAddress),
     now: () => Date.now(),
     onLinked: () => {
       refreshAccounts(mainAddress);
     },
-    scanExit: (exit, seedWallets, live) =>
-      scanExitForLinks(exit, seedWallets, {
-        listSources: e => linkScanSources(connection, e),
-        fetchSignatures: (source, before, limit) => getSignaturePage(connection, NETWORK, source, before, limit),
-        readTransactions: signatures => readParsedTransactions(connection, client, NETWORK, signatures),
-        getCursor: (e, source) => readLinkScanCursor(store, e, source),
-        setCursor: (e, source, signature) => {
-          if (mayWrite(live)) {
-            writeLinkScanCursor(store, e, source, signature);
-          }
-        },
-        markLinked: e => {
-          if (mayWrite(live)) {
-            markA0AccountsLinked([e], {bound: store});
-          }
-        },
-      }),
+    scanExit: (exit, seedWallets, live) => scanExitForLinks(exit, seedWallets, linkScanDepsFor(store, connection, client, live)),
   });
 }
 ```
@@ -7888,7 +9088,11 @@ import {formatBalanceForDisplay} from '../../utils/parseTokenAmount';
     // review r1 m7: unreadable because the encrypted store is closed -> open it (biometric), then re-read
     if (accountList?.unreadable && mmkvSecure() === null) {
       unlockSecureStorage()
-        .then(() => refreshAccountList())
+        .then(() => {
+          refreshAccountList();
+          // H5: the scan above found the store closed and read nothing — the open that unlocked it scans too
+          scanLinksForWallet(publicKey, queryClient).catch(() => undefined);
+        })
         .catch(() => undefined);
     }
   }, [refreshAccountList, accountList, publicKey]);
@@ -7897,16 +9101,24 @@ import {formatBalanceForDisplay} from '../../utils/parseTokenAmount';
 ```
 
 - [ ] **Step 6: Run them.** The Step 2 command. Expected: PASS
-      (13 runner tests; the dashboard file's 93 existing tests and the 2 new ones). Then the queue this sits
+      (15 runner tests; the dashboard file's 93 existing tests and the 3 new ones). Then the queue this sits
       beside, and the registry: `npx jest src/modules/accounts src/modules/shielded/a0/__tests__/accountRegistry.test.ts --forceExit`
       Expected: PASS, unchanged.
 
-- [ ] **Step 7: Gates.**
+- [ ] **Step 7: Prove the guard's tests are tests (mutation, by hand).** In `linkScanRunner.ts`, in
+      `linkScanDepsFor`, change `live() && mmkvSecure() === store` and run
+      `npx jest src/modules/accounts/__tests__/linkScanRunner.test.ts --forceExit`; undo after each:
+  - → `true`: N13 and N14 must FAIL (the cursor `{[exit]: {[exit]: '5i53'}}` is in the next wallet's store);
+  - → `live()`: N14 must FAIL (N13 passes: a wipe bumps the generation too — that is why N14 exists).
+      And in `DashboardScreen.tsx`, delete the `scanLinksForWallet(…)` line inside the `.then(…)`: the "H5" dashboard
+      test must FAIL (1 call, not 2). `git diff` must be empty against Steps 4 and 5 afterwards.
+
+- [ ] **Step 8: Gates.**
       `npx tsc --noEmit && npm run lint:ci && npx jest && node scripts/check-no-tge-date.mjs`, then
       `/usr/bin/node node_modules/.bin/jest src/modules/accounts src/screens/dashboard --forceExit`.
       `lint:ci`: exactly `✖ 143 problems (0 errors, 143 warnings)` (the dashboard's one inline style stays).
 
-- [ ] **Step 8: Commit.**
+- [ ] **Step 9: Commit.**
 
 ```bash
 git add src/constants/mmkvKeys.ts src/modules/accounts/linkScanRunner.ts src/screens/dashboard/DashboardScreen.tsx \
@@ -8429,9 +9641,9 @@ git diff --stat main -- src/copy/__tests__ src/screens/shielded/__tests__/privac
 ```
 
       Expected: `✖ 143 problems (0 errors, 143 warnings)`; both jest runs green (the plan's dry run:
-      3530 tests in 230 suites passing on each, 1 skipped — the live ZK-manifest suite); the last command prints
-      nothing — no guard was edited. Read the output, not the exit code
-      alone: a jest run that reports fewer suites than the previous task's did has skipped something.
+      3557 tests in 230 suites passing on each; 1 skipped — the live ZK-manifest suite, as before this plan);
+      the last command prints nothing — no guard was edited. Read the output, not the exit code alone: a jest run
+      that reports fewer suites than the previous task's did has skipped something.
 
 - [ ] **Step 2: Review.** The whole-branch review goes to Fable (the owner's rule for every review), with the spec,
       this plan, and the "Rulings" and "Findings" sections below named explicitly. Fix what it finds before the
@@ -8441,10 +9653,10 @@ git diff --stat main -- src/copy/__tests__ src/screens/shielded/__tests__/privac
       Build and sideload as the project memory note "Android Transparent v1" describes. Then, line by line — each is seen
       on the screen, not assumed:
   1. Dashboard → History (main selected). The skeleton shows, then rows. Not every row reads "Transaction —": if
-     all of them do, the provider refuses the reads — stop, this is Task 1 Step 5's case.
+     all of them do, the provider refuses the reads — stop, this is Task 1 Step 6's case.
   2. The rows of main, newest first, include: "Received TEST · from Account 4" (`2XgjNKS8…`), "Received TEST ·
-     from Account 2" (`QAgzVzY6…`), "Made private TEST" with the Private badge (`3d31ATap…`, "−0.0001"),
-     "Made public TEST" with the badge (`3tPxm8Ph…`), "Transaction · No funds moved" (`63fU5RvD…`), and
+     from Account 2" (`QAgzVzY6…`), "Made private TEST" with the shield badge and NO word in it (`3d31ATap…`,
+     "−0.0001"), "Made public TEST" with the same badge (`3tPxm8Ph…`), "Transaction · No funds moved" (`63fU5RvD…`), and
      "Sent SOL · to 2ixJm1…uYQMr9" (`2bGSoVSG…`, "−0.001"). No row shows a USD figure.
   3. Chips: Private shows only the Made private / Made public rows; Sent shows only "Sent SOL"; Swaps reads
      "No Swaps transactions in the last {n}" with "Load older", and at the end of history "No Swaps transactions
@@ -8464,6 +9676,20 @@ git diff --stat main -- src/copy/__tests__ src/screens/shielded/__tests__/privac
      pull-to-refresh on the dashboard — Available "—", "Not updated · tap to retry", MAX dimmed, Buy off, no
      "Insufficient" line. If no mainnet build is at hand, say so in the report: the six tests of Task 11 are then
      the only evidence.
+  10. **The device's own clock** (jest runs on Node's `Intl`; Hermes' `Intl` with an IANA zone, `formatToParts`
+      and `hourCycle` is device-only): the row of the Send made in line 5 sits under "Today" and shows the time
+      the phone's clock showed when it was sent — the same hour and minute, 24-hour, e.g. "14:07". Not UTC, not
+      "2:07 PM", not another day.
+  11. **A partial row heals:** right after the Send of line 5 lands, open History at once. If the new row first
+      reads "Transaction" with "—" (the node has the signature but not yet the transaction), pull to refresh: it
+      becomes "Sent TEST" with its amount, in the same place, once. If it was a real row from the start, say so
+      in the report — the case was then not seen on the device, and tests H2 and H11 are its only evidence.
+  12. **Hide balances** (owner decision Q2): on the dashboard close the eye. History: every amount reads "••••",
+      and so does the line under a swap's or a failed row's amount; titles ("Sent TEST"), counter-parties, times
+      and sections are unchanged; "No funds moved" and "—" stay. Open "Made private TEST": the hero, the
+      balance-change figures ("•••• · account rent") and "Network fee" read "••••"; "MADE PRIVATE", the status,
+      the hash and the fee payer's address stay. Open the eye again: every figure is back, on both screens,
+      without a reload.
 
       A line that fails is a bug to fix (with its test first) before the PR, not a note.
 
@@ -8489,9 +9715,17 @@ test -n "$suffix" && cp -n index.html "index.html.bak-$suffix" && cp -n screen.m
       accounts"; raw transactions cached for the session);
     - remove the USD figures under the row amounts (H7);
     - counter-parties as first 6 … last 6, or the account's label ("from Account 2");
-    - the fifth chip and the row badge read **"Private"** — the "Shielded" chip, the "Shielded" badge on
-      "Sent SOL" / "Received SOL", and the "deposit" secondary line become "Made private TEST" / "Made public
-      TEST" rows with the Private badge;
+    - the fifth chip reads **"Private"**; **the row badge is the shield icon alone, with no word** (owner
+      decision Q1) — the "Shielded" chip, the "Shielded" badge on "Sent SOL" / "Received SOL", and the "deposit"
+      secondary line become "Made private TEST" / "Made public TEST" rows with the icon-only badge; `screen.md`
+      says why (both transactions are public on chain: the badge marks a pool row and claims nothing) and gives
+      its screen-reader label, "Pool transaction"; the pool rows' icon and the badge glyph stay the design's
+      `#i-shield-lock` — the app draws lucide's plain shield there, which `screen.md` should say;
+    - one new state, **hide balances** (owner decision Q2): the same list with every amount, and the line under
+      it, as "••••"; `screen.md`: which parts are hidden (figures) and which stay (title, counter-party, date,
+      status), and that the setting is the dashboard's eye;
+    - the line "History from 24 of {m} token accounts": under the rows of a wallet with more than 24 token
+      accounts, and under "No transactions yet" and an empty chip's line of such a wallet;
     - add: "Wrapped SOL", "Transaction · Account setup", the partial row ("Transaction", "—"), the empty-chip
       line "No Swaps transactions in the last 40" with the "Load older" button, the sections "This month",
       "{Month YYYY}" and "Date unknown";
@@ -8509,6 +9743,8 @@ test -n "$suffix" && cp -n index.html "index.html.bak-$suffix" && cp -n screen.m
     - 27b ("shielded-send") becomes a Made private detail; 27d (failed-tx-with-reason) loses its reason line and
       reads "FAILED" with no amount;
     - a note at 27f: its second case (From "—") is not reachable — a null From shows the balance-changes form;
+    - one new state, **hide balances** (owner decision Q2): the hero, "≈ $x at today's price", the balance-change
+      figures ("•••• · account rent") and "Network fee" as "••••";
     - `screen.md`: replace the 2026-11-22 "Build status" paragraph (only the first transfer is read) with the
       agreement rule.
   - **#23 presale** (`screen.md` section `23 · presale`): one new state of `active` — Available "—", the note
@@ -8520,12 +9756,16 @@ test -n "$suffix" && cp -n index.html "index.html.bak-$suffix" && cp -n screen.m
 - [ ] **Step 6: Tell the owner (in Slovenian — the owner's rule for chat), per screen, what changed**, name the
       backup files of Step 4, and say explicitly what was **not** built or drawn (the table of Task 7, the table of
       Task 8). Then, in these words, the limits and the findings below ("Known limits", "Findings for the owner").
-      The three findings are questions for the owner, not decisions the plan made.
+      The findings are questions for the owner, not decisions the plan made. Say also how the three owner
+      decisions of 2026-11-26 were built (Q1 the icon-only badge, Q2 hide balances on #26 and #27, Q3 the
+      provider measurement and the devnet wrap — with the throwaway address and the signature, if one was made).
 
 - [ ] **Step 7: The PR.** `GODEBUG=netdns=cgo gh pr create` against `main` (the prefix if `gh` cannot resolve
       `api.github.com`). The description holds: what each screen now does; the Task 1 measurement, with the
-      sentence that it is the public endpoints'; the phone checkpoint's nine lines with their results; the
-      rulings; the known limits; the three findings. No TGE date anywhere in it.
+      sentence that it is the public endpoints', and the version count of Task 1 Step 5; the phone checkpoint's
+      twelve lines with their results; the rulings and the three owner decisions; the known limits; the
+      findings; the provider measurement (never its URL); that `getTransactionHistory` / `getTransactionDetail` in `queries.ts` are now dead code with
+      tests (ruling 18). No TGE date anywhere in it.
 
 ---
 
@@ -8534,49 +9774,52 @@ test -n "$suffix" && cp -n index.html "index.html.bak-$suffix" && cp -n screen.m
 | Spec item | Task |
 |---|---|
 | §1.1 #26 shows real rows under date sections, filtered by chips | 2 (the row), 5 (what it says), 7 (the screen) |
-| §1.2 a wrong row is worse than none; never "no transactions" without a full read | 2 (`incomplete`, `unknown`, null fields), 3 (S4, S5), 4 (H2, H6), 7 (T13–T16) |
+| §1.2 a wrong row is worse than none; never "no transactions" without a full read | 2 (`incomplete`, `unknown`, null fields), 3 (S4, S5, S5b), 4 (H2, H6), 7 (T13–T16, T18b, T18c) |
 | §1.3 every exit linked on chain carries the tag; never removed | 9, 10 |
 | §1.4 presale treats a stale or unknown main balance as Send / Swap do | 11 |
 | H1 chain through the app's RPC, parsed on the device | 3, 4 |
 | H2 the amount is the account's net change | 2 |
-| H3 "Made private" / "Made public", the badge, their chip, never Sent / Received | 2 (rule 2), 5 (V13, V21), 7 (T1, T6) |
+| H3 "Made private" / "Made public", the badge (an icon alone — owner decision Q1), their chip, never Sent / Received | 2 (rule 2), 5 (V13, V21), 7 (T1, T6) |
+| Owner decision Q2: hide balances covers every figure of #26 and #27 | 5 (V20b, V27), 7 (T1b), 8 (D22), 12 (checkpoint line 12) |
+| Owner decision Q3: the provider measurement; the devnet wrap | 1 (Steps 3b, 4, 6) |
 | H4 the linked rule (either direction, a failed tx counts, a relayed Make public does not, main never) | 9 (L1–L8), 10 (N1, N11) |
-| H5 the scan runs when the sheet opens, in the background; silent; never removed | 10 |
+| H5 the scan runs when the sheet opens, in the background; silent; never removed | 10 (incl. the open that unlocks the store) |
 | H6 presale's three wordings; MAX and Buy off | 11 |
 | H7 no USD on #26 rows; "≈ $x at today's price" on #27 only with a price | 5 (V28), 7 (T1), 8 (D18–D20) |
 | H8 row wording as drawn: asset in the title, signed amount without a symbol, the incoming leg with one, icons | 5 (V10–V18), 7 (T1) |
 | §3.1 sources: the wallet + every token account, classic and Token-2022 | 4 (R1, R3, R4, H1) |
-| §3.2 state per source; fetch rule; page building; dedupe; order; end of history | 3 (S1–S5) |
-| §3.2 the 25-source bound, the order of sources, the footer | 4 (R2), 3 (S13), 7 (T18) |
+| §3.2 state per source; fetch rule; page building; dedupe; order; end of history | 3 (S1–S5, S5b) |
+| §3.2 the 25-source bound, the order of sources, the footer | 4 (R2), 3 (S13), 7 (T18, T18b, T18c) |
 | §3.2 a session is dropped on an account switch, a network switch, `onSecureMmkvReset` | 6 (K4, the reset test); the cluster is part of every key (K1) — a build has one network |
-| §3.2 / §3.3 "Plan Task 1 measures" | 1 (Steps 4–5) |
+| §3.2 / §3.3 "Plan Task 1 measures" | 1 (Steps 4–6) |
 | §3.3 `['parsedTx', cluster, signature]`, never stale, 24 h; a null is not cached; cleared on reset | 4 (R7, R8, R10), 6 (the reset and `gcTime` tests) |
-| §3.3 the history key keeps the `['txHistory', address]` prefix; an invalidation drops the session; 60 s | 6 (K1, K7, the invalidation test) |
-| §3.3 the batch, and the fallback when it throws | 4 (R7, R9, R13, R14) |
-| §3.3 limiter keys: method + cluster + source + cursor; a hash of every signature | 4 (R6, R11) |
-| §3.4 a partial row; never dropped; re-tried | 4 (H2, H7), 5 (V17), 7 (T1) |
-| §3.4 pull-to-refresh: source list re-read, pages down to `newest`, merged on top, older pages stay | 3 (S6, S8, S10, S11, S12), 4 (H4), 7 (T19) |
+| §3.3 the history key keeps the `['txHistory', address]` prefix; an invalidation drops the session; 60 s | 6 (K1, K2b, K7, the invalidation test) |
+| §3.3 the batch, and the fallback when it throws | 4 (R7, R9, R13, R14, H9) |
+| §3.3 limiter keys: method + cluster + source + cursor; a hash of every signature; "any history read" | 4 (R6, R11, R15) |
+| (not in the spec) a time limit on every chain call, inside the limiter | 4 (R16–R20, H8, H11) — ruling 19 |
+| §3.4 a partial row; never dropped; re-tried | 4 (H2, H7, H9, H11), 5 (V17), 7 (T1) |
+| §3.4 pull-to-refresh: source list re-read, pages down to `newest`, `newest` moved, merged on top, older pages stay | 3 (S6, S6b, S6c, S8, S10, S11, S12), 4 (H4), 7 (T19) |
 | §3.4 the three restart conditions | 3 (S7, S9, S10) |
 | §3.4 rows keyed and deduped by signature; keys hold cluster and address | 3 (S1), 6 (K1, K4, K8), 4 (H5) |
 | §4.1 types; `status` handed in, `meta.err` overrides; amounts only from `uiTokenAmount.amount` | 2 (A33, A38, A40) |
 | §4.2 SOL: the fee is never part of a delta; `feePaidByAccount` | 2 (A1, A2, A24, A14b) |
 | §4.2 proven creations and closes, top-level and inner; `createIdempotent` only with 0 pre lamports | 2 (A7, A8, A22, A26b, A28, A29, A30) |
 | §4.2 rent amounts incl. wSOL; counted once; created-and-closed adds nothing | 2 (A23, A24, A25, A26, A28) |
-| §4.2 markup; grant; the rho marker | 2 (A9, A10, A11, A15, A16, A17) |
+| §4.2 markup; grant (only from the relayer); the rho marker | 2 (A9, A10, A11, A15, A16, A17, A17b) |
 | §4.2 tokens (Token and Token-2022 alike); unattributable entries → `incomplete` | 2 (A5, A8, A35–A37) |
 | §4.3 kinds, rule order, rule 2 only on the pool's cluster, `isOurA0Ix` not copied | 2 (A15–A34) |
 | §4.4 the order of deltas; `primary` / `secondary` per kind; `extraAssets` | 2 (A7, A9, A15, A17, A22, A25, A26) |
 | §4.5 counter-party: SOL and token rules, the exclusions; "Shown as" | 2 (A1–A14d), 5 (V22, V23) |
-| §4.6 #27: hero, eyebrow, agreement rule, balance changes, today's price, deep link, `ownTokenAccounts`, 27f | 5 (V24–V28), 8 (D4–D20) |
+| §4.6 #27: hero, eyebrow, agreement rule, balance changes, today's price, deep link, `ownTokenAccounts`, 27f | 5 (V24–V28), 8 (D4–D21; `ownTokenAccounts` reaching the classifier: D21, and H10 in Task 4) |
 | §5.1 rows; "+N more"; " · incomplete"; formatting; {time} | 5 (V8, V10–V20), 7 (T1, T2) |
-| §5.2 chips; the empty-chip line; "Load older"; the 3-page stop; "No {chip} transactions yet" at the end | 5 (V21), 7 (T6–T11) |
-| §5.3 `sectionOf` with `now` and an IANA zone; week and month boundaries; "Date unknown" | 5 (V1–V9), 7 (T4, T21) |
+| §5.2 chips; the empty-chip line; "Load older"; the 3-page stop; "No {chip} transactions yet" at the end | 5 (V21), 7 (T6–T11, T9b) |
+| §5.3 `sectionOf` with `now` and an IANA zone; week and month boundaries; "Date unknown" | 5 (V1–V9), 7 (T4, T21, T21b) |
 | §5.3 jest pins `TZ=UTC`; no test asserts raw `toLocaleString` | 5 (`timezone.test.ts`) |
 | §5.3 skeleton; the unchanged states; the loaded empty account | 7 (T12–T17, T5, T3) |
 | §6.1 `transactionLinks` (pure), `scanExitForLinks`; who is scanned; `seedWallets` | 9, 10 (N1) |
 | §6.2 the rule | 9 (L1–L8) |
-| §6.3 sources; the cursor (finalized, encrypted, by value); 20 at a time; the cap; a failed source; stop at a link; a null read | 9 (L9–L18), 10 (N7, N8) |
-| §6.4 sheet open → drain → scan; single-flight; 60 s; generation guard; a hit re-reads the list; silent | 10 (N2–N6, N11, N12, the two dashboard tests) |
+| §6.3 sources; the cursor (finalized, encrypted, by value); 20 at a time; the cap (reads AND paging: L15); a failed source; stop at a link; a null read | 9 (L9–L18), 10 (N7, N8) |
+| §6.4 sheet open → drain → scan; single-flight; 60 s; generation guard (tag AND cursor); a hit re-reads the list; silent | 10 (N2–N6, N11–N14, the three dashboard tests) |
 | §7 presale | 11 (B1–B6) |
 | §8 fixtures: verbatim, each signature named | 1 |
 | §8 gates: Node 24 and Node 22; no fake timers with async act; tsc; lint 143; TGE | every task; 12 (whole) |
@@ -8621,16 +9864,47 @@ Added by this plan:
   re-reads it (the cached transaction was collected).
 - **#27 opened by a deep link** (no account) shows the fee payer and no From / To — PR 1 showed the first
   transfer's parties there (ruling 7).
-- **No real "wrap into a new wSOL account" fixture** unless Task 1 Step 3 finds one: test A23 is derived (ruling 5).
+- **No real "wrap into a new wSOL account" fixture** only if Task 1 Step 3 neither finds one nor can make one
+  (the devnet faucet shut): test A23 is then derived alone (ruling 5).
+- **A signature the node never serves** (a transaction of a version above 0 — finding 1) is a "Transaction —" row
+  for good. Each later load asks for it again, apart from the new page: two calls per such row per load. In an
+  exit's link scan it keeps that source's result at `failed`, so the source's cursor never moves: every sheet
+  open after the 60 s interval pages that source's signatures again (at most 300 — 15 calls); the transactions
+  come from the 24 h cache, except the unreadable one. The scan still finds a link that is there.
+- **A request that gets no answer fails after 20 s** (the first page then shows the retry line; "Load older" can be
+  tapped again). A batch that timed out is not re-read one at a time: its rows are "Transaction —" until the next
+  load.
+- **A list that stays in the foreground through midnight** with no new data keeps "Today" until the next load or
+  the next return to the foreground.
+- **`getTransactionHistory` and `getTransactionDetail`** (`queries.ts`) have no caller left; they and their tests
+  stay (ruling 18) — dead code, to be removed in a later PR.
+
+## Owner decisions (2026-11-26, answering the plan review's Q1–Q3; relayed by the controller)
+
+- **Q1 — the chip and the badge.** The fifth chip reads "Private". The badge on "Made private" / "Made public"
+  rows is the icon alone, with no word: both transactions are public on chain and the badge must not claim
+  privacy. Its screen-reader label is "Pool transaction" (Tasks 5, 7, 12). This settles the review's I1 and
+  replaces what ruling 1 said about the badge.
+- **Q2 — hide balances.** The dashboard's eye also hides the amounts on #26 rows and on #27 (the hero,
+  "≈ $x at today's price", the balance-change lines, the fee), as "••••"; the title, the counter-party, the date
+  and the status stay. One source: `usePublicSettingsStore`'s `hideBalances` (Tasks 5, 7, 8, 12). This closes
+  what was finding 3.
+- **Q3 — two things the controller may do in Task 1.** (a) Measure the app's own RPC provider, read-only, before
+  Task 4: from a mode-600 copy of the env file in the scratchpad, the URL read inside the script and never
+  printed, the copy deleted afterwards, the original never edited; the stop rule applies to the provider's
+  results. (b) If no real wrap into a new wSOL account is found, make one on devnet from a fresh throwaway keypair
+  funded by airdrop only — never the main wallet or Accounts 2–5 — and capture it as a verbatim fixture.
 
 ## Rulings made while writing this plan (the spec was silent, or two rules met)
 
 Each is the most conservative reading; a reviewer who disagrees should say so before the task it sits in starts.
 
-1. **The fifth chip and the row badge read "Private", not "Shielded"** (Tasks 5, 7). Spec §5.2 and the design say
+1. **The fifth chip reads "Private", not "Shielded"** (Tasks 5, 7; the badge: owner decision Q1, above). Spec §5.2 and the design say
    "Shielded"; spec §5.1 says "No guard regex changes", and `bannedWords.test.ts` bans that word from every
    user-visible string under `src/screens` and in `src/copy/transactions.ts`. The two cannot both hold. The guard
    wins: it is the owner's later decision (UX part B, one vocabulary). The chip id in code is `'private'`.
+   The plan review (r1 I1) held that this was the owner's call and not a ruling; the owner has now made it (Q1):
+   "Private" for the chip, and no word at all in the badge.
 2. **The pool discriminators are matched in `syncedTx.ts`, not in `activity.ts`** (Task 2). Spec §4.3 has
    `activity.ts` match "the first 8 decoded bytes … against the `deposit` / `withdraw_with_change`
    discriminators"; the R6 source guard `noSelfRelay.test.ts` fails if the withdraw discriminator is named outside
@@ -8644,7 +9918,8 @@ Each is the most conservative reading; a reviewer who disagrees should say so be
    wallet's own accounts never did it, nothing can be signed, and about 700 mainnet blocks held no such transaction
    on its own. Real fixtures cover its parts: a wrap into an existing wSOL account (`33qVTEpP…`), the exact rent on
    an unwrap (`3MGayyac…`), and a temporary wSOL account created and closed (`4C4tZgit…`). A23 derives the whole
-   from the first by three stated field changes. For the same reason the mainnet fixtures replace §8's "New from
+   from the first by three stated field changes. (Since the owner's Q3b the controller makes a real one on
+   devnet if the search finds none; A23 stays as the derived case beside it.) For the same reason the mainnet fixtures replace §8's "New from
    devnet" for the shapes devnet's own accounts never produced (close, own ATA, send creating an ATA, failed,
    Token-2022): public data, verbatim, signature in the file name — as §8 already allows for the Jupiter swap.
 6. **Rows use the shared 4-place formatter; #27 and the balance-change lines are exact** (Tasks 5, 8). §5.1 names
@@ -8683,18 +9958,64 @@ Each is the most conservative reading; a reviewer who disagrees should say so be
     `useTransactionHistory` and `useTransactionDetail` have no caller left; `getTransactionHistory` and
     `getTransactionDetail` keep their tests and are left alone (not in the spec's scope).
 
+Added in r2, while folding the plan review r1:
+
+19. **Every chain call of the history has a 20 s limit, raced inside the limiter's function** (Task 4; review I6).
+    The spec names none. 20 s is the sync's own default (`treeSync.ts`). The race is inside `rpcLimiter.execute`'s
+    function, not around it: around it, the hung request would stay the limiter's in-flight entry and every retry
+    with the same key would join it. After a batch that timed out the 20 signatures are not read one at a time,
+    and the one-at-a-time path stops at its first timeout — otherwise a dead network would hold one load for
+    20 × 20 s. `withTimeout` gains a `TimeoutError` for that; its message, and so `treeSync.ts`, is unchanged.
+20. **Rows still unparsed are read apart from the page a load adds — as their own batch, not one at a time**
+    (Task 4; review I5b). The review asked for single reads. Apart is what keeps a never-served signature out of
+    a new page's batch (test H9); a batch of their own is kept because after the 24 h collection a long-open
+    session has many unparsed rows at once, and those would become hundreds of sequential calls. The price is one
+    extra call per load for a never-served signature (its batch of one is refused before its single read).
+21. **The history's source list has its own limiter keys, and `queries.ts` gains no `getToken2022Accounts`**
+    (Tasks 4, 10; review m10, I6). The keys hold the cluster, as §3.3 asks of "any history read". And they are
+    not the dashboard's `getTokenAccounts:{owner}`: that read has no time limit, and a history read that joined it
+    would inherit the hang. `queries.ts` only exports the bare read (`tokenAccountsOf`); `getTokenAccounts` is
+    untouched.
+22. **The coverage line also stands under the two empty lines** (Task 7; review I4). §3.2 puts it in the "list
+    footer"; §1.2 forbids "no transactions" when not all were read. An empty list has no footer, so the line is
+    drawn inside the empty state — "No transactions yet" keeps its wording (§5.3) and is never alone.
+23. **The clock is read again when the app returns to the foreground** (Task 7; review m8). §5.3 gives `sectionOf`
+    a `now` and does not say when it is read. Data changes and foreground returns cover a list left open
+    overnight; a list in the foreground through midnight is a stated limit.
+24. **The pool rows' icon and the badge glyph are lucide's `Shield`** (Task 7; review m9). §5.1 says "shield"; the
+    design's `#i-shield-lock` has a lock inside it, which lucide does not have; `Shield` is what the app's other
+    private-side screens draw.
+25. **What "hide balances" hides is every figure, and nothing that is not one** (Tasks 5, 7, 8; owner decision
+    Q2 names the places). "—" and "No funds moved" are not amounts and stay; " · incomplete" and a balance
+    change's role label ("account rent") stay beside the mask; "+N more" goes with the amount it follows; a hidden
+    received amount is not green. On #27 an absent amount line stays absent.
+26. **The badge's screen-reader label is "Pool transaction"** (Tasks 5, 7; owner decision Q1 left the words to
+    the plan). It says what the row is and claims nothing; "pool" is not a banned word, and the string sits in
+    `src/copy/transactions.ts`, which both copy guards read.
+
 ## Findings for the owner (questions, not decisions — Task 12 Step 6)
 
-1. **Transactions of a version above 0 exist on chain today.** While looking for fixtures, `getBlock` on both
-   public endpoints answered `-32015 Transaction version (1) is not supported by the requesting client` when asked
-   with `maxSupportedTransactionVersion: 0`. The spec fixes that parameter at 0; whether web3.js 1.99 can parse an
-   answer of another version was not checked. Such a transaction in a wallet's history shows as "Transaction —" (a partial row,
-   never dropped — tests R14, H7), and it makes that page fall back to one-at-a-time reads. How common they are in
-   a normal wallet was not measured. Reading them needs a web3.js that knows the version: a later PR.
+1. **Transactions of a version above 0 exist on chain today — and in a first small sample they are not rare.**
+   While looking for fixtures, `getBlock` on both public endpoints answered `-32015 Transaction version (1) is not
+   supported by the requesting client` when asked with `maxSupportedTransactionVersion: 0`. The spec fixes that
+   parameter at 0; whether web3.js 1.99 can parse an answer of another version was not checked. Such a transaction
+   in a wallet's history shows as "Transaction —" (a partial row, never dropped — tests R14, H7); it makes the page
+   it arrives in fall back to one-at-a-time reads, and after that it is read apart, so no later page pays for it
+   (test H9; r1 said "that page" while the r1 code made it every later page — review I5). **Counted while
+   revising this plan (2026-11-26, public endpoints, `count-tx-versions.mjs` of Task 1 Step 5):**
+   mainnet, 20 recent blocks: **3,638 of 7,955 transactions are version 1 (45.7 %)**; devnet, 5 blocks: 13 of 91
+   (14.3 %); main's own devnet history (its address and 2 token accounts, 58 transactions): **none**. No sampled
+   block held a vote transaction, so these are not validators' votes; which programs or wallets send version 1
+   was not looked at, and a block sample is not a wallet's history. So on devnet the phone checkpoint should see
+   no such row, while a mainnet wallet that receives from, or swaps through, whatever sends version 1 may see
+   many. Task 1 Step 5 repeats the count on 50 blocks per cluster and Step 6 brings it to the owner before the
+   screen work. Reading such transactions needs a reader that knows the version: a later PR, and a spec change.
 2. **On the public endpoints a 20-request batch is partly refused.** The first try of Task 1's measurement gave 11
    of 20 items `429` on both clusters (not a clean measurement — see Task 1 Step 4). A build that falls back to
    the public endpoint (`HELIUS_RPC_URL` missing) would show mostly partial rows. The app's own provider is not
-   measured without the owner's OK.
-3. **The dashboard's hide-balances eye does not hide history amounts.** #26 now shows amounts; the spec does not
-   say whether "hide balances" should cover them, and PR 1's rule ("hidden balances win") was written for
-   balances. Left as drawn: amounts show. Say if they should read "•••".
+   measured in this plan; the owner has allowed it (Q3a), Task 1 Step 4 does it, and Step 6 holds the rule for
+   what it finds — a batch refused as a whole, or single items of it refused on a quiet provider, both make the
+   sequential path the product path.
+3. *(Answered — owner decision Q2: the hide-balances eye hides the figures of #26 and #27.)* One thing it leaves
+   for the owner to see on the phone: the mask is "••••" (the dashboard's token rows), while the dashboard's
+   balance card uses "•••" (`VALUE_HIDDEN`). Two lengths exist in the app already; this PR adds no third.
