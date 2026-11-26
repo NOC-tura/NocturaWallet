@@ -1,5 +1,4 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import {drainLinkQueue} from '../../modules/accounts/linkQueue';
 import {
   View,
   FlatList,
@@ -44,6 +43,7 @@ import {TokenManager} from '../../modules/tokens/tokenModule';
 import {NOC_MINT} from '../../constants/programs';
 import {isShieldedEnabled} from '../../constants/features';
 import {privateSide, publicSide, splitValue, type SplitValue} from '../../modules/accounts/valueLine';
+import {drainLinkQueue} from '../../modules/accounts/linkQueue';
 import {CHAIN} from '../../constants/chain';
 import {formatBalanceForDisplay} from '../../utils/parseTokenAmount';
 import {mmkvPublic} from '../../store/mmkv/instances';
