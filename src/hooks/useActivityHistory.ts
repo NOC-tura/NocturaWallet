@@ -19,7 +19,7 @@ import {getConnection} from '../modules/solana/connection';
 import {activityContext} from '../modules/solana/activityContext';
 import {loadHistory} from '../modules/solana/history';
 import type {HistorySnapshot} from '../modules/solana/history';
-import {HISTORY_PAGE_SIZE, dropHistorySessionsExcept} from '../modules/solana/historySession';
+import {HISTORY_PAGE_SIZE, dropHistorySessionsExcept, peekHistorySession} from '../modules/solana/historySession';
 
 export const HISTORY_STALE_MS = 60_000;
 
@@ -28,7 +28,9 @@ export const historyQueryKey = (account: string | null): readonly [string, strin
 /**
  * Two loadHistory calls for one account never overlap: each takes its "rows before" at the start,
  * so a second one begun mid-flight would share a stale set. "Load older" during a refetch (or the
- * reverse) waits its turn here; a call always settles (every chain call has a time limit).
+ * reverse) waits its turn here. The queue is module-level (two mounted hooks for one account share
+ * it) and keyed by account alone — the cluster is a build constant. It relies on loadHistory always
+ * settling: every chain call under it has a time limit.
  */
 const turns = new Map<string, Promise<unknown>>();
 function inTurn<T>(account: string, fn: () => Promise<T>): Promise<T> {
@@ -46,7 +48,7 @@ function inTurn<T>(account: string, fn: () => Promise<T>): Promise<T> {
 
 export interface ActivityHistory {
   data: HistorySnapshot | undefined;
-  /** a first read completed (the list may be empty) */
+  /** the LAST read succeeded (the list may be empty); after a failed refresh it is false while `data` keeps the rows */
   isSuccess: boolean;
   /** the last read failed; `data` keeps what was read before */
   isError: boolean;
@@ -73,10 +75,17 @@ export function useActivityHistory(account: string | null): ActivityHistory {
       if (account === null) {
         throw new Error('No account');
       }
-      return inTurn(account, () => loadHistory(account, 'head', env()));
+      return inTurn(account, async () => {
+        // queued behind another read: the entry may have been removed (a switch, a wipe) meanwhile
+        if (client.getQueryState(queryKey) === undefined) {
+          throw new Error('The history entry was removed');
+        }
+        return loadHistory(account, 'head', env());
+      });
     },
     enabled: account !== null,
     staleTime: HISTORY_STALE_MS,
+    retry: false, // the screen has its own tap-to-retry; the client default would take about a minute to show an error
   });
 
   const olderRef = useRef(false);
@@ -90,11 +99,27 @@ export function useActivityHistory(account: string | null): ActivityHistory {
     olderRef.current = true;
     setLoadingOlder(true);
     try {
-      const snapshot = await inTurn(account, () => loadHistory(account, 'older', env()));
-      if (accountRef.current !== account) {
-        return null; // the account changed while the page was read: it is not this list's page
+      let session: ReturnType<typeof peekHistorySession>;
+      const snapshot = await inTurn(account, async () => {
+        // queued behind another read: skip it if the account was left or its session dropped meanwhile
+        session = peekHistorySession(NETWORK, account);
+        if (accountRef.current !== account || session === undefined) {
+          return null;
+        }
+        return loadHistory(account, 'older', env());
+      });
+      if (snapshot === null) {
+        return null;
       }
-      client.setQueryData(queryKey, snapshot);
+      // A page is written back only while the entry it extends and the session it was read from both
+      // still exist and the entry was not invalidated (a wipe, a switch by remount, #21 after a Send).
+      const state = client.getQueryState(queryKey);
+      if (accountRef.current !== account || state === undefined || state.isInvalidated || peekHistorySession(NETWORK, account) !== session) {
+        return null;
+      }
+      // keeps the freshness clock of the head read. (setQueryData also clears a head error; TanStack
+      // offers no way to keep it, and the rows stay honest.)
+      client.setQueryData(queryKey, snapshot, {updatedAt: state.dataUpdatedAt});
       return snapshot;
     } catch {
       return null; // the rows already loaded stay; "Load older" can be tapped again

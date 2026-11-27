@@ -37,6 +37,8 @@ export function clearAccountQueries(client: QueryClient = queryClient): void {
  * History spec §3.3: an invalidation of `['txHistory', address]` (#21 after a confirmed Send) also
  * drops that account's history session, so the next read starts from the head instead of continuing
  * a session that does not know the new transaction. Returns the unsubscribe.
+ * This is not the only mechanism: a repeat invalidation (TanStack emits no event) or a collected entry
+ * still refreshes through `refresh()`, which re-lists the sources and finds the new transaction.
  */
 export function dropHistorySessionOnInvalidate(client: QueryClient = queryClient): () => void {
   return client.getQueryCache().subscribe(event => {

@@ -7,7 +7,7 @@ import React from 'react';
 import {renderHook, waitFor, act} from '@testing-library/react-native';
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
 import {HISTORY_STALE_MS, useActivityHistory, historyQueryKey} from '../useActivityHistory';
-import {dropHistorySessionOnInvalidate} from '../../app/queryClient';
+import {clearAccountQueries, dropHistorySessionOnInvalidate} from '../../app/queryClient';
 import {dropHistorySessions, historySession, peekHistorySession} from '../../modules/solana/historySession';
 import type {HistorySnapshot} from '../../modules/solana/history';
 
@@ -94,6 +94,7 @@ it("an account switch never shows the old account's rows, and drops its session 
 
 // K5
 it('loadOlder asks for the next page, replaces the snapshot, and is single-flight', async () => {
+  historySession('mainnet-beta', A, deps); // the real head read creates it
   mockLoad.mockResolvedValueOnce(snap(['s1']));
   const {result} = renderHook(() => useActivityHistory(A), {wrapper});
   await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -135,6 +136,7 @@ it('a failed loadOlder keeps the rows and resolves null', async () => {
 
 // K8 (Review Focus 3)
 it('an older page that arrives after the account changed is dropped: never written into either list', async () => {
+  historySession('mainnet-beta', A, deps); // the real head read creates it
   mockLoad.mockImplementation(async (account: string) => snap(account === A ? ['a1'] : ['b1']));
   const {result, rerender} = renderHook(({account}: {account: string}) => useActivityHistory(account), {wrapper, initialProps: {account: A}});
   await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -143,6 +145,9 @@ it('an older page that arrives after the account changed is dropped: never writt
   let older: Promise<HistorySnapshot | null> = Promise.resolve(null);
   act(() => {
     older = result.current.loadOlder(); // for A
+  });
+  await act(async () => {
+    await Promise.resolve(); // the page's read has begun
   });
   rerender({account: B});
   await waitFor(() => expect(result.current.data?.rows[0]?.item.signature).toBe('b1'));
@@ -173,6 +178,7 @@ it("#21's invalidation of ['txHistory', address] drops that account's session, a
 
 // (a) controller requirement: a refetch and a "load older" never run loadHistory at the same time
 it('a refetch during loadOlder waits for it: loadHistory calls never overlap', async () => {
+  historySession('mainnet-beta', A, deps); // the real head read creates it
   mockLoad.mockResolvedValueOnce(snap(['s1']));
   const {result} = renderHook(() => useActivityHistory(A), {wrapper});
   await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -212,4 +218,165 @@ it('a refetch during loadOlder waits for it: loadHistory calls never overlap', a
   expect(mockLoad).toHaveBeenCalledTimes(3);
   expect(overlapped).toBe(false);
   expect(result.current.data!.rows).toHaveLength(3);
+});
+
+// Review Important 1: a late "older" page never writes back once its entry or session is gone
+async function olderInFlight(account: string) {
+  mockLoad.mockResolvedValueOnce(snap(['s1']));
+  historySession('mainnet-beta', account, deps);
+  const view = renderHook(() => useActivityHistory(account), {wrapper});
+  await waitFor(() => expect(view.result.current.isSuccess).toBe(true));
+  let release: (s: HistorySnapshot) => void = () => undefined;
+  mockLoad.mockImplementationOnce(() => new Promise<HistorySnapshot>(r => { release = r; }));
+  let older: Promise<HistorySnapshot | null> = Promise.resolve(null);
+  act(() => {
+    older = view.result.current.loadOlder();
+  });
+  await act(async () => {
+    await Promise.resolve(); // the page's read has begun
+  });
+  return {view, older: () => older, release: (s: HistorySnapshot) => release(s)};
+}
+
+it('a wipe while a page is in flight: the page is not written back, after unmount', async () => {
+  const f = await olderInFlight(A);
+  f.view.unmount();
+  clearAccountQueries(client);
+  dropHistorySessions();
+  await act(async () => {
+    f.release(snap(['s1', 's2']));
+    expect(await f.older()).toBeNull();
+  });
+  expect(client.getQueryData(historyQueryKey(A))).toBeUndefined();
+});
+
+it('the entry gone (session still there): the page is not written back', async () => {
+  const f = await olderInFlight(A);
+  f.view.unmount();
+  client.removeQueries({queryKey: historyQueryKey(A)});
+  await act(async () => {
+    f.release(snap(['s1', 's2']));
+    expect(await f.older()).toBeNull();
+  });
+  expect(client.getQueryData(historyQueryKey(A))).toBeUndefined();
+});
+
+it('the session gone (entry still there): the page is not written back', async () => {
+  const f = await olderInFlight(A);
+  f.view.unmount();
+  dropHistorySessions();
+  await act(async () => {
+    f.release(snap(['s1', 's2']));
+    expect(await f.older()).toBeNull();
+  });
+  expect(client.getQueryData<HistorySnapshot>(historyQueryKey(A))!.rows).toHaveLength(1);
+});
+
+it('unmount then another account mounts: the old account entry is not re-created by the late page', async () => {
+  const f = await olderInFlight(A);
+  f.view.unmount();
+  mockLoad.mockImplementation(async () => snap(['b1']));
+  const second = renderHook(() => useActivityHistory(B), {wrapper});
+  await waitFor(() => expect(second.result.current.isSuccess).toBe(true));
+  await act(async () => {
+    f.release(snap(['s1', 's2']));
+    expect(await f.older()).toBeNull();
+  });
+  expect(client.getQueryData(historyQueryKey(A))).toBeUndefined();
+  expect(peekHistorySession('mainnet-beta', A)).toBeUndefined();
+});
+
+it('an invalidation while a page is in flight (screen unmounted): the entry stays invalidated and a remount reads', async () => {
+  const f = await olderInFlight(A);
+  f.view.unmount();
+  await act(async () => {
+    await client.invalidateQueries({queryKey: ['txHistory', A]});
+  });
+  await act(async () => {
+    f.release(snap(['s1', 's2']));
+    expect(await f.older()).toBeNull();
+  });
+  expect(client.getQueryState(historyQueryKey(A))!.isInvalidated).toBe(true);
+  mockLoad.mockResolvedValue(snap(['n1', 's1']));
+  const again = renderHook(() => useActivityHistory(A), {wrapper});
+  await waitFor(() => expect(again.result.current.data?.rows[0]?.item.signature).toBe('n1'));
+});
+
+// Review Minor 2
+it('a head queued behind a page for an account that was left is skipped: loadHistory is not called for it', async () => {
+  mockLoad.mockImplementation(async (account: string) => snap(account === A ? ['a1'] : ['b1']));
+  const {result, rerender} = renderHook(({account}: {account: string}) => useActivityHistory(account), {wrapper, initialProps: {account: A}});
+  await waitFor(() => expect(result.current.isSuccess).toBe(true));
+  historySession('mainnet-beta', A, deps);
+  let release: (s: HistorySnapshot) => void = () => undefined;
+  mockLoad.mockImplementationOnce(() => new Promise<HistorySnapshot>(r => { release = r; }));
+  let older: Promise<HistorySnapshot | null> = Promise.resolve(null);
+  act(() => {
+    older = result.current.loadOlder();
+    result.current.refetch().catch(() => undefined); // queued behind the page
+  });
+  await act(async () => {
+    await Promise.resolve(); // the page's read has begun
+  });
+  rerender({account: B});
+  await waitFor(() => expect(result.current.data?.rows[0]?.item.signature).toBe('b1'));
+  await act(async () => {
+    release(snap(['a1', 'a2']));
+    await older;
+  });
+  expect(mockLoad.mock.calls.filter(c => c[0] === A && c[1] === 'head')).toHaveLength(1);
+  expect(mockLoad.mock.calls.filter(c => c[0] === A)).toHaveLength(2); // the first head and the page
+});
+
+// Review Minor 3
+it('an older page does not restart the 60 s freshness clock', async () => {
+  mockLoad.mockResolvedValueOnce(snap(['s1']));
+  historySession('mainnet-beta', A, deps);
+  const {result} = renderHook(() => useActivityHistory(A), {wrapper});
+  await waitFor(() => expect(result.current.isSuccess).toBe(true));
+  const before = client.getQueryState(historyQueryKey(A))!.dataUpdatedAt;
+  await new Promise(r => setTimeout(r, 15)); // real clock
+  mockLoad.mockResolvedValueOnce(snap(['s1', 's2']));
+  await act(async () => {
+    await result.current.loadOlder();
+  });
+  expect(result.current.data!.rows).toHaveLength(2);
+  expect(client.getQueryState(historyQueryKey(A))!.dataUpdatedAt).toBe(before);
+});
+
+// Review Minor 7
+it('a failed first load is an error after one attempt (no retries: the screen has its own retry)', async () => {
+  client.clear();
+  client = new QueryClient({defaultOptions: {queries: {retry: 2, retryDelay: 1}}});
+  mockLoad.mockRejectedValue(new Error('rpc down'));
+  const {result} = renderHook(() => useActivityHistory(A), {wrapper});
+  await waitFor(() => expect(result.current.isError).toBe(true));
+  await new Promise(r => setTimeout(r, 30));
+  expect(mockLoad).toHaveBeenCalledTimes(1);
+  expect(result.current.data).toBeUndefined();
+});
+
+// Review Minor 2, the other side: a page queued behind a refetch for an account that was left is skipped
+it('a page queued behind a refetch for an account that was left is skipped: loadHistory is not called for it', async () => {
+  mockLoad.mockImplementation(async (account: string) => snap(account === A ? ['a1'] : ['b1']));
+  historySession('mainnet-beta', A, deps);
+  const {result, rerender} = renderHook(({account}: {account: string}) => useActivityHistory(account), {wrapper, initialProps: {account: A}});
+  await waitFor(() => expect(result.current.isSuccess).toBe(true));
+  let release: (s: HistorySnapshot) => void = () => undefined;
+  mockLoad.mockImplementationOnce(() => new Promise<HistorySnapshot>(r => { release = r; }));
+  let older: Promise<HistorySnapshot | null> = Promise.resolve(null);
+  act(() => {
+    result.current.refetch().catch(() => undefined); // the head is read now
+    older = result.current.loadOlder(); // queued behind it
+  });
+  await act(async () => {
+    await Promise.resolve();
+  });
+  rerender({account: B});
+  await waitFor(() => expect(result.current.data?.rows[0]?.item.signature).toBe('b1'));
+  await act(async () => {
+    release(snap(['a1']));
+    expect(await older).toBeNull();
+  });
+  expect(mockLoad.mock.calls.filter(c => c[0] === A && c[1] === 'older')).toHaveLength(0);
 });
