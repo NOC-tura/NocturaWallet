@@ -78,9 +78,13 @@ export function transactionLinks(raw: RawParsedTx, exit: string, seedWallets: Re
 
 type RangeOutcome =
   | {kind: 'linked'; wallets: string[]}
-  | {kind: 'unread' | 'end' | 'cap'; read: number; newestFinalized: string | undefined; oldest: string | undefined};
+  | {kind: 'end' | 'cap'; unread: boolean; read: number; newestFinalized: string | undefined; oldest: SignatureItem | undefined};
 
-/** Reads one source from `start` (exclusive; undefined = the head) down to `stopAt` (matched by value) or the end, at most `budget` signatures. */
+/**
+ * Reads one source from `start` (exclusive; undefined = the head) down to `stopAt` (matched by value) or the end,
+ * at most `budget` signatures. A page the budget trimmed is NEVER an end (Task 9 re-review). Unread transactions
+ * do not stop the walk: a link may still lie below them.
+ */
 async function readRange(
   exit: string,
   source: string,
@@ -93,19 +97,21 @@ async function readRange(
   let before = start;
   let read = 0;
   let newestFinalized: string | undefined;
-  let oldest: string | undefined;
+  let oldest: SignatureItem | undefined;
   let unread = false;
   for (;;) {
     const page = await deps.fetchSignatures(source, before, LINK_SCAN_PAGE);
-    // the cursor is matched by value (not `until`): everything above it is new
+    // the stop is matched by value (not `until`): everything above it is new
     const at = stopAt === undefined ? -1 : page.findIndex(x => x.signature === stopAt);
-    const fresh = (at >= 0 ? page.slice(0, at) : page).slice(0, budget - read);
+    const upTo = at >= 0 ? page.slice(0, at) : page;
+    const fresh = upTo.slice(0, Math.max(0, budget - read));
+    const trimmed = fresh.length < upTo.length;
     if (fresh.length > 0) {
       const txs = await deps.readTransactions(fresh.map(x => x.signature));
       for (const item of fresh) {
         const raw = txs.get(item.signature);
         if (raw === undefined) {
-          unread = true; // keep looking for a link, but nothing of this source will move
+          unread = true;
         } else {
           const wallets = linkedSeedWallets(raw, exit, seedWallets);
           if (wallets.length > 0) {
@@ -114,12 +120,15 @@ async function readRange(
         }
       }
       newestFinalized = newestFinalized ?? fresh.find(x => x.finalized)?.signature;
-      oldest = fresh[fresh.length - 1]!.signature;
+      oldest = fresh[fresh.length - 1]!;
       read += fresh.length;
     }
-    const ended = at >= 0 || page.length < LINK_SCAN_PAGE;
-    if (ended || read >= budget) {
-      return {kind: unread ? 'unread' : ended ? 'end' : 'cap', read, newestFinalized, oldest};
+    const ended = !trimmed && (at >= 0 || page.length < LINK_SCAN_PAGE);
+    if (ended) {
+      return {kind: 'end', unread, read, newestFinalized, oldest};
+    }
+    if (read >= budget) {
+      return {kind: 'cap', unread, read, newestFinalized, oldest};
     }
     before = page[page.length - 1]!.signature;
   }
@@ -127,47 +136,54 @@ async function readRange(
 
 type SourceOutcome = {kind: 'linked'; wallets: string[]} | {kind: 'clean' | 'capped' | 'failed'};
 
+/**
+ * Principle: RE-READING is always safe, SKIPPING never is (Task 9 re-review, controller 2026-11-27). The budget
+ * (LINK_SCAN_CAP) is shared by two passes. The HEAD pass always comes first: from the top down to
+ * `pending.newest ?? cursor`. Then, if a gap is pending, the GAP pass: from `pending.resumeBelow` down to the old cursor.
+ * Anything unread → 'failed' and the record does not move (a link found in either pass still wins).
+ */
 async function scanSource(exit: string, source: string, seedWallets: ReadonlySet<string>, deps: LinkScanDeps): Promise<SourceOutcome> {
-  let record: LinkScanRecord = deps.getRecord(exit, source) ?? {};
-  let budget = LINK_SCAN_CAP;
-  if (record.pending !== undefined) {
-    // 1. the gap an earlier capped scan left: from where it stopped, down to the old cursor (or the end)
-    const gap = await readRange(exit, source, seedWallets, deps, record.pending.resumeBelow, record.cursor, budget);
-    if (gap.kind === 'linked') {
-      return gap;
-    }
-    if (gap.kind === 'unread') {
-      return {kind: 'failed'};
-    }
-    if (gap.kind === 'cap') {
-      const resumeBelow = gap.oldest ?? record.pending.resumeBelow;
-      deps.setRecord(exit, source, {cursor: record.cursor, pending: {newest: record.pending.newest, resumeBelow}});
-      return {kind: 'capped'};
-    }
-    record = {cursor: record.pending.newest ?? record.cursor};
-    deps.setRecord(exit, source, record);
-    budget -= gap.read;
-    if (budget <= 0) {
-      return {kind: 'capped'}; // the head above the promoted cursor is read by the next scan
-    }
-  }
-  // 2. the head, down to the cursor
-  const head = await readRange(exit, source, seedWallets, deps, undefined, record.cursor, budget);
+  const record: LinkScanRecord = deps.getRecord(exit, source) ?? {};
+  const pending = record.pending;
+  const head = await readRange(exit, source, seedWallets, deps, undefined, pending?.newest ?? record.cursor, LINK_SCAN_CAP);
   if (head.kind === 'linked') {
     return head;
   }
-  if (head.kind === 'unread') {
-    return {kind: 'failed'};
-  }
   if (head.kind === 'cap') {
-    // the old cursor stays: what lies between this scan's oldest signature and it is still to be read
-    deps.setRecord(exit, source, {cursor: record.cursor, pending: {newest: head.newestFinalized, resumeBelow: head.oldest!}});
+    if (head.unread) {
+      return {kind: 'failed'};
+    }
+    // the old cursor stays; what lies below the oldest signature read is still to be read. Only a finalized
+    // signature is stored as a resume point (a dropped one would read as an empty page, i.e. an end).
+    if (head.newestFinalized !== undefined && head.oldest !== undefined && head.oldest.finalized) {
+      deps.setRecord(exit, source, {cursor: record.cursor, pending: {newest: head.newestFinalized, resumeBelow: head.oldest.signature}});
+    }
     return {kind: 'capped'};
   }
-  if (head.newestFinalized !== undefined) {
-    deps.setRecord(exit, source, {cursor: head.newestFinalized});
+  if (pending === undefined) {
+    if (head.unread) {
+      return {kind: 'failed'};
+    }
+    if (head.newestFinalized !== undefined) {
+      deps.setRecord(exit, source, {cursor: head.newestFinalized});
+    }
+    return {kind: 'clean'};
   }
-  return {kind: 'clean'};
+  const newest = head.newestFinalized ?? pending.newest;
+  const gap = await readRange(exit, source, seedWallets, deps, pending.resumeBelow, record.cursor, LINK_SCAN_CAP - head.read);
+  if (gap.kind === 'linked') {
+    return gap;
+  }
+  if (head.unread || gap.unread) {
+    return {kind: 'failed'};
+  }
+  if (gap.kind === 'end') {
+    deps.setRecord(exit, source, {cursor: newest ?? record.cursor});
+    return {kind: 'clean'};
+  }
+  const resumeBelow = gap.oldest !== undefined && gap.oldest.finalized ? gap.oldest.signature : pending.resumeBelow;
+  deps.setRecord(exit, source, {cursor: record.cursor, pending: {newest, resumeBelow}});
+  return {kind: 'capped'};
 }
 
 /**

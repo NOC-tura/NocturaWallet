@@ -259,8 +259,9 @@ describe('scanExitForLinks (§6.3)', () => {
     world.fetched.length = 0;
     world.readCount = 0;
     expect(await scan(deps)).toBe('clean');
-    expect(world.fetched[0]!.before).toBe('s300');
-    expect(world.readCount).toBe(100); // s301..s400, then the head down to the new cursor is empty
+    // the head first (one fetch, nothing new above s1), then the gap from s300 down: 5 full pages and an empty one
+    expect(world.fetched.map(f => f.before)).toEqual([undefined, 's300', 's320', 's340', 's360', 's380', 's400']);
+    expect(world.readCount).toBe(100); // s301..s400 only
     expect(world.cursors[`${ACC_2}/${ACC_2}`]).toBe('s1');
     expect(world.pendings).toEqual({});
 
@@ -283,7 +284,9 @@ describe('scanExitForLinks (§6.3)', () => {
     expect(world.fetched).toHaveLength(LINK_SCAN_CAP / LINK_SCAN_PAGE);
     expect(world.cursors[`${ACC_2}/${ACC_2}`]).toBe('s1'); // the old cursor
     expect(world.pendings[`${ACC_2}/${ACC_2}`]).toEqual({newest: 'n1', resumeBelow: 'n300'});
+    world.readCount = 0;
     expect(await scan(deps)).toBe('clean'); // n301..n320, then the old cursor s1
+    expect(world.readCount).toBe(20); // the gap stops at the OLD cursor: s1..s10 are not read again
     expect(world.cursors[`${ACC_2}/${ACC_2}`]).toBe('n1');
     expect(world.pendings).toEqual({});
   });
@@ -306,6 +309,90 @@ describe('scanExitForLinks (§6.3)', () => {
     expect(await scan(deps)).toBe('capped');
     expect(world.pendings[`${ACC_2}/${ACC_2}`]).toEqual({newest: 's1', resumeBelow: 's600'});
     expect(world.cursors).toEqual({});
+  });
+
+  // R1 — the reviewer's N1 repro: a trimmed page is never an end
+  it('a gap pass trimmed by the budget is capped, never read as the end: the cursor does not jump past unread signatures', async () => {
+    const {world, deps} = chain({[ACC_2]: run('s', 10)});
+    expect(await scan(deps)).toBe('clean'); // cursor s1
+    world.sources[ACC_2] = [...run('n', 598), ...world.sources[ACC_2]!];
+    expect(await scan(deps)).toBe('capped'); // pending {n1, n300}
+    world.sources[ACC_2] = [...run('m', 5), ...world.sources[ACC_2]!];
+    world.linking.add('n597'); // in the tail the trimmed page would skip
+    world.readCount = 0;
+    expect(await scan(deps)).toBe('capped'); // head 5 + gap 295 of 298: n596..n598 stay
+    expect(world.readCount).toBe(LINK_SCAN_CAP);
+    expect(world.cursors[`${ACC_2}/${ACC_2}`]).toBe('s1');
+    expect(world.pendings[`${ACC_2}/${ACC_2}`]).toEqual({newest: 'm1', resumeBelow: 'n595'});
+    expect(await scan(deps)).toBe('linked');
+    expect(world.marked).toEqual([ACC_2, MAIN]);
+  });
+
+  // R2 — N2: the head is read first even while a gap is pending
+  it('a link at the head is found on the next scan although a gap is still pending', async () => {
+    const {world, deps} = chain({[ACC_2]: run('s', 2000)});
+    expect(await scan(deps)).toBe('capped');
+    world.sources[ACC_2] = [sig('h1'), ...world.sources[ACC_2]!];
+    world.linking.add('h1');
+    expect(await scan(deps)).toBe('linked');
+    expect(world.marked).toEqual([ACC_2, MAIN]);
+  });
+
+  // R3 — N3: an unreadable transaction in the gap does not hide the head
+  it('an unreadable transaction inside the pending gap does not hide a link at the head', async () => {
+    const {world, deps} = chain({[ACC_2]: run('s', 1000)});
+    await scan(deps);
+    world.unreadable.add('s350');
+    world.sources[ACC_2] = [sig('h1'), ...world.sources[ACC_2]!];
+    world.linking.add('h1');
+    expect(await scan(deps)).toBe('linked');
+  });
+
+  // R4 — an unread inside a range that caps: failed, the record is unchanged
+  it('an unread transaction in a head pass that caps → failed, record unchanged; the same in a gap pass that caps', async () => {
+    const head = chain({[ACC_2]: run('s', 400)});
+    head.world.unreadable.add('s100');
+    expect(await scan(head.deps)).toBe('failed');
+    expect(head.world.cursors).toEqual({});
+    expect(head.world.pendings).toEqual({});
+    const gap = chain({[ACC_2]: run('s', 700)});
+    await scan(gap.deps);
+    const before = JSON.stringify(gap.world.pendings);
+    gap.world.unreadable.add('s400');
+    expect(await scan(gap.deps)).toBe('failed'); // s301..s600 is a capped gap pass holding s400
+    expect(JSON.stringify(gap.world.pendings)).toBe(before);
+    expect(gap.world.cursors).toEqual({});
+  });
+
+  // R5 — N5: a resume point that is not finalized is not stored
+  it('a cap whose oldest signature is not finalized leaves the record unchanged', async () => {
+    const all = run('s', 400);
+    all[299] = sig('s300', false);
+    const {world, deps} = chain({[ACC_2]: all});
+    expect(await scan(deps)).toBe('capped');
+    expect(world.cursors).toEqual({});
+    expect(world.pendings).toEqual({});
+  });
+
+  // R5b — the same for a gap pass that caps
+  it('a gap pass that caps on a non-finalized signature keeps resumeBelow where it was', async () => {
+    const all = run('s', 700);
+    all[599] = sig('s600', false);
+    const {world, deps} = chain({[ACC_2]: all});
+    await scan(deps);
+    expect(await scan(deps)).toBe('capped');
+    expect(world.pendings[`${ACC_2}/${ACC_2}`]).toEqual({newest: 's1', resumeBelow: 's300'});
+  });
+
+  // R6 — promotion with nothing finalized in the head keeps the old cursor
+  it('promotion with pending.newest undefined and nothing finalized in the head keeps the old cursor', async () => {
+    const u = (n: number) => sig(`u${n}`, false);
+    const {world, deps} = chain({[ACC_2]: [u(1), u(2), u(3), u(4), u(5)]});
+    world.cursors[`${ACC_2}/${ACC_2}`] = 'u5';
+    world.pendings[`${ACC_2}/${ACC_2}`] = {resumeBelow: 'u2'};
+    expect(await scan(deps)).toBe('clean');
+    expect(world.cursors[`${ACC_2}/${ACC_2}`]).toBe('u5');
+    expect(world.pendings).toEqual({});
   });
 
   // L15e (review I1.2) — B's scan that finds a transaction holding A marks both

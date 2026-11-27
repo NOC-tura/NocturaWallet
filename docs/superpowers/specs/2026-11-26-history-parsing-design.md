@@ -353,7 +353,7 @@ Scanned accounts are role `fresh-exit` with `linked !== true` only; `fresh-pendi
 - **Sources.** As in §3.1: the exit wallet and every token account it owns (classic and Token-2022). Each has its own record (below).
 - **The cursor** is the newest **finalized** signature fully scanned for that source. It is stored in **encrypted** MMKV under the new key `v1_linkScanCursors` as `{[exit]: {[source]: LinkScanRecord}}` (Task 9 review, controller 2026-11-27; I1.1, keying on a seed-set digest, is Task 10), and cleared through `onSecureMmkvReset`.
 - **Reading a source.** Page backwards with `before`, 20 at a time, until a signature equal to the stored cursor is met (matched by value, not by `until`) or the source is exhausted. Transactions are read as in §3.3, and the cache is shared with history.
-- **Cap.** Every scan of a source, first or later, reads at most 300 signatures (review r2 m6). A scan the cap stopped does NOT skip the rest for good: the stored record per source is `{cursor?, pending?: {newest?, resumeBelow}}` (exported `LinkScanRecord`). On a cap stop the old `cursor` is kept, `pending.newest` is the newest finalized signature read this scan (if any) and `pending.resumeBelow` the oldest signature read. The next scan of that source first continues from `resumeBelow` down to the old cursor (or the end), still capped; when it reaches the cursor or the end with nothing unread, `cursor` becomes `pending.newest` and `pending` is cleared; then it reads the head down to the cursor as usual. The result of a scan that ended on the cap is `capped`, never `clean`. (Task 9 review, controller 2026-11-27)
+- **Cap.** Every scan of a source, first or later, reads at most 300 signatures (review r2 m6), shared by two passes. Principle: re-reading is always safe, skipping never is. The stored record per source is `{cursor?, pending?: {newest?, resumeBelow}}` (exported `LinkScanRecord`). The HEAD pass always comes first: from the top down to `pending.newest ?? cursor` (or the end). A page the budget trimmed is never an end. If the head pass hit the cap, the old `cursor` is kept and `pending = {newest: the newest finalized signature read, resumeBelow: the oldest signature read}`, stored only when both are finalized (otherwise the record is unchanged); the result is `capped`. If the head pass reached its stop with a gap pending, the GAP pass reads from `resumeBelow` down to the old cursor (or the end) with the budget that is left: reaching it, `cursor` becomes `pending.newest` (updated by the head pass; never cleared to an older value) and `pending` is cleared (`clean`); capped again, `resumeBelow` moves to the oldest signature read if finalized (`capped`). Without a pending gap a completed head pass sets `cursor` to its newest finalized signature (`clean`). A scan that ended on the cap is `capped`, never `clean`. (Task 9 re-review, controller 2026-11-27)
 - **A failed source** does not stop the exit's other sources: a link may still be found there.
 - **Stopping at a link.** A link found → `markA0AccountsLinked([exit, ...matched seed wallets])`, and the scan of that exit ends. No cursor is needed after a link.
 - **Any null or failed transaction read** → the result is `failed`, and neither the cursor nor `pending` for that source moves (also while resuming).
@@ -453,7 +453,7 @@ Scanned accounts are role `fresh-exit` with `linked !== true` only; `fresh-pendi
 - A confirmed-only signature never becomes the cursor.
 - Generation guard.
 - Single-flight and the minimum interval.
-- Main is never passed to `markA0AccountsLinked`.
+- Main is never tagged (it may be passed to `markA0AccountsLinked`; the registry drops it). (Task 9 re-review, controller 2026-11-27)
 
 ### Presale
 Stale, unknown and never-synced states, each with a fresh control, and the MAX dim.
@@ -466,7 +466,7 @@ Stale, unknown and never-synced states, each with a fresh control, and the MAX d
 
 ## 9. Known limits
 
-- **Older history.** A scan reads at most 300 signatures per source, then resumes where it stopped on the next scan (§6.3), so the tag may lag on a very busy address. History reads page on demand.
+- **Older history.** A scan reads at most 300 signatures per source, then resumes where it stopped on the next scan (§6.3), so the tag may lag on a very busy address. If more than 300 new signatures arrive at a source between every two scans, the gap never closes, but the head (the newest, likeliest link) is read on every scan. (Task 9 re-review, controller 2026-11-27) History reads page on demand.
 - **Closed token accounts.** History and the scan read the token accounts a wallet owns now. Transactions that touched only a token account the wallet has since closed are not found.
 - **Token-2022 holdings** appear in history but not in the dashboard balances, which still read only the classic program (pre-existing).
 - **The "linked" tag is a lower bound,** and it may err on the warning side: a third party's transaction naming two seed wallets (dust) tags the exit.
@@ -477,7 +477,7 @@ Stale, unknown and never-synced states, each with a fresh control, and the MAX d
 - **Large wallets:** history reads at most 25 sources, so a wallet with more token accounts says so in the list footer.
 - **A stake or other non-token account** created and paid by the account reads "Transaction · Account setup" with its full amount. That is true, but terse.
 - **The RPC provider** sees every request, as #17 already says. History and the scan send one request per signature read.
-- **A transaction no node serves** keeps its source at `failed`: the cursor never moves past it and the exit is re-read on every scan. The UI must never word `failed` as "not linked". (Task 9 review, controller 2026-11-27)
+- **A transaction no node serves** keeps its source at `failed`: the record never moves, and the head (and any pending gap) is re-read on every scan. The UI must never word `failed` as "not linked". (Task 9 review, controller 2026-11-27)
 - **A transaction above version 1,** or one a node will not serve, stays "Transaction —" (r5). Version-1 reading was tested on Node, not on a phone.
 
 ## 10. Design files
