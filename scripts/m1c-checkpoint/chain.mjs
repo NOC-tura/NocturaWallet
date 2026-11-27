@@ -194,7 +194,7 @@ function frameEvents(logs) {
 }
 
 /**
- * A `getTransaction(sig, {encoding: 'base64', maxSupportedTransactionVersion: 0})` result decoded
+ * A `getTransaction(sig, {encoding: 'base64', maxSupportedTransactionVersion: 1})` result decoded
  * for the §6.8 checks (null for null). Every top-level instruction of the four programs the
  * relayed shape uses is read by its layout; anything else is listed in `foreign`.
  */

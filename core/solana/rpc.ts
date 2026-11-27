@@ -261,6 +261,8 @@ export interface SolanaReader {
 }
 
 const COMMITMENT = {commitment: 'confirmed'} as const;
+/** The newest transaction version getTransaction asks the node for (a lower number refuses newer transactions: -32015). */
+const MAX_TX_VERSION = 1;
 
 type Json = Record<string, unknown>;
 function obj(x: unknown, what: string): Json {
@@ -417,7 +419,9 @@ export function solanaReader(rpc: Rpc): SolanaReader {
       });
     },
     async getTransaction(signature) {
-      return rpc.call('getTransaction', [signature, {encoding: 'jsonParsed', maxSupportedTransactionVersion: 0, ...COMMITMENT}]);
+      // 1, not 0: asked with 0 the node answers a version-1 transaction with error -32015, which would lose the whole
+      // history page that lists it. The jsonParsed answer of a v1 message has the fields decodeHistoryEntry reads.
+      return rpc.call('getTransaction', [signature, {encoding: 'jsonParsed', maxSupportedTransactionVersion: MAX_TX_VERSION, ...COMMITMENT}]);
     },
   };
 }

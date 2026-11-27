@@ -7,7 +7,7 @@
  * key and slip10:0 — `seedKeys` — joined with that line's registry), collected by the M1c desk.
  * "The fresh account's history" is the signature list of the account AND of its TEST token account
  * (a stranger's dust lands on the token account). Transactions are read with
- * `getTransaction(sig, {encoding: 'json', maxSupportedTransactionVersion: 0})`: the account keys
+ * `getTransaction(sig, {encoding: 'json', maxSupportedTransactionVersion: 1})`: the account keys
  * are the message's static keys followed by the loaded addresses (meta.loadedAddresses), the
  * signers the first numRequiredSignatures of the static keys, and pre/postBalances follow the keys.
  * A value that was not read never passes a line.

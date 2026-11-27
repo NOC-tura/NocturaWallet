@@ -29,8 +29,14 @@ import {
   setBlob,
   txOf,
 } from '../__testing__/chainEdits';
-import {chainFrom, recordedConnection} from '../__testing__/recordedRpc';
-import type {RecordedChain, RecordedFixture} from '../__testing__/recordedRpc';
+import {liveDevnet} from '../__testing__/liveDevnet';
+import {
+  chainFrom,
+  RECORDED_MAX_TX_VERSION,
+  recordedConnection,
+  UNSUPPORTED_V1_ERROR,
+} from '../__testing__/recordedRpc';
+import type {RecordedChain, RecordedFixture, RecordedTx} from '../__testing__/recordedRpc';
 import {A0, A0_MERKLE_TREE} from '../constants';
 import {A0_SYNC_CACHE_SCHEMA, loadA0SyncCache} from '../syncCache';
 import {a0MerklePath, syncA0Tree} from '../treeSync';
@@ -464,5 +470,181 @@ describe('incremental sync and the encrypted cache', () => {
 
   it('the depth / ring constants the sync uses are the program side\'s facts', () => {
     expect(A0_MERKLE_TREE).toMatchObject({size: 3352, depth: 20, rootHistoryLen: 64});
+  });
+});
+
+/**
+ * Version-1 transactions. The node refuses one (error -32015) to a client that asks with
+ * `maxSupportedTransactionVersion: 0`, and anyone can land a successful v1 transaction that
+ * lists 5URd… — so a sync asking with 0 would be stopped for every wallet by one stranger's tx.
+ *
+ * fixtures/devnet-v1-tx-4T9Juo9P.json is a real devnet v1 transaction, both answers verbatim:
+ * `max0` (the -32015 error) and `max1` (the transaction, `version: 1`, a `transactionConfig` in
+ * the message, no address table lookups). No v1 transaction naming 5URd… was looked for on
+ * chain, so the two cases below are CONSTRUCTED from recorded answers, each with the stated
+ * edits and nothing else:
+ *   - foreign: the real v1 answer with static key 1 replaced by the tree's address (what makes
+ *     `getSignaturesForAddress(5URd…)` list it), listed as the newest signature;
+ *   - ours: the recorded legacy deposit 5vWuKtLF… re-declared as a v1 message — `version: 1`
+ *     plus the real v1 answer's `transactionConfig` — every other field as recorded (the JSON
+ *     answer of a v1 message has the legacy fields plus that one, as the fixture shows). No
+ *     real v1 deposit exists to record: the wallet and the relayer build legacy messages.
+ */
+describe('version-1 transactions', () => {
+  const V1 = JSON.parse(readFileSync(join(__dirname, 'fixtures/devnet-v1-tx-4T9Juo9P.json'), 'utf8')) as {
+    signature: string;
+    max0: {response: {error: {code: number; message: string}}};
+    max1: {response: {result: RecordedTx}};
+  };
+  const v1Answer = () => JSON.parse(JSON.stringify(V1.max1.response.result)) as RecordedTx;
+  const V1_FEE_PAYER = '2dbChKurXcZj4iDQPdEPyYHJGaiAqJno2omaPjHCQ7EN';
+  const V1_PROGRAM = 'BiSoNHVpsVZW2F7rx2eQ59yQwKxzU5NvBcmKshCSUypi';
+
+  /** The real v1 tx, naming the tree at static key 1, listed newest. `edit` runs before it is listed. */
+  const withForeign = (edit?: (tx: RecordedTx) => void): RecordedChain => {
+    const chain = fresh();
+    const tx = v1Answer();
+    tx.transaction.message.accountKeys[1] = A0.merkleTree;
+    edit?.(tx);
+    chain.transactions[V1.signature] = tx;
+    chain.signatures.unshift({
+      signature: V1.signature,
+      slot: tx.slot,
+      err: null,
+      memo: null,
+      blockTime: tx.blockTime,
+      confirmationStatus: 'finalized',
+    });
+    return chain;
+  };
+
+  /** The recorded deposit 5vWuKtLF… (leaf 14) re-declared as a v1 message. */
+  const withOurDepositAsV1 = (): {chain: RecordedChain; sig: string} => {
+    const chain = fresh();
+    const {sig, tx} = txOf(chain, '5vWuKtLF');
+    expect(tx.version).toBe('legacy');
+    tx.version = 1;
+    tx.transaction.message.transactionConfig = v1Answer().transaction.message.transactionConfig;
+    return {chain, sig};
+  };
+
+  const getTx = (chain: RecordedChain, sig: string, max: number) =>
+    recordedConnection(chain).connection.getTransaction(sig, {
+      commitment: 'confirmed',
+      maxSupportedTransactionVersion: max,
+    });
+
+  it('the fixture is a v1 answer, and the recording refuses it at max 0 with the node\'s own error', async () => {
+    expect(V1.max1.response.result.version).toBe(1);
+    expect(V1.max1.response.result.transaction.signatures[0]).toBe(V1.signature);
+    expect(V1.max0.response.error).toEqual(UNSUPPORTED_V1_ERROR);
+    const chain = withForeign();
+    // through the real web3.js: asked with 0 the v1 tx is an RPC error, asked with 1 it is a MessageV1
+    await expect(getTx(chain, V1.signature, 0)).rejects.toMatchObject({code: -32015});
+    const tx = await getTx(chain, V1.signature, RECORDED_MAX_TX_VERSION);
+    expect(tx!.version).toBe(1);
+    expect(tx!.transaction.message.version).toBe(1);
+  });
+
+  it('liveDevnet passes the node\'s -32015 on as a JSON-RPC error too (it answers getTransaction from the same recording)', async () => {
+    const {connection} = liveDevnet(withForeign());
+    await expect(
+      connection.getTransaction(V1.signature, {commitment: 'confirmed', maxSupportedTransactionVersion: 0}),
+    ).rejects.toMatchObject({name: 'SolanaJSONRPCError', code: -32015});
+    const tx = await connection.getTransaction(V1.signature, {commitment: 'confirmed', maxSupportedTransactionVersion: 1});
+    expect(tx!.version).toBe(1);
+  });
+
+  it('every getTransaction of the sync asks with maxSupportedTransactionVersion 1', async () => {
+    const {connection, requests} = recordedConnection(fresh());
+    await syncA0Tree(connection, {useCache: false});
+    const configs = requests.filter(r => r.method === 'getTransaction').map(r => r.params[1]);
+    expect(configs).toHaveLength(15);
+    for (const c of configs) {
+      expect(c).toEqual({commitment: 'confirmed', maxSupportedTransactionVersion: 1});
+    }
+  });
+
+  it('a foreign v1 tx that lists the tree does not stop the sync: read, kept without leaves, the tree unchanged', async () => {
+    const base = await sync(fresh());
+    const {tree, stats} = await sync(withForeign());
+    expect(stats).toMatchObject({
+      listedSignatures: 16,
+      fetchedTransactions: 16,
+      failedTransactions: 0,
+      totalTransactions: 16,
+    });
+    expect(tree.leaves).toEqual(base.tree.leaves);
+    expect(tree.root).toBe(base.tree.root);
+    expect(tree.txs.slice(0, 15)).toEqual(base.tree.txs);
+    expect(tree.txs[15]).toEqual({
+      signature: V1.signature,
+      slot: 526720765,
+      blockTime: 1795747138,
+      signers: [V1_FEE_PAYER],
+      feePayer: V1_FEE_PAYER,
+      topLevelPrograms: [V1_PROGRAM],
+      leafInserted: [],
+      withdrawNullifiers: [],
+      deposits: [],
+      withdrawals: [],
+      systemTransfers: [],
+      createAtaIdempotent: [],
+      preBalances: [
+        {address: V1_FEE_PAYER, lamports: 710700000n},
+        {address: A0.merkleTree, lamports: 15144960n},
+        {address: 'SysvarC1ock11111111111111111111111111111111', lamports: 1169280n},
+        {address: V1_PROGRAM, lamports: 1141440n},
+      ],
+      vaultTokenDelta: 0n,
+    });
+  });
+
+  it('the foreign v1 tx is kept exactly as the same tx declared legacy is', async () => {
+    const asLegacy = await sync(
+      withForeign(tx => {
+        tx.version = 'legacy';
+        delete tx.transaction.message.transactionConfig;
+      }),
+    );
+    const asV1 = await sync(withForeign());
+    expect(asV1.tree.txs).toHaveLength(16);
+    expect(asV1.tree.txs).toEqual(asLegacy.tree.txs);
+  });
+
+  it('our own deposit in a v1 message is decoded as in a legacy one: same record, same leaf, same root', async () => {
+    const base = await sync(fresh());
+    const {chain, sig} = withOurDepositAsV1();
+    // POSITIVE CONTROL: the sync below really reads a MessageV1 for this signature
+    const tx = await getTx(chain, sig, RECORDED_MAX_TX_VERSION);
+    expect(tx!.transaction.message.version).toBe(1);
+    await expect(getTx(chain, sig, 0)).rejects.toMatchObject({code: -32015});
+
+    const {tree} = await sync(chain);
+    const record = tree.txs.find(t => t.signature === sig)!;
+    expect(record.leafInserted.map(l => l.leafIndex)).toEqual([14]);
+    expect(record.deposits).toHaveLength(1);
+    expect(record.topLevelPrograms).toEqual(['ComputeBudget111111111111111111111111111111', A0.programId]);
+    expect(tree.txs).toEqual(base.tree.txs);
+    expect(tree.leaves).toEqual(base.tree.leaves);
+    expect(tree.root).toBe(base.tree.root);
+  });
+
+  it('a pool leaf forged into the foreign v1 tx from [pool, 5URd…] is admitted like any other — and refuses the sync', async () => {
+    // a MessageV1 goes through the same admission as a legacy message: the R1-I1 positive control, on v1
+    const chain = withForeign(tx => {
+      const msg = tx.transaction.message;
+      msg.accountKeys.push(A0.pool);
+      (msg.header as {numReadonlyUnsignedAccounts: number}).numReadonlyUnsignedAccounts += 1;
+      tx.meta.preBalances.push(1);
+      (tx.meta.postBalances as number[]).push(1);
+      appendTopLevelIx(tx, {
+        program: A0.programId,
+        accounts: [A0.pool, A0.merkleTree],
+        data: new Uint8Array(8),
+        blobs: [leafBlob('59f3d408d7bfbb98', '01'.repeat(32), 0, '02'.repeat(32))],
+      });
+    });
+    await expect(sync(chain)).rejects.toMatchObject({code: 'E_A0_LEAF_ORDER'});
   });
 });

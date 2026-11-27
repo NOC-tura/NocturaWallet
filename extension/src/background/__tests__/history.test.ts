@@ -1,3 +1,6 @@
+import {readFileSync} from 'node:fs';
+import {join} from 'node:path';
+import {createForbiddenLatch, createRpc, solanaReader} from '../../../../core/solana/rpc';
 import {HISTORY_PAGE_SIZE, MAX_CACHED, TX_MIN_INTERVAL_MS, createHistory} from '../history';
 import {fakeReader} from './fakeDeps';
 
@@ -7,6 +10,46 @@ const solSend = {
   meta: {err: null, fee: 5000, preBalances: [2_000_000, 0], postBalances: [995_000, 1_000_000], preTokenBalances: [], postTokenBalances: []},
   transaction: {message: {accountKeys: [{pubkey: OWNER}, {pubkey: 'Other'}], instructions: []}},
 };
+
+/**
+ * core/solana/__tests__/fixtures/devnet-v1-tx-4T9Juo9P.json: a real devnet version-1 transaction, asked for as core's
+ * reader asks, with maxSupportedTransactionVersion 0 (the node's error -32015) and 1 (the transaction) — verbatim.
+ * CONSTRUCTED around it: the signature list (one entry, this signature) and the owner (the transaction's fee payer).
+ */
+describe('history over the real reader: a version-1 transaction in the page', () => {
+  interface Recorded {
+    request: {params: unknown[]};
+    response: unknown;
+  }
+  const V1 = JSON.parse(readFileSync(join(__dirname, '../../../../core/solana/__tests__/fixtures/devnet-v1-tx-4T9Juo9P.json'), 'utf8')) as {
+    signature: string;
+    max0: Recorded;
+    max1: Recorded;
+  };
+  const FEE_PAYER = '2dbChKurXcZj4iDQPdEPyYHJGaiAqJno2omaPjHCQ7EN';
+
+  it('does not lose the page: the v1 row is listed (asked with 0 the node answers -32015 and the whole page throws)', async () => {
+    const asked: unknown[][] = [];
+    const fetch = async (_url: string, init: {body?: string}) => {
+      const {method, params} = JSON.parse(init.body ?? '{}') as {method: string; params: unknown[]};
+      const reply = (body: unknown) => ({status: 200, json: async () => body});
+      if (method === 'getSignaturesForAddress') return reply({jsonrpc: '2.0', id: 1, result: [{signature: V1.signature, blockTime: 1795747138, err: null}]});
+      asked.push(params);
+      for (const a of [V1.max0, V1.max1]) {
+        if (method === 'getTransaction' && JSON.stringify(params) === JSON.stringify(a.request.params)) return reply(a.response);
+      }
+      return reply({jsonrpc: '2.0', id: 1, error: {code: -32602, message: `not recorded: ${method}`}});
+    };
+    const reader = solanaReader(createRpc({fetch, latch: createForbiddenLatch()}));
+    const history = createHistory({reader, now: () => 0, sleep: async () => undefined});
+    const {items, next} = await history.page(FEE_PAYER);
+    expect(asked).toEqual([V1.max1.request.params]);
+    expect(items).toEqual([
+      {signature: V1.signature, blockTime: 1795747138, kind: 'other', token: null, mint: null, amount: null, counterparty: null, feeLamports: '5000', failed: false},
+    ]);
+    expect(next).toBeNull();
+  });
+});
 
 describe('history', () => {
   it('pages by signature, decodes each, paces getTransaction to ≤ 2 per second and caches', async () => {

@@ -1,7 +1,16 @@
+import {readFileSync} from 'node:fs';
+import {join} from 'node:path';
+import {decodeHistoryEntry} from '../history';
 import {
   ALLOWED_RPC_METHODS, API_BASE, FORBIDDEN_COOLDOWN_MS, RPC_ENDPOINT, RpcCoolingDown, RpcForbidden, RpcHttpError, RpcMalformed, RpcMethodRefused, RpcResponseError,
   createForbiddenLatch, createRpc, solanaReader, type FetchInit, type RpcMethod,
 } from '../rpc';
+
+interface V1Answer {
+  request: {method: string; params: unknown[]};
+  response: {jsonrpc: string; id: number; result: {version: unknown}; error: {code: number; message: string}};
+}
+const V1 = JSON.parse(readFileSync(join(__dirname, 'fixtures/devnet-v1-tx-4T9Juo9P.json'), 'utf8')) as {signature: string; max0: V1Answer; max1: V1Answer};
 
 interface Call {
   url: string;
@@ -332,10 +341,53 @@ describe('solanaReader', () => {
     expect(await r.getAccountKind(OWNER)).toBe('other');
   });
 
-  it('getTransaction asks for jsonParsed v0 and passes null through', async () => {
+  it('getTransaction asks for jsonParsed up to version 1 and passes null through', async () => {
     const {r, calls} = reader(() => ok(null));
     expect(await r.getTransaction('sig')).toBeNull();
-    expect(calls[0]?.body.params).toEqual(['sig', {encoding: 'jsonParsed', maxSupportedTransactionVersion: 0, commitment: 'confirmed'}]);
+    expect(calls[0]?.body.params).toEqual(['sig', {encoding: 'jsonParsed', maxSupportedTransactionVersion: 1, commitment: 'confirmed'}]);
+  });
+
+  /**
+   * fixtures/devnet-v1-tx-4T9Juo9P.json: one real devnet version-1 transaction, asked for exactly as this reader asks
+   * (jsonParsed, confirmed) with maxSupportedTransactionVersion 0 and 1 — both requests and both answers verbatim. With 0
+   * the node answers error -32015 instead of the transaction; anyone can land a v1 transaction that names an address,
+   * so a reader asking with 0 loses every history page that lists one. The fake below is the recording and nothing else:
+   * it answers only the two recorded requests.
+   */
+  describe('a version-1 transaction (recorded from devnet)', () => {
+    const recorded = () =>
+      reader((_method, params) => {
+        for (const a of [V1.max0, V1.max1]) {
+          if (JSON.stringify(params) === JSON.stringify(a.request.params)) return {status: 200, body: a.response};
+        }
+        return {status: 200, body: {jsonrpc: '2.0', id: 1, error: {code: -32602, message: `not recorded: ${JSON.stringify(params)}`}}};
+      });
+
+    it('the recording: a v1 answer at max 1, the node\'s -32015 at max 0 (controls on the fixture)', async () => {
+      expect(V1.max1.response.result.version).toBe(1);
+      expect(V1.max0.response.error.code).toBe(-32015);
+      const f = fakeFetch((_m, params) => ({status: 200, body: JSON.stringify(params) === JSON.stringify(V1.max0.request.params) ? V1.max0.response : ok(null).body}));
+      const rpc = createRpc({fetch: f.fetch, latch: createForbiddenLatch()});
+      const asked = rpc.call('getTransaction', V1.max0.request.params);
+      await expect(asked).rejects.toBeInstanceOf(RpcResponseError);
+      await expect(asked).rejects.toMatchObject({code: -32015});
+    });
+
+    it('is read: the request the reader sends is the one the node answers with the transaction', async () => {
+      const {r, calls} = recorded();
+      expect(await r.getTransaction(V1.signature)).toEqual(V1.max1.response.result);
+      expect(calls).toHaveLength(1);
+      expect(calls[0]?.body.params).toEqual(V1.max1.request.params);
+    });
+
+    it('decodes as history like any other transaction: for its fee payer, `other` with the fee, nothing thrown', async () => {
+      const {r} = recorded();
+      const tx = await r.getTransaction(V1.signature);
+      // the fee payer paid the 5000-lamport fee and moved nothing else
+      expect(decodeHistoryEntry('2dbChKurXcZj4iDQPdEPyYHJGaiAqJno2omaPjHCQ7EN', V1.signature, tx)).toEqual({
+        signature: V1.signature, blockTime: 1795747138, feeLamports: 5000n, failed: false, kind: 'other', token: null, mint: null, amount: null, counterparty: null,
+      });
+    });
   });
 
   it('getSignaturesForAddress sends before only when given', async () => {

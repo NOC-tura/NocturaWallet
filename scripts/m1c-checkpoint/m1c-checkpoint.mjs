@@ -683,7 +683,7 @@ async function readFeePayerWindow(url, start, known) {
   }
   const missing = listed.filter(s => !(s in known));
   const answers = missing.length
-    ? await devnetBatch(url, missing.map(s => ({ method: 'getTransaction', params: [s, { encoding: 'base64', maxSupportedTransactionVersion: 0, commitment: 'confirmed' }] })))
+    ? await devnetBatch(url, missing.map(s => ({ method: 'getTransaction', params: [s, { encoding: 'base64', maxSupportedTransactionVersion: 1, commitment: 'confirmed' }] })))
     : [];
   const fetched = Object.fromEntries(missing.map((s, i) => [s, answers[i] ?? null]));
   return Object.fromEntries(listed.map(s => [s, s in known ? known[s] : fetched[s]]));
@@ -697,7 +697,7 @@ async function verify() {
   const wipeRec = readJson('wipe.json');
   const sigs = L.unshieldSignatures(readouts);
   const txAnswers = sigs.length
-    ? await devnetBatch(url, sigs.map(s => ({ method: 'getTransaction', params: [s, { encoding: 'base64', maxSupportedTransactionVersion: 0, commitment: 'confirmed' }] })))
+    ? await devnetBatch(url, sigs.map(s => ({ method: 'getTransaction', params: [s, { encoding: 'base64', maxSupportedTransactionVersion: 1, commitment: 'confirmed' }] })))
     : [];
   const txs = Object.fromEntries(sigs.map((s, i) => [s, txAnswers[i] ?? null]));
   // R1-I1 / R2-I1: every relayed tx the relayer fee payer landed in this session's window, so that a

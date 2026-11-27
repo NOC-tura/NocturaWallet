@@ -1,0 +1,134 @@
+{
+ "schema": "noctura.core.devnet-v1-tx-fixture/1",
+ "cluster": "devnet",
+ "genesisHash": "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG",
+ "rpc": "https://api.devnet.solana.com",
+ "fetchedAt": "2026-11-27T03:03:43.973Z",
+ "signature": "4T9Juo9PCeFxmcNbnitvQPwiqxSDG7SZ1v45yfCoEAgEdAAswjvNGdeGkv3e4JMzoP7fruEYz33gf53So5ewk7qM",
+ "max0": {
+  "request": {
+   "method": "getTransaction",
+   "params": [
+    "4T9Juo9PCeFxmcNbnitvQPwiqxSDG7SZ1v45yfCoEAgEdAAswjvNGdeGkv3e4JMzoP7fruEYz33gf53So5ewk7qM",
+    {
+     "encoding": "jsonParsed",
+     "maxSupportedTransactionVersion": 0,
+     "commitment": "confirmed"
+    }
+   ]
+  },
+  "response": {
+   "jsonrpc": "2.0",
+   "error": {
+    "code": -32015,
+    "message": "Transaction version (1) is not supported by the requesting client. Please try the request again with the following configuration parameter: \"maxSupportedTransactionVersion\": 1"
+   },
+   "id": 1
+  }
+ },
+ "max1": {
+  "request": {
+   "method": "getTransaction",
+   "params": [
+    "4T9Juo9PCeFxmcNbnitvQPwiqxSDG7SZ1v45yfCoEAgEdAAswjvNGdeGkv3e4JMzoP7fruEYz33gf53So5ewk7qM",
+    {
+     "encoding": "jsonParsed",
+     "maxSupportedTransactionVersion": 1,
+     "commitment": "confirmed"
+    }
+   ]
+  },
+  "response": {
+   "jsonrpc": "2.0",
+   "result": {
+    "blockTime": 1795747138,
+    "meta": {
+     "computeUnitsConsumed": 39,
+     "costUnits": 1431,
+     "err": null,
+     "fee": 5000,
+     "innerInstructions": [],
+     "logMessages": [
+      "Program BiSoNHVpsVZW2F7rx2eQ59yQwKxzU5NvBcmKshCSUypi invoke [1]",
+      "Program BiSoNHVpsVZW2F7rx2eQ59yQwKxzU5NvBcmKshCSUypi consumed 39 of 48 compute units",
+      "Program BiSoNHVpsVZW2F7rx2eQ59yQwKxzU5NvBcmKshCSUypi success"
+     ],
+     "postBalances": [
+      710695000,
+      15144960,
+      1169280,
+      1141440
+     ],
+     "postTokenBalances": [],
+     "preBalances": [
+      710700000,
+      15144960,
+      1169280,
+      1141440
+     ],
+     "preTokenBalances": [],
+     "rewards": [],
+     "status": {
+      "Ok": null
+     }
+    },
+    "slot": 526720765,
+    "transaction": {
+     "message": {
+      "accountKeys": [
+       {
+        "pubkey": "2dbChKurXcZj4iDQPdEPyYHJGaiAqJno2omaPjHCQ7EN",
+        "signer": true,
+        "source": "transaction",
+        "writable": true
+       },
+       {
+        "pubkey": "AWVYnCT2ZdLsWZf1X9KXatZhC2TyruRM22y8KZqVeupr",
+        "signer": false,
+        "source": "transaction",
+        "writable": true
+       },
+       {
+        "pubkey": "SysvarC1ock11111111111111111111111111111111",
+        "signer": false,
+        "source": "transaction",
+        "writable": false
+       },
+       {
+        "pubkey": "BiSoNHVpsVZW2F7rx2eQ59yQwKxzU5NvBcmKshCSUypi",
+        "signer": false,
+        "source": "transaction",
+        "writable": false
+       }
+      ],
+      "instructions": [
+       {
+        "accounts": [
+         "2dbChKurXcZj4iDQPdEPyYHJGaiAqJno2omaPjHCQ7EN",
+         "AWVYnCT2ZdLsWZf1X9KXatZhC2TyruRM22y8KZqVeupr",
+         "SysvarC1ock11111111111111111111111111111111"
+        ],
+        "data": "42GVh1EbYnHXAtkmNhiQQ8BLaz2Kp91qgHsToQVy17D9H",
+        "programId": "BiSoNHVpsVZW2F7rx2eQ59yQwKxzU5NvBcmKshCSUypi",
+        "stackHeight": 1
+       }
+      ],
+      "recentBlockhash": "CuL5A2WvGpxB3XSXSiGVTC6oYexitxDQoeumEAtCZcTb",
+      "transactionConfig": {
+       "computeUnitLimit": 48,
+       "heapSize": null,
+       "loadedAccountsDataSizeLimit": 256000,
+       "priorityFee": 0
+      }
+     },
+     "signatures": [
+      "4T9Juo9PCeFxmcNbnitvQPwiqxSDG7SZ1v45yfCoEAgEdAAswjvNGdeGkv3e4JMzoP7fruEYz33gf53So5ewk7qM"
+     ]
+    },
+    "transactionIndex": 6,
+    "version": 1
+   },
+   "id": 1
+  }
+ }
+}

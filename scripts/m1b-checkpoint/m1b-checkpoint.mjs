@@ -372,7 +372,7 @@ async function verify() {
   const wipeRec = readJson('wipe.json');
   const sigs = [...new Set([...readouts.filter(x => x.readout.signature).map(x => x.readout.signature), kill?.signature].filter(Boolean))];
   const answers = sigs.length
-    ? await devnetBatch(url, sigs.map(s => ({ method: 'getTransaction', params: [s, { encoding: 'json', maxSupportedTransactionVersion: 0, commitment: 'confirmed' }] })))
+    ? await devnetBatch(url, sigs.map(s => ({ method: 'getTransaction', params: [s, { encoding: 'json', maxSupportedTransactionVersion: 1, commitment: 'confirmed' }] })))
     : [];
   const txs = Object.fromEntries(sigs.map((s, i) => [s, answers[i] ?? null]));
   const pages = [];

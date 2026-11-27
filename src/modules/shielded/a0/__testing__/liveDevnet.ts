@@ -36,7 +36,7 @@
 import {Connection, PublicKey, VersionedTransaction} from '@solana/web3.js';
 import {base58} from '@scure/base';
 import {ed25519} from '@noble/curves/ed25519.js';
-import {answer, RpcRefusal} from './recordedRpc';
+import {answer, RpcNodeError, RpcRefusal} from './recordedRpc';
 import type {RecordedChain, RecordedTx, RpcRequest} from './recordedRpc';
 import {appendDeposit, rhoPda} from './ownHistory';
 import {toHex} from './chainEdits';
@@ -401,10 +401,14 @@ export function liveDevnet(chain: RecordedChain): LiveDevnet {
     try {
       payload = {jsonrpc: '2.0', id: body.id, result: respond(body.method, params)};
     } catch (e) {
-      if (!(e instanceof RpcRefusal)) {
+      if (e instanceof RpcNodeError) {
+        // the node's own error (a v1 tx asked for with max 0, from recordedRpc's `answer`), with its code
+        payload = {jsonrpc: '2.0', id: body.id, error: e.rpcError};
+      } else if (e instanceof RpcRefusal) {
+        payload = {jsonrpc: '2.0', id: body.id, error: {code: -32602, message: `liveDevnet: ${e.message}`}};
+      } else {
         throw e;
       }
-      payload = {jsonrpc: '2.0', id: body.id, error: {code: -32602, message: `liveDevnet: ${e.message}`}};
     }
     const text = JSON.stringify(payload);
     return {ok: true, status: 200, statusText: 'OK', text: async () => text, json: async () => payload};

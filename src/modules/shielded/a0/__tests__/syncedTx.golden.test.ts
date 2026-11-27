@@ -77,7 +77,7 @@ const LANDED_DEPOSIT = {
 
 async function fetchTx(chain: RecordedChain, sig: string): Promise<VersionedTransactionResponse> {
   const {connection} = recordedConnection(chain);
-  const tx = await connection.getTransaction(sig, {commitment: 'confirmed', maxSupportedTransactionVersion: 0});
+  const tx = await connection.getTransaction(sig, {commitment: 'confirmed', maxSupportedTransactionVersion: 1});
   if (!tx) {
     throw new Error(`no ${sig}`);
   }
