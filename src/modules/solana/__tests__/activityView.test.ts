@@ -18,6 +18,7 @@ import {
   zonedDate,
 } from '../activityView';
 import {VALUE_HIDDEN} from '../../../copy/accounts';
+import {HISTORY_CHIPS, historyChipNone, historyChipNoneLoaded} from '../../../copy/transactions';
 import type {ActivityRow, Delta} from '../activity';
 import type {TxTransfer} from '../txDetail';
 import type {HistoryRow} from '../history';
@@ -88,6 +89,8 @@ describe('sectionOf (§5.3)', () => {
     expect(sectionOf(at('2026-12-31T12:00:00Z'), sat2Jan, LJ).title).toBe('This week');
     expect(sectionOf(at('2026-12-27T12:00:00Z'), sat2Jan, LJ)).toEqual({key: '2026-12', title: 'December 2026'});
     expect(sectionOf(at('2026-10-31T12:00:00Z'), NOW, LJ)).toEqual({key: '2026-10', title: 'October 2026'});
+    // the same month of an earlier year is not This month
+    expect(sectionOf(at('2025-11-10T10:00:00Z'), NOW, LJ)).toEqual({key: '2025-11', title: 'November 2025'});
   });
 
   // V5 (r2 m7)
@@ -375,5 +378,60 @@ describe('the detail (#27, §4.6)', () => {
       return null;
     });
     expect(asked).toEqual(['MINT']);
+  });
+});
+
+describe('review fixes (task 5)', () => {
+  afterEach(() => jest.restoreAllMocks());
+  const partsOf = (...p: Array<[string, string]>) => p.map(([type, value]) => ({type, value})) as Intl.DateTimeFormatPart[];
+
+  // I1: the device-clock fallback (jest runs in UTC, so the device clock is UTC here)
+  it('an unknown zone reads the device clock, with its values', () => {
+    expect(zonedDate(ms('2026-07-15T22:30:00Z'), 'Not/AZone')).toEqual({year: 2026, month: 7, day: 15, hour: 22, minute: 30});
+  });
+  it('parts without an hour fall back to the device clock', () => {
+    jest.spyOn(Intl.DateTimeFormat.prototype, 'formatToParts').mockReturnValue(partsOf(['year', '2026'], ['month', '7'], ['day', '16'], ['minute', '30']));
+    expect(zonedDate(ms('2026-07-15T22:30:00Z'), LJ)).toEqual({year: 2026, month: 7, day: 15, hour: 22, minute: 30});
+  });
+  // I2
+  it('a 12-hour answer (a dayPeriod part) is refused: the device clock, never "09:..." for 21:..', () => {
+    jest
+      .spyOn(Intl.DateTimeFormat.prototype, 'formatToParts')
+      .mockReturnValue(partsOf(['month', '7'], ['day', '15'], ['year', '2026'], ['hour', '09'], ['minute', '30'], ['dayPeriod', 'PM']));
+    expect(zonedDate(ms('2026-07-15T21:30:00Z'), LJ)).toEqual({year: 2026, month: 7, day: 15, hour: 21, minute: 30});
+  });
+
+  // M3
+  it('the time read from the transaction is used when the signature list had none', () => {
+    const r: HistoryRow = {item: {signature: 'S', slot: 1, blockTime: null, status: 'finalized', finalized: true}, activity: activity({kind: 'unknown', blockTime: at('2026-11-26T08:14:00Z')})};
+    expect(groupSections([r], NOW, LJ).map(g => g.title)).toEqual(['Today']);
+    expect(rowView(r, label, NOW, LJ).secondary).toBe('09:14');
+  });
+
+  // M4
+  it('a block time that is not a number is unknown, never "NaN"', () => {
+    expect(sectionOf(Number.NaN, NOW, LJ)).toEqual({key: 'unknown', title: 'Date unknown'});
+    expect(rowTime(Number.NaN, NOW, LJ)).toBe('');
+    expect(rowTime(Infinity, NOW, LJ)).toBe('');
+  });
+
+  // M5
+  it('a failed row with no fee read shows no fee line', () => {
+    expect(view(row({kind: 'failed', status: 'failed', feePaidByAccount: 0n})).sub).toBeNull();
+  });
+
+  // M7
+  it('the chip empty states read as English, per chip', () => {
+    const none = HISTORY_CHIPS.map(c => historyChipNone(c.id));
+    expect(none).toEqual([
+      'No transactions yet',
+      'No sent transactions yet',
+      'No received transactions yet',
+      'No swaps yet',
+      'No Made private or Made public transactions yet',
+    ]);
+    expect(historyChipNoneLoaded('sent', 20)).toBe('No sent transactions in the last 20 transactions');
+    expect(historyChipNoneLoaded('swaps', 1)).toBe('No swaps in the last transaction');
+    expect(historyChipNoneLoaded('all', 20)).toBe('No transactions yet');
   });
 });

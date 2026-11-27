@@ -49,7 +49,7 @@ import {
   txTo,
 } from '../../copy/transactions';
 import type {HistoryChipId} from '../../copy/transactions';
-import {VALUE_HIDDEN} from '../../copy/accounts';
+import {VALUE_HIDDEN, mainLabelled} from '../../copy/accounts';
 
 export type RowIcon = 'sent' | 'received' | 'swap' | 'private' | 'setup' | 'failed' | 'dot';
 
@@ -100,6 +100,9 @@ export function zonedDate(ms: number, tz: string): ZonedDate {
       formatters.set(tz, f);
     }
     const parts = f.formatToParts(new Date(ms));
+    if (parts.some(p => p.type === 'dayPeriod')) {
+      throw new Error('12-hour answer'); // the engine ignored hourCycle h23: its hour is not ours
+    }
     const part = (type: string): number => Number(parts.find(p => p.type === type)?.value);
     const z = {year: part('year'), month: part('month'), day: part('day'), hour: part('hour') % 24, minute: part('minute')};
     if (Object.values(z).every(Number.isFinite)) {
@@ -136,7 +139,7 @@ export interface Section {
  * the future (a device clock behind the chain) is Today.
  */
 export function sectionOf(blockTime: number | null, now: number, tz: string): Section {
-  if (blockTime === null) {
+  if (blockTime === null || !Number.isFinite(blockTime)) {
     return {key: 'unknown', title: SECTION_DATE_UNKNOWN};
   }
   const then = zonedDate(blockTime * 1000, tz);
@@ -160,7 +163,7 @@ export function sectionOf(blockTime: number | null, now: number, tz: string): Se
 
 /** §5.1 {time}: "HH:mm" for Today and Yesterday, else "d MMM" ("6 May"); '' with no block time. */
 export function rowTime(blockTime: number | null, now: number, tz: string): string {
-  if (blockTime === null) {
+  if (blockTime === null || !Number.isFinite(blockTime)) {
     return '';
   }
   const section = sectionOf(blockTime, now, tz).key;
@@ -171,11 +174,16 @@ export function rowTime(blockTime: number | null, now: number, tz: string): stri
   return `${z.day} ${MONTH_SHORT[z.month - 1]}`;
 }
 
+/** The list's block time, else the one read from the transaction itself */
+function rowBlockTime(row: HistoryRow): number | null {
+  return row.item.blockTime ?? row.activity?.blockTime ?? null;
+}
+
 /** Rows under their date sections, in the order given; "Date unknown" always last. */
 export function groupSections(rows: readonly HistoryRow[], now: number, tz: string): Array<Section & {data: HistoryRow[]}> {
   const groups = new Map<string, Section & {data: HistoryRow[]}>();
   for (const row of rows) {
-    const section = sectionOf(row.item.blockTime, now, tz);
+    const section = sectionOf(rowBlockTime(row), now, tz);
     const have = groups.get(section.key);
     if (have) {
       have.data.push(row);
@@ -212,7 +220,7 @@ export function counterpartyLabel(list: AccountList | null, address: string): st
   if (list !== null && !list.unreadable) {
     const own = list.accounts.find(a => a.address === address);
     if (own) {
-      return own.isMain ? `${own.label} (main)` : own.label;
+      return mainLabelled(own.label, own.isMain);
     }
   }
   return shortAccountAddress(address);
@@ -252,7 +260,7 @@ export function rowView(row: HistoryRow, labelOf: (address: string) => string, n
 }
 
 function shownRow(row: HistoryRow, labelOf: (address: string) => string, now: number, tz: string): RowView {
-  const time = rowTime(row.item.blockTime, now, tz);
+  const time = rowTime(rowBlockTime(row), now, tz);
   const a = row.activity;
   const plain: RowView = {icon: 'dot', title: TX_NEUTRAL, badge: false, secondary: time, amount: TX_AMOUNT_UNKNOWN, amountTone: 'default', note: null, sub: null};
   if (a === null) {
@@ -296,7 +304,7 @@ function shownRow(row: HistoryRow, labelOf: (address: string) => string, now: nu
         ...plain,
         icon: 'failed',
         title: TX_FAILED,
-        sub: a.feePaidByAccount === null ? null : txFeeLine(formatTokenAmount(a.feePaidByAccount, 9)),
+        sub: a.feePaidByAccount === null || a.feePaidByAccount <= 0n ? null : txFeeLine(formatTokenAmount(a.feePaidByAccount, 9)),
       };
     case 'no-funds-moved':
       return {...plain, amount: TX_NO_FUNDS_MOVED, amountTone: 'tertiary'};

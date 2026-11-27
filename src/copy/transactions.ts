@@ -75,13 +75,25 @@ export const HISTORY_CHIPS: ReadonlyArray<{id: HistoryChipId; label: string}> = 
   {id: 'swaps', label: 'Swaps'},
   {id: 'private', label: 'Private'},
 ];
-/** A chip with no match among the {n} transactions loaded so far, while older ones exist */
-export function historyChipNoneLoaded(chipLabel: string, loaded: number): string {
-  return `No ${chipLabel} transactions in the last ${loaded}`;
+/** What each chip's empty state calls its transactions (reads as English after "No") */
+const HISTORY_CHIP_NOUN: Record<HistoryChipId, string> = {
+  all: 'transactions',
+  sent: 'sent transactions',
+  received: 'received transactions',
+  swaps: 'swaps',
+  private: 'Made private or Made public transactions',
+};
+/** A chip with no match among the {loaded} transactions read so far, while older ones exist */
+export function historyChipNoneLoaded(chip: HistoryChipId, loaded: number): string {
+  if (chip === 'all') {
+    return historyChipNone(chip);
+  }
+  const span = loaded === 1 ? 'the last transaction' : `the last ${loaded} transactions`;
+  return `No ${HISTORY_CHIP_NOUN[chip]} in ${span}`;
 }
 /** A chip with no match at the end of history */
-export function historyChipNone(chipLabel: string): string {
-  return `No ${chipLabel} transactions yet`;
+export function historyChipNone(chip: HistoryChipId): string {
+  return `No ${HISTORY_CHIP_NOUN[chip]} yet`;
 }
 export const HISTORY_LOAD_OLDER = 'Load older';
 /** The list footer of a wallet with more token accounts than the history reads (spec §3.2, §9) */

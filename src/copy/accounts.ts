@@ -112,9 +112,14 @@ export function avatarA11y(label: string): string {
   return `${label}, switch account`;
 }
 
+/** "Account 1 (main)" for the main account, the bare label for any other */
+export function mainLabelled(label: string, isMain: boolean): string {
+  return `${label}${isMain ? ' (main)' : ''}`;
+}
+
 /** "Account 4 · 3YqEpf…JXT94k" / "Account 1 (main) · HAgk14…3DKpqk" — #20's From row, #21's Received by */
 export function accountWithAddress(label: string, short: string, isMain: boolean): string {
-  return `${label}${isMain ? ' (main)' : ''} · ${short}`;
+  return `${mainLabelled(label, isMain)} · ${short}`;
 }
 
 /** #19's caption (§4.2) */
