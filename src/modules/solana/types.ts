@@ -55,19 +55,6 @@ export interface TokenAccount {
   address: string; // token account address
 }
 
-export interface ParsedTransaction {
-  signature: string;
-  slot: number;
-  timestamp: number | null;
-  type: 'transfer' | 'spl_transfer' | 'unknown';
-  amount?: string;
-  mint?: string;
-  from?: string;
-  to?: string;
-  fee: number;
-  status: 'confirmed' | 'finalized' | 'failed';
-}
-
 // Re-export library types used throughout the module so consumers can import
 // from a single location rather than mixing direct @solana/web3.js imports with
 // local types.

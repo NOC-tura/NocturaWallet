@@ -6,7 +6,7 @@
  */
 import {readFileSync} from 'fs';
 import {join} from 'path';
-import {parseTxDetail, txDirection} from '../txDetail';
+import {parseTxDetail} from '../txDetail';
 import type {RawParsedTx} from '../txDetail';
 import {A0_TOKEN} from '../../shielded/a0/screenSupport';
 import {NOCTURA_FEE_TREASURY} from '../../../constants/programs';
@@ -71,7 +71,6 @@ it('R11: no owner in the response → the token account, flagged — never passe
   expect(d.transfer).toMatchObject({to: OUTSIDE_TA, toIsTokenAccount: true, toTokenAccount: OUTSIDE_TA, symbol: 'TEST', amount: '0.0005'});
   // review r1-10: with no owner the sender WALLET is not known either — the authority is shown as what it is
   expect(d.transfer).toMatchObject({from: null, authority: ACC_9Y});
-  expect(txDirection(d, ACC_9Y)).toBe('none');
 });
 
 // P5 (Review Focus 2)
@@ -144,13 +143,6 @@ it('review r1-10: a delegated transfer — From is the OWNER of the source accou
   expect(d.signers).toEqual([DELEGATE]);
 });
 
-it('review r1-10: a delegated transfer is "sent" for nobody — not the owner (it did not sign), not the delegate (not its funds)', () => {
-  const d = parseTxDetail(delegated(), 'SIG', symbolOf);
-  expect(txDirection(d, ACC_9Y)).toBe('none');
-  expect(txDirection(d, DELEGATE)).toBe('none');
-  expect(txDirection(d, OUTSIDE)).toBe('received'); // the recipient's view is unchanged
-});
-
 it('review r1-10: the owner is read from preTokenBalances when the post entry is missing (a source account closed in the same transaction)', () => {
   const tx = clone(load('tx-test-to-outside.json'));
   tx.meta!.postTokenBalances = (tx.meta!.postTokenBalances ?? []).filter(b => b.accountIndex !== 1); // removed: the source's post entry
@@ -182,59 +174,13 @@ it('the Noctura fee-markup transfer is skipped; a failed transaction is "failed"
   expect(none.feePayer).toBe(SOL_SENDER);
 });
 
-describe('txDirection — judged against the route\'s account only (R9)', () => {
-  const toOutside = () => parseTxDetail(load('tx-test-to-outside.json'), 'SIG', symbolOf);
-  const toMain = () => parseTxDetail(load('tx-test-to-main.json'), 'SIG', symbolOf);
-  const sol = () => parseTxDetail(load('tx-sol-transfer.json'), 'SIG', symbolOf);
-
-  it('sent: the account is the transfer\'s source and signed', () => {
-    expect(txDirection(toOutside(), ACC_9Y)).toBe('sent');
-    expect(txDirection(sol(), SOL_SENDER)).toBe('sent');
-  });
-  it('received: the account is the recipient wallet, or the destination token account', () => {
-    expect(txDirection(toMain(), MAIN)).toBe('received');
-    expect(txDirection(sol(), OUTSIDE)).toBe('received');
-    expect(txDirection(toMain(), MAIN_TA)).toBe('received');
-  });
-  it('third party: an account that is neither end → none (no direction claimed)', () => {
-    expect(txDirection(sol(), ACC_9Y)).toBe('none');
-    expect(txDirection(toOutside(), MAIN)).toBe('none');
-  });
-  it('no account (a deep link), or no transfer → none', () => {
-    expect(txDirection(toOutside(), null)).toBe('none');
-    const tx = clone(load('tx-sol-transfer.json'));
-    tx.transaction!.message!.instructions = [];
-    expect(txDirection(parseTxDetail(tx, 'SIG', symbolOf), SOL_SENDER)).toBe('none');
-  });
-  // review r1-2
-  it('a FAILED transaction has no direction — for the sender, the recipient, anyone (it moved nothing)', () => {
-    const failed = (name: string) => {
-      const tx = clone(load(name));
-      tx.meta!.err = {InstructionError: [2, {Custom: 1}]}; // changed: `meta.err` only
-      return parseTxDetail(tx, 'SIG', symbolOf);
-    };
-    expect(failed('tx-test-to-outside.json').status).toBe('failed');
-    expect(failed('tx-test-to-outside.json').transfer).not.toBeNull(); // the transfer is still parsed: only the claim goes
-    expect(txDirection(failed('tx-test-to-outside.json'), ACC_9Y)).toBe('none');
-    expect(txDirection(failed('tx-test-to-main.json'), MAIN)).toBe('none');
-    expect(txDirection(failed('tx-sol-transfer.json'), SOL_SENDER)).toBe('none');
-    expect(txDirection(failed('tx-sol-transfer.json'), OUTSIDE)).toBe('none');
-  });
-  it('the source that did NOT sign is not "sent" (a delegate moved the tokens)', () => {
-    const d = toOutside();
-    expect(txDirection({...d, signers: []}, ACC_9Y)).toBe('none');
-  });
-  it('the owner unknown: the wallet cannot be recognised as the recipient → none, never a guess', () => {
-    const tx = clone(load('tx-test-to-main.json'));
-    for (const b of [...(tx.meta!.postTokenBalances ?? []), ...(tx.meta!.preTokenBalances ?? [])]) {
-      delete b.owner;
-    }
-    expect(txDirection(parseTxDetail(tx, 'SIG', symbolOf), MAIN)).toBe('none');
-  });
-  it('a transfer to oneself reads "sent"', () => {
-    const d = sol();
-    expect(txDirection({...d, transfer: {...d.transfer!, to: SOL_SENDER}}, SOL_SENDER)).toBe('sent');
-  });
+// review r1-2 (kept from the removed txDirection block, final review 12): a failed transaction still parses its transfer
+it('a FAILED transaction is "failed", and its transfer is still parsed (only a claim about it would go)', () => {
+  const tx = clone(load('tx-test-to-outside.json'));
+  tx.meta!.err = {InstructionError: [2, {Custom: 1}]}; // changed: `meta.err` only
+  const d = parseTxDetail(tx, 'SIG', symbolOf);
+  expect(d.status).toBe('failed');
+  expect(d.transfer).not.toBeNull();
 });
 
 it('the memo: a string `parsed` is the memo; an object is never put on screen as one', () => {
@@ -270,8 +216,6 @@ describe('fix round 1', () => {
       from: ACC_9Y, authority: null, fromTokenAccount: null,
       to: ACC_9Y, toIsTokenAccount: false, toTokenAccount: SRC_TA,
     });
-    expect(txDirection(d, ACC_9Y)).toBe('sent'); // a transfer to oneself reads "sent"
-    expect(txDirection(d, SRC_TA)).toBe('received'); // the destination token account, as for SPL
   });
 
   it('a SOL transfer into a token account whose entry names no owner → the token account, flagged', () => {
@@ -302,7 +246,6 @@ describe('fix round 1', () => {
     ix.parsed!.info.destination = NOCTURA_FEE_TREASURY; // changed: the only transfer goes to the treasury
     const only = parseTxDetail(tx, 'SIG', symbolOf);
     expect(only.transfer).toMatchObject({to: NOCTURA_FEE_TREASURY, from: SOL_SENDER, amount: '0.000005'});
-    expect(txDirection(only, SOL_SENDER)).toBe('sent');
     // with a real transfer AFTER it, the treasury leg is the markup and the real one is shown
     ixsOf(tx).push({program: 'system', parsed: {type: 'transfer', info: {source: SOL_SENDER, destination: OUTSIDE, lamports: 5000}}});
     expect(parseTxDetail(tx, 'SIG', symbolOf).transfer).toMatchObject({to: OUTSIDE});

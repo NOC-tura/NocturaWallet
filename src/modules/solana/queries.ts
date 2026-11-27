@@ -1,9 +1,6 @@
 import {Connection, PublicKey} from '@solana/web3.js';
 import {rpcLimiter} from './rpcLimiter';
-import type {TokenAccount, ParsedTransaction} from './types';
-import {parseTxDetail} from './txDetail';
-import type {RawParsedTx, TxDetail} from './txDetail';
-import {trustedSymbol} from '../tokens/trustedSymbol';
+import type {TokenAccount} from './types';
 
 // TOKEN_PROGRAM_ID constant — matches @solana/web3.js export
 const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
@@ -75,46 +72,6 @@ export async function getTokenAccounts(
   return rpcLimiter.execute(`getTokenAccounts:${owner.toBase58()}`, () => tokenAccountsOf(connection, owner, TOKEN_PROGRAM_ID));
 }
 
-export interface GetTransactionHistoryOptions {
-  limit: number;
-  before?: string;
-}
-
-/**
- * Get transaction history for an address.
- */
-export async function getTransactionHistory(
-  connection: Connection,
-  address: PublicKey,
-  options: GetTransactionHistoryOptions,
-): Promise<ParsedTransaction[]> {
-  const {limit, before} = options;
-  // Include 'before' cursor in key so paginated calls are not deduplicated
-  const cursorKey = before ?? 'head';
-  return rpcLimiter.execute(
-    `getTransactionHistory:${address.toBase58()}:${limit}:${cursorKey}`,
-    async () => {
-      const queryOptions: {limit: number; before?: string} = {limit};
-      if (before !== undefined) {
-        queryOptions.before = before;
-      }
-
-      const signatures = await connection.getSignaturesForAddress(address, queryOptions);
-
-      return signatures.map(sig => ({
-        signature: sig.signature,
-        slot: sig.slot,
-        timestamp: sig.blockTime ?? null,
-        type: 'unknown' as const,
-        fee: 0,
-        status: sig.err != null
-          ? ('failed' as const)
-          : ((sig.confirmationStatus ?? 'confirmed') as 'confirmed' | 'finalized' | 'failed'),
-      }));
-    },
-  );
-}
-
 export interface AccountInfoSummary {
   exists: boolean;
   executable: boolean;
@@ -132,23 +89,4 @@ export async function getAccountInfo(
     const info = await connection.getAccountInfo(publicKey);
     return {exists: info != null, executable: info?.executable === true};
   });
-}
-
-export type {TxDetail} from './txDetail';
-
-/**
- * Fetch and parse a single transaction for the detail screen (#27). The parsing is `parseTxDetail`
- * (post-M1d §5) with the trusted symbol source. Returns null when the RPC has not indexed the
- * signature yet (the caller retries).
- */
-export async function getTransactionDetail(connection: Connection, signature: string): Promise<TxDetail | null> {
-  // R11: the cast names exactly the fields parseTxDetail reads (RawParsedTx), token balances included
-  // version 1: the highest web3.js 1.99 parses; at 0 the node refuses every version-1 transaction (-32015)
-  const tx = (await connection.getParsedTransaction(signature, {
-    maxSupportedTransactionVersion: 1,
-  })) as unknown as RawParsedTx | null;
-  if (!tx) {
-    return null;
-  }
-  return parseTxDetail(tx, signature, trustedSymbol);
 }

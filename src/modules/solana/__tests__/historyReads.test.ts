@@ -33,8 +33,6 @@ const ta = (address: string, amount: string): TokenAccount => ({address, amount,
 const tx = (signature: string, slot = 1): RawParsedTx => ({slot, meta: {fee: 5000}, transaction: {signatures: [signature]}});
 /** the same answers in another order: every position is wrong when there are two or more */
 const shuffled = <T,>(answers: T[]): T[] => [...answers.slice(1), ...answers.slice(0, 1)];
-/** resolves after `ms` real milliseconds */
-const after = <T,>(ms: number, value: T): Promise<T> => new Promise(resolve => setTimeout(() => resolve(value), ms));
 /** a request the node never answers */
 const never = <T,>(): Promise<T> => new Promise<T>(() => undefined);
 const SHORT = 30;

@@ -57,8 +57,6 @@ export interface TxDetail {
   memo: string | null;
 }
 
-export type TxDirection = 'sent' | 'received' | 'none';
-
 export interface RawTokenBalance {
   accountIndex?: number;
   mint?: string;
@@ -249,21 +247,4 @@ export function parseTxDetail(tx: RawParsedTx, signature: string, symbolOf: (min
     blockTime: tx.blockTime ?? null,
     memo,
   };
-}
-
-/** §5 / R9: judged against ONE address — the account whose history or #21 the detail was opened from. */
-export function txDirection(detail: TxDetail, account: string | null): TxDirection {
-  const t = detail.transfer;
-  // review r1-2: a failed transaction moved nothing — no direction is claimed, whoever looks at it
-  if (detail.status === 'failed' || account === null || t === null) {
-    return 'none';
-  }
-  // review r1-10: `from` is the owner of the funds; it must also have signed (a delegate's move is not "sent")
-  if (t.from === account && detail.signers.includes(account)) {
-    return 'sent';
-  }
-  if ((t.to === account && !t.toIsTokenAccount) || t.toTokenAccount === account) {
-    return 'received';
-  }
-  return 'none';
 }
