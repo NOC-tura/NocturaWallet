@@ -27,7 +27,7 @@ import {mmkvSecure, onSecureMmkvReset} from '../../store/mmkv/instances';
 import {MMKV_KEYS} from '../../constants/mmkvKeys';
 import {NETWORK} from '../../constants/programs';
 import {getConnection} from '../solana/connection';
-import {getSignaturePage, readOwnedTokenAccounts, readParsedTransactions} from '../solana/historyReads';
+import {getSignaturePage, parsedTxKey, readOwnedTokenAccounts, readParsedTransactions} from '../solana/historyReads';
 import {markA0AccountsLinked} from '../shielded/a0/accountRegistry';
 import type {AccountList} from './accountList';
 import {readAccountList, refreshAccounts} from './selectedAccount';
@@ -53,6 +53,14 @@ function hook(): void {
     inFlight = null;
     lastRun.clear();
   });
+}
+
+/** thrown by a read of a scan whose wallet is gone (review I1) */
+export class StaleLinkScanError extends Error {
+  constructor() {
+    super('the wallet this link scan started for is gone');
+    this.name = 'StaleLinkScanError';
+  }
 }
 
 export interface LinkScanRunnerEnv {
@@ -86,9 +94,25 @@ export function runLinkScans(env: LinkScanRunnerEnv): Promise<number> {
     }
     // fresh-exit and not yet tagged only; `accounts` never lists a fresh-pending reservation, and never tags main
     const exits = list.accounts.filter(a => a.role === 'fresh-exit' && !a.linked);
-    for (const exit of exits) {
+    for (const first of exits) {
       if (!live()) {
         break;
+      }
+      // review M1: an earlier exit's link may have tagged this one (a link tags every seed wallet it names) —
+      // read the list again and skip it; the seed set is the current one too
+      let current: AccountList | null;
+      try {
+        current = env.accounts();
+      } catch {
+        break;
+      }
+      if (current === null || current.unreadable) {
+        break;
+      }
+      list = current;
+      const exit = list.accounts.find(a => a.address === first.address);
+      if (exit === undefined || exit.role !== 'fresh-exit' || exit.linked) {
+        continue;
       }
       const now = env.now();
       const last = lastRun.get(exit.address);
@@ -142,7 +166,9 @@ function readAll(store: MMKV): Record<string, unknown> {
 }
 
 const isObject = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v);
-const isSignature = (v: unknown): v is string => typeof v === 'string' && v !== '';
+// a base58 transaction signature is 64 bytes: 86-88 characters; 64-90 leaves room, and rules out anything else
+const SIGNATURE_SHAPE = /^[1-9A-HJ-NP-Za-km-z]{64,90}$/;
+const isSignature = (v: unknown): v is string => typeof v === 'string' && SIGNATURE_SHAPE.test(v);
 
 function storedExit(all: Record<string, unknown>, exit: string): StoredExit | undefined {
   const e = all[exit];
@@ -196,7 +222,12 @@ export function writeLinkScanRecord(store: MMKV, exit: string, seedDigest: strin
 /** §6.3: the exit wallet and EVERY token account it owns, classic and Token-2022 (no bound: the cap is per source). */
 export async function linkScanSources(connection: Connection, exit: string): Promise<string[]> {
   const owned = await readOwnedTokenAccounts(connection, NETWORK, exit);
-  return [...new Set([exit, ...owned.map(a => a.address)])];
+  // as history orders them: the wallet, the funded token accounts, then the empty ones (each by address). Nothing is
+  // dropped — a token transfer into an exit's account need not name the wallet, so a skipped account could hide a link
+  const byAddress = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+  const funded = owned.filter(a => a.amount !== '0').map(a => a.address).sort(byAddress);
+  const empty = owned.filter(a => a.amount === '0').map(a => a.address).sort(byAddress);
+  return [...new Set([exit, ...funded, ...empty])];
 }
 
 /**
@@ -214,10 +245,37 @@ export function linkScanDepsFor(
 ): LinkScanDeps {
   const digest = linkScanSeedDigest(seedWallets);
   const mayWrite = (): boolean => live() && mmkvSecure() === store;
+  // review I1: a scan that outlives its wallet stops READING too. The throw is an unread source -> `failed`, never `clean`
+  const alive = (): void => {
+    if (!mayWrite()) {
+      throw new StaleLinkScanError();
+    }
+  };
   return {
-    listSources: e => linkScanSources(connection, e),
-    fetchSignatures: (source, before, limit) => getSignaturePage(connection, NETWORK, source, before, limit),
-    readTransactions: signatures => readParsedTransactions(connection, client, NETWORK, signatures),
+    listSources: async e => {
+      alive();
+      const sources = await linkScanSources(connection, e);
+      alive();
+      return sources;
+    },
+    fetchSignatures: async (source, before, limit) => {
+      alive();
+      const page = await getSignaturePage(connection, NETWORK, source, before, limit);
+      alive();
+      return page;
+    },
+    readTransactions: async signatures => {
+      alive();
+      const txs = await readParsedTransactions(connection, client, NETWORK, signatures);
+      if (!mayWrite()) {
+        // the batch in flight when the wallet went: its entries must not outlive the wipe in the shared cache
+        for (const signature of signatures) {
+          client.removeQueries({queryKey: parsedTxKey(NETWORK, signature), exact: true});
+        }
+        throw new StaleLinkScanError();
+      }
+      return txs;
+    },
     getRecord: (e, source) => readLinkScanRecord(store, e, digest, source),
     setRecord: (e, source, record) => {
       if (mayWrite()) {
@@ -235,21 +293,25 @@ export function linkScanDepsFor(
 
 /**
  * The Accounts sheet's call (§6.4). `mainAddress` is walletStore.publicKey; `client` holds the shared
- * `parsedTx` cache. Resolves to the number of accounts newly tagged; never rejects. With the encrypted
+ * `parsedTx` cache. Resolves to the number of accounts newly tagged; the scans never reject, and a failure to even start them is a rejection (never a throw). With the encrypted
  * store closed nothing is read: the registry and the cursors live there.
  */
 export function scanLinksForWallet(mainAddress: string | null, client: QueryClient): Promise<number> {
-  const store = mmkvSecure();
-  if (!mainAddress || store === null) {
-    return Promise.resolve(0);
+  try {
+    const store = mmkvSecure();
+    if (!mainAddress || store === null) {
+      return Promise.resolve(0);
+    }
+    const connection = getConnection();
+    return runLinkScans({
+      accounts: () => readAccountList(mainAddress),
+      now: () => Date.now(),
+      onLinked: () => {
+        refreshAccounts(mainAddress);
+      },
+      scanExit: (exit, seedWallets, live) => scanExitForLinks(exit, seedWallets, linkScanDepsFor(store, connection, client, live, seedWallets)),
+    });
+  } catch (e) {
+    return Promise.reject(e); // review M3: a failure before any promise exists reaches the caller's .catch, not its stack
   }
-  const connection = getConnection();
-  return runLinkScans({
-    accounts: () => readAccountList(mainAddress),
-    now: () => Date.now(),
-    onLinked: () => {
-      refreshAccounts(mainAddress);
-    },
-    scanExit: (exit, seedWallets, live) => scanExitForLinks(exit, seedWallets, linkScanDepsFor(store, connection, client, live, seedWallets)),
-  });
 }

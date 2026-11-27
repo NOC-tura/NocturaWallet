@@ -14,6 +14,7 @@ import {
   LINK_SCAN_MIN_INTERVAL_MS,
   linkScanDepsFor,
   linkScanSeedDigest,
+  linkScanSources,
   readLinkScanRecord,
   runLinkScans,
   scanLinksForWallet,
@@ -33,13 +34,16 @@ const mockConnection = {
   getParsedTransactions: jest.fn(async (signatures: string[]) => signatures.map(s => mockChain.transactions[s] ?? null).reverse()),
   getParsedTransaction: jest.fn(async () => null),
 };
-jest.mock('../../solana/connection', () => ({getConnection: () => mockConnection}));
+const mockGetConnection = jest.fn(() => mockConnection);
+jest.mock('../../solana/connection', () => ({getConnection: () => mockGetConnection()}));
 
 const MAIN = 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk';
 const A1 = 'Hh8QwFUA6MtVu1qAoq12ucvFHNwCcVTV7hpWjeY1Hztb';
 const A3 = '3YqEpfo3c818GhvbQ1UmVY1nJxw16vtu4JB9peJXT94k';
 const A4 = 'E48cosDiQZK1iDSsyUzhvW4WxJeoKuDk5qgcdkmANV4N';
 const REG = 'v1_accounts';
+// stored signatures must look like signatures (review M4): 88 base58 characters
+const [sigA, sigB, sigC, sigD, sigN, sigR, sigX] = ['A', 'B', 'C', 'D', 'E', 'F', 'G'].map(c => c.repeat(88)) as [string, string, string, string, string, string, string];
 
 const account = (n: number, address: string, role: 'main' | 'fresh-exit', linked = false): WalletAccount => ({
   scheme: `slip10:${n}`, address, label: `Account ${n + 1}`, number: n + 1, role, isMain: role === 'main', linked,
@@ -94,6 +98,24 @@ describe('runLinkScans (§6.4)', () => {
     expect(await runLinkScans(e)).toBe(1);
     expect(calls.map(c => c.exit)).toEqual([A3, A4]);
     expect(state.linked).toBe(1);
+  });
+
+  // review M1: an exit tagged by an earlier exit's link in the same run is not scanned again, and is not counted
+  it('an exit that an earlier exit\'s link already tagged is skipped, and the count is the number of scans that linked', async () => {
+    const accounts = [account(0, MAIN, 'main'), account(3, A3, 'fresh-exit'), account(4, A4, 'fresh-exit')];
+    const calls: string[] = [];
+    const e: LinkScanRunnerEnv = {
+      accounts: () => listOf(accounts),
+      now: () => 1_000_000,
+      onLinked: () => undefined,
+      scanExit: async exit => {
+        calls.push(exit);
+        accounts[2] = {...accounts[2]!, linked: true}; // A3's link names A4: the registry tags both
+        return 'linked';
+      },
+    };
+    expect(await runLinkScans(e)).toBe(1);
+    expect(calls).toEqual([A3]);
   });
 
   // N3
@@ -189,26 +211,26 @@ describe('the records (§6.3)', () => {
   it('are stored per exit and source in the ENCRYPTED instance, keyed on the seed set, and survive a malformed value', () => {
     const store = mmkvSecure()!;
     expect(readLinkScanRecord(store, A3, S1, 'src1')).toBeUndefined();
-    writeLinkScanRecord(store, A3, S1, 'src1', {cursor: 'sigA'});
-    writeLinkScanRecord(store, A3, S1, 'src2', {cursor: 'sigB', pending: {newest: 'sigN', resumeBelow: 'sigR'}});
-    writeLinkScanRecord(store, A4, S1, 'src1', {cursor: 'sigC'});
+    writeLinkScanRecord(store, A3, S1, 'src1', {cursor: sigA});
+    writeLinkScanRecord(store, A3, S1, 'src2', {cursor: sigB, pending: {newest: sigN, resumeBelow: sigR}});
+    writeLinkScanRecord(store, A4, S1, 'src1', {cursor: sigC});
     expect(JSON.parse(store.getString('v1_linkScanCursors')!)).toEqual({
-      [A3]: {seeds: S1, sources: {src1: {cursor: 'sigA'}, src2: {cursor: 'sigB', pending: {newest: 'sigN', resumeBelow: 'sigR'}}}},
-      [A4]: {seeds: S1, sources: {src1: {cursor: 'sigC'}}},
+      [A3]: {seeds: S1, sources: {src1: {cursor: sigA}, src2: {cursor: sigB, pending: {newest: sigN, resumeBelow: sigR}}}},
+      [A4]: {seeds: S1, sources: {src1: {cursor: sigC}}},
     });
-    expect(readLinkScanRecord(store, A3, S1, 'src2')).toEqual({cursor: 'sigB', pending: {newest: 'sigN', resumeBelow: 'sigR'}});
+    expect(readLinkScanRecord(store, A3, S1, 'src2')).toEqual({cursor: sigB, pending: {newest: sigN, resumeBelow: sigR}});
     expect(mmkvPublic.getString('v1_linkScanCursors')).toBeUndefined();
     store.set('v1_linkScanCursors', '{not json');
     expect(readLinkScanRecord(store, A3, S1, 'src1')).toBeUndefined();
-    writeLinkScanRecord(store, A3, S1, 'src1', {cursor: 'sigD'});
-    expect(readLinkScanRecord(store, A3, S1, 'src1')).toEqual({cursor: 'sigD'});
+    writeLinkScanRecord(store, A3, S1, 'src1', {cursor: sigD});
+    expect(readLinkScanRecord(store, A3, S1, 'src1')).toEqual({cursor: sigD});
   });
 
   it('a malformed stored record is no record (re-read), never "read through"', () => {
     const store = mmkvSecure()!;
     const bad = (sources: unknown) => store.set('v1_linkScanCursors', JSON.stringify({[A3]: {seeds: S1, sources}}));
     for (const sources of [
-      {src: 'sigA'}, // the old bare-signature shape
+      {src: sigA}, // the old bare-signature shape
       {src: 7},
       {src: null},
       {src: {cursor: 5}},
@@ -220,32 +242,49 @@ describe('the records (§6.3)', () => {
       bad(sources);
       expect(readLinkScanRecord(store, A3, S1, 'src')).toBeUndefined();
     }
-    store.set('v1_linkScanCursors', JSON.stringify({[A3]: 'sigA'}));
+    store.set('v1_linkScanCursors', JSON.stringify({[A3]: sigA}));
     expect(readLinkScanRecord(store, A3, S1, 'src')).toBeUndefined();
     store.set('v1_linkScanCursors', JSON.stringify([1]));
     expect(readLinkScanRecord(store, A3, S1, 'src')).toBeUndefined();
-    bad({src: {pending: {resumeBelow: 'r'}}}); // `newest` may be absent (decoded from storage)
-    expect(readLinkScanRecord(store, A3, S1, 'src')).toEqual({pending: {resumeBelow: 'r'}});
+    bad({src: {pending: {resumeBelow: sigR}}}); // `newest` may be absent (decoded from storage)
+    expect(readLinkScanRecord(store, A3, S1, 'src')).toEqual({pending: {resumeBelow: sigR}});
+  });
+
+  // review M4: a stored string that is not a signature is no record
+  it('a cursor or a resume point that is not a base58 signature decodes as no record', () => {
+    const store = mmkvSecure()!;
+    const SIG = '5i53q9tRrCQUyoXjc41cBtW3gb9wcMeD7hspooqz3cPBmndWAXfWn5FXMMv2sCR2kjLMYakvFvWpobNzcSy6LGNZ';
+    const put = (record: unknown) => store.set('v1_linkScanCursors', JSON.stringify({[A3]: {seeds: S1, sources: {src: record}}}));
+    put({cursor: SIG, pending: {newest: SIG, resumeBelow: SIG}});
+    expect(readLinkScanRecord(store, A3, S1, 'src')).toEqual({cursor: SIG, pending: {newest: SIG, resumeBelow: SIG}}); // control
+    for (const bad of ['sigA', '0'.repeat(88), SIG.replace('5', '0'), SIG.replace('5', 'l'), SIG + SIG, SIG.slice(0, 40)]) {
+      put({cursor: bad});
+      expect(readLinkScanRecord(store, A3, S1, 'src')).toBeUndefined();
+      put({pending: {resumeBelow: bad}});
+      expect(readLinkScanRecord(store, A3, S1, 'src')).toBeUndefined();
+      put({pending: {newest: bad, resumeBelow: SIG}});
+      expect(readLinkScanRecord(store, A3, S1, 'src')).toBeUndefined();
+    }
   });
 
   // I1.1: a record is valid only for the seed set it was scanned against
   it('I1.1: records of one seed set are ignored under another, and only the latest set is kept', () => {
     const store = mmkvSecure()!;
-    writeLinkScanRecord(store, A3, S1, 'src', {cursor: 'sigA'});
-    writeLinkScanRecord(store, A4, S1, 'src', {cursor: 'sigX'});
+    writeLinkScanRecord(store, A3, S1, 'src', {cursor: sigA});
+    writeLinkScanRecord(store, A4, S1, 'src', {cursor: sigX});
     expect(readLinkScanRecord(store, A3, S2, 'src')).toBeUndefined(); // a wallet was added: scan from the head
-    writeLinkScanRecord(store, A3, S2, 'src', {cursor: 'sigB'});
-    expect(readLinkScanRecord(store, A3, S2, 'src')).toEqual({cursor: 'sigB'});
+    writeLinkScanRecord(store, A3, S2, 'src', {cursor: sigB});
+    expect(readLinkScanRecord(store, A3, S2, 'src')).toEqual({cursor: sigB});
     expect(readLinkScanRecord(store, A3, S1, 'src')).toBeUndefined(); // S1 again: only the latest set is kept
-    expect(readLinkScanRecord(store, A4, S1, 'src')).toEqual({cursor: 'sigX'}); // another exit is untouched
+    expect(readLinkScanRecord(store, A4, S1, 'src')).toEqual({cursor: sigX}); // another exit is untouched
     // the replacement drops the old set's other sources too
-    writeLinkScanRecord(store, A3, S1, 'other', {cursor: 'sigC'});
-    expect(JSON.parse(store.getString('v1_linkScanCursors')!)[A3]).toEqual({seeds: S1, sources: {other: {cursor: 'sigC'}}});
+    writeLinkScanRecord(store, A3, S1, 'other', {cursor: sigC});
+    expect(JSON.parse(store.getString('v1_linkScanCursors')!)[A3]).toEqual({seeds: S1, sources: {other: {cursor: sigC}}});
   });
 
   // N8
   it('a wipe removes them with the store', () => {
-    writeLinkScanRecord(mmkvSecure()!, A3, S1, 'src1', {cursor: 'sigA'});
+    writeLinkScanRecord(mmkvSecure()!, A3, S1, 'src1', {cursor: sigA});
     clearAllStores();
     initSecureMmkv('another-wallet');
     expect(readLinkScanRecord(mmkvSecure()!, A3, S1, 'src1')).toBeUndefined();
@@ -396,21 +435,125 @@ describe('scanLinksForWallet', () => {
     client.clear();
   });
 
+  // review I1: a scan that outlives its wallet stops READING too, and leaves nothing in the shared cache
+  it('a wipe while a scan is reading: no further RPC call, no parsedTx entry, the next store clean', async () => {
+    devRegistry();
+    // a FULL first page, so that an unguarded scan would go on to ask for a second one
+    const page = Array.from({length: 20}, (_, i) => finalized(String.fromCharCode(65 + i).repeat(88)));
+    page[0] = finalized(I53Q);
+    mockChain.signatures = {};
+    mockChain.transactions = {[I53Q]: fixture('tx-test-to-outside.json')};
+    const sigCalls = mockConnection.getSignaturesForAddress;
+    sigCalls.mockClear();
+    sigCalls.mockImplementationOnce(async () => page as never);
+    mockConnection.getParsedTransactions.mockClear();
+    let release: () => void = () => undefined;
+    const asked = new Promise<void>(reached => {
+      mockConnection.getParsedTransactions.mockImplementationOnce(async (signatures: string[]) => {
+        reached();
+        await new Promise<void>(r => {
+          release = r;
+        });
+        return signatures.map(sg => mockChain.transactions[sg] ?? null);
+      });
+    });
+    const client = new QueryClient();
+    const scan = scanLinksForWallet(DEV_MAIN, client);
+    await asked;
+    clearAllStores();
+    initSecureMmkv('the-next-wallet');
+    const callsBefore = sigCalls.mock.calls.length;
+    release();
+    expect(await scan).toBe(0);
+    expect(sigCalls.mock.calls.length).toBe(callsBefore); // no second page for the old wallet
+    expect(mockConnection.getParsedTransactions).toHaveBeenCalledTimes(1);
+    expect(client.getQueryCache().findAll({queryKey: ['parsedTx']})).toEqual([]);
+    expect(mmkvSecure()!.getString('v1_linkScanCursors')).toBeUndefined();
+    client.clear();
+  });
+
+  it('a stale scan\'s reads throw, and a live one\'s do not (the stale read is `failed`, never `clean`)', async () => {
+    const captured = mmkvSecure()!;
+    const deps = (live: boolean) => linkScanDepsFor(captured, mockConnection as never, new QueryClient(), () => live, new Set([DEV_MAIN]));
+    mockChain.signatures = {};
+    await expect(deps(true).fetchSignatures(DEV_EXIT, undefined, 20)).resolves.toEqual([]); // control
+    await expect(deps(true).listSources(DEV_EXIT)).resolves.toEqual([DEV_EXIT]);
+    await expect(deps(false).fetchSignatures(DEV_EXIT, undefined, 20)).rejects.toThrow();
+    await expect(deps(false).listSources(DEV_EXIT)).rejects.toThrow();
+    await expect(deps(false).readTransactions([I53Q])).rejects.toThrow();
+  });
+
+  it('a read that was asked while the wallet was live but answered after it went is dropped, not returned', async () => {
+    const captured = mmkvSecure()!;
+    let isLive = true;
+    const deps = linkScanDepsFor(captured, mockConnection as never, new QueryClient(), () => isLive, new Set([DEV_MAIN]));
+    mockChain.signatures = {};
+    mockChain.transactions = {[I53Q]: fixture('tx-test-to-outside.json')};
+    mockConnection.getSignaturesForAddress.mockImplementationOnce(async () => {
+      isLive = false; // the wallet goes while the node is answering
+      return [];
+    });
+    await expect(deps.fetchSignatures(DEV_EXIT, undefined, 20)).rejects.toThrow();
+    isLive = true;
+    mockConnection.getParsedTransactions.mockImplementationOnce(async (signatures: string[]) => {
+      isLive = false;
+      return signatures.map(sg => mockChain.transactions[sg] ?? null);
+    });
+    await expect(deps.readTransactions([I53Q])).rejects.toThrow();
+  });
+
+  it('a stale scan does not even ask: no RPC call is made', async () => {
+    const captured = mmkvSecure()!;
+    const deps = linkScanDepsFor(captured, mockConnection as never, new QueryClient(), () => false, new Set([DEV_MAIN]));
+    mockConnection.getSignaturesForAddress.mockClear();
+    mockConnection.getParsedTransactions.mockClear();
+    mockConnection.getParsedTokenAccountsByOwner.mockClear();
+    await expect(deps.fetchSignatures(DEV_EXIT, undefined, 20)).rejects.toThrow();
+    await expect(deps.readTransactions([I53Q])).rejects.toThrow();
+    await expect(deps.listSources(DEV_EXIT)).rejects.toThrow();
+    expect(mockConnection.getSignaturesForAddress).not.toHaveBeenCalled();
+    expect(mockConnection.getParsedTransactions).not.toHaveBeenCalled();
+    expect(mockConnection.getParsedTokenAccountsByOwner).not.toHaveBeenCalled();
+  });
+
+  // review M3
+  it('a failure before any promise exists is a rejection, not a throw', async () => {
+    mockGetConnection.mockImplementationOnce(() => {
+      throw new Error('no connection');
+    });
+    let returned: Promise<number> | undefined;
+    expect(() => {
+      returned = scanLinksForWallet(DEV_MAIN, {} as never);
+    }).not.toThrow();
+    await expect(returned).rejects.toThrow('no connection');
+  });
+
+  // review M2: funded token accounts first (as history orders them), none dropped
+  it('every token account of the exit is a source, the wallet first and funded ones before empty ones', async () => {
+    const tokenAccount = (pubkey: string, amount: string) => ({pubkey: {toBase58: () => pubkey}, account: {data: {parsed: {info: {mint: A1, tokenAmount: {amount}}}}}});
+    mockConnection.getParsedTokenAccountsByOwner.mockImplementation((async () => ({value: [tokenAccount(A4, '0'), tokenAccount(A3, '5'), tokenAccount(A1, '0')]})) as never);
+    const sources = await linkScanSources(mockConnection as never, DEV_EXIT);
+    mockConnection.getParsedTokenAccountsByOwner.mockImplementation((async () => ({value: []})) as never);
+    expect(sources[0]).toBe(DEV_EXIT);
+    expect(sources[1]).toBe(A3); // the funded one first
+    expect(new Set(sources)).toEqual(new Set([DEV_EXIT, A1, A3, A4]));
+  });
+
   // N14 (plan review r1 I2): the second half of the guard. Every replacement of the instance also bumps the
   // generation, so through scanLinksForWallet the two halves always fail together; here `live` is handed in.
   it('the write guard needs BOTH: a live generation and the same encrypted instance', () => {
     const captured = mmkvSecure()!;
     const seeds = new Set([DEV_MAIN]);
     const deps = (live: boolean) => linkScanDepsFor(captured, mockConnection as never, {} as never, () => live, seeds);
-    deps(true).setRecord(DEV_EXIT, 'src', {cursor: 'sigA'});
-    expect(readLinkScanRecord(mmkvSecure()!, DEV_EXIT, DEV_SEEDS, 'src')).toEqual({cursor: 'sigA'}); // control: live and the same instance
-    expect(deps(true).getRecord(DEV_EXIT, 'src')).toEqual({cursor: 'sigA'});
-    deps(false).setRecord(DEV_EXIT, 'src', {cursor: 'sigB'});
-    expect(readLinkScanRecord(mmkvSecure()!, DEV_EXIT, DEV_SEEDS, 'src')).toEqual({cursor: 'sigA'}); // an older generation writes nothing
+    deps(true).setRecord(DEV_EXIT, 'src', {cursor: sigA});
+    expect(readLinkScanRecord(mmkvSecure()!, DEV_EXIT, DEV_SEEDS, 'src')).toEqual({cursor: sigA}); // control: live and the same instance
+    expect(deps(true).getRecord(DEV_EXIT, 'src')).toEqual({cursor: sigA});
+    deps(false).setRecord(DEV_EXIT, 'src', {cursor: sigB});
+    expect(readLinkScanRecord(mmkvSecure()!, DEV_EXIT, DEV_SEEDS, 'src')).toEqual({cursor: sigA}); // an older generation writes nothing
     clearAllStores();
     initSecureMmkv('the-next-wallet');
     devRegistry();
-    deps(true).setRecord(DEV_EXIT, 'src', {cursor: 'sigC'}); // `live` alone is not enough: the instance is another one
+    deps(true).setRecord(DEV_EXIT, 'src', {cursor: sigC}); // `live` alone is not enough: the instance is another one
     expect(mmkvSecure()!.getString('v1_linkScanCursors')).toBeUndefined();
     deps(true).markLinked([DEV_EXIT]);
     expect(exitEntry().linked).toBeUndefined();
