@@ -224,4 +224,11 @@ describe('getTransactionDetail', () => {
     const conn = {getParsedTransaction: jest.fn(async () => null)} as never;
     expect(await getTransactionDetail(conn, 'SIG')).toBeNull();
   });
+
+  // history plan r3 (owner decision 2026-11-27): at version 0 a node refuses every version-1 transaction
+  it('asks for the transaction at version 1', async () => {
+    const getParsedTransaction = jest.fn(async (_signature: string, _config: unknown) => null);
+    await getTransactionDetail({getParsedTransaction} as never, 'SIG');
+    expect(getParsedTransaction).toHaveBeenCalledWith('SIG', {maxSupportedTransactionVersion: 1});
+  });
 });
