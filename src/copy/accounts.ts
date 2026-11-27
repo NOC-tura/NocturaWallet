@@ -86,6 +86,8 @@ export const RECEIVED_BY = 'Received by';
 /** The split row (§4.5, 2026-11-22 addendum) and the sheet rows: an unknown side, and a hidden one */
 export const VALUE_UNKNOWN = '—';
 export const VALUE_HIDDEN = '•••';
+/** what a screen reader says for a figure shown as VALUE_HIDDEN */
+export const VALUE_HIDDEN_SPOKEN = 'Hidden';
 /** A held, priced side worth under half a cent (never "$0.00" for a non-empty side) */
 export const BELOW_ONE_CENT = '<$0.01';
 

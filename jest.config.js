@@ -1,5 +1,7 @@
 module.exports = {
   preset: 'react-native',
+  // history spec §5.3: TZ=UTC for every test (see jest.globalSetup.js)
+  globalSetup: '<rootDir>/jest.globalSetup.js',
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
     '\\.css$': '<rootDir>/__mocks__/fileMock.js',
