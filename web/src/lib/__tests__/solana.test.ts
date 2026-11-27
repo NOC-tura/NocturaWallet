@@ -5,7 +5,8 @@ import {join} from 'node:path';
  * accountTransactions over the REAL web3.js Connection, with only the HTTP hop replaced.
  *
  * The transaction is a real devnet version-1 transaction, recorded verbatim for the wallet's tree
- * sync (src/modules/shielded/a0/__tests__/fixtures/devnet-v1-tx-4T9Juo9P.json — the node's answer
+ * sync and copied here (web/src/lib/__tests__/fixtures/devnet-v1-tx-4T9Juo9P.json, identical to
+ * src/modules/shielded/a0/__tests__/fixtures/ — kept inside web/ so web CI's path triggers cover it; the node's answer
  * with maxSupportedTransactionVersion 0, error -32015, and with 1, the transaction). The fake
  * answers getTransaction by that one field, as the node does.
  * CONSTRUCTED: the getSignaturesForAddress answer (one entry — this signature, for an account the
@@ -19,7 +20,7 @@ interface Recorded {
   };
 }
 const V1 = JSON.parse(
-  readFileSync(join(__dirname, '../../../../src/modules/shielded/a0/__tests__/fixtures/devnet-v1-tx-4T9Juo9P.json'), 'utf8'),
+  readFileSync(join(__dirname, 'fixtures/devnet-v1-tx-4T9Juo9P.json'), 'utf8'),
 ) as {signature: string; max0: Recorded; max1: Recorded};
 const RESULT = V1.max1.response.result!;
 
