@@ -251,7 +251,8 @@ export function cachedParsedTransactions(client: QueryClient, cluster: string, s
  * the node answers null for, has no answer of its own for, or whose read fails or times out, is
  * absent from `transactions` and is not cached. `timedOut`: a read got no answer within `timeoutMs`,
  * or the whole call ran past it — no further batch or single read was started, and what is left
- * stays unread until the next call.
+ * stays unread until the next call. The time measured against that deadline includes any time a
+ * request spent queued for a limiter slot, not only the time the node took.
  */
 export async function readParsedTransactionsTimed(
   connection: Pick<Connection, 'getParsedTransactions' | 'getParsedTransaction'>,

@@ -47,6 +47,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   client.clear(); // no 24 h gc timer outlives a test
+  jest.restoreAllMocks(); // a Date.now spy of one test never reaches the next
 });
 
 describe('orderSources', () => {
@@ -460,10 +461,17 @@ describe('readParsedTransactions', () => {
       getParsedTransactions: jest.fn(async () => {
         throw new Error('429 Too Many Requests');
       }),
-      // two reads of 40 ms: each well inside its own 60 ms limit, together 80 ms
-      getParsedTransaction: jest.fn((s: string): Promise<RawParsedTx | null> => after(40, tx(s))),
+      // two reads of "40 ms" on a SPIED clock (no real delay: a slow machine cannot change the outcome):
+      // each inside the 60 ms limit, together 80 ms
+      getParsedTransaction: jest.fn(async (s: string): Promise<RawParsedTx | null> => {
+        clock += 40;
+        return tx(s);
+      }),
     };
+    let clock = 1_000_000;
+    jest.spyOn(Date, 'now').mockImplementation(() => clock);
     const {transactions: got, timedOut} = await readParsedTransactionsTimed(connection as never, client, 'devnet', ['a', 'b'], 60);
+    expect(connection.getParsedTransaction).toHaveBeenCalledTimes(2); // the second read WAS started
     expect(got.size).toBe(2); // both were read …
     expect(timedOut).toBe(true); // … and the call still says it ran out of time
   });

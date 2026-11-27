@@ -103,6 +103,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   client.clear();
+  jest.restoreAllMocks(); // a Date.now spy of one test never reaches the next
 });
 
 // H1 (review C1)
@@ -321,10 +322,14 @@ it('after a transaction read that overran the time limit without any request tim
     state.txCalls.push(signatures);
     throw new Error('429 Too Many Requests');
   });
-  // the two new rows are read one at a time, 40 ms each: inside each request's limit, past the call's
-  connection.getParsedTransaction.mockImplementation(
-    (s: string) => new Promise<RawParsedTx | null>(resolve => setTimeout(() => resolve(stamped(FIXTURES[BGSO]!, s)), 40)),
-  );
+  // the two new rows are read one at a time, "40 ms" each on a SPIED clock (no real delay): inside each
+  // request's limit, past the call's
+  let clock = 1_000_000;
+  jest.spyOn(Date, 'now').mockImplementation(() => clock);
+  connection.getParsedTransaction.mockImplementation(async (s: string) => {
+    clock += 40;
+    return stamped(FIXTURES[BGSO]!, s);
+  });
   const p2 = await loadHistory(MAIN, 'older', {...env(connection), timeoutMs: 60});
   expect(state.txCalls).toEqual([['s2', 's1']]); // no ['s10'] read behind it
   expect(connection.getParsedTransaction.mock.calls.map(c => c[0])).toEqual(['s2', 's1']);
