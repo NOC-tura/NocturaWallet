@@ -384,6 +384,18 @@ describe('scanExitForLinks (§6.3)', () => {
     expect(world.pendings[`${ACC_2}/${ACC_2}`]).toEqual({newest: 's1', resumeBelow: 's300'});
   });
 
+  // R7 (round 2, R2-1) — an unread in a head that did NOT cap, with a gap that ends clean
+  it('an unreadable transaction in the head with a pending gap that ends clean → failed, the record is unchanged', async () => {
+    const {world, deps} = chain({[ACC_2]: run('s', 400)});
+    await scan(deps);
+    world.sources[ACC_2] = [...run('h', 3), ...world.sources[ACC_2]!];
+    world.unreadable.add('h2');
+    const before = JSON.stringify([world.cursors, world.pendings]);
+    expect(await scan(deps)).toBe('failed');
+    expect(JSON.stringify([world.cursors, world.pendings])).toBe(before);
+    expect(world.pendings[`${ACC_2}/${ACC_2}`]).toEqual({newest: 's1', resumeBelow: 's300'});
+  });
+
   // R6 — promotion with nothing finalized in the head keeps the old cursor
   it('promotion with pending.newest undefined and nothing finalized in the head keeps the old cursor', async () => {
     const u = (n: number) => sig(`u${n}`, false);

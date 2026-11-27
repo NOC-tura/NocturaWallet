@@ -34,7 +34,8 @@ export type LinkScanResult = 'linked' | 'clean' | 'capped' | 'failed';
 /**
  * What is stored per exit and source (Task 10 persists it). `cursor`: the newest finalized signature
  * fully scanned. `pending`: a scan the cap stopped — `newest` is the newest finalized signature read, and
- * becomes the cursor once the gap is read; `resumeBelow` is the oldest signature read so far.
+ * becomes the cursor once the gap is read (optional in the type: only a record decoded from storage can lack it; the
+ * scan always writes it); `resumeBelow` is the oldest signature read so far.
  */
 export interface LinkScanRecord {
   cursor?: string;
