@@ -7,6 +7,7 @@ import {
   activityWord,
   changeLine,
   chipMatches,
+  detailTime,
   counterpartyLabel,
   groupSections,
   heroAmount,
@@ -323,7 +324,9 @@ describe('the detail (#27, §4.6)', () => {
     expect(heroAmount(activity({kind: 'received', primary: delta('native', 'SOL', 1n)}))).toBe('0.000000001 SOL'); // exact, not "<0.0001"
     expect(
       heroAmount(activity({kind: 'swap', primary: delta('native', 'SOL', -1_200_000_000n), secondary: delta('N', 'NOC', 9_524_100_000_000n)})),
-    ).toBe('1.2 SOL → 9524.1 NOC');
+    ).toBe('1.2 SOL → 9,524.1 NOC'); // thousands grouped, every decimal kept (Task 8 review)
+    expect(heroAmount(activity({kind: 'sent', primary: delta('N', 'NOC', -1_234_567_890_123n)}))).toBe('1,234.567890123 NOC');
+    expect(heroAmount(activity({kind: 'sent', primary: delta('N', 'NOC', -999_000_000_000n)}))).toBe('999 NOC'); // under 1,000: unchanged
     expect(heroAmount(activity({kind: 'failed'}))).toBeNull();
     expect(heroAmount(null)).toBeNull();
   });
@@ -361,6 +364,14 @@ describe('the detail (#27, §4.6)', () => {
     // hidden (owner, Q2): the figure goes, the role stays
     expect(changeLine(delta('MINT', 'TEST', -100000n), true)).toBe(VALUE_HIDDEN);
     expect(changeLine(delta('native', 'SOL', -2_040_000n, 9, 'rent'), true)).toBe(`${VALUE_HIDDEN} · account rent`);
+  });
+
+  // V27b (Task 8 review, controller 2026-11-27)
+  it('detailTime: "{d} {Mon} {yyyy} · HH:mm" in the zone given; "—" with no block time', () => {
+    expect(detailTime(at('2026-05-08T07:14:00Z'), LJ)).toBe('8 May 2026 · 09:14');
+    expect(detailTime(at('2026-05-08T07:14:00Z'), 'UTC')).toBe('8 May 2026 · 07:14');
+    expect(detailTime(null, 'UTC')).toBe('—');
+    expect(detailTime(Number.NaN, 'UTC')).toBe('—');
   });
 
   // V28 (H7)

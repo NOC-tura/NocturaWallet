@@ -119,6 +119,8 @@ export const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Au
 
 /** #27: the list shown in place of From / To when the transfer and the row do not agree (§4.6) */
 export const TX_BALANCE_CHANGES = 'Balance changes';
+/** #27's Date row label (the value is `detailTime`) */
+export const TX_DATE = 'Date';
 export const TX_ROLE_MARKUP = 'Noctura fee';
 export const TX_ROLE_GRANT = 'gas grant';
 export const TX_ROLE_RENT = 'account rent';

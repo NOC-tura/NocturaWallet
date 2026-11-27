@@ -12,7 +12,8 @@ import type {RawParsedTx} from '../modules/solana/txDetail';
 
 export const PARSED_TX_RETRY_MS = 4_000;
 
-export function useParsedTx(signature: string | null): {raw: RawParsedTx | undefined; isLoading: boolean; notFound: boolean} {
+/** `retryMs` is the 4 s retry; a test hands in a short one (no fake timers). */
+export function useParsedTx(signature: string | null, retryMs: number = PARSED_TX_RETRY_MS): {raw: RawParsedTx | undefined; isLoading: boolean; notFound: boolean} {
   const query = useQuery<RawParsedTx>({
     queryKey: parsedTxKey(NETWORK, signature ?? ''),
     queryFn: async () => {
@@ -26,11 +27,15 @@ export function useParsedTx(signature: string | null): {raw: RawParsedTx | undef
     retry: false,
     // the app client's defaults for this key apply too; stated here so the hook is right under any client
     staleTime: Infinity,
-    refetchInterval: q => (q.state.data ? false : PARSED_TX_RETRY_MS),
+    refetchInterval: q => (q.state.data ? false : retryMs),
   });
+  // A refetch of a query with no data resets `isError` while it runs, so "failed" is read from the error COUNT:
+  // after the first "not found" the screen never goes back to the spinner (Task 8 review I3).
+  const failed = query.errorUpdateCount > 0;
   return {
     raw: query.data,
-    isLoading: query.data === undefined && !query.isError,
-    notFound: query.data === undefined && query.isError,
+    isLoading: !!signature && query.data === undefined && !failed,
+    // no signature (a route without one) is "not found", not an endless spinner (M6)
+    notFound: !signature || (query.data === undefined && failed),
   };
 }

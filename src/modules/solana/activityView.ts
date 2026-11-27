@@ -7,7 +7,7 @@
  * `toLocaleString`: the parts come from `Intl.DateTimeFormat.formatToParts` and the month names
  * from the copy file, so the output does not depend on the engine's locale data.
  */
-import {formatBalanceForDisplay, formatTokenAmount} from '../../utils/parseTokenAmount';
+import {formatBalanceForDisplay, formatTokenAmount, groupInteger} from '../../utils/parseTokenAmount';
 import {shortAccountAddress} from '../accounts/accountList';
 import type {AccountList} from '../accounts/accountList';
 import type {ActivityRow, Delta} from './activity';
@@ -360,7 +360,18 @@ export function activityWord(row: ActivityRow | null): string {
 
 /** An unsigned, EXACT figure (the detail shows every digit; the rows use the shared 4-place formatter). */
 export function exactAmount(d: Delta): string {
-  return formatTokenAmount(d.raw < 0n ? -d.raw : d.raw, d.decimals);
+  const [whole, frac] = formatTokenAmount(d.raw < 0n ? -d.raw : d.raw, d.decimals).split('.');
+  // thousands grouped as the rows are (Hermes-safe `groupInteger`); every decimal kept (Task 8 review)
+  return frac ? `${groupInteger(whole ?? '0')}.${frac}` : groupInteger(whole ?? '0');
+}
+
+/** #27's Date row: "8 May 2026 · 09:14" (24-hour, day first, as #26) in the zone given; "—" with no block time. */
+export function detailTime(blockTime: number | null, tz: string): string {
+  if (blockTime === null || !Number.isFinite(blockTime)) {
+    return TX_AMOUNT_UNKNOWN;
+  }
+  const z = zonedDate(blockTime * 1000, tz);
+  return `${z.day} ${MONTH_SHORT[z.month - 1]} ${z.year} · ${String(z.hour).padStart(2, '0')}:${String(z.minute).padStart(2, '0')}`;
 }
 
 /** The hero: `primary` without a sign, with its symbol; a swap as "{out} {sym} → {in} {sym}"; null = no amount line. */

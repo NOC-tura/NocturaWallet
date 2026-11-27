@@ -36,6 +36,7 @@ it('reads the transaction once, at version 1, and keeps it under the shared key'
   await waitFor(() => expect(result.current.raw).toEqual(answer));
   expect(result.current).toMatchObject({isLoading: false, notFound: false});
   expect(mockGetParsedTransaction).toHaveBeenCalledWith('SIG', {maxSupportedTransactionVersion: 1});
+  expect(mockGetParsedTransaction).toHaveBeenCalledTimes(1);
   expect(client.getQueryData(KEY)).toEqual(answer);
   unmount();
 });
@@ -80,4 +81,38 @@ it('a read that fails is notFound too; no signature reads nothing', async () => 
   expect(none.result.current.raw).toBeUndefined();
   expect(mockGetParsedTransaction).not.toHaveBeenCalled();
   none.unmount();
+});
+
+// I3 (Task 8 review): after the first "not found" the screen never goes back to the spinner while it asks again
+it('a retry never flickers back to loading: loading, notFound, notFound, … ready', async () => {
+  const answer = {slot: 7, transaction: {signatures: ['SIG']}};
+  // each read takes 60 ms, so a refetch is observable between two renders
+  const slow = (v: unknown) => () => new Promise(r => setTimeout(() => r(v), 60));
+  mockGetParsedTransaction.mockImplementationOnce(slow(null)).mockImplementationOnce(slow(null)).mockImplementation(slow(answer));
+  const seen: string[] = [];
+  const {result, unmount} = renderHook(
+    () => {
+      const r = useParsedTx('SIG', 30); // a short retry interval handed in; real timers
+      seen.push(r.raw !== undefined ? 'ready' : r.isLoading ? 'loading' : r.notFound ? 'notFound' : 'neither');
+      return r;
+    },
+    {wrapper},
+  );
+  await waitFor(() => expect(result.current.raw).toEqual(answer), {timeout: 3000});
+  expect(mockGetParsedTransaction.mock.calls.length).toBeGreaterThanOrEqual(3);
+  const first = seen.indexOf('notFound');
+  expect(first).toBeGreaterThan(-1);
+  expect(seen.slice(first).includes('loading')).toBe(false);
+  expect(seen).not.toContain('neither');
+  unmount();
+});
+
+// M6 (Task 8 review): a route with no signature is "not found", not an endless spinner
+it('an empty or missing signature is notFound, and reads nothing', () => {
+  for (const sig of [null, '']) {
+    const {result, unmount} = renderHook(() => useParsedTx(sig), {wrapper});
+    expect(result.current).toEqual({raw: undefined, isLoading: false, notFound: true});
+    unmount();
+  }
+  expect(mockGetParsedTransaction).not.toHaveBeenCalled();
 });

@@ -269,7 +269,11 @@ Exactly one candidate → it. Otherwise → null.
   - `toIsTokenAccount` is false.
 
   Otherwise those rows are replaced by "Fee payer" and a **"Balance changes"** list of every delta, with role labels ("−0.0001 TEST", "−0.00204 SOL · account rent", "+0.002 SOL · gas grant", "−0.00002 SOL · Noctura fee").
-- **"≈ ${x} at today's price"** sits under the hero when a price for `primary` is known (H7). It is absent otherwise.
+- **"≈ ${x} at today's price"** sits under the hero when a price for `primary` is known (H7). It is absent otherwise, and absent on an `incomplete` row (Task 8 review I1).
+- **An `incomplete` row** (Task 8 review I1) carries the same "incomplete" mark as its #26 row, in tertiary text under the hero and under the Balance-changes list. It claims no value.
+- **Balance changes under From / To** (Task 8 review I2, controller 2026-11-27): when the account has more than one net change (`row.deltas.length > 1`: a rent paid, a Noctura fee, a second asset), the list shows under From / To as well, so no change is hidden.
+- **Figures are grouped** (Task 8 review, controller 2026-11-27): the hero and the balance changes use thousands separators in the whole part, as the rows do ("135,435.988491"); every decimal is kept. The network fee is unchanged.
+- **Date row and Copy** (Task 8 review, controller 2026-11-27): a Date row shows the block time in the device zone, "8 May 2026 · 09:14" (24-hour, day first, as #26), "—" when unknown. From, To and Authorized by carry Copy, as Hash does.
 - **Deep link.** With a null account, the hero is "TRANSACTION" with no amount, as in PR 1.
 - **`ownTokenAccounts`.** #27 passes the history session's sources when one exists for the account. Otherwise (opened from #21 or a deep link) it passes an empty set, so an owner-less entry does not set `incomplete` (review r3 m-f).
 - **State 27f's second case** ("Authorized by" with From "—") is not reachable under the agreement rule. A null `from` always gives the Balance-changes form (review r3 m-e; §11).
@@ -515,3 +519,6 @@ Make dated backups (`*.bak-2026-11-26c`, or the next free letter), then change t
 | The `mode` route param to #27 | Not passed; #27 gets `signature` and `account` (Task 7 review I3, controller 2026-11-27) | Unless Task 8's brief uses it. |
 | Row time "9:14 AM" (12-hour) in the mockup | 24-hour "09:14" (Task 7 review I3, controller 2026-11-27) | §5.1 specifies "HH:mm". |
 | Fifth chip glyph, dated headers ("TODAY · MAY 8"), counter-party addresses in mono, chip kept across remounts (`v1_activity_filter`) | Built (Task 7 review I3, controller 2026-11-27) | Cheap, and the design draws them. Dated headers read "Today · Nov 26" / "Yesterday · Nov 25"; the overline style sets the case. |
+| #27 Share icon; full untruncated addresses and hash; Memo "—" row when absent; network-fee fiat and "Paid by sender"; "Your wallet" / "Save sender"; status pill age; the 27d failure banner, reason rows and [Try again]; the 27b private-mode variant; the Type row's value ("Transfer" / "USDC transfer"); two side-by-side icon action buttons | Not built (Task 8 review, controller 2026-11-27) | Deferred; none is a regression. #27 keeps the shortened addresses, the stacked buttons and the eyebrow word as the Type value. |
+| #27 "token account" caption under a recipient | Removed (Task 8 review, controller 2026-11-27) | A recipient that is only a token account now shows the Balance-changes form (ruling 8). |
+| #27 Date row and Copy on From / To / Authorized by | Built (Task 8 review, controller 2026-11-27) | The design draws them. The date is 24-hour, day first. |

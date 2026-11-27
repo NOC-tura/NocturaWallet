@@ -9,6 +9,7 @@ import {render, fireEvent} from '@testing-library/react-native';
 import {SafeAreaProvider} from 'react-native-safe-area-context';
 import {readFileSync} from 'fs';
 import {join} from 'path';
+import Clipboard from '@react-native-clipboard/clipboard';
 import {TransactionDetailScreen} from '../TransactionDetailScreen';
 import {classifyActivity} from '../../../modules/solana/activity';
 import {heroAmount} from '../../../modules/solana/activityView';
@@ -227,11 +228,11 @@ describe('the hero is the row (§4.6)', () => {
   it('a swap (2FSgk4Ge…): "Swapped", "{out} {sym} → {in} {sym}", and the balance changes in place of From / To', () => {
     const r = screen('tx-jupiter-token-to-sol-2FSgk4Ge.json', SELLER);
     expect(r.getByTestId('tx-detail-direction')).toHaveTextContent('Swapped');
-    expect(r.getByTestId('tx-detail-amount')).toHaveTextContent('135435.988491 3gmFG4…pump → 0.00466848 SOL');
+    expect(r.getByTestId('tx-detail-amount')).toHaveTextContent('135,435.988491 3gmFG4…pump → 0.00466848 SOL');
     expect(r.queryByText('From')).toBeNull();
     expect(r.getByText('Fee payer')).toBeTruthy();
     expect(r.getByText('Balance changes')).toBeTruthy();
-    expect(changes(r)).toEqual(['−135435.988491 3gmFG4…pump', '+0.00466848 SOL']);
+    expect(changes(r)).toEqual(['−135,435.988491 3gmFG4…pump', '+0.00466848 SOL']);
   });
 
   // D10
@@ -423,5 +424,70 @@ describe('"at today\'s price" (H7)', () => {
   it('no account: no price line (there is no hero amount)', () => {
     mockPrices.current = {native: {usd: 150, change24h: null}};
     expect(screen('tx-sol-to-empty-2bGSoVSG.json', null).queryByTestId('tx-detail-usd')).toBeNull();
+  });
+});
+
+describe('Task 8 review fixes (controller 2026-11-27)', () => {
+  const OWN_UNREADABLE = {accountIndex: 1, mint: 'M', owner: MAIN, uiTokenAmount: {amount: '1'}}; // no decimals: unreadable
+
+  // I1 — DERIVED from 2bGSoVSG…: one own token entry whose decimals cannot be read (the classifier: `incomplete`)
+  it('I1: an incomplete row is marked on the hero and the changes, and has no price line; the control has neither', () => {
+    mockPrices.current = {native: {usd: 150, change24h: null}};
+    const control = screen('tx-sol-to-empty-2bGSoVSG.json', MAIN);
+    expect(control.getByTestId('tx-detail-usd')).toBeTruthy();
+    expect(control.queryByTestId('tx-detail-incomplete')).toBeNull();
+    expect(control.queryByText('incomplete')).toBeNull();
+    control.unmount();
+    const tx = load('tx-sol-to-empty-2bGSoVSG.json');
+    tx.meta!.preTokenBalances!.push(OWN_UNREADABLE);
+    tx.meta!.postTokenBalances!.push(OWN_UNREADABLE);
+    const r = screen(tx, MAIN);
+    expect(r.getByTestId('tx-detail-direction')).toHaveTextContent('Sent');
+    expect(r.getByTestId('tx-detail-amount')).toHaveTextContent('0.001 SOL');
+    expect(r.queryByTestId('tx-detail-usd')).toBeNull();
+    expect(r.getByTestId('tx-detail-incomplete')).toHaveTextContent('incomplete', {exact: true});
+    expect(r.getByTestId('tx-detail-changes-incomplete')).toHaveTextContent('incomplete', {exact: true});
+    expect(changes(r)).toEqual(['−0.001 SOL']); // the lines themselves are unchanged
+  });
+
+  // I2
+  it('I2: From / To AND every other balance change — the rent a send paid is never hidden (4M9L6DFb…)', () => {
+    const r = screen('tx-send-new-ata-4M9L6DFb.json', 'BxrXKJrpxyshyFdZwojGzRD2PL3ujf51tCJw7aYHSuwi');
+    expect(r.getByTestId('tx-detail-from')).toBeTruthy();
+    expect(r.getByTestId('tx-detail-to')).toBeTruthy();
+    expect(changes(r)).toEqual(['−48.288911 Es9vMF…wNYB', '−0.00148844 SOL · account rent']); // the mocked symbol source knows no USDT
+    expect(r.getByText('Balance changes')).toBeTruthy();
+    expect(r.queryByText('Fee payer')).toBeNull();
+  });
+
+  // Date row
+  it('the Date row: the block time in the device zone, "—" when unknown', () => {
+    const r = screen('tx-test-to-main.json', MAIN);
+    expect(r.getByText('Date')).toBeTruthy();
+    expect(r.getByTestId('tx-detail-date')).toHaveTextContent(/^\d{1,2} [A-Z][a-z]{2} \d{4} · \d{2}:\d{2}$/);
+    r.unmount();
+    const tx = load('tx-test-to-main.json');
+    tx.blockTime = null;
+    const none = screen(tx, MAIN);
+    expect(none.getByTestId('tx-detail-date')).toHaveTextContent('—', {exact: true});
+  });
+
+  // Copy on From / To / Authorized by
+  it('Copy on From, To and Authorized by puts the full address on the clipboard', () => {
+    const DELEGATE = 'DLGTxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx';
+    const tx = load('tx-test-to-main.json');
+    const ix = (tx.transaction!.message!.instructions as Array<{parsed?: {type?: string; info?: Record<string, unknown>}}>).find(x => x.parsed?.type === 'transferChecked')!;
+    ix.parsed!.info!.authority = DELEGATE;
+    const r = screen(tx, MAIN);
+    const set = Clipboard.setString as jest.Mock;
+    for (const [id, full] of [
+      ['from', ACC_2],
+      ['to', MAIN],
+      ['authority', DELEGATE],
+    ] as const) {
+      set.mockClear();
+      fireEvent.press(r.getByTestId(`tx-detail-copy-${id}`));
+      expect(set).toHaveBeenCalledWith(full);
+    }
   });
 });

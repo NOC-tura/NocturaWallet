@@ -24,10 +24,10 @@ import {parseTxDetail} from '../../modules/solana/txDetail';
 import {classifyActivity} from '../../modules/solana/activity';
 import {activityContext} from '../../modules/solana/activityContext';
 import {peekHistorySession} from '../../modules/solana/historySession';
-import {activityWord, changeLine, heroAmount, partiesAgree, primaryUsdToday} from '../../modules/solana/activityView';
+import {activityWord, changeLine, detailTime, deviceTimeZone, heroAmount, partiesAgree, primaryUsdToday} from '../../modules/solana/activityView';
 import {priceKeyFor} from '../../modules/prices/portfolio';
 import {trustedSymbol} from '../../modules/tokens/trustedSymbol';
-import {TX_FEE_PAYER, TX_AUTHORIZED_BY, TX_BALANCE_CHANGES, txAtTodaysPrice} from '../../copy/transactions';
+import {TX_FEE_PAYER, TX_AUTHORIZED_BY, TX_BALANCE_CHANGES, TX_DATE, TX_INCOMPLETE, txAtTodaysPrice} from '../../copy/transactions';
 import {usePublicSettingsStore} from '../../store/zustand/publicSettingsStore';
 import {BELOW_ONE_CENT, VALUE_HIDDEN, VALUE_HIDDEN_SPOKEN} from '../../copy/accounts';
 
@@ -64,9 +64,10 @@ interface DetailRowProps {
   /** what a screen reader says for a string value (a masked figure says "Hidden") */
   valueLabel?: string;
   onCopy?: () => void;
+  copyTestID?: string;
 }
 
-function DetailRow({label, value, mono, valueLabel, onCopy}: DetailRowProps) {
+function DetailRow({label, value, mono, valueLabel, onCopy, copyTestID}: DetailRowProps) {
   return (
     <View className="flex-row items-start justify-between gap-4 py-3 border-b border-bg-surface-2 min-h-[48px]">
       <Text variant="overline" className="text-fg-secondary pt-0.5 shrink-0 pr-1">
@@ -85,7 +86,7 @@ function DetailRow({label, value, mono, valueLabel, onCopy}: DetailRowProps) {
           value
         )}
         {onCopy ? (
-          <Pressable onPress={onCopy} className="flex-row items-center gap-1 mt-1">
+          <Pressable onPress={onCopy} className="flex-row items-center gap-1 mt-1" testID={copyTestID}>
             <Copy size={14} color="#B084FC" />
             <Text variant="caption" className="text-accent-transparent">
               Copy
@@ -122,15 +123,17 @@ export function TransactionDetailScreen({signature, account, onBack}: Props) {
   // From / To only when the transfer the parser read IS the row (§4.6); then both wallets are known
   const parties = transfer !== null && transfer.from !== null && partiesAgree(transfer, row, account) ? {...transfer, from: transfer.from} : null;
   const {prices} = useResolvedPrices();
-  const usdToday = primaryUsdToday(row, mint => prices[priceKeyFor(mint)]?.usd ?? null);
+  // an incomplete row claims no value: no "≈ $x" line (Task 8 review I1)
+  const incomplete = row?.incomplete === true;
+  const usdToday = incomplete ? null : primaryUsdToday(row, mint => prices[priceKeyFor(mint)]?.usd ?? null);
   // a contact is a WALLET that is not this account: never a token account, never oneself
   const contactAddress = parties !== null && parties.to !== account ? parties.to : null;
 
   // ── Handlers ───────────────────────────────────────────────────────────────
 
-  function handleCopySig() {
+  function copyText(text: string) {
     try {
-      Clipboard.setString(signature);
+      Clipboard.setString(text);
       setTimeout(() => Clipboard.setString(''), 30_000);
     } catch {
       // clipboard unavailable — no-op
@@ -215,6 +218,11 @@ export function TransactionDetailScreen({signature, account, onBack}: Props) {
                 {hero}
               </Text>
             ) : null}
+            {incomplete && hero !== null ? (
+              <Text variant="caption" className="text-fg-tertiary mt-1" testID="tx-detail-incomplete">
+                {TX_INCOMPLETE}
+              </Text>
+            ) : null}
             {/* H7: only today's price is known — the line says so, and is absent with no price */}
             {usdToday !== null ? (
               <Text variant="body-sm" numeral className="text-fg-secondary mt-1" testID="tx-detail-usd" accessibilityLabel={hidden ? VALUE_HIDDEN_SPOKEN : undefined}>
@@ -244,10 +252,13 @@ export function TransactionDetailScreen({signature, account, onBack}: Props) {
           <View className="bg-bg-surface-1 rounded-lg px-5 mt-4">
             <DetailRow label="Type" value={directionWord} />
             <DetailRow label="Status" value={tx.status[0].toUpperCase() + tx.status.slice(1)} />
+            <DetailRow label={TX_DATE} value={<Text variant="body-sm" className="text-fg-primary text-right" testID="tx-detail-date">{detailTime(tx.blockTime, deviceTimeZone())}</Text>} />
             {parties !== null ? (
               <>
                 <DetailRow
                   label="From"
+                  onCopy={() => copyText(parties.from)}
+                  copyTestID="tx-detail-copy-from"
                   value={
                     <View className="items-end" testID="tx-detail-from">
                       <ChecksumAddr address={parties.from} />
@@ -258,6 +269,8 @@ export function TransactionDetailScreen({signature, account, onBack}: Props) {
                 {parties.authority !== null && parties.authority !== parties.from ? (
                   <DetailRow
                     label={TX_AUTHORIZED_BY}
+                    onCopy={() => copyText(parties.authority ?? '')}
+                    copyTestID="tx-detail-copy-authority"
                     value={
                       <View className="items-end" testID="tx-detail-authority">
                         <ChecksumAddr address={parties.authority} />
@@ -267,6 +280,8 @@ export function TransactionDetailScreen({signature, account, onBack}: Props) {
                 ) : null}
                 <DetailRow
                   label="To"
+                  onCopy={() => copyText(parties.to)}
+                  copyTestID="tx-detail-copy-to"
                   value={
                     <View className="items-end" testID="tx-detail-to">
                       <ChecksumAddr address={parties.to} />
@@ -277,28 +292,35 @@ export function TransactionDetailScreen({signature, account, onBack}: Props) {
             ) : (
               <>
                 <DetailRow label={TX_FEE_PAYER} value={<ChecksumAddr address={tx.feePayer} />} />
-                {/* §4.6: every net change of this account, each with its role */}
-                {row !== null && row.deltas.length > 0 ? (
-                  <DetailRow
-                    label={TX_BALANCE_CHANGES}
-                    value={
-                      <View className="items-end" testID="tx-detail-changes">
-                        {row.deltas.map((d, k) => (
-                          <Text key={`${d.role}-${d.mint}-${k}`} variant="body-sm" numeral className="text-fg-primary text-right" testID={`tx-detail-change-${k}`} accessibilityLabel={hidden ? changeLine(d, true).replace(VALUE_HIDDEN, VALUE_HIDDEN_SPOKEN) : undefined}>
-                            {changeLine(d, hidden)}
-                          </Text>
-                        ))}
-                      </View>
-                    }
-                  />
-                ) : null}
               </>
             )}
+            {/* §4.6: every net change of this account, each with its role — in place of From / To, and under them
+                whenever there is more than the one figure (a rent paid, a markup, a second asset; review I2) */}
+            {row !== null && row.deltas.length > 0 && (parties === null || row.deltas.length > 1) ? (
+              <DetailRow
+                label={TX_BALANCE_CHANGES}
+                value={
+                  <View className="items-end" testID="tx-detail-changes">
+                    {row.deltas.map((d, k) => (
+                      <Text key={`${d.role}-${d.mint}-${k}`} variant="body-sm" numeral className="text-fg-primary text-right" testID={`tx-detail-change-${k}`} accessibilityLabel={hidden ? changeLine(d, true).replace(VALUE_HIDDEN, VALUE_HIDDEN_SPOKEN) : undefined}>
+                        {changeLine(d, hidden)}
+                      </Text>
+                    ))}
+                    {incomplete ? (
+                      <Text variant="caption" className="text-fg-tertiary" testID="tx-detail-changes-incomplete">
+                        {TX_INCOMPLETE}
+                      </Text>
+                    ) : null}
+                  </View>
+                }
+              />
+            ) : null}
             <DetailRow
               label="Hash"
               value={truncatedSig}
               mono
-              onCopy={handleCopySig}
+              onCopy={() => copyText(signature)}
+              copyTestID="tx-detail-copy-hash"
             />
             <DetailRow label="Block" value={String(tx.slot)} />
             <DetailRow
