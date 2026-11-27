@@ -167,7 +167,10 @@ it('review r1 m3: a row reads its label, tags, short address and balance to a sc
   const {r} = sheet();
   expect(r.getByTestId('accounts-row-slip10:3').props.accessibilityLabel).toBe('Account 4, exit, 3YqEpf…JXT94k, Balance unavailable');
   const h = sheet({hidden: true}).r;
-  expect(h.getAllByTestId('accounts-row-slip10:3')[0]!.props.accessibilityLabel).toBe('Account 4, exit, 3YqEpf…JXT94k, •••');
+  expect(h.getAllByTestId('accounts-row-slip10:3')[0]!.props.accessibilityLabel).toBe('Account 4, exit, 3YqEpf…JXT94k, Hidden');
+  expect(h.getAllByTestId('accounts-row-slip10:3-balance')[0]!.props.accessibilityLabel).toBe('Hidden');
+  expect(h.getAllByTestId('accounts-row-slip10:3-balance')[0]).toHaveTextContent('•••');
+  expect(r.getByTestId('accounts-row-slip10:3-balance').props.accessibilityLabel).toBeUndefined(); // control: unhidden has none
 });
 
 it('review M11: the main row never goes through the by-address reader, and shows walletStore\'s figure; no sync yet → not checked yet', () => {
@@ -238,7 +241,9 @@ it('S4 (Review Focus 1): hidden wins over stale — "••• · not updated", 
   const {r} = sheet({hidden: true});
   expect(bal(r, 'slip10:3')).toHaveTextContent('••• · not updated');
   const label = r.getByTestId('accounts-row-slip10:3').props.accessibilityLabel as string;
-  expect(label.endsWith('••• · not updated')).toBe(true);
+  expect(label.endsWith('Hidden · not updated')).toBe(true);
+  expect(label).not.toContain('•');
+  expect(r.getByTestId('accounts-row-slip10:3-balance').props.accessibilityLabel).toBe('Hidden · not updated');
   expect(label).not.toMatch(/\d\.\d|SOL/);
 });
 

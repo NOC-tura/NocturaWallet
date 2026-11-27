@@ -31,6 +31,7 @@ import {
   TAG_LINKED,
   TAG_MAIN,
   VALUE_HIDDEN,
+  spokenFigure,
   rowA11y,
   staleRow,
 } from '../../copy/accounts';
@@ -133,7 +134,7 @@ export function AccountsSheet({visible, list, selectedScheme, hidden, onSelect, 
                     onPress={() => (checked ? onClose() : onSelect(a.scheme))}
                     accessibilityRole="radio"
                     accessibilityState={{checked}}
-                    accessibilityLabel={rowA11y(a.label, tags, shortAccountAddress(a.address), balanceText)}
+                    accessibilityLabel={rowA11y(a.label, tags, shortAccountAddress(a.address), spokenFigure(balanceText))}
                     testID={`accounts-row-${a.scheme}`}
                     className="flex-row items-center px-5 py-3 min-h-touch-rec active:bg-bg-surface-2">
                     <View className="flex-1">
@@ -158,7 +159,7 @@ export function AccountsSheet({visible, list, selectedScheme, hidden, onSelect, 
                       <Text variant="caption" mono className="text-fg-tertiary mt-0.5" testID={`accounts-row-${a.scheme}-address`}>
                         {shortAccountAddress(a.address)}
                       </Text>
-                      <Text variant="body-sm" numeral className={cn('mt-0.5', stale ? 'text-fg-tertiary' : 'text-fg-secondary')} testID={`accounts-row-${a.scheme}-balance`}>
+                      <Text variant="body-sm" numeral className={cn('mt-0.5', stale ? 'text-fg-tertiary' : 'text-fg-secondary')} testID={`accounts-row-${a.scheme}-balance`} accessibilityLabel={hidden ? spokenFigure(balanceText) : undefined}>
                         {balanceText}
                       </Text>
                     </View>

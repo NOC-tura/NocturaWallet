@@ -670,10 +670,69 @@ describe('M1d — the Public | Private split inside the balance card (spec §4.5
     expect(r.getAllByTestId('dashboard-split-public-line').map(l => l.props.children)).toEqual(['•••']);
     expect(r.getAllByTestId('dashboard-split-private-line').map(l => l.props.children)).toEqual(['•••']);
     for (const col of [pub(r), priv(r)]) {
-      expect(col.props.accessibilityLabel).toContain('•••');
+      expect(col.props.accessibilityLabel).toContain('Hidden');
+      expect(col.props.accessibilityLabel).not.toContain('•');
       expect(col.props.accessibilityLabel).not.toMatch(/\d/);
       expect(col).not.toHaveTextContent(/\d/);
     }
+  });
+
+  it('Task 11b: hidden → each split line and each sub-balance amount is spoken "Hidden" (visible text unchanged); unhidden → no label', async () => {
+    mockHide.current = true;
+    mockMode.current = 'transparent';
+    let r = await renderDashboard();
+    for (const id of ['dashboard-split-public-line', 'dashboard-split-private-line']) {
+      for (const l of r.getAllByTestId(id)) {
+        expect(l.props.children).toBe('•••');
+        expect(l.props.accessibilityLabel).toBe('Hidden');
+      }
+    }
+    expect(r.getByTestId('dashboard-sub-sol')).toHaveTextContent('••••');
+    expect(r.getByTestId('dashboard-sub-sol').props.accessibilityLabel).toBe('Hidden');
+    expect(r.getByTestId('dashboard-sub-noc').props.accessibilityLabel).toBe('Hidden');
+    const rows = r.getAllByText(/^•{6} \S+/);
+    expect(rows.length).toBeGreaterThan(0); // the token rows
+    for (const row of rows) expect(row.props.accessibilityLabel).toBe(`Hidden ${String(row.props.children[0]).slice(7)}`);
+    r.unmount();
+    mockHide.current = false;
+    r = await renderDashboard();
+    expect(r.queryAllByText(/^•{6} /)).toEqual([]);
+    for (const l of r.getAllByTestId('dashboard-split-public-line')) expect(l.props.accessibilityLabel).toBeUndefined();
+    expect(r.getByTestId('dashboard-sub-sol').props.accessibilityLabel).toBeUndefined();
+  });
+
+  it.each(['transparent', 'shielded'] as const)('Task 11b sweep: hidden (%s mode) → no accessibilityLabel anywhere in the dashboard tree contains a bullet', async mode => {
+    mockHide.current = true;
+    mockMode.current = mode;
+    mockView.current = {kind: 'ready', unspent: 1_003_800_000n, pending: 0n, notes: 1};
+    const r = await renderDashboard();
+    const labels: string[] = [];
+    const walk = (n: {props?: {accessibilityLabel?: unknown}; children?: unknown} | string): void => {
+      if (typeof n === 'string') return;
+      const l = n.props?.accessibilityLabel;
+      if (typeof l === 'string') labels.push(l);
+      for (const c of (n.children as Array<typeof n> | undefined) ?? []) walk(c);
+    };
+    walk(r.toJSON() as never);
+    expect(labels.length).toBeGreaterThan(0);
+    expect(labels.some(l => l.includes('Hidden'))).toBe(true); // positive control: the walk does see the labels
+    expect(labels.filter(l => l.includes('•'))).toEqual([]);
+  });
+
+  it('Task 11b: the shielded asset row hidden is spoken "Hidden <symbol>" (control: unhidden has no label)', async () => {
+    mockMode.current = 'shielded';
+    mockView.current = {kind: 'ready', unspent: 1_003_800_000n, pending: 0n, notes: 1};
+    mockHide.current = true;
+    let r = await renderDashboard();
+    const row = r.getByTestId('shielded-assets-row');
+    const amt = r.getByText(/^•{6} /);
+    expect(amt.props.accessibilityLabel).toMatch(/^Hidden \S+$/);
+    expect(row).toBeTruthy();
+    r.unmount();
+    mockHide.current = false;
+    r = await renderDashboard();
+    expect(r.getByTestId('shielded-assets-row')).toBeTruthy();
+    expect(r.queryByText(/^•{6} /)).toBeNull();
   });
 
   it('I1: only priced assets held and prices known → the USD form, Public "$150.00"', async () => {
@@ -1007,7 +1066,7 @@ describe('post-M1d §3.2 — a stale public balance', () => {
     expect(r.getByTestId('dashboard-sub-sol')).toHaveTextContent('••••');
     expect(r.queryByText(/5 USDC|\$5\.00|\$150/)).toBeNull();
     const label = r.getByTestId('dashboard-split-public').props.accessibilityLabel as string;
-    expect(label).toBe('Public, •••, not updated');
+    expect(label).toBe('Public, Hidden, not updated');
     expect(label).not.toMatch(/\d/);
     for (const l of r.getAllByTestId('dashboard-split-public-line')) {
       expect(l.props.children).not.toMatch(/\d/);
@@ -1081,7 +1140,7 @@ describe('post-M1d §3.2 — a stale public balance', () => {
     mockHide.current = true;
     r = await renderDashboard();
     expect(r.getByTestId('dashboard-split-public-stale')).toHaveTextContent('not updated');
-    expect(r.getByTestId('dashboard-split-public').props.accessibilityLabel).toMatch(/^Public, •••, not updated/);
+    expect(r.getByTestId('dashboard-split-public').props.accessibilityLabel).toMatch(/^Public, Hidden, not updated/);
     r.unmount();
     mockHide.current = false;
     mockPublic.current = READY_MAIN;

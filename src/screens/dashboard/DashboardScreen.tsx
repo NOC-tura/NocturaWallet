@@ -32,7 +32,7 @@ import {Text} from '../../components/ui';
 import {useWalletStore} from '../../store/zustand/walletStore';
 import {useAccountList, useRefreshAccounts, useSelectAccount, useSelectedAccount} from '../../hooks/useSelectedAccount';
 import {NO_PUBLIC_DATA, useAccountPublicData} from '../../hooks/useAccountPublicData';
-import {ACCOUNTS_TITLE, HISTORY_A11Y, PUBLIC_LOADING, REFRESH_ACCOUNT_FAILED, REFRESH_FAILED_TITLE, PUBLIC_UNAVAILABLE, SPLIT_PRIVATE, SPLIT_PUBLIC, SPLIT_STALE_CAPTION, VALUE_UNKNOWN, avatarA11y, relativeAge, splitA11y, staleLine} from '../../copy/accounts';
+import {ACCOUNTS_TITLE, HISTORY_A11Y, PUBLIC_LOADING, REFRESH_ACCOUNT_FAILED, REFRESH_FAILED_TITLE, PUBLIC_UNAVAILABLE, SPLIT_PRIVATE, SPLIT_PUBLIC, SPLIT_STALE_CAPTION, VALUE_UNKNOWN, avatarA11y, relativeAge, spokenFigure, splitA11y, staleLine} from '../../copy/accounts';
 import {AccountsSheet} from '../../components/accounts/AccountsSheet';
 import {useShieldedStore} from '../../store/zustand/shieldedStore';
 import {usePublicSettingsStore} from '../../store/zustand/publicSettingsStore';
@@ -1007,7 +1007,7 @@ function SplitColumn({label, lines, isActive, dotClass, onSelect, testID, stale}
       // final review m6: the active column offers no action, so TalkBack does not announce one
       accessibilityRole={isActive ? 'text' : 'button'}
       accessibilityState={{selected: isActive}}
-      accessibilityLabel={splitA11y(label, lines.join(', '), isActive, stale === true)}
+      accessibilityLabel={splitA11y(label, spokenFigure(lines.join(', ')), isActive, stale === true)}
       testID={testID}
       className="flex-1 active:opacity-80">
       <View className="flex-row items-center gap-2 mb-1">
@@ -1025,7 +1025,8 @@ function SplitColumn({label, lines, isActive, dotClass, onSelect, testID, stale}
           adjustsFontSizeToFit
           minimumFontScale={0.75}
           className={stale ? 'text-fg-tertiary' : 'text-fg-secondary'}
-          testID={`${testID}-line`}>
+          testID={`${testID}-line`}
+          accessibilityLabel={line.includes('•') ? spokenFigure(line) : undefined}>
           {line}
         </Text>
       ))}
@@ -1059,6 +1060,7 @@ function SubBalanceCell({
         variant="body-sm"
         numeral={!hidden}
         testID={testID}
+        accessibilityLabel={hidden ? spokenFigure(amount) : undefined}
         className={cn(
           'font-geist-semibold',
           hidden ? 'text-fg-secondary' : dim ? 'text-fg-tertiary' : 'text-fg-primary',
@@ -1149,7 +1151,8 @@ function TokenListRow({
         <Text
           variant="body-sm"
           numeral={!hidden}
-          className={hidden || stale ? 'text-fg-tertiary' : 'text-fg-secondary'}>
+          className={hidden || stale ? 'text-fg-tertiary' : 'text-fg-secondary'}
+          accessibilityLabel={hidden ? spokenFigure(formattedBalance) + (isShielded ? PRIVATE_SUFFIX : '') : undefined}>
           {formattedBalance}
           {isShielded ? PRIVATE_SUFFIX : ''}
         </Text>
@@ -1267,7 +1270,7 @@ function ShieldedAssetsBody({view, hidden, checkAgain}: Omit<ShieldedAssetsSecti
         <Text variant="body-lg" className="text-fg-primary">
           {A0_TOKEN.name}
         </Text>
-        <Text variant="body-sm" numeral={!hidden} className={hidden ? 'text-fg-tertiary' : 'text-accent-shielded'}>
+        <Text variant="body-sm" numeral={!hidden} className={hidden ? 'text-fg-tertiary' : 'text-accent-shielded'} accessibilityLabel={hidden ? spokenFigure(amount) : undefined}>
           {amount}
         </Text>
         {!hidden && view.pending > 0n ? (
