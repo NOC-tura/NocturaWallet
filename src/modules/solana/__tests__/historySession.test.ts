@@ -1,0 +1,322 @@
+/**
+ * History spec §3.2, §3.4, §8 "History reading": the merged stream against scripted sources. A source
+ * is a list of signatures, newest first; `fetchSignatures` pages it exactly as getSignaturesForAddress
+ * does (`before` = exclusive cursor). No timers, no React.
+ */
+import {
+  HistorySession,
+  HISTORY_PAGE_SIZE,
+  dropHistorySessions,
+  dropHistorySessionsExcept,
+  historySession,
+  peekHistorySession,
+} from '../historySession';
+import type {HistorySessionDeps, SignatureItem, SourceList} from '../historySession';
+
+const item = (signature: string, slot: number): SignatureItem => ({signature, slot, blockTime: slot * 10, status: 'finalized', finalized: true});
+/** n items named `${name}${slot}`, slots from `top` down by `step` */
+const run = (name: string, top: number, n: number, step = 1): SignatureItem[] =>
+  Array.from({length: n}, (_, k) => item(`${name}${top - k * step}`, top - k * step));
+
+function chain(sources: Record<string, SignatureItem[]>, total?: number) {
+  const calls: Array<{source: string; before: string | undefined}> = [];
+  const world = {sources, list: Object.keys(sources), total, failOn: null as string | null};
+  const deps: HistorySessionDeps = {
+    listSources: async (): Promise<SourceList> => ({sources: [...world.list], tokenAccountsTotal: world.total ?? world.list.length - 1}),
+    fetchSignatures: async (source, before, limit) => {
+      calls.push({source, before});
+      if (world.failOn === source) {
+        throw new Error('rpc down');
+      }
+      const all = world.sources[source] ?? [];
+      const from = before === undefined ? 0 : all.findIndex(x => x.signature === before) + 1;
+      return all.slice(from, from + limit);
+    },
+  };
+  return {deps, calls, world};
+}
+const sigs = (s: HistorySession): string[] => s.items.map(x => x.signature);
+
+// S1 (r2 N5)
+it('three sources with interleaved slots across two pages lose no row and repeat none', async () => {
+  // W: 30 rows on even slots, T1: 15 on odd slots, T2: 5 rows that are ALSO in W (the same transactions)
+  const W = run('w', 200, 30, 2);
+  const T1 = run('t', 199, 15, 2);
+  const T2 = [W[0]!, W[3]!, W[10]!, W[20]!, W[29]!];
+  const {deps} = chain({W, T1, T2});
+  const s = new HistorySession(deps);
+  await s.loadNextPage();
+  expect(s.items).toHaveLength(HISTORY_PAGE_SIZE);
+  expect(s.endReached).toBe(false);
+  await s.loadNextPage();
+  await s.loadNextPage();
+  const all = sigs(s);
+  expect(all).toHaveLength(45); // 30 + 15; T2 adds nothing
+  expect(new Set(all).size).toBe(45);
+  const slots = s.items.map(x => x.slot);
+  expect(slots).toEqual([...slots].sort((a, b) => b - a)); // newest first across pages
+  expect(s.endReached).toBe(true);
+});
+
+// S2
+it('within one slot the order is by signature; a page is at most 20 rows', async () => {
+  const W = [item('b', 9), item('a', 9), item('c', 8)];
+  const {deps} = chain({W});
+  const s = new HistorySession(deps);
+  await s.loadNextPage();
+  expect(sigs(s)).toEqual(['a', 'b', 'c']);
+});
+
+// S3 (r3 m-b)
+it('a source is fetched exactly when its buffer is empty and it is not exhausted; nothing is fetched twice', async () => {
+  const W = run('w', 100, 45);
+  const T = run('t', 1000, 3); // all newer than W
+  const {deps, calls} = chain({W, T});
+  const s = new HistorySession(deps);
+  await s.loadNextPage();
+  // page 1: both heads; T (3 < 20) is exhausted at once and is never fetched again
+  expect(calls).toEqual([
+    {source: 'W', before: undefined},
+    {source: 'T', before: undefined},
+  ]);
+  expect(sigs(s).slice(0, 3)).toEqual(['t1000', 't999', 't998']);
+  await s.loadNextPage(); // W's buffer (3 left of 20) runs out mid-page → fetched with its cursor
+  expect(calls.slice(2)).toEqual([{source: 'W', before: 'w81'}]);
+  await s.loadNextPage();
+  expect(calls.slice(3)).toEqual([{source: 'W', before: 'w61'}]);
+  expect(s.items).toHaveLength(48);
+  expect(s.endReached).toBe(true);
+});
+
+// S4
+it('end of history: an empty account ends on the first page with zero rows', async () => {
+  const {deps} = chain({W: []});
+  const s = new HistorySession(deps);
+  expect(s.endReached).toBe(false); // nothing was read yet: never "no transactions"
+  await s.loadNextPage();
+  expect(s.items).toEqual([]);
+  expect(s.endReached).toBe(true);
+  expect(s.pagesLoaded).toBe(1);
+});
+
+// S5
+it('a failed source fails the page and loses nothing: the retry returns every row once', async () => {
+  const W = run('w', 100, 5);
+  const T = run('t', 200, 5);
+  const {deps, world} = chain({W, T});
+  const s = new HistorySession(deps);
+  world.failOn = 'T';
+  await expect(s.loadNextPage()).rejects.toThrow('rpc down');
+  expect(s.items).toEqual([]);
+  expect(s.endReached).toBe(false);
+  expect(s.pagesLoaded).toBe(0);
+  world.failOn = null;
+  await s.loadNextPage();
+  expect(sigs(s)).toEqual([...T, ...W].map(x => x.signature));
+});
+
+// S5b (plan review r1 I3): the failure comes AFTER rows were taken for the page
+it('a source that fails in the middle of a page loses nothing: the rows already taken come back, once, on the retry', async () => {
+  const W = run('w', 100, 45);
+  const T = run('t', 1000, 3); // all newer than W
+  const {deps, world} = chain({W, T});
+  const s = new HistorySession(deps);
+  await s.loadNextPage(); // t1000…t998 and w100…w84; W's buffer keeps w83, w82, w81
+  world.failOn = 'W';
+  // page 2 takes those three, W's buffer runs out, and the fetch that follows fails
+  await expect(s.loadNextPage()).rejects.toThrow('rpc down');
+  expect(s.items).toHaveLength(20);
+  expect(s.pagesLoaded).toBe(1);
+  expect(s.endReached).toBe(false);
+  world.failOn = null;
+  await s.loadNextPage();
+  expect(sigs(s)).toEqual([...T, ...W.slice(0, 37)].map(x => x.signature)); // w83…w81 are there, and nothing twice
+  await s.loadNextPage();
+  expect(sigs(s)).toEqual([...T, ...W].map(x => x.signature));
+  expect(s.endReached).toBe(true);
+});
+
+// S6 (r2 N6)
+it('refresh: 45 new signatures on one source all appear, in order, above the old rows', async () => {
+  const W = run('w', 100, 30);
+  const {deps, world} = chain({W});
+  const s = new HistorySession(deps);
+  await s.loadNextPage();
+  const id = s.id;
+  const old = sigs(s);
+  const fresh = run('n', 500, 45);
+  world.sources.W = [...fresh, ...W];
+  await s.refresh();
+  expect(s.id).toBe(id); // not restarted
+  expect(sigs(s)).toEqual([...fresh.map(x => x.signature), ...old]);
+  // the older paging is untouched: the next page continues after w81
+  await s.loadNextPage();
+  expect(sigs(s).slice(-10)).toEqual(run('w', 80, 10).map(x => x.signature));
+});
+
+// S6b (plan review r1 I3): every token send is in the wallet's list AND in its token account's
+it('refresh: one new signature present on two sources appears once', async () => {
+  const W = run('w', 100, 5);
+  const T = run('t', 50, 2);
+  const {deps, world} = chain({W, T});
+  const s = new HistorySession(deps);
+  await s.loadNextPage();
+  const old = sigs(s);
+  const sent = item('sent', 999);
+  world.sources.W = [sent, ...W];
+  world.sources.T = [sent, ...T];
+  await s.refresh();
+  expect(sigs(s)).toEqual(['sent', ...old]);
+});
+
+// S6c (plan review r1 m7; spec §3.4 "sets `newest` to the new head")
+it('refresh moves `newest` to the new head: the next refresh pages down to it, not to the first one', async () => {
+  const W = run('w', 100, 30);
+  const {deps, calls, world} = chain({W});
+  const s = new HistorySession(deps);
+  await s.loadNextPage();
+  const id = s.id;
+  const first = run('a', 500, 60);
+  world.sources.W = [...first, ...W];
+  calls.length = 0;
+  await s.refresh();
+  expect(calls).toHaveLength(4); // 3 full pages of new signatures, and the page that meets w100
+  const second = run('b', 900, 60);
+  world.sources.W = [...second, ...first, ...W];
+  calls.length = 0;
+  await s.refresh();
+  expect(calls).toHaveLength(4); // down to a500 — paging down to w100 would be 120 signatures, past the 5-page cap
+  expect(s.id).toBe(id); // so no false restart: the older rows stay
+  expect(sigs(s)).toEqual([...second, ...first, ...W.slice(0, 20)].map(x => x.signature));
+});
+
+// S7 (r2 N6)
+it('refresh past the 5-page cap restarts the session from the head', async () => {
+  const W = run('w', 100, 30);
+  const {deps, world} = chain({W});
+  const s = new HistorySession(deps);
+  await s.loadNextPage();
+  await s.loadNextPage();
+  const id = s.id;
+  world.sources.W = [...run('n', 900, 101), ...W]; // 101 new: the 6th page would be needed
+  await s.refresh();
+  expect(s.id).not.toBe(id);
+  expect(s.pagesLoaded).toBe(1);
+  expect(sigs(s)).toEqual(run('n', 900, 20).map(x => x.signature));
+});
+
+// S8 (r3 P1)
+it('refresh with a second source that has emitted nothing yet takes only what is newer than its newest', async () => {
+  const W = run('w', 500, 25);
+  const T = run('t', 100, 4); // all older than page 1: fetched, buffered, not emitted
+  const {deps, world} = chain({W, T});
+  const s = new HistorySession(deps);
+  await s.loadNextPage();
+  expect(sigs(s).some(x => x.startsWith('t'))).toBe(false);
+  const id = s.id;
+  world.sources.T = [item('tNew', 900), ...T];
+  await s.refresh();
+  expect(s.id).toBe(id);
+  expect(sigs(s)[0]).toBe('tNew');
+  expect(sigs(s).filter(x => x.startsWith('t'))).toEqual(['tNew']); // T's old rows are still to come, once
+  await s.loadNextPage();
+  expect(sigs(s).filter(x => x.startsWith('t'))).toEqual(['tNew', 't100', 't99', 't98', 't97']);
+  expect(new Set(sigs(s)).size).toBe(s.items.length);
+});
+
+// S9 (r3 P1, r4 q2)
+it('a new token account, or a missing one, restarts the session', async () => {
+  const W = run('w', 100, 30);
+  const {deps, world} = chain({W, T: run('t', 50, 2)});
+  const s = new HistorySession(deps);
+  await s.loadNextPage();
+  await s.loadNextPage();
+  let id = s.id;
+  world.sources.T2 = run('x', 999, 1);
+  world.list = ['W', 'T', 'T2'];
+  await s.refresh();
+  expect(s.id).not.toBe(id);
+  expect(sigs(s)[0]).toBe('x999');
+  expect(s.pagesLoaded).toBe(1);
+  id = s.id;
+  world.list = ['W', 'T2'];
+  await s.refresh();
+  expect(s.id).not.toBe(id);
+  expect(s.tokenAccountSources).toEqual(new Set(['T2']));
+});
+
+// S10 (r4 q2)
+it('a source that ends without meeting its newest restarts; one that was empty is simply read', async () => {
+  const W = run('w', 100, 5);
+  const {deps, world} = chain({W, E: []});
+  const s = new HistorySession(deps);
+  await s.loadNextPage();
+  const id = s.id;
+  world.sources.E = run('e', 300, 2); // E was empty: these are all new, no hole is possible
+  await s.refresh();
+  expect(s.id).toBe(id);
+  expect(sigs(s)).toEqual(['e300', 'e299', ...W.map(x => x.signature)]);
+  world.sources.W = run('z', 400, 3); // W's history was replaced: its newest is gone
+  await s.refresh();
+  expect(s.id).not.toBe(id);
+});
+
+// S11
+it('a refresh that fails changes nothing', async () => {
+  const W = run('w', 100, 5);
+  const {deps, world} = chain({W, T: run('t', 50, 2)});
+  const s = new HistorySession(deps);
+  await s.loadNextPage();
+  const before = sigs(s);
+  world.sources.W = [item('new', 999), ...W];
+  world.failOn = 'T';
+  await expect(s.refresh()).rejects.toThrow('rpc down');
+  expect(sigs(s)).toEqual(before);
+  world.failOn = null;
+  await s.refresh();
+  expect(sigs(s)).toEqual(['new', ...before]);
+});
+
+// S12
+it('a refresh and a load-older never interleave', async () => {
+  const W = run('w', 100, 45);
+  const {deps, world} = chain({W});
+  const s = new HistorySession(deps);
+  await s.loadNextPage();
+  world.sources.W = [item('new', 999), ...W];
+  await Promise.all([s.refresh(), s.loadNextPage()]);
+  expect(new Set(sigs(s)).size).toBe(41);
+  expect(sigs(s)[0]).toBe('new');
+});
+
+// S13 (§3.2 bound)
+it('coverage reports the token accounts read and owned', async () => {
+  const sources: Record<string, SignatureItem[]> = {W: []};
+  for (let k = 0; k < 24; k++) {
+    sources[`T${k}`] = [];
+  }
+  const {deps} = chain(sources, 31);
+  const s = new HistorySession(deps);
+  await s.loadNextPage();
+  expect(s.coverage).toEqual({read: 24, total: 31});
+  expect(s.tokenAccountSources.size).toBe(24);
+});
+
+// S14
+it('the registry: one session per cluster and account; drops by account, by exception and all', async () => {
+  const {deps} = chain({W: []});
+  dropHistorySessions();
+  const a = historySession('devnet', 'A', deps);
+  expect(historySession('devnet', 'A', deps)).toBe(a);
+  expect(historySession('mainnet-beta', 'A', deps)).not.toBe(a);
+  const b = historySession('devnet', 'B', deps);
+  dropHistorySessionsExcept('B');
+  expect(peekHistorySession('devnet', 'A')).toBeUndefined();
+  expect(peekHistorySession('mainnet-beta', 'A')).toBeUndefined();
+  expect(peekHistorySession('devnet', 'B')).toBe(b);
+  dropHistorySessions('B');
+  expect(peekHistorySession('devnet', 'B')).toBeUndefined();
+  historySession('devnet', 'A', deps);
+  dropHistorySessions();
+  expect(peekHistorySession('devnet', 'A')).toBeUndefined();
+});
