@@ -1,6 +1,6 @@
 # PR 2 — Transaction history parsing, retroactive "linked" scan, presale stale label
 
-**Date:** 2026-11-26. **Revision:** r5 (2026-11-27) — an amendment of §3.3 after the plan review r2 (`.superpowers/sdd/2026-11-26-history-parsing-plan-review-r2.md`): transactions are read at **version 1** by the **owner's decision of 2026-11-27**, and an answer is matched to a signature by its own signature (review C1). §8 and §9 follow; nothing else changed. r4 was **Fable APPROVED** (review r4; minors q1–q3 folded). r4 folds in Fable spec review r3 (P1, m-a to m-g). r3 folded in review r2 (N1–N7, m1–m8). r2 folded in Fable spec review r1, which was NOT APPROVED (5 Critical, 13 Important, 10 Minor), and the owner's answers H7–H8.
+**Date:** 2026-11-26. **Revision:** r5 (2026-11-27), amended during execution and by the final whole-branch review's fix batch (`.superpowers/sdd/2026-11-26-history-parsing/final-review.md`; every such sentence is tagged "(final review, controller 2026-11-27)" or "(owner 2026-11-27)"). r5 was an amendment of §3.3 after the plan review r2 (`.superpowers/sdd/2026-11-26-history-parsing-plan-review-r2.md`): transactions are read at **version 1** by the **owner's decision of 2026-11-27**, and an answer is matched to a signature by its own signature (review C1). §8 and §9 follow; nothing else changed. r4 was **Fable APPROVED** (review r4; minors q1–q3 folded). r4 folds in Fable spec review r3 (P1, m-a to m-g). r3 folded in review r2 (N1–N7, m1–m8). r2 folded in Fable spec review r1, which was NOT APPROVED (5 Critical, 13 Important, 10 Minor), and the owner's answers H7–H8.
 
 **Branch:** `feat/history-parsing`, from `main` at 7f3f235 (PR #127 merged).
 
@@ -39,7 +39,7 @@ The design files are approximate. Improve them as we build, with dated backups, 
 |---|---|---|
 | H1 | Where history comes from | **A.** Read the chain through the app's existing RPC and parse it on the device. No Helius Enhanced API and no backend. |
 | H2 | What a row's amount is | **The account's net change** per asset, from the balances before and after the transaction. Rent, fee and gas-grant movements are told apart by the rules in §4, so the row shows the asset the user moved. |
-| H3 | How pool moves are named | **A.** "Made private" (a deposit from this account) and "Made public" (a withdrawal into this account). They carry the private-mode badge, sit under the **Shielded** chip, and are never counted as Sent or Received. |
+| H3 | How pool moves are named | **A.** "Made private" (a deposit from this account) and "Made public" (a withdrawal into this account). They carry the private-mode badge, sit under the **Private** chip, and are never counted as Sent or Received. *The chip reads "Private", not "Shielded" (the plan's owner decision Q1: the banned-word rule); it exists only in a build with the private mode (owner 2026-11-27).* |
 | H4 | The linked rule | An exit account is linked when it appears in one transaction with another wallet of this seed, or with a token account owned by one. Direction does not matter, and a **failed** transaction counts. A relayed Make public into a new account does not link. The main account is never tagged. |
 | H5 | When the scan runs | When the Accounts sheet opens, in the background, for every untagged exit. A failure is silent and retries. A tag is never removed. |
 | H6 | Presale | Stale main → "—" plus "Not updated · tap to retry". Never read and a sync failed → "Balance unavailable · tap to retry". A read in flight → "Checking balance…". MAX and Buy are disabled until the balance is known. |
@@ -59,7 +59,7 @@ An SPL transfer into a token account that already exists does not list the recip
 The source list is read once per history session and on every pull-to-refresh. A token account closed earlier is no longer owned, so its transactions are not found (§9).
 
 ### 3.2 The merged stream (review r2 N5)
-**State.** A **history session** object lives outside the query cache, in `src/modules/solana/historySession.ts`. It is keyed by cluster and account, and it is dropped on an account switch, on a network switch, and on `onSecureMmkvReset`. Per source it holds `{buffer, cursor, exhausted}`:
+**State.** A **history session** object lives outside the query cache, in `src/modules/solana/historySession.ts`. It is keyed by cluster and account, and it is dropped on an account switch, on a network switch, and on `onSecureMmkvReset`. *Precisely: an account switch drops the other accounts' sessions when #26 next mounts for the new account (`useActivityHistory`), not at the switch itself; a session holds signatures only and lives in memory only (final review, controller 2026-11-27).* Per source it holds `{buffer, cursor, exhausted}`:
 - `buffer`: signatures fetched but not yet emitted, in the order the source returned them;
 - `cursor`: the last signature **fetched** from that source, used as `before` for the next fetch;
 - `exhausted`: the last fetch returned fewer than its `limit` (20).
@@ -69,13 +69,14 @@ The source list is read once per history session and on every pull-to-refresh. A
 **Building a page.**
 - Repeatedly take the newest head across all buffers, compared by `slot`, and append it unless its signature was already emitted (dedupe across sources and pages).
 - Stop at 20 rows or when every source is exhausted and empty.
-- A page's rows are then sorted by `(slot desc, signature asc)`. The order within one slot is fixed, but it is not chain order.
+- A page's rows are then sorted by `(slot desc, signature asc)`. The order within one slot is fixed, but it is not chain order. *After each page the WHOLE loaded list is sorted that way, not only the page: a row a refresh merged in below every loaded row keeps its place when the next page arrives (final review, controller 2026-11-27).*
 - **The end of history** is reached when every source is exhausted and every buffer is empty.
 
 **Bound on sources.**
 - Sources are ordered: the wallet first, then token accounts with a non-zero balance, then zero-balance token accounts.
 - At most **25 sources** are read.
 - When a wallet owns more, the list footer reads "History from 24 of {m} token accounts" (§9). The wallet itself is the 25th source.
+- *The source list still carries EVERY token account the wallet owns (`SourceList.tokenAccounts`), read or not, and the session hands that whole set to the classifier as `ownTokenAccounts` (#26 and #27 alike): an owner-less balance entry of a 25th token account marks its row incomplete too. A refresh that keeps the read sources takes in a changed set without a restart (final review, controller 2026-11-27).*
 - **Page 1 cost:** one signature call per source, up to 25, plus the transaction reads (§3.3). Later pages fetch only sources whose buffer ran out.
 - Plan Task 1 measures a page 1 with 25 sources on mainnet.
 
@@ -93,10 +94,12 @@ The source list is read once per history session and on every pull-to-refresh. A
   - for a transaction read, a hash of **every** signature in the batch.
 
   `rpcLimiter` dedupes in flight by key. A key with less would hand one page's answer to another, or one retry's answer to another (review r2 m2).
+- **Every call settles** (final review, controller 2026-11-27). Each chain call of the history, #27 and the link scan is raced against 20 s inside the limiter's function (that frees the slot and the in-flight key), and the whole call, its wait for a limiter slot included, is raced again against 40 s (`limitedRead`). The app's other reads have no limit; ten of them that never settle would otherwise hold every slot and leave #26 on "Loading…" and its per-account queue blocked. One call settles within 40 s; the transactions of one load within about 60 s.
+- **A wipe stops a load in flight** (final review, controller 2026-11-27). `onSecureMmkvReset` ends a generation (`endHistoryGeneration`); each load carries a `live()` taken when it starts. Once it is false the load reads no further transaction, caches nothing it reads after that, and fails (`StaleHistoryError`) — the class the link scan's guard closes (§6.4).
 - **Plan Task 1 measures this first** against both the devnet and the mainnet endpoint: a 20-item batch, and 20 sequential calls. It records the latency and any refusal before the screen work starts. If the batch is refused, the sequential path is the product path. It also confirms that the app's own provider serves a version-1 transaction (r5); if it does not, the work stops and the owner is told.
 
 ### 3.4 Partial pages, refresh and identity
-- A signature whose transaction comes back null (not indexed yet) or failed to read **still shows a row**. It has the date and status from the signature list, the title "Transaction", and "—" for the amount. It is never dropped, and never becomes a Sent.
+- A signature whose transaction comes back null (not indexed yet) or failed to read **still shows a row**. It has the date and status from the signature list, the title "Transaction", and "—" for the amount. It is never dropped, and never becomes a Sent. *When the signature list itself marks it failed (its `err` is known without the transaction) the partial row reads "Failed" with the warning icon, still "—" and no fee line (final review, controller 2026-11-27).*
 - **Pull-to-refresh** (review r2 N6):
   - re-reads the source list;
   - pages each source from its head with `before` until it meets that source's `newest`, or the source is exhausted. `newest` is the first signature ever fetched for the source in this session, kept in the session (review r3 P1);
@@ -109,6 +112,7 @@ The source list is read once per history session and on every pull-to-refresh. A
   - a known source is missing from the re-read list, or is exhausted without meeting its `newest` (review r4 q2).
 - Rows are keyed and deduped by signature across pages.
 - **Every query key holds the cluster and the account address,** so switching accounts or networks never shows another account's rows.
+- *A confirmed Send (#21) invalidates the history of the sending account AND of the recipient address: a send between one's own accounts reaches the receiving account's #26 at once (final review, controller 2026-11-27). Other flows: §9.*
 - "No transactions yet" shows only when the first merged page read successfully, every source is exhausted, and there are zero signatures.
 
 ## 4. Classifying a transaction (H2, H3)
@@ -269,11 +273,12 @@ Exactly one candidate → it. Otherwise → null.
   - `toIsTokenAccount` is false.
 
   Otherwise those rows are replaced by "Fee payer" and a **"Balance changes"** list of every delta, with role labels ("−0.0001 TEST", "−0.00204 SOL · account rent", "+0.002 SOL · gas grant", "−0.00002 SOL · Noctura fee").
-- **"≈ ${x} at today's price"** sits under the hero when a price for `primary` is known (H7). It is absent otherwise, and absent on an `incomplete` row (Task 8 review I1).
+- **"≈ ${x} at today's price"** sits under the hero when a price for `primary` is known (H7). It is absent otherwise, and absent on an `incomplete` row (Task 8 review I1). *It is absent on a swap as well: a swap's `primary` is only the leg sold, so the figure would read as the swap's value (owner 2026-11-27), Q4.*
 - **An `incomplete` row** (Task 8 review I1) carries the same "incomplete" mark as its #26 row, in tertiary text under the hero and under the Balance-changes list. It claims no value.
 - **Balance changes under From / To** (Task 8 review I2, controller 2026-11-27): when the account has more than one net change (`row.deltas.length > 1`: a rent paid, a Noctura fee, a second asset), the list shows under From / To as well, so no change is hidden.
 - **Figures are grouped** (Task 8 review, controller 2026-11-27): the hero and the balance changes use thousands separators in the whole part, as the rows do ("135,435.988491"); every decimal is kept. The network fee is unchanged.
-- **Date row and Copy** (Task 8 review, controller 2026-11-27): a Date row shows the block time in the device zone, "8 May 2026 · 09:14" (24-hour, day first, as #26), "—" when unknown. From, To and Authorized by carry Copy, as Hash does.
+- **Date row and Copy** (Task 8 review, controller 2026-11-27): a Date row shows the block time in the device zone, "8 May 2026 · 09:14" (24-hour, day first, as #26), "—" when unknown (also for a block time a `Date` cannot hold (final review, controller 2026-11-27)). From, To and Authorized by carry Copy, as Hash does.
+- **An unknown sender** (owner 2026-11-27), Q2. Copy stays on From; when the From address is neither one of the wallet's accounts (the account list's accounts and seed, or the account the detail was opened from) nor a saved contact, a caution line stands under it: "Not one of your accounts or contacts — check the full address before you send to it" (address-poisoning dust arrives as a Received from a look-alike sender). An unreadable account list names no account as one's own. Only on From: on a receive To is this account, and on a send it is the address the user chose.
 - **Deep link.** With a null account, the hero is "TRANSACTION" with no amount, as in PR 1.
 - **`ownTokenAccounts`.** #27 passes the history session's sources when one exists for the account. Otherwise (opened from #21 or a deep link) it passes an empty set, so an owner-less entry does not set `incomplete` (review r3 m-f).
 - **State 27f's second case** ("Authorized by" with From "—") is not reachable under the agreement rule. A null `from` always gives the Balance-changes form (review r3 m-e; §11).
@@ -296,9 +301,10 @@ Copy lives in `src/copy/transactions.ts`, which is inside both copy guards. No g
 | no-funds-moved | dot | Transaction | "{time}" | "No funds moved" (tertiary) |
 | unknown | dot | Transaction | "{time}" | "—" |
 | partial (§3.4) | dot | Transaction | "{time}" | "—" |
+| partial, the list marks it failed | warning (danger) | Failed | "{time}" | "—", no fee line (final review, controller 2026-11-27) |
 
 - When `extraAssets > 0`, the amount line ends in " +{n} more".
-- `incomplete` rows of kind sent/received/swap show their amount followed by " · incomplete" in tertiary.
+- `incomplete` rows of kind sent/received/swap show their amount followed by " · incomplete" in tertiary. *Amended: every incomplete row that shows a figure carries it — made-private, made-public, wrap and unwrap too — so it matches the mark #27 puts on the same row (§4.6) (final review, controller 2026-11-27).*
 - **Formatting.** Amounts use the shared formatter, which takes an unsigned value; the sign is added outside it. "<0.0001" applies.
 - **{time}:** "HH:mm" for Today and Yesterday, else "d MMM" ("6 May"). It is formatted by a pure function that takes the time zone (§5.3).
 
@@ -309,12 +315,12 @@ Copy lives in `src/copy/transactions.ts`, which is inside both copy guards. No g
 | Sent | `sent` |
 | Received | `received` |
 | Swaps | `swap` |
-| Shielded | `made-private`, `made-public` (shielded accent) |
+| Private | `made-private`, `made-public` (shielded accent). *Named "Private", not "Shielded" (finding 17) (final review, controller 2026-11-27); shown only when the build has the private mode (`isShieldedEnabled()`), and a stored `v1_activity_filter` of 'private' reads as All in a build without it (owner 2026-11-27), Q1.* |
 
 - Chips filter the rows loaded so far. They are 44 dp touch targets.
-- **While older pages exist**, a chip with no loaded match shows "No {chip} transactions in the last {n}", where `{n}` is the number of loaded transactions, and an explicit **"Load older"** button.
+- **While older pages exist**, a chip with no loaded match shows "No {chip} transactions in the last {n}", where `{n}` is the number of loaded transactions, and an explicit **"Load older"** button. *Wording (Ruling I) (final review, controller 2026-11-27): "Nothing sent in the last {n} transactions", "Nothing received …", "Nothing made private or public …", "No swaps in the last {n} transactions"; "the last transaction" for one.*
 - **Automatic loading** on scroll stops after 3 consecutive pages that added no row visible under the active chip. The count resets when a page adds one, and when the chip changes. After that, only "Load older" loads (review r2 m4). The All chip never stops, because every page adds rows.
-- "No {chip} transactions yet" shows only at the end of history.
+- "No {chip} transactions yet" shows only at the end of history. *Wording (Ruling I): "Nothing sent yet", "Nothing received yet", "Nothing made private or public yet", "No swaps yet"; All keeps "No transactions yet". It needs the last read to have succeeded too: after a failed refresh the line names the loaded span instead (final review, controller 2026-11-27).*
 
 ### 5.3 Sections, loading and states (review I12)
 - `sectionOf(blockTime, now, tz)` is pure, and `now` and `tz` are passed in. `tz` is an IANA zone name (for example `Europe/Ljubljana`), never a fixed offset, so old dates across a DST change fall on the right day (review r2 m7). Calendar days are in the device's zone, and a week starts on Monday:
@@ -323,8 +329,9 @@ Copy lives in `src/copy/transactions.ts`, which is inside both copy guards. No g
   - **This week:** an earlier day in the same Monday-start week as `now`.
   - **This month:** an earlier day in the same calendar month, not already above.
   - **{Month YYYY}:** anything older.
-  - **Date unknown** (last): no `blockTime`.
+  - **Date unknown** (last): no `blockTime`, *or one that is not finite or whose date a `Date` cannot hold (1e20 is finite) — the row time is then "" and #27's Date "—", never "NaN" (final review, controller 2026-11-27)*.
 - **Determinism.** Jest config pins `TZ=UTC`. No test asserts raw `toLocaleString` output.
+- **Dated headers** (Task 7 review, Ruling M) (final review, controller 2026-11-27): Today and Yesterday carry their date day first, as the rows and #27 do: "Today · 26 Nov", "Yesterday · 25 Nov"; Today's date is the clock's, Yesterday's its first row's.
 - **Cold load:** 5 skeleton rows across 2 sections (26a).
 - **Unchanged:**
   - "Couldn't load transactions · tap to retry";
@@ -368,6 +375,7 @@ Scanned accounts are role `fresh-exit` with `linked !== true` only; `fresh-pendi
 - **A hit** → `markLinked([exit, ...the other seed wallets the transaction matched])` → `markA0AccountsLinked`, which tags fresh-exit entries only and never main. The sheet re-reads the list. (Task 10 review, controller 2026-11-27)
 - **A scan that outlives its wallet stops reading too:** its source, signature and transaction reads refuse once the generation or the encrypted instance is no longer the one it started with (the scan is then `failed`, nothing written), and a batch answered after the wipe is removed from the shared `parsedTx` cache. (Task 10 review, controller 2026-11-27)
 - **A failure** is silent. The sheet renders at once, and the tag appears when found.
+- **An unfinished check is said, neutrally** (owner 2026-11-27), Q3. The runner keeps the LAST result per exit in memory (`linkScanResults.ts`; written only by a live scan, cleared with the scan's in-memory state on `onSecureMmkvReset`, never persisted). For an untagged exit whose last scan ended `failed` or `capped` the Accounts sheet shows "Link check not finished" in tertiary text under the row (and in its accessibility label); it goes once a scan ends `clean` or `linked`. It is never worded "not linked". A tagged exit shows no caption.
 
 ## 7. Presale (H6)
 
@@ -479,8 +487,11 @@ Stale, unknown and never-synced states, each with a fresh control, and the MAX d
 - **Large wallets:** history reads at most 25 sources, so a wallet with more token accounts says so in the list footer.
 - **A stake or other non-token account** created and paid by the account reads "Transaction · Account setup" with its full amount. That is true, but terse.
 - **The RPC provider** sees every request, as #17 already says. History and the scan send one request per signature read.
-- **A transaction no node serves** keeps its source at `failed`: the record never moves, and the head (and any pending gap) is re-read on every scan. The UI must never word `failed` as "not linked". (Task 9 review, controller 2026-11-27)
+- **A transaction no node serves** keeps its source at `failed`: the record never moves, and the head (and any pending gap) is re-read on every scan. The UI must never word `failed` as "not linked". (Task 9 review, controller 2026-11-27) *It says "Link check not finished" (§6.4) (owner 2026-11-27).*
 - **A transaction above version 1,** or one a node will not serve, stays "Transaction —" (r5). Version-1 reading was tested on Node, not on a phone.
+- **Only a Send invalidates the history** (final review, controller 2026-11-27). After a swap, a Make private / Make public or a presale buy, #26 can be up to 60 s (its `staleTime`) behind, with no mark; pull-to-refresh reads at once. The Send path invalidates both its accounts (§3.4). Wiring the other flows is the next PR's.
+- **#26's symbol is resolved when its page loads, #27's when it renders** (final review, controller 2026-11-27). If the verified-token list or a token's metadata arrives in between, #26 may read "Sent Es9vMF…wNYB" while #27 reads "48.288911 USDT". Both are true; the row catches up on its next load.
+- **After a failed refetch of an invalidated history, "Load older" shows the new session's first page** under the retry line (final review, controller 2026-11-27) (Task 6 carry): the rows are real and newest first, but a long list can shrink to its newest page until a read succeeds.
 
 ## 10. Design files
 
@@ -500,7 +511,7 @@ Make dated backups (`*.bak-2026-11-26c`, or the next free letter), then change t
 
 **#23 presale:** a stale state.
 
-**Accounts sheet:** a note that the tag can appear after a moment.
+**Accounts sheet:** a note that the tag can appear after a moment; and the "Link check not finished" caption (owner 2026-11-27), Q3.
 
 ## 11. Changed or deferred from the design (review I10)
 
@@ -521,7 +532,11 @@ Make dated backups (`*.bak-2026-11-26c`, or the next free letter), then change t
 | Skeleton shimmer and its reduced-motion halt | Static skeleton blocks (Task 7 review I3, controller 2026-11-27) | No animation yet; a static skeleton has nothing to halt. Deferred. |
 | The `mode` route param to #27 | Not passed; #27 gets `signature` and `account` (Task 7 review I3, controller 2026-11-27) | Unless Task 8's brief uses it. |
 | Row time "9:14 AM" (12-hour) in the mockup | 24-hour "09:14" (Task 7 review I3, controller 2026-11-27) | §5.1 specifies "HH:mm". |
-| Fifth chip glyph, dated headers ("TODAY · MAY 8"), counter-party addresses in mono, chip kept across remounts (`v1_activity_filter`) | Built (Task 7 review I3, controller 2026-11-27) | Cheap, and the design draws them. Dated headers read "Today · Nov 26" / "Yesterday · Nov 25"; the overline style sets the case. |
+| Fifth chip glyph, dated headers ("TODAY · MAY 8"), counter-party addresses in mono, chip kept across remounts (`v1_activity_filter`) | Built (Task 7 review I3, controller 2026-11-27) | Cheap, and the design draws them. Dated headers read "Today · 26 Nov" / "Yesterday · 25 Nov" — day first, as the rows and #27 (Ruling M) (final review, controller 2026-11-27); the overline style sets the case. |
 | #27 Share icon; full untruncated addresses and hash; Memo "—" row when absent; network-fee fiat and "Paid by sender"; "Your wallet" / "Save sender"; status pill age; the 27d failure banner, reason rows and [Try again]; the 27b private-mode variant; the Type row's value ("Transfer" / "USDC transfer"); two side-by-side icon action buttons | Not built (Task 8 review, controller 2026-11-27) | Deferred; none is a regression. #27 keeps the shortened addresses, the stacked buttons and the eyebrow word as the Type value. |
 | #27 "token account" caption under a recipient | Removed (Task 8 review, controller 2026-11-27) | A recipient that is only a token account now shows the Balance-changes form (ruling 8). |
 | #27 Date row and Copy on From / To / Authorized by | Built (Task 8 review, controller 2026-11-27) | The design draws them. The date is 24-hour, day first. |
+| The fifth chip "Private" (the design draws five chips) | Shown only in a build with the private mode; four chips otherwise (owner 2026-11-27), Q1 | Without the private mode no row can be a pool move, and the chip would page the whole history for rows that cannot exist. |
+| #27 From in a received transaction | Copy kept; a caution line under an address that is neither an own account nor a saved contact (owner 2026-11-27), Q2 | Address poisoning: copying a look-alike sender is the step it needs. |
+| #27 "≈ $x at today's price" on a swap | Not shown (owner 2026-11-27), Q4 | The figure would be the leg sold only. |
+| Accounts sheet: an exit whose link check did not finish | "Link check not finished" caption (owner 2026-11-27), Q3 | A silent failure read as a clean exit; the caption claims neither way. |
