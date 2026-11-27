@@ -1,8 +1,8 @@
 import {useQuery} from '@tanstack/react-query';
 import {PublicKey} from '@solana/web3.js';
 import {getConnection} from '../modules/solana/connection';
-import {getBalance, getTokenAccounts, getTransactionHistory, getTransactionDetail} from '../modules/solana/queries';
-import type {TokenAccount, ParsedTransaction} from '../modules/solana/types';
+import {getBalance, getTokenAccounts, getTransactionDetail} from '../modules/solana/queries';
+import type {TokenAccount} from '../modules/solana/types';
 import type {TxDetail} from '../modules/solana/queries';
 
 /**
@@ -35,29 +35,6 @@ export function useTokenAccounts(publicKey: string | null) {
     },
     enabled: !!publicKey,
     staleTime: 60_000,
-    gcTime: 5 * 60_000,
-  });
-}
-
-/**
- * React Query hook for transaction history.
- * TTL: 30 seconds (spec: tx history refresh)
- */
-export function useTransactionHistory(
-  publicKey: string | null,
-  options?: {limit?: number; before?: string},
-) {
-  return useQuery<ParsedTransaction[]>({
-    queryKey: ['txHistory', publicKey, options?.before],
-    queryFn: async () => {
-      if (!publicKey) throw new Error('No public key');
-      return getTransactionHistory(getConnection(), new PublicKey(publicKey), {
-        limit: options?.limit ?? 20,
-        before: options?.before,
-      });
-    },
-    enabled: !!publicKey,
-    staleTime: 30_000,
     gcTime: 5 * 60_000,
   });
 }
