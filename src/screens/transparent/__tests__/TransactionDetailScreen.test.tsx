@@ -12,7 +12,8 @@ import {join} from 'path';
 import Clipboard from '@react-native-clipboard/clipboard';
 import {TransactionDetailScreen} from '../TransactionDetailScreen';
 import {classifyActivity} from '../../../modules/solana/activity';
-import {heroAmount} from '../../../modules/solana/activityView';
+import {heroAmount, rowView} from '../../../modules/solana/activityView';
+import {addressBook} from '../../../modules/addressBook/addressBookModule';
 import {dropHistorySessions, historySession} from '../../../modules/solana/historySession';
 import {NETWORK} from '../../../constants/programs';
 import {VALUE_HIDDEN, VALUE_HIDDEN_SPOKEN} from '../../../copy/accounts';
@@ -71,6 +72,10 @@ jest.mock('../../../utils/explorerUrl', () => ({
   getExplorerUrl: jest.fn((sig: string) => `https://solscan.io/tx/${sig}`),
 }));
 
+// owner Q2 (2026-11-27): the wallet's own accounts, for the caution under an unknown sender
+const mockAccountList: {current: {accounts: Array<{address: string}>; seed: Array<{address: string}>; unreadable: boolean} | null} = {current: null};
+jest.mock('../../../hooks/useSelectedAccount', () => ({useAccountList: () => mockAccountList.current}));
+
 jest.mock('../../../modules/addressBook/addressBookModule', () => ({
   addressBook: {
     addContact: jest.fn(),
@@ -109,6 +114,8 @@ beforeEach(() => {
   mockParsed.notFound = false;
   mockPrices.current = {};
   mockHide.current = false;
+  mockAccountList.current = null;
+  (addressBook.findByAddress as jest.Mock).mockReturnValue(null);
 });
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -178,7 +185,8 @@ describe('the hero is the row (§4.6)', () => {
     expect(r.queryByText('Save to address book')).toBeNull();
   });
 
-  // D6
+  // D6 — this proves the WIRING: the screen shows what `heroAmount` makes of `classifyActivity` for the account.
+  // That #26 and #27 agree on the row itself is pinned by the last assertion (Task 8 review M2).
   it('the hero equals the #26 row for the same fixture and account', () => {
     const cases: Array<[string, string]> = [
       ['tx-test-to-main.json', MAIN],
@@ -195,6 +203,12 @@ describe('the hero is the row (§4.6)', () => {
       expect(r.getByTestId('tx-detail-amount')).toHaveTextContent(heroAmount(row)!);
       r.unmount();
     }
+    // the #26 row and the #27 hero name the same primary: the same asset and the same figure (rows carry the sign)
+    const row = classifyActivity(load('tx-test-to-main.json'), MAIN, 'confirmed', activityContext());
+    const view = rowView({item: {signature: SIG, slot: 1, blockTime: null, status: 'confirmed', finalized: false}, activity: row}, a => a, 0, 'UTC');
+    expect(view.title).toBe('Received TEST');
+    expect(view.amount).toBe('+0.0002');
+    expect(heroAmount(row)).toBe('0.0002 TEST');
   });
 
   // D7
@@ -535,14 +549,71 @@ describe('Task 8 review fixes (controller 2026-11-27)', () => {
   // N2: a later copy cancels the earlier clear — From, then To, leaves only the latest pending (never wipes the new copy early)
   it('a second copy cancels the first clear: only the latest is pending', () => {
     withCapturedClears((clears, cleared) => {
+      // only the screen's own clears count (ids from 9000): React and the libraries cancel timers of their own
+      const own = (): unknown[] => cleared.filter(id => typeof id === 'number' && id >= 9000);
       const r = screen(delegated(), MAIN);
       fireEvent.press(r.getByTestId('tx-detail-copy-from'));
-      expect(cleared).toHaveLength(0); // nothing earlier to cancel
+      expect(own()).toHaveLength(0); // nothing earlier to cancel
       fireEvent.press(r.getByTestId('tx-detail-copy-to'));
       expect(clears).toHaveLength(2);
-      expect(cleared).toEqual([clears[0]!.id]); // the first clear is cancelled, the second stays
+      expect(own()).toEqual([clears[0]!.id]); // the first clear is cancelled, the second stays
       r.unmount();
-      expect(cleared).toEqual([clears[0]!.id]); // leaving the screen does not cancel it: the clipboard is still wiped at 30 s
+      expect(own()).toEqual([clears[0]!.id]); // leaving the screen does not cancel it: the clipboard is still wiped at 30 s
     });
+  });
+});
+
+describe('owner decisions (2026-11-27)', () => {
+  const CAUTION = 'Not one of your accounts or contacts — check the full address before you send to it';
+  const list = (...addresses: string[]) => ({accounts: addresses.map(address => ({address})), seed: addresses.map(address => ({address})), unreadable: false});
+
+  // Q2: Copy stays on From; an unknown sender is marked near it
+  it('Q2: a sender that is one of your own accounts has no caution line', () => {
+    mockAccountList.current = list(MAIN, ACC_2);
+    const r = screen('tx-test-to-main.json', MAIN); // received from Account 2
+    expect(r.getByTestId('tx-detail-copy-from')).toBeTruthy();
+    expect(r.queryByTestId('tx-detail-from-caution')).toBeNull();
+  });
+
+  it('Q2: a sender that is a saved contact has no caution line', () => {
+    mockAccountList.current = list(MAIN);
+    (addressBook.findByAddress as jest.Mock).mockImplementation((a: string) => (a === ACC_2 ? {name: 'Ana', address: ACC_2} : null));
+    const r = screen('tx-test-to-main.json', MAIN);
+    expect(r.queryByTestId('tx-detail-from-caution')).toBeNull();
+  });
+
+  it('Q2: an unknown sender carries the caution line under From, and Copy stays', () => {
+    mockAccountList.current = list(MAIN);
+    const r = screen('tx-test-to-main.json', MAIN);
+    expect(r.getByTestId('tx-detail-from-caution')).toHaveTextContent(CAUTION);
+    expect(r.getByTestId('tx-detail-copy-from')).toBeTruthy();
+    r.unmount();
+    // a registry that cannot be read names no account as one's own: the line shows
+    mockAccountList.current = {...list(MAIN, ACC_2), unreadable: true};
+    expect(screen('tx-test-to-main.json', MAIN).getByTestId('tx-detail-from-caution')).toHaveTextContent(CAUTION);
+  });
+
+  it('Q2: only on From — a send to an unknown wallet has no line (From is this account)', () => {
+    mockAccountList.current = null; // no list at all: From is known only as the account the detail was opened from
+    const r = screen('tx-test-to-main.json', ACC_2); // sent by Account 2 to main, which nothing here names
+    expect(r.getByTestId('tx-detail-to')).toBeTruthy();
+    expect(r.queryByTestId('tx-detail-from-caution')).toBeNull();
+  });
+
+  // Q4: a swap's "≈ $x at today's price" would be the value of the leg sold only
+  it("Q4: no \"≈ $x at today's price\" on a swap, even with a price for the asset sold; a send keeps it", () => {
+    mockPrices.current = {native: {usd: 150, change24h: null}};
+    const jup = load('tx-jupiter-sol-to-token-4C4tZgit.json');
+    const {activityContext} = jest.requireMock('../../../modules/solana/activityContext') as {activityContext: () => ActivityContext};
+    const payer = (jup.transaction!.message!.accountKeys as Array<{pubkey: string} | string>)[0]!;
+    const account = typeof payer === 'string' ? payer : payer.pubkey;
+    const row = classifyActivity(jup, account, 'confirmed', activityContext());
+    expect(row.kind).toBe('swap');
+    expect(row.primary?.mint).toBe('native'); // the asset sold is priced
+    const r = screen(jup, account);
+    expect(r.getByTestId('tx-detail-amount')).toBeTruthy();
+    expect(r.queryByTestId('tx-detail-usd')).toBeNull();
+    r.unmount();
+    expect(screen('tx-sol-to-empty-2bGSoVSG.json', MAIN).getByTestId('tx-detail-usd')).toBeTruthy(); // control
   });
 });

@@ -27,7 +27,8 @@ import {peekHistorySession} from '../../modules/solana/historySession';
 import {activityWord, changeLine, detailTime, deviceTimeZone, heroAmount, partiesAgree, primaryUsdToday} from '../../modules/solana/activityView';
 import {priceKeyFor} from '../../modules/prices/portfolio';
 import {trustedSymbol} from '../../modules/tokens/trustedSymbol';
-import {TX_FEE_PAYER, TX_AUTHORIZED_BY, TX_BALANCE_CHANGES, TX_DATE, TX_INCOMPLETE, txAtTodaysPrice} from '../../copy/transactions';
+import {TX_FEE_PAYER, TX_AUTHORIZED_BY, TX_BALANCE_CHANGES, TX_DATE, TX_FROM_UNKNOWN_CAUTION, TX_INCOMPLETE, txAtTodaysPrice} from '../../copy/transactions';
+import {useAccountList} from '../../hooks/useSelectedAccount';
 import {usePublicSettingsStore} from '../../store/zustand/publicSettingsStore';
 import {BELOW_ONE_CENT, VALUE_HIDDEN, VALUE_HIDDEN_SPOKEN} from '../../copy/accounts';
 
@@ -128,6 +129,15 @@ export function TransactionDetailScreen({signature, account, onBack}: Props) {
   const usdToday = incomplete ? null : primaryUsdToday(row, mint => prices[priceKeyFor(mint)]?.usd ?? null);
   // a contact is a WALLET that is not this account: never a token account, never oneself
   const contactAddress = parties !== null && parties.to !== account ? parties.to : null;
+  // owner Q2: a sender that is neither one of this wallet's accounts nor a saved contact is marked under From
+  // (address poisoning). An unreadable registry names no account as one's own. Only From: To is this account
+  // on a receive, and the address the user chose on a send.
+  const accountList = useAccountList();
+  const fromIsOwn =
+    parties !== null &&
+    (parties.from === account ||
+      (accountList !== null && !accountList.unreadable && [...accountList.accounts, ...accountList.seed].some(a => a.address === parties.from)));
+  const fromUnknown = parties !== null && !fromIsOwn && addressBook.findByAddress(parties.from) == null;
 
   // ── Handlers ───────────────────────────────────────────────────────────────
 
@@ -269,6 +279,11 @@ export function TransactionDetailScreen({signature, account, onBack}: Props) {
                   value={
                     <View className="items-end" testID="tx-detail-from">
                       <ChecksumAddr address={parties.from} />
+                      {fromUnknown ? (
+                        <Text variant="caption" className="text-warning text-right mt-1" testID="tx-detail-from-caution">
+                          {TX_FROM_UNKNOWN_CAUTION}
+                        </Text>
+                      ) : null}
                     </View>
                   }
                 />

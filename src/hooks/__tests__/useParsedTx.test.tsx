@@ -4,7 +4,7 @@
  * unmounts and clears its client, so the 4 s retry never outlives it.
  */
 import React from 'react';
-import {renderHook, waitFor} from '@testing-library/react-native';
+import {act, renderHook, waitFor} from '@testing-library/react-native';
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
 import {useParsedTx} from '../useParsedTx';
 import {applyParsedTxDefaults, parsedTxKey} from '../../modules/solana/historyReads';
@@ -89,12 +89,17 @@ it('a retry in flight stays notFound (no spinner), and the answer then arrives',
   const answer = {slot: 7, transaction: {signatures: ['SIG']}};
   const gates: Array<(v: unknown) => void> = [];
   mockGetParsedTransaction.mockImplementation(() => new Promise(resolve => gates.push(resolve)));
-  const {result, unmount} = renderHook(() => useParsedTx('SIG', 20), {wrapper});
+  // a 200 ms retry (Task 8 re-review N3): the retry starts well after the first "not found" has rendered
+  const {result, unmount} = renderHook(() => useParsedTx('SIG', 200), {wrapper});
   expect(result.current).toEqual({raw: undefined, isLoading: true, notFound: false});
   await waitFor(() => expect(gates).toHaveLength(1));
   gates[0]!(null); // read 1: not indexed yet
   await waitFor(() => expect(result.current.notFound).toBe(true));
   await waitFor(() => expect(gates).toHaveLength(2)); // the retry is now in flight, unresolved
+  // let every render the retry's start causes land before the held state is read
+  await act(async () => {
+    await new Promise<void>(resolve => setTimeout(resolve, 0));
+  });
   expect(result.current).toEqual({raw: undefined, isLoading: false, notFound: true});
   gates[1]!(answer);
   await waitFor(() => expect(result.current.raw).toEqual(answer));

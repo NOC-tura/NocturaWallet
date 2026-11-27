@@ -11,6 +11,12 @@ export const TX_TOKEN_ACCOUNT = 'token account';
 export const TX_FEE_PAYER = 'Fee payer';
 /** An SPL transfer signed for by a key that is not the funds' owner (a delegate), or whose owner is not known */
 export const TX_AUTHORIZED_BY = 'Authorized by';
+/**
+ * #27, under From when the sender is neither one of the wallet's accounts nor a saved contact (owner Q2,
+ * 2026-11-27): address-poisoning dust arrives as a "Received" from a look-alike sender, and copying From is
+ * the step the poisoning needs. Copy stays; the line asks for the full address to be checked.
+ */
+export const TX_FROM_UNKNOWN_CAUTION = 'Not one of your accounts or contacts — check the full address before you send to it';
 
 /**
  * History spec (2026-11-26) §5, §4.6: the words of the history rows (#26) and of the new #27 parts.
