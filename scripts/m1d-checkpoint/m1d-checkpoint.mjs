@@ -128,7 +128,7 @@ async function verify() {
     die(`no single spent unshield to ${fresh} in ${file} — pass --unshield SIG (the Tx hash on that unshield's #21)`);
   }
   const url = opt('rpc', DEFAULT_RPC);
-  const TX = { encoding: 'json', maxSupportedTransactionVersion: 0, commitment: 'confirmed' };
+  const TX = { encoding: 'json', maxSupportedTransactionVersion: 1, commitment: 'confirmed' };
   const LIST = { limit: 1000, commitment: 'confirmed' };
   const [owner, ata, u, s] = await devnet(url, [
     { method: 'getSignaturesForAddress', params: [fresh, LIST] },

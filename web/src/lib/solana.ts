@@ -35,6 +35,14 @@ export const signatureStatusReader = {
 };
 
 /**
+ * The newest transaction version the walk below asks the node for. Asked with a lower number the
+ * node answers a newer transaction with error -32015 instead of the transaction — and because one
+ * unreadable transaction aborts the walk, a single version-1 transaction naming the account would
+ * stop it for good. Only `meta.logMessages` is read, which every version carries.
+ */
+const MAX_TX_VERSION = 1;
+
+/**
  * Every transaction that touched an account, with its logs.
  *
  * Paginated deliberately, and a page that cannot be read aborts the whole walk rather
@@ -50,7 +58,7 @@ export async function accountTransactions(address: PublicKey) {
     const page = await conn.getSignaturesForAddress(address, {limit: 1000, before});
     if (page.length === 0) break;
     for (const s of page) {
-      const tx = await conn.getTransaction(s.signature, {maxSupportedTransactionVersion: 0});
+      const tx = await conn.getTransaction(s.signature, {maxSupportedTransactionVersion: MAX_TX_VERSION});
       if (!tx) throw new Error(`transaction ${s.signature} could not be read`);
       out.push({
         signature: s.signature,

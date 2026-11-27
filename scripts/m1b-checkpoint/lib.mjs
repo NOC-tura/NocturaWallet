@@ -169,7 +169,7 @@ export function readoutRefusal(r, id) {
 // ------------------------------------------------------------------------- the devnet tx
 
 /**
- * A `getTransaction` answer (encoding json, maxSupportedTransactionVersion 0) decoded for the
+ * A `getTransaction` answer (encoding json, maxSupportedTransactionVersion 1) decoded for the
  * checkpoint: success, signers, fee payer, every top-level `deposit` of the pool program (by its
  * IDL account order) and every `LeafInserted` the pool program emitted in its OWN top-level frame
  * (a `Program data:` line while the invoke stack is exactly [FeGSS…]).

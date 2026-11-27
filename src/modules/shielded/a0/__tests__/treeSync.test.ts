@@ -29,6 +29,7 @@ import {
   setBlob,
   txOf,
 } from '../__testing__/chainEdits';
+import {liveDevnet} from '../__testing__/liveDevnet';
 import {
   chainFrom,
   RECORDED_MAX_TX_VERSION,
@@ -543,6 +544,15 @@ describe('version-1 transactions', () => {
     const tx = await getTx(chain, V1.signature, RECORDED_MAX_TX_VERSION);
     expect(tx!.version).toBe(1);
     expect(tx!.transaction.message.version).toBe(1);
+  });
+
+  it('liveDevnet passes the node\'s -32015 on as a JSON-RPC error too (it answers getTransaction from the same recording)', async () => {
+    const {connection} = liveDevnet(withForeign());
+    await expect(
+      connection.getTransaction(V1.signature, {commitment: 'confirmed', maxSupportedTransactionVersion: 0}),
+    ).rejects.toMatchObject({name: 'SolanaJSONRPCError', code: -32015});
+    const tx = await connection.getTransaction(V1.signature, {commitment: 'confirmed', maxSupportedTransactionVersion: 1});
+    expect(tx!.version).toBe(1);
   });
 
   it('every getTransaction of the sync asks with maxSupportedTransactionVersion 1', async () => {
