@@ -136,11 +136,19 @@ export interface Section {
 }
 
 /**
+ * A block time that names a date: a finite number whose date a `Date` can hold (final review 9 — 1e20 is
+ * finite, and would print "undefined NaN").
+ */
+function knownTime(blockTime: number | null): blockTime is number {
+  return blockTime !== null && Number.isFinite(blockTime) && Number.isFinite(new Date(blockTime * 1000).getTime());
+}
+
+/**
  * §5.3. `blockTime` is in seconds (chain), `now` in milliseconds. A week starts on Monday. A time in
  * the future (a device clock behind the chain) is Today.
  */
 export function sectionOf(blockTime: number | null, now: number, tz: string): Section {
-  if (blockTime === null || !Number.isFinite(blockTime)) {
+  if (!knownTime(blockTime)) {
     return {key: 'unknown', title: SECTION_DATE_UNKNOWN};
   }
   const then = zonedDate(blockTime * 1000, tz);
@@ -164,7 +172,7 @@ export function sectionOf(blockTime: number | null, now: number, tz: string): Se
 
 /** §5.1 {time}: "HH:mm" for Today and Yesterday, else "d MMM" ("6 May"); '' with no block time. */
 export function rowTime(blockTime: number | null, now: number, tz: string): string {
-  if (blockTime === null || !Number.isFinite(blockTime)) {
+  if (!knownTime(blockTime)) {
     return '';
   }
   const section = sectionOf(blockTime, now, tz).key;
@@ -207,7 +215,7 @@ export function sectionHeading(section: Section, first: HistoryRow | undefined, 
     return sectionWithDate(section.title, MONTH_SHORT[z.month - 1], z.day);
   }
   const t = first === undefined ? null : rowBlockTime(first);
-  if (section.key === 'yesterday' && t !== null && Number.isFinite(t)) {
+  if (section.key === 'yesterday' && knownTime(t)) {
     const z = zonedDate(t * 1000, tz);
     return sectionWithDate(section.title, MONTH_SHORT[z.month - 1], z.day);
   }
@@ -283,7 +291,8 @@ function shownRow(row: HistoryRow, labelOf: (address: string) => string, now: nu
   const a = row.activity;
   const plain: RowView = {icon: 'dot', title: TX_NEUTRAL, badge: false, secondary: time, amount: TX_AMOUNT_UNKNOWN, amountTone: 'default', note: null, sub: null};
   if (a === null) {
-    return plain; // partial (§3.4): never a Sent
+    // partial (§3.4): never a Sent. The signature list's own `err` is known without the transaction (final review 16)
+    return row.item.status === 'failed' ? {...plain, icon: 'failed', title: TX_FAILED} : plain;
   }
   const p = a.primary;
   const more = a.extraAssets > 0 ? txMoreAssets(a.extraAssets) : '';
@@ -308,14 +317,15 @@ function shownRow(row: HistoryRow, labelOf: (address: string) => string, now: nu
         sub: s === null ? null : `${signedAmount(s)} ${s.symbol}`,
       };
     }
+    // final review 4: every incomplete row that shows a figure carries the mark, as its #27 does
     case 'made-private':
-      return {...plain, icon: 'private', badge: true, title: txMadePrivateTitle(p?.symbol ?? null), amount: figure, amountTone: tone};
+      return {...plain, icon: 'private', badge: true, title: txMadePrivateTitle(p?.symbol ?? null), amount: figure, amountTone: tone, note};
     case 'made-public':
-      return {...plain, icon: 'private', badge: true, title: txMadePublicTitle(p?.symbol ?? null), amount: figure, amountTone: tone};
+      return {...plain, icon: 'private', badge: true, title: txMadePublicTitle(p?.symbol ?? null), amount: figure, amountTone: tone, note};
     case 'wrap':
-      return {...plain, icon: 'swap', title: TX_WRAPPED_SOL, amount: figure, amountTone: tone};
+      return {...plain, icon: 'swap', title: TX_WRAPPED_SOL, amount: figure, amountTone: tone, note};
     case 'unwrap':
-      return {...plain, icon: 'swap', title: TX_UNWRAPPED_SOL, amount: figure, amountTone: tone};
+      return {...plain, icon: 'swap', title: TX_UNWRAPPED_SOL, amount: figure, amountTone: tone, note};
     case 'account-setup':
       return {...plain, icon: 'setup', secondary: joined(TX_ACCOUNT_SETUP, time), amount: p === null ? TX_AMOUNT_UNKNOWN : `${signedAmount(p)} ${p.symbol}`, amountTone: tone};
     case 'failed':
@@ -367,7 +377,7 @@ export function exactAmount(d: Delta): string {
 
 /** #27's Date row: "8 May 2026 · 09:14" (24-hour, day first, as #26) in the zone given; "—" with no block time. */
 export function detailTime(blockTime: number | null, tz: string): string {
-  if (blockTime === null || !Number.isFinite(blockTime)) {
+  if (!knownTime(blockTime)) {
     return TX_AMOUNT_UNKNOWN;
   }
   const z = zonedDate(blockTime * 1000, tz);
@@ -413,10 +423,13 @@ export function changeLine(d: Delta, hidden = false): string {
   return joined(hidden ? VALUE_HIDDEN : `${d.raw < 0n ? MINUS : '+'}${exactAmount(d)} ${d.symbol}`, ROLE_LABEL[d.role]);
 }
 
-/** H7: today's value of `primary`, for the "≈ $x at today's price" line; null with no price. Display float. */
+/**
+ * H7: today's value of `primary`, for the "≈ $x at today's price" line; null with no price. Display float.
+ * Null for a swap (owner, Q4, 2026-11-27): its primary is only the leg sold, so a figure would read as the swap's value.
+ */
 export function primaryUsdToday(row: ActivityRow | null, usdOf: (mint: string) => number | null): number | null {
   const p = row?.primary ?? null;
-  if (p === null) {
+  if (p === null || row?.kind === 'swap') {
     return null;
   }
   const usd = usdOf(p.mint);

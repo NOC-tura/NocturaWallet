@@ -21,6 +21,10 @@
  * consecutive pages that added no row under the active chip (an empty chip cannot be scrolled, and a
  * list shorter than the screen would otherwise read the whole history in a burst). After that only
  * "Load older" loads. The All chip never stops: every page adds rows.
+ *
+ * THE FIFTH CHIP, "Private", exists only in a build with the private mode (owner Q1, 2026-11-27): without
+ * it no row can be a pool move (classifier rule 2 runs only on the pool's cluster), and the chip would page
+ * the whole history for rows that cannot exist. A stored 'private' then reads as All.
  */
 import React, {memo, useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {ActivityIndicator, AppState, Pressable, RefreshControl, ScrollView, SectionList, View} from 'react-native';
@@ -51,6 +55,7 @@ import {mmkvPublic} from '../../store/mmkv/instances';
 import {MMKV_KEYS} from '../../constants/mmkvKeys';
 import {shortAccountAddress} from '../../modules/accounts/accountList';
 import {usePublicSettingsStore} from '../../store/zustand/publicSettingsStore';
+import {isShieldedEnabled} from '../../constants/features';
 
 interface Props {
   onSelectTx: (signature: string, account: string) => void;
@@ -209,10 +214,13 @@ export function TransactionHistoryScreen({onSelectTx, onBack, now, timeZone}: Pr
   const {data, isSuccess, isError, refetch, loadOlder, loadingOlder} = useActivityHistory(publicKey);
   // owner, Q2: the dashboard's hide-balances setting (its one source) also hides the figures of these rows
   const hidden = usePublicSettingsStore(s => s.hideBalances);
-  // #26 (design): the chip last chosen survives a remount; an unknown stored value reads as All
+  // owner Q1: the Private chip only where the private mode is built (a build constant: read once per mount)
+  const chips = useMemo(() => HISTORY_CHIPS.filter(c => c.id !== 'private' || isShieldedEnabled()), []);
+  // #26 (design): the chip last chosen survives a remount; an unknown stored value — or a chip this build
+  // does not show — reads as All
   const [chip, setChip] = useState<HistoryChipId>(() => {
     const stored = mmkvPublic.getString(MMKV_KEYS.ACTIVITY_FILTER);
-    return HISTORY_CHIPS.find(c => c.id === stored)?.id ?? 'all';
+    return chips.find(c => c.id === stored)?.id ?? 'all';
   });
   const pickChip = useCallback((next: HistoryChipId) => {
     setChip(next);
@@ -384,7 +392,8 @@ export function TransactionHistoryScreen({onSelectTx, onBack, now, timeZone}: Pr
       // the All chip with rows never has an empty state (and "No transactions yet" would be wrong: older ones may exist)
       <View className="items-center mt-12 px-6" testID="history-chip-empty">
         <Text variant="body" className="text-fg-tertiary text-center">
-          {endReached ? historyChipNone(chip) : historyChipNoneLoaded(chip, rows.length)}
+          {/* final review 6: "… yet" only when the last read succeeded — after a failed refresh, the loaded span */}
+          {endReached && isSuccess ? historyChipNone(chip) : historyChipNoneLoaded(chip, rows.length)}
         </Text>
         {loadOlderButton}
         {coverageLine}
@@ -433,7 +442,7 @@ export function TransactionHistoryScreen({onSelectTx, onBack, now, timeZone}: Pr
 
       <View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="px-5 gap-2 pb-2">
-          {HISTORY_CHIPS.map(c => {
+          {chips.map(c => {
             const active = c.id === chip;
             const mint = c.id === 'private';
             return (

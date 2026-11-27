@@ -15,6 +15,7 @@ import {
   primaryUsdToday,
   rowTime,
   rowView,
+  sectionHeading,
   sectionOf,
   zonedDate,
 } from '../activityView';
@@ -207,12 +208,20 @@ describe('rowView (§5.1)', () => {
   });
 
   // V18
-  it('"+N more" after the amount; " · incomplete" as a note on sent / received / swap only', () => {
+  it('"+N more" after the amount; " · incomplete" as a note on every incomplete row that shows a figure', () => {
     expect(view(row({kind: 'sent', primary: TEST, extraAssets: 2})).amount).toBe('−0.0001 +2 more');
     expect(view(row({kind: 'sent', primary: TEST, incomplete: true})).note).toBe(' · incomplete');
     expect(view(row({kind: 'received', primary: SOL_IN, incomplete: true})).note).toBe(' · incomplete');
     expect(view(row({kind: 'unknown', incomplete: true})).note).toBeNull();
-    expect(view(row({kind: 'made-private', primary: TEST, incomplete: true})).note).toBeNull();
+    // final review 4: the pool and wrap rows too — #27 marks them, so #26 does
+    expect(view(row({kind: 'made-private', primary: TEST, incomplete: true})).note).toBe(' · incomplete');
+    expect(view(row({kind: 'made-public', primary: SOL_IN, incomplete: true})).note).toBe(' · incomplete');
+    expect(view(row({kind: 'wrap', primary: delta('native', 'SOL', -5n), incomplete: true})).note).toBe(' · incomplete');
+    expect(view(row({kind: 'unwrap', primary: SOL_IN, incomplete: true})).note).toBe(' · incomplete');
+    // no figure, no mark; and a complete row has none
+    expect(view(row({kind: 'made-private', primary: null, incomplete: true})).note).toBeNull();
+    expect(view(row({kind: 'made-private', primary: TEST})).note).toBeNull();
+    expect(view(row({kind: 'wrap', primary: delta('native', 'SOL', -5n)})).note).toBeNull();
   });
 
   // V19 (Review Focus 3)
@@ -434,15 +443,69 @@ describe('review fixes (task 5)', () => {
   // M7
   it('the chip empty states read as English, per chip', () => {
     const none = HISTORY_CHIPS.map(c => historyChipNone(c.id));
-    expect(none).toEqual([
-      'No transactions yet',
-      'No sent transactions yet',
-      'No received transactions yet',
-      'No swaps yet',
-      'No Made private or Made public transactions yet',
-    ]);
-    expect(historyChipNoneLoaded('sent', 20)).toBe('No sent transactions in the last 20 transactions');
+    // Ruling I (final review 7): "Nothing sent yet" etc.; Swaps and All unchanged
+    expect(none).toEqual(['No transactions yet', 'Nothing sent yet', 'Nothing received yet', 'No swaps yet', 'Nothing made private or public yet']);
+    expect(historyChipNoneLoaded('sent', 20)).toBe('Nothing sent in the last 20 transactions');
+    expect(historyChipNoneLoaded('received', 20)).toBe('Nothing received in the last 20 transactions');
+    expect(historyChipNoneLoaded('private', 20)).toBe('Nothing made private or public in the last 20 transactions');
+    expect(historyChipNoneLoaded('swaps', 20)).toBe('No swaps in the last 20 transactions');
     expect(historyChipNoneLoaded('swaps', 1)).toBe('No swaps in the last transaction');
     expect(historyChipNoneLoaded('all', 20)).toBe('No transactions yet');
+  });
+});
+
+describe('final review fixes (2026-11-27)', () => {
+  // finding 3 (Ruling M) + Task 7 n4: the header is day-first, as the rows and #27 are
+  it('sectionHeading: Today carries the clock\'s date, day first; Yesterday its first row\'s; the rest the title alone', () => {
+    const today = {key: 'today', title: 'Today'};
+    expect(sectionHeading(today, undefined, NOW, LJ)).toBe('Today · 26 Nov');
+    // a row ahead of the clock is still Today: the clock's date, not the row's
+    expect(sectionHeading(today, row({kind: 'unknown'}, at('2026-11-27T10:00:00Z')), NOW, LJ)).toBe('Today · 26 Nov');
+    // in the zone: 23:30 UTC on the 25th is the 26th in Ljubljana
+    expect(sectionHeading(today, undefined, ms('2026-11-25T23:30:00Z'), LJ)).toBe('Today · 26 Nov');
+    expect(sectionHeading(today, undefined, ms('2026-11-25T23:30:00Z'), 'UTC')).toBe('Today · 25 Nov');
+    const yesterday = {key: 'yesterday', title: 'Yesterday'};
+    expect(sectionHeading(yesterday, row({kind: 'unknown'}, at('2026-11-25T10:00:00Z')), NOW, LJ)).toBe('Yesterday · 25 Nov');
+    expect(sectionHeading(yesterday, row({kind: 'unknown'}, null), NOW, LJ)).toBe('Yesterday');
+    expect(sectionHeading(yesterday, undefined, NOW, LJ)).toBe('Yesterday');
+    expect(sectionHeading({key: 'week', title: 'This week'}, row({kind: 'unknown'}, at('2026-11-24T10:00:00Z')), NOW, LJ)).toBe('This week');
+    expect(sectionHeading({key: '2026-05', title: 'May 2026'}, undefined, NOW, LJ)).toBe('May 2026');
+  });
+
+  // finding 9: a finite block time whose date is out of range is unknown, never "undefined NaN"
+  it('a finite but out-of-range block time reads "Date unknown" / "" / "—"', () => {
+    expect(sectionOf(1e20, NOW, LJ)).toEqual({key: 'unknown', title: 'Date unknown'});
+    expect(rowTime(1e20, NOW, LJ)).toBe('');
+    expect(detailTime(1e20, LJ)).toBe('—');
+    expect(sectionHeading({key: 'yesterday', title: 'Yesterday'}, row({kind: 'unknown'}, 1e20), NOW, LJ)).toBe('Yesterday');
+    expect(groupSections([row(null, 1e20)], NOW, LJ).map(g => g.title)).toEqual(['Date unknown']);
+    // the edge: the largest time a Date holds is read (ahead of the clock: Today), one second past it is not
+    expect(rowTime(8.64e12, NOW, 'UTC')).toBe('00:00');
+    expect(rowTime(8.64e12 + 1, NOW, 'UTC')).toBe('');
+  });
+
+  // Task 5 N2: the signature list's block time is the authority, over the one read from the transaction
+  it("the list's block time wins over the transaction's", () => {
+    const r: HistoryRow = {
+      item: {signature: 'S', slot: 1, blockTime: at('2026-11-25T10:00:00Z'), status: 'finalized', finalized: true},
+      activity: activity({kind: 'unknown', blockTime: at('2026-11-26T08:14:00Z')}),
+    };
+    expect(groupSections([r], NOW, LJ).map(g => g.title)).toEqual(['Yesterday']);
+    expect(rowView(r, label, NOW, LJ).secondary).toBe('11:00');
+  });
+
+  // finding 16: a row the list already marks failed reads "Failed" while its transaction is unread
+  it('a partial row of a transaction the signature list marks failed reads "Failed", with "—" and no fee', () => {
+    const r: HistoryRow = {item: {signature: 'S', slot: 1, blockTime: at('2026-11-26T08:14:00Z'), status: 'failed', finalized: true}, activity: null};
+    expect(view(r)).toEqual({icon: 'failed', title: 'Failed', badge: false, secondary: '09:14', amount: '—', amountTone: 'default', note: null, sub: null});
+    // a partial row the list does not mark failed stays neutral
+    expect(view(row(null)).title).toBe('Transaction');
+  });
+
+  // owner Q4 (2026-11-27): no "≈ $x at today's price" on a swap's #27
+  it("primaryUsdToday: none for a swap, even with a price", () => {
+    const usd = (): number => 2;
+    expect(primaryUsdToday(activity({kind: 'swap', primary: delta('native', 'SOL', -1_000_000_000n), secondary: delta('N', 'NOC', 5n)}), usd)).toBeNull();
+    expect(primaryUsdToday(activity({kind: 'sent', primary: delta('native', 'SOL', -1_000_000_000n)}), usd)).toBe(2);
   });
 });

@@ -50,6 +50,10 @@ const mockHistory: {
 const mockUseActivityHistory = jest.fn((_account: string | null) => mockHistory);
 jest.mock('../../../hooks/useActivityHistory', () => ({useActivityHistory: (account: string | null) => mockUseActivityHistory(account)}));
 
+// owner Q1 (2026-11-27): the Private chip exists only in a build with the private mode; on by default here
+const mockFeatures = {shielded: true};
+jest.mock('../../../constants/features', () => ({isShieldedEnabled: () => mockFeatures.shielded}));
+
 // owner, Q2: the dashboard's hide-balances setting, controlled here (the store's one field this screen reads)
 const mockHide = {current: false};
 jest.mock('../../../store/zustand/publicSettingsStore', () => ({
@@ -88,6 +92,7 @@ beforeEach(() => {
   mmkvPublic.remove(MMKV_KEYS.ACTIVITY_FILTER);
   n = 0;
   mockHide.current = false;
+  mockFeatures.shielded = true;
   mockHistSelected.current = {address: ME, label: 'Account 1'};
   mockHistory.data = undefined;
   mockHistory.isSuccess = false;
@@ -227,7 +232,7 @@ describe('rows (§5.1)', () => {
       row('unknown', {signature: 'old'}, at('2026-05-06T08:00:00Z')),
     ]);
     const {getByTestId, getAllByTestId} = screen();
-    expect(getAllByTestId(/^history-section-/).map(x => x.props.children)).toEqual(['Today · Nov 26', 'Yesterday · Nov 25', 'May 2026', 'Date unknown']);
+    expect(getAllByTestId(/^history-section-/).map(x => x.props.children)).toEqual(['Today · 26 Nov', 'Yesterday · 25 Nov', 'May 2026', 'Date unknown']);
     expect(getByTestId('tx-row-old-secondary')).toHaveTextContent('6 May');
   });
 
@@ -256,8 +261,9 @@ describe('design elements of #26', () => {
       row('unknown', {signature: 'week'}, at('2026-11-24T08:00:00Z')),
     ]);
     const {getByTestId} = screen();
-    expect(getByTestId('history-section-today')).toHaveTextContent('Today · Nov 26');
-    expect(getByTestId('history-section-yesterday')).toHaveTextContent('Yesterday · Nov 25');
+    // Ruling M (final review 3): day first, as the rows and #27
+    expect(getByTestId('history-section-today')).toHaveTextContent('Today · 26 Nov');
+    expect(getByTestId('history-section-yesterday')).toHaveTextContent('Yesterday · 25 Nov');
     expect(getByTestId('history-section-week')).toHaveTextContent('This week', {exact: true});
   });
 
@@ -369,7 +375,7 @@ describe('chips (§5.2)', () => {
     show([row('sent', {primary: delta('M', 'TEST', -1n)})], true);
     const {getByTestId, getByText, queryByTestId} = screen();
     fireEvent.press(getByTestId('history-chip-private'));
-    expect(getByText('No Made private or Made public transactions yet')).toBeTruthy();
+    expect(getByText('Nothing made private or public yet')).toBeTruthy();
     expect(queryByTestId('history-load-older')).toBeNull();
   });
 
@@ -626,14 +632,14 @@ describe('states (§5.3)', () => {
     show([row('sent', {primary: delta('M', 'TEST', -1n)})], true, {read: 24, total: 31});
     const atEnd = screen();
     fireEvent.press(atEnd.getByTestId('history-chip-received'));
-    expect(atEnd.getByText('No received transactions yet')).toBeTruthy();
+    expect(atEnd.getByText('Nothing received yet')).toBeTruthy();
     expect(atEnd.getAllByTestId('history-coverage')).toHaveLength(1);
     expect(atEnd.getByTestId('history-coverage')).toHaveTextContent('History from 24 of 31 token accounts');
     atEnd.unmount();
     show([row('sent', {primary: delta('M', 'TEST', -1n)})], false, {read: 24, total: 31});
     const before = screen();
     fireEvent.press(before.getByTestId('history-chip-received'));
-    expect(before.getByText('No received transactions in the last transaction')).toBeTruthy();
+    expect(before.getByText('Nothing received in the last transaction')).toBeTruthy();
     expect(before.getByTestId('history-coverage')).toBeTruthy();
     before.unmount();
     show([row('sent', {primary: delta('M', 'TEST', -1n)})], true, {read: 3, total: 3}); // control
@@ -728,5 +734,117 @@ describe('states (§5.3)', () => {
     show([]);
     fireEvent.press(screen().getByText('← Back'));
     expect(onBack).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('final review fixes (2026-11-27)', () => {
+  const mixed = (): HistoryRow[] => [
+    row('sent', {signature: 's', primary: delta('M', 'TEST', -1n)}),
+    row('made-private', {signature: 'p', primary: delta('M', 'TEST', -1n)}),
+  ];
+
+  // owner Q1 / final review 1
+  it('a build without the private mode shows four chips, no Private', () => {
+    mockFeatures.shielded = false;
+    show(mixed());
+    const {queryByTestId, getByTestId} = screen();
+    expect(queryByTestId('history-chip-private')).toBeNull();
+    expect(queryByTestId('history-chip-private-icon')).toBeNull();
+    for (const id of ['all', 'sent', 'received', 'swaps']) {
+      expect(getByTestId(`history-chip-${id}`)).toBeTruthy();
+    }
+  });
+
+  it('a build with the private mode shows the fifth chip, Private', () => {
+    show(mixed());
+    const {getByTestId} = screen();
+    expect(getByTestId('history-chip-private')).toHaveTextContent('Private');
+  });
+
+  it("a stored 'private' reads as All in a build without the private mode, and as Private in one with it", () => {
+    mmkvPublic.set(MMKV_KEYS.ACTIVITY_FILTER, 'private');
+    mockFeatures.shielded = false;
+    show(mixed());
+    const off = screen();
+    expect(off.getByTestId('history-chip-all').props.accessibilityState).toEqual({selected: true});
+    expect(off.getByTestId('tx-row-s')).toBeTruthy();
+    expect(off.getByTestId('tx-row-p')).toBeTruthy();
+    expect(off.queryByTestId('history-chip-empty')).toBeNull();
+    off.unmount();
+    mockFeatures.shielded = true;
+    const on = screen();
+    expect(on.getByTestId('history-chip-private').props.accessibilityState).toEqual({selected: true});
+    expect(on.queryByTestId('tx-row-s')).toBeNull();
+    expect(on.getByTestId('tx-row-p')).toBeTruthy();
+  });
+
+  // final review 6: at the end of history, "… yet" only after a read that succeeded
+  it('an empty chip at the end of history after a failed refresh names the loaded span, not "yet"', () => {
+    show([row('sent', {primary: delta('M', 'TEST', -1n)})], true);
+    mockHistory.isSuccess = false;
+    mockHistory.isError = true;
+    const failed = screen();
+    fireEvent.press(failed.getByTestId('history-chip-received'));
+    expect(failed.queryByText('Nothing received yet')).toBeNull();
+    expect(failed.getByText('Nothing received in the last transaction')).toBeTruthy();
+    failed.unmount();
+    mockHistory.isSuccess = true; // control: the same rows after a read that succeeded
+    mockHistory.isError = false;
+    const ok = screen();
+    fireEvent.press(ok.getByTestId('history-chip-received'));
+    expect(ok.getByText('Nothing received yet')).toBeTruthy();
+  });
+
+  // Task 7 n1: a failed older page's stop is cleared by an account change, a retry and a refresh
+  describe('a failed-page stop on All is cleared by', () => {
+    const failOnce = async () => {
+      show([row('sent', {primary: delta('M', 'TEST', -1n)})], false);
+      mockHistory.loadOlder = jest.fn(async () => null);
+      const view = screen();
+      const reachEnd = async () => {
+        await act(async () => {
+          fireEvent(view.getByTestId('history-list'), 'endReached');
+        });
+      };
+      await reachEnd();
+      await reachEnd();
+      expect(mockHistory.loadOlder).toHaveBeenCalledTimes(1); // stopped
+      expect(view.getByTestId('history-load-older')).toBeTruthy();
+      return {view, reachEnd};
+    };
+
+    it('an account change', async () => {
+      const {view, reachEnd} = await failOnce();
+      mockHistSelected.current = {address: ACC_2, label: 'Account 2'};
+      view.rerender(<TransactionHistoryScreen onSelectTx={onSelectTx} onBack={onBack} now={NOW} timeZone={LJ} />);
+      expect(view.queryByTestId('history-load-older')).toBeNull();
+      await reachEnd();
+      expect(mockHistory.loadOlder).toHaveBeenCalledTimes(2);
+    });
+
+    it('a retry', async () => {
+      const {view, reachEnd} = await failOnce();
+      mockHistory.isError = true;
+      view.rerender(<TransactionHistoryScreen onSelectTx={onSelectTx} onBack={onBack} now={NOW} timeZone={LJ} />);
+      await act(async () => {
+        fireEvent.press(view.getByTestId('history-retry'));
+      });
+      expect(mockHistory.refetch).toHaveBeenCalledTimes(1);
+      expect(view.queryByTestId('history-load-older')).toBeNull();
+      await reachEnd();
+      expect(mockHistory.loadOlder).toHaveBeenCalledTimes(2);
+    });
+
+    it('a pull-to-refresh', async () => {
+      const {view, reachEnd} = await failOnce();
+      const control = view.getByTestId('history-list').props.refreshControl as {props: {onRefresh: () => void}};
+      await act(async () => {
+        control.props.onRefresh();
+      });
+      expect(mockHistory.refetch).toHaveBeenCalledTimes(1);
+      expect(view.queryByTestId('history-load-older')).toBeNull();
+      await reachEnd();
+      expect(mockHistory.loadOlder).toHaveBeenCalledTimes(2);
+    });
   });
 });

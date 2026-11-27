@@ -75,13 +75,13 @@ export const HISTORY_CHIPS: ReadonlyArray<{id: HistoryChipId; label: string}> = 
   {id: 'swaps', label: 'Swaps'},
   {id: 'private', label: 'Private'},
 ];
-/** What each chip's empty state calls its transactions (reads as English after "No") */
-const HISTORY_CHIP_NOUN: Record<HistoryChipId, string> = {
-  all: 'transactions',
-  sent: 'sent transactions',
-  received: 'received transactions',
-  swaps: 'swaps',
-  private: 'Made private or Made public transactions',
+/** How each chip's empty state begins (Ruling I, final review 7: "Nothing sent yet"; Swaps and All as before) */
+const HISTORY_CHIP_NONE: Record<HistoryChipId, string> = {
+  all: 'No transactions',
+  sent: 'Nothing sent',
+  received: 'Nothing received',
+  swaps: 'No swaps',
+  private: 'Nothing made private or public',
 };
 /** A chip with no match among the {loaded} transactions read so far, while older ones exist */
 export function historyChipNoneLoaded(chip: HistoryChipId, loaded: number): string {
@@ -89,11 +89,11 @@ export function historyChipNoneLoaded(chip: HistoryChipId, loaded: number): stri
     return historyChipNone(chip);
   }
   const span = loaded === 1 ? 'the last transaction' : `the last ${loaded} transactions`;
-  return `No ${HISTORY_CHIP_NOUN[chip]} in ${span}`;
+  return `${HISTORY_CHIP_NONE[chip]} in ${span}`;
 }
 /** A chip with no match at the end of history */
 export function historyChipNone(chip: HistoryChipId): string {
-  return `No ${HISTORY_CHIP_NOUN[chip]} yet`;
+  return `${HISTORY_CHIP_NONE[chip]} yet`;
 }
 export const HISTORY_LOAD_OLDER = 'Load older';
 /** The list footer of a wallet with more token accounts than the history reads (spec §3.2, §9) */
@@ -104,9 +104,9 @@ export function historyCoverage(read: number, total: number): string {
 /** #26's title and its way back (they lived as literals in the screen) */
 export const HISTORY_TITLE = 'Transaction History';
 export const HISTORY_BACK = '← Back';
-/** The design's dated header ("Today · May 8"; the overline style sets the case): the day's name and its date */
+/** The design's dated header, day first as the rows and #27 are ("Today · 26 Nov"; Ruling M; the overline style sets the case) */
 export function sectionWithDate(title: string, monthShort: string, day: number): string {
-  return `${title} · ${monthShort} ${day}`;
+  return `${title} · ${day} ${monthShort}`;
 }
 
 export const SECTION_TODAY = 'Today';
