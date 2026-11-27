@@ -287,7 +287,7 @@ describe('the hero is the row (§4.6)', () => {
     without.unmount();
     // #26 was open for this account, and its session reads KEY_4 as one of the account's token accounts
     const session = historySession(NETWORK, OWNER, {
-      listSources: async () => ({sources: [OWNER, KEY_4], tokenAccountsTotal: 1}),
+      listSources: async () => ({sources: [OWNER, KEY_4], tokenAccounts: [KEY_4], tokenAccountsTotal: 1}),
       fetchSignatures: async () => [],
     });
     await session.loadNextPage();

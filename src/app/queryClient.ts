@@ -11,7 +11,7 @@
 import {QueryClient} from '@tanstack/react-query';
 import {onSecureMmkvReset} from '../store/mmkv/instances';
 import {PARSED_TX_KEY, applyParsedTxDefaults} from '../modules/solana/historyReads';
-import {dropHistorySessions} from '../modules/solana/historySession';
+import {dropHistorySessions, endHistoryGeneration} from '../modules/solana/historySession';
 
 /** `parsedTx` (history spec §3.3): raw transactions, kept 24 h — the old wallet's must not outlive it either */
 export const ACCOUNT_QUERY_KEYS = ['accountSnapshot', 'txHistory', PARSED_TX_KEY] as const;
@@ -54,6 +54,7 @@ export function dropHistorySessionOnInvalidate(client: QueryClient = queryClient
 dropHistorySessionOnInvalidate();
 
 onSecureMmkvReset(() => {
+  endHistoryGeneration(); // a load in flight belongs to the wallet that is gone: it caches nothing more (final review 5)
   clearAccountQueries();
   dropHistorySessions(); // every session belongs to the wallet that is gone
 });

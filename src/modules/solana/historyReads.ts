@@ -93,7 +93,7 @@ export function orderSources(wallet: string, tokenAccounts: readonly TokenAccoun
   const funded = tokenAccounts.filter(a => a.amount !== '0').map(a => a.address).sort(byAddress);
   const empty = tokenAccounts.filter(a => a.amount === '0').map(a => a.address).sort(byAddress);
   const all = [...new Set([...funded, ...empty])].filter(a => a !== wallet);
-  return {sources: [wallet, ...all.slice(0, HISTORY_MAX_SOURCES - 1)], tokenAccountsTotal: all.length};
+  return {sources: [wallet, ...all.slice(0, HISTORY_MAX_SOURCES - 1)], tokenAccounts: all, tokenAccountsTotal: all.length};
 }
 
 /**
@@ -265,7 +265,8 @@ export function cachedParsedTransactions(client: QueryClient, cluster: string, s
  * absent from `transactions` and is not cached. `timedOut`: a read got no answer within `timeoutMs`,
  * or the whole call ran past it — no further batch or single read was started, and what is left
  * stays unread until the next call. The time measured against that deadline includes any time a
- * request spent queued for a limiter slot, not only the time the node took.
+ * request spent queued for a limiter slot, not only the time the node took. `live()` false (the wallet is
+ * gone, final review 5): what arrives is neither cached nor returned, and no further batch is started.
  */
 export async function readParsedTransactionsTimed(
   connection: Pick<Connection, 'getParsedTransactions' | 'getParsedTransaction'>,
@@ -273,6 +274,7 @@ export async function readParsedTransactionsTimed(
   cluster: string,
   signatures: readonly string[],
   timeoutMs: number = HISTORY_READ_TIMEOUT_MS,
+  live: () => boolean = () => true,
 ): Promise<{transactions: Map<string, RawParsedTx>; timedOut: boolean}> {
   const deadline = Date.now() + timeoutMs;
   const transactions = cachedParsedTransactions(client, cluster, signatures);
@@ -281,8 +283,14 @@ export async function readParsedTransactionsTimed(
     if (from > 0 && Date.now() >= deadline) {
       return {transactions, timedOut: true};
     }
+    if (!live()) {
+      return {transactions, timedOut: false};
+    }
     const chunk = missing.slice(from, from + HISTORY_PAGE_SIZE);
     const {read, timedOut} = await readChunk(connection, cluster, chunk, timeoutMs, deadline);
+    if (!live()) {
+      return {transactions, timedOut: false}; // answered after the wallet went: not cached, not shown
+    }
     for (const [signature, tx] of read) {
       client.setQueryData(parsedTxKey(cluster, signature), tx);
       transactions.set(signature, tx);

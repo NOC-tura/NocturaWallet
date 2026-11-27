@@ -49,12 +49,26 @@ export interface HistoryEnv {
   context: (ownTokenAccounts: ReadonlySet<string>) => ActivityContext;
   /** the limit of each chain call; HISTORY_READ_TIMEOUT_MS when absent (tests hand in a short one) */
   timeoutMs?: number;
+  /**
+   * false once the wallet this load began for is gone (`historyLiveness()`, ended by `onSecureMmkvReset`): the
+   * load then reads no further transaction, caches nothing more and fails (final review 5)
+   */
+  live: () => boolean;
+}
+
+/** thrown by a load whose wallet was wiped or replaced while it ran (final review 5) */
+export class StaleHistoryError extends Error {
+  constructor() {
+    super('the wallet this history load started for is gone');
+    this.name = 'StaleHistoryError';
+  }
 }
 
 /**
  * 'head': the first page, or — once a page is loaded — the §3.4 refresh. 'older': the next page.
  * Throws when a signature list (or the source list) cannot be read or does not answer in time; a
- * transaction that cannot be read is a partial row, never an error.
+ * transaction that cannot be read is a partial row, never an error. Throws StaleHistoryError when the
+ * wallet went while it ran (`env.live()`): nothing it read after that is cached.
  */
 export async function loadHistory(account: string, step: 'head' | 'older', env: HistoryEnv): Promise<HistorySnapshot> {
   const timeoutMs = env.timeoutMs ?? HISTORY_READ_TIMEOUT_MS;
@@ -74,13 +88,20 @@ export async function loadHistory(account: string, step: 'head' | 'older', env: 
   const isNew = (signature: string): boolean => session.id !== idBefore || !loadedBefore.has(signature);
   const added = items.map(x => x.signature).filter(isNew);
   const loaded = items.map(x => x.signature).filter(s => !isNew(s));
+  const alive = (): void => {
+    if (!env.live()) {
+      throw new StaleHistoryError();
+    }
+  };
   // only the uncached ones are read — this load's rows first, then (apart) every older row still unparsed
-  const first = await readParsedTransactionsTimed(env.connection, env.client, env.cluster, added, timeoutMs);
+  const first = await readParsedTransactionsTimed(env.connection, env.client, env.cluster, added, timeoutMs, env.live);
+  alive();
   const raws = first.transactions;
   // a node that ran out of time on this load's rows is not asked again for the older ones: the cache alone
   const older = first.timedOut
     ? cachedParsedTransactions(env.client, env.cluster, loaded)
-    : (await readParsedTransactionsTimed(env.connection, env.client, env.cluster, loaded, timeoutMs)).transactions;
+    : (await readParsedTransactionsTimed(env.connection, env.client, env.cluster, loaded, timeoutMs, env.live)).transactions;
+  alive();
   for (const [signature, raw] of older) {
     raws.set(signature, raw);
   }

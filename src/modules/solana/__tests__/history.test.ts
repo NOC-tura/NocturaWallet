@@ -11,9 +11,9 @@ import {readFileSync} from 'fs';
 import {join} from 'path';
 import {QueryClient} from '@tanstack/react-query';
 import {_resetRateLimitersForTest} from '../rpcLimiter';
-import {applyParsedTxDefaults} from '../historyReads';
-import {dropHistorySessions} from '../historySession';
-import {loadHistory} from '../history';
+import {applyParsedTxDefaults, parsedTxKey} from '../historyReads';
+import {dropHistorySessions, endHistoryGeneration, historyLiveness} from '../historySession';
+import {StaleHistoryError, loadHistory} from '../history';
 import type {HistoryEnv} from '../history';
 import type {ActivityContext} from '../activity';
 import type {RawParsedTx} from '../txDetail';
@@ -93,7 +93,7 @@ function world(bySource: Record<string, Sig[]>, tokenAccounts: Record<string, st
 }
 
 let client: QueryClient;
-const env = (connection: unknown): HistoryEnv => ({connection: connection as HistoryEnv['connection'], client, cluster: 'devnet', context: ctxFor});
+const env = (connection: unknown): HistoryEnv => ({connection: connection as HistoryEnv['connection'], client, cluster: 'devnet', context: ctxFor, live: () => true});
 
 beforeEach(() => {
   _resetRateLimitersForTest();
@@ -335,6 +335,36 @@ it('after a transaction read that overran the time limit without any request tim
   expect(connection.getParsedTransaction.mock.calls.map(c => c[0])).toEqual(['s2', 's1']);
   expect(p2.rows).toHaveLength(22);
   expect(p2.rows.filter(r => r.activity === null).map(r => r.item.signature)).toEqual(['s10']);
+});
+
+// H15 (final review 5): the wallet is wiped while a load waits for its batch — the answer must not refill the cache
+it('a load whose wallet is wiped while its batch is in flight caches nothing and fails', async () => {
+  const {connection} = world({[MAIN]: [sig(BGSO, 100), sig(XGJN, 90)]}, {});
+  let answer: (v: Array<RawParsedTx | null>) => void = () => undefined;
+  connection.getParsedTransactions.mockImplementationOnce(
+    () => new Promise<Array<RawParsedTx | null>>(resolve => {
+      answer = resolve;
+    }),
+  );
+  const live = historyLiveness(); // what the hook hands in: true until the next wipe
+  const pending = loadHistory(MAIN, 'head', {...env(connection), live});
+  await new Promise<void>(resolve => setTimeout(resolve, 0));
+  expect(connection.getParsedTransactions).toHaveBeenCalledTimes(1); // the batch is in flight
+  endHistoryGeneration(); // queryClient.ts's reset hook: the wallet is gone …
+  client.clear(); // … and its cache with it
+  answer([FIXTURES[XGJN]!, FIXTURES[BGSO]!]);
+  await expect(pending).rejects.toBeInstanceOf(StaleHistoryError);
+  expect(client.getQueryData(parsedTxKey('devnet', BGSO))).toBeUndefined();
+  expect(client.getQueryData(parsedTxKey('devnet', XGJN))).toBeUndefined();
+  expect(connection.getParsedTransaction).not.toHaveBeenCalled();
+});
+
+// H16 (final review 5): a load that starts after the wallet went reads no transaction at all
+it('a load whose liveness has ended reads no transaction and fails', async () => {
+  const {connection} = world({[MAIN]: [sig(BGSO, 100)]}, {});
+  await expect(loadHistory(MAIN, 'head', {...env(connection), live: () => false})).rejects.toBeInstanceOf(StaleHistoryError);
+  expect(connection.getParsedTransactions).not.toHaveBeenCalled();
+  expect(client.getQueryData(parsedTxKey('devnet', BGSO))).toBeUndefined();
 });
 
 // H6 (§3.4)

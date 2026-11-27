@@ -20,9 +20,13 @@ const run = (name: string, top: number, n: number, step = 1): SignatureItem[] =>
 
 function chain(sources: Record<string, SignatureItem[]>, total?: number) {
   const calls: Array<{source: string; before: string | undefined}> = [];
-  const world = {sources, list: Object.keys(sources), total, failOn: null as string | null};
+  // `owned`: every token account the wallet owns (by default the listed sources without the wallet)
+  const world = {sources, list: Object.keys(sources), total, owned: null as string[] | null, failOn: null as string | null};
   const deps: HistorySessionDeps = {
-    listSources: async (): Promise<SourceList> => ({sources: [...world.list], tokenAccountsTotal: world.total ?? world.list.length - 1}),
+    listSources: async (): Promise<SourceList> => {
+      const tokenAccounts = world.owned ?? world.list.slice(1);
+      return {sources: [...world.list], tokenAccounts, tokenAccountsTotal: world.total ?? tokenAccounts.length};
+    },
     fetchSignatures: async (source, before, limit) => {
       calls.push({source, before});
       if (world.failOn === source) {
@@ -295,11 +299,31 @@ it('coverage reports the token accounts read and owned', async () => {
   for (let k = 0; k < 24; k++) {
     sources[`T${k}`] = [];
   }
-  const {deps} = chain(sources, 31);
+  const {deps, world} = chain(sources, 31);
+  // the wallet owns 31 token accounts; 24 are read
+  world.owned = [...Object.keys(sources).slice(1), ...Array.from({length: 7}, (_, k) => `U${k}`)];
   const s = new HistorySession(deps);
   await s.loadNextPage();
   expect(s.coverage).toEqual({read: 24, total: 31});
-  expect(s.tokenAccountSources.size).toBe(24);
+  // final review 10: the classifier knows EVERY owned token account, read or not — an owner-less entry of the
+  // 25th one still marks its row incomplete
+  expect(s.tokenAccountSources.size).toBe(31);
+  expect(s.tokenAccountSources.has('U6')).toBe(true);
+  expect(s.tokenAccountSources.has('W')).toBe(false);
+});
+
+// final review 10: a refresh that keeps the read sources still takes in a token account past the 24 read
+it('refresh: an unread token account that appears joins tokenAccountSources without a restart', async () => {
+  const {deps, world} = chain({W: run('w', 100, 3), T: []});
+  const s = new HistorySession(deps);
+  await s.loadNextPage();
+  const id = s.id;
+  world.owned = ['T', 'U1'];
+  world.total = 2;
+  await s.refresh();
+  expect(s.id).toBe(id);
+  expect([...s.tokenAccountSources]).toEqual(['T', 'U1']);
+  expect(s.coverage).toEqual({read: 1, total: 2});
 });
 
 // S14
@@ -398,7 +422,7 @@ it('two concurrent loadNextPage calls run one after the other', async () => {
 });
 
 // R2 (review Important 2): the refresh commit places rows by (slot desc, signature asc)
-it('refresh: a row found late on another source, older than one already loaded, goes below it', async () => {
+it('refresh: a row found late on another source, older than one already loaded, is merged into place below it', async () => {
   const W = [item('y', 501), ...run('w', 100, 3)];
   const T = run('t', 50, 2);
   const {deps, world} = chain({W, T});
@@ -409,23 +433,48 @@ it('refresh: a row found late on another source, older than one already loaded, 
   expect(sigs(s).slice(0, 3)).toEqual(['y', 'x', 'w100']);
 });
 
+// final review 8 (Ruling F): a refreshed row older than the oldest loaded one keeps its place after the next page
+it('refresh: a late row older than every loaded row is merged into place, and stays in place after the next page', async () => {
+  const W = run('w', 100, 40);
+  const T = run('t', 10, 1);
+  const {deps, world} = chain({W, T});
+  const s = new HistorySession(deps);
+  await s.loadNextPage(); // w100 … w81
+  world.sources.T = [item('x', 60), ...T]; // a new signature at T's head, at a slot below every loaded row
+  await s.refresh();
+  expect(sigs(s).slice(-2)).toEqual(['w81', 'x']);
+  await s.loadNextPage(); // w80 … w61 (and x's slot lies inside this page)
+  const slots = s.items.map(i => i.slot);
+  expect(slots).toEqual([...slots].sort((a, b) => b - a));
+  expect(sigs(s).slice(19, 22)).toEqual(['w81', 'w80', 'w79']);
+  expect(sigs(s).indexOf('x')).toBe(sigs(s).indexOf('w61') + 1);
+});
+
 // R3 (review Minor 1)
 it('a restart whose first page fails keeps the list as it was', async () => {
   const W = run('w', 100, 30);
-  const {deps, world} = chain({W, T: run('t', 50, 2)});
+  // T also holds w81 (one transaction, two sources): page 1 ends on W's w81, so T's copy is still buffered
+  const {deps, world, calls} = chain({W, T: [item('w81', 81), ...run('t', 50, 2)]});
   const s = new HistorySession(deps);
   await s.loadNextPage();
   const before = {items: s.items, pages: s.pagesLoaded, id: s.id, end: s.endReached, tokens: s.tokenAccountSources};
   world.sources.T2 = run('x', 999, 1);
   world.list = ['W', 'T', 'T2'];
-  world.failOn = 'T2';
+  world.failOn = 'W'; // the restart's page 1 fails on W, after T and T2 were read: the restart's own state is not the old one
   await expect(s.refresh()).rejects.toThrow('rpc down');
   expect(s.items).toEqual(before.items);
   expect(s.pagesLoaded).toBe(before.pages);
   expect(s.id).toBe(before.id);
   expect(s.endReached).toBe(before.end);
   expect(s.tokenAccountSources).toEqual(before.tokens);
+  // Task 3 re-review New 3: the next page continues the OLD session — each source from its cursor (one W:w81 read,
+  // no head re-read) and with its emitted set (T's buffered copy of w81 is not shown twice)
   world.failOn = null;
+  const mark = calls.length;
+  await s.loadNextPage();
+  expect(calls.slice(mark).filter(c => c.source === 'W')).toEqual([{source: 'W', before: 'w81'}]);
+  expect(s.items).toHaveLength(32); // w100…w71 and t50, t49
+  expect(new Set(sigs(s)).size).toBe(32);
   await s.refresh();
   expect(s.id).not.toBe(before.id);
   expect(sigs(s)[0]).toBe('x999');
@@ -442,7 +491,7 @@ it('a failed page waits for its sibling fetches: the late result lands once and 
     openW = resolve;
   });
   const deps: HistorySessionDeps = {
-    listSources: async () => ({sources: ['W', 'T'], tokenAccountsTotal: 1}),
+    listSources: async () => ({sources: ['W', 'T'], tokenAccounts: ['T'], tokenAccountsTotal: 1}),
     fetchSignatures: async (source, before) => {
       calls.push(`${source}:${String(before)}`);
       if (source === 'T' && failT) {
@@ -509,8 +558,16 @@ it('a row without a block time keeps its place by slot and stays null', async ()
 
 // R7 (review Minor 5)
 it('tokenAccountSources is the same object until the source list changes', async () => {
-  const {deps} = chain({W: [], T: []});
+  const {deps, world} = chain({W: [], T: []});
   const s = new HistorySession(deps);
   await s.loadNextPage();
-  expect(s.tokenAccountSources).toBe(s.tokenAccountSources);
+  const first = s.tokenAccountSources;
+  expect(s.tokenAccountSources).toBe(first);
+  await s.refresh(); // the same list: the same object
+  expect(s.tokenAccountSources).toBe(first);
+  world.sources.T2 = [];
+  world.list = ['W', 'T', 'T2'];
+  await s.refresh(); // a new token account: the session restarts with a new set
+  expect(s.tokenAccountSources).not.toBe(first);
+  expect([...s.tokenAccountSources]).toEqual(['T', 'T2']);
 });

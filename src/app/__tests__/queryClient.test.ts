@@ -2,11 +2,11 @@
 import {clearAllStores, initSecureMmkv} from '../../store/mmkv/instances';
 import {queryClient} from '../queryClient';
 import {PARSED_TX_GC_MS, parsedTxKey} from '../../modules/solana/historyReads';
-import {dropHistorySessions, historySession, peekHistorySession} from '../../modules/solana/historySession';
+import {dropHistorySessions, historyLiveness, historySession, peekHistorySession} from '../../modules/solana/historySession';
 
 const A = 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk';
 const B = '3YqEpfo3c818GhvbQ1UmVY1nJxw16vtu4JB9peJXT94k';
-const deps = {listSources: async () => ({sources: [], tokenAccountsTotal: 0}), fetchSignatures: async () => []};
+const deps = {listSources: async () => ({sources: [], tokenAccounts: [], tokenAccountsTotal: 0}), fetchSignatures: async () => []};
 
 beforeEach(() => {
   queryClient.clear();
@@ -46,6 +46,18 @@ it('a wipe and an import also clear every parsedTx entry and every history sessi
   initSecureMmkv('the-next-wallet');
   expect(queryClient.getQueryData(parsedTxKey('devnet', 'SIG'))).toBeUndefined();
   expect(peekHistorySession('devnet', A)).toBeUndefined();
+});
+
+// final review 5: a load begun before a wipe or an import is no longer live after it
+it('a wipe and an import end the liveness of every history load begun before them', () => {
+  const beforeWipe = historyLiveness();
+  expect(beforeWipe()).toBe(true);
+  clearAllStores();
+  expect(beforeWipe()).toBe(false);
+  const beforeImport = historyLiveness();
+  initSecureMmkv('the-next-wallet');
+  expect(beforeImport()).toBe(false);
+  expect(historyLiveness()()).toBe(true); // a load of the new wallet is live
 });
 
 // history spec §3.3: the client default of 5 min would collect them

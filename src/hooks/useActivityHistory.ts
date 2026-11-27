@@ -19,7 +19,7 @@ import {getConnection} from '../modules/solana/connection';
 import {activityContext} from '../modules/solana/activityContext';
 import {loadHistory} from '../modules/solana/history';
 import type {HistorySnapshot} from '../modules/solana/history';
-import {HISTORY_PAGE_SIZE, dropHistorySessionsExcept, peekHistorySession} from '../modules/solana/historySession';
+import {HISTORY_PAGE_SIZE, dropHistorySessionsExcept, historyLiveness, peekHistorySession} from '../modules/solana/historySession';
 
 export const HISTORY_STALE_MS = 60_000;
 
@@ -66,7 +66,8 @@ export interface ActivityHistory {
 export function useActivityHistory(account: string | null): ActivityHistory {
   const client = useQueryClient();
   const queryKey = useMemo(() => historyQueryKey(account), [account]);
-  const env = useCallback(() => ({connection: getConnection(), client, cluster: NETWORK, context: activityContext}), [client]);
+  // a new `live()` per load: it ends when the wallet is wiped or replaced (final review 5)
+  const env = useCallback(() => ({connection: getConnection(), client, cluster: NETWORK, context: activityContext, live: historyLiveness()}), [client]);
 
   useEffect(() => {
     dropHistorySessionsExcept(account);

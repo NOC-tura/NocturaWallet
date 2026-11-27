@@ -8,7 +8,7 @@ import {renderHook, waitFor, act} from '@testing-library/react-native';
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
 import {HISTORY_STALE_MS, useActivityHistory, historyQueryKey} from '../useActivityHistory';
 import {clearAccountQueries, dropHistorySessionOnInvalidate} from '../../app/queryClient';
-import {dropHistorySessions, historySession, peekHistorySession} from '../../modules/solana/historySession';
+import {dropHistorySessions, endHistoryGeneration, historySession, peekHistorySession} from '../../modules/solana/historySession';
 import type {HistorySnapshot} from '../../modules/solana/history';
 
 const mockLoad = jest.fn();
@@ -23,7 +23,7 @@ const snap = (signatures: string[], endReached = false): HistorySnapshot => ({
   endReached,
   coverage: {read: 0, total: 0},
 });
-const deps = {listSources: async () => ({sources: [], tokenAccountsTotal: 0}), fetchSignatures: async () => []};
+const deps = {listSources: async () => ({sources: [], tokenAccounts: [], tokenAccountsTotal: 0}), fetchSignatures: async () => []};
 
 let client: QueryClient;
 const wrapper = ({children}: {children: React.ReactNode}) => <QueryClientProvider client={client}>{children}</QueryClientProvider>;
@@ -49,6 +49,17 @@ it('reads the head for the account and exposes the snapshot', async () => {
   await waitFor(() => expect(result.current.isSuccess).toBe(true));
   expect(mockLoad).toHaveBeenCalledWith(A, 'head', expect.objectContaining({cluster: 'mainnet-beta', client}));
   expect(result.current.data!.rows.map(r => r.item.signature)).toEqual(['s1', 's2']);
+});
+
+// K2c (final review 5): the env of each load carries a live() that the wallet's reset ends
+it("each load's env carries a live() that ends at the next wipe or import", async () => {
+  mockLoad.mockResolvedValue(snap(['s1']));
+  const {result} = renderHook(() => useActivityHistory(A), {wrapper});
+  await waitFor(() => expect(result.current.isSuccess).toBe(true));
+  const {live} = mockLoad.mock.calls[0]![2] as {live: () => boolean};
+  expect(live()).toBe(true);
+  endHistoryGeneration(); // what onSecureMmkvReset runs (queryClient.ts)
+  expect(live()).toBe(false);
 });
 
 // K2b (plan review r1 m2; spec §3.3: a refresh can cost up to 25 signature calls)

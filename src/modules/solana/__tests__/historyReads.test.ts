@@ -55,6 +55,7 @@ describe('orderSources', () => {
   it('the wallet first, then funded token accounts, then empty ones, each by address', () => {
     expect(orderSources(WALLET, [ta('Zempty', '0'), ta('Bfunded', '5'), ta('Aempty', '0'), ta('Afunded', '1')])).toEqual({
       sources: [WALLET, 'Afunded', 'Bfunded', 'Aempty', 'Zempty'],
+      tokenAccounts: ['Afunded', 'Bfunded', 'Aempty', 'Zempty'],
       tokenAccountsTotal: 4,
     });
   });
@@ -69,6 +70,9 @@ describe('orderSources', () => {
     expect(list.sources.slice(1, 12)).toEqual(funded.map(a => a.address));
     expect(list.sources.slice(12)).toEqual(empty.slice(0, 13).map(a => a.address));
     expect(list.tokenAccountsTotal).toBe(31);
+    // final review 10: every owned token account is carried, the 7 that are not read too
+    expect(list.tokenAccounts).toHaveLength(31);
+    expect(list.tokenAccounts).toEqual(expect.arrayContaining(empty.slice(13).map(a => a.address)));
   });
 });
 
@@ -84,7 +88,7 @@ describe('listHistorySources', () => {
     (connection.getParsedTokenAccountsByOwner as jest.Mock).mockImplementation(async (_owner: unknown, filter: {programId: {toBase58: () => string}}) => ({
       value: filter.programId.toBase58() === 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb' ? [account('T22', '3')] : [account('Classic', '0')],
     }));
-    expect(await listHistorySources(connection, 'devnet', WALLET)).toEqual({sources: [WALLET, 'T22', 'Classic'], tokenAccountsTotal: 2});
+    expect(await listHistorySources(connection, 'devnet', WALLET)).toEqual({sources: [WALLET, 'T22', 'Classic'], tokenAccounts: ['T22', 'Classic'], tokenAccountsTotal: 2});
     expect(connection.getParsedTokenAccountsByOwner).toHaveBeenCalledTimes(2);
   });
 
@@ -126,7 +130,7 @@ describe('listHistorySources', () => {
     await expect(listHistorySources(connection, 'devnet', WALLET, SHORT)).rejects.toBeInstanceOf(TimeoutError);
     // the SAME key again: were the hung request still the limiter's in-flight entry, this would join it and time out too
     read.mockImplementation(async () => ({value: [account('T', '1')]}));
-    expect(await listHistorySources(connection, 'devnet', WALLET, SHORT)).toEqual({sources: [WALLET, 'T'], tokenAccountsTotal: 1});
+    expect(await listHistorySources(connection, 'devnet', WALLET, SHORT)).toEqual({sources: [WALLET, 'T'], tokenAccounts: ['T'], tokenAccountsTotal: 1});
   });
 });
 
@@ -533,6 +537,23 @@ describe('readParsedTransactions', () => {
       await expect(listHistorySources(connection as never, 'devnet', WALLET, SHORT)).rejects.toBeInstanceOf(TimeoutError);
       expect(connection.getParsedTokenAccountsByOwner).not.toHaveBeenCalled();
     });
+  });
+
+  // R33 (final review 5): `live()` false once the batch answered — nothing is cached, and no further batch starts
+  it('a read whose liveness ends while a batch is in flight caches nothing and starts no further batch', async () => {
+    let alive = true;
+    const connection = {
+      getParsedTransactions: jest.fn(async (s: string[]): Promise<Array<RawParsedTx | null>> => {
+        alive = false; // the wallet goes while this batch is answered
+        return shuffled(s.map(x => tx(x)));
+      }),
+      getParsedTransaction: jest.fn(),
+    };
+    const many = Array.from({length: 25}, (_, k) => `s${k}`);
+    await readParsedTransactionsTimed(connection as never, client, 'devnet', many, SHORT, () => alive);
+    expect(connection.getParsedTransactions).toHaveBeenCalledTimes(1);
+    expect(client.getQueryData(parsedTxKey('devnet', 's0'))).toBeUndefined();
+    expect(client.getQueryCache().getAll()).toHaveLength(0);
   });
 
   // R12

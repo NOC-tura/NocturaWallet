@@ -38,6 +38,11 @@ export interface SignatureItem {
 export interface SourceList {
   /** the wallet first, then its token accounts — at most HISTORY_MAX_SOURCES entries */
   sources: string[];
+  /**
+   * every token account the wallet owns, read or not — the classifier's `ownTokenAccounts`, so an owner-less
+   * balance entry of a token account past the 24 read still marks its row incomplete (final review 10)
+   */
+  tokenAccounts: readonly string[];
   /** every token account the wallet owns, read or not (the footer's {m}) */
   tokenAccountsTotal: number;
 }
@@ -107,7 +112,7 @@ export class HistorySession {
     });
   }
 
-  /** the token accounts this session reads (its sources without the wallet) */
+  /** every token account the wallet owns (the source list's `tokenAccounts`: read or not), without the wallet */
   get tokenAccountSources(): ReadonlySet<string> {
     return this.tokenSources;
   }
@@ -122,7 +127,7 @@ export class HistorySession {
     return this.run(() => this.buildPage());
   }
 
-  /** §3.4 pull-to-refresh: what is new goes on top; a possible hole restarts the session instead. */
+  /** §3.4 pull-to-refresh: what is new is merged into place (slot desc, signature asc); a possible hole restarts the session instead. */
   refresh(): Promise<void> {
     return this.run(() => this.doRefresh());
   }
@@ -136,7 +141,7 @@ export class HistorySession {
   private adopt(list: SourceList): void {
     this.sources = [...list.sources];
     this.total = list.tokenAccountsTotal;
-    this.tokenSources = new Set(this.sources.slice(1));
+    this.tokenSources = new Set(list.tokenAccounts.filter(a => a !== list.sources[0]));
     this.state = new Map(this.sources.map(s => [s, {buffer: [], cursor: undefined, exhausted: false, newest: undefined}]));
   }
 
@@ -192,9 +197,10 @@ export class HistorySession {
         this.carry.push(item);
       }
     }
-    const page = this.carry.sort(newerFirst);
+    const page = this.carry;
     this.carry = [];
-    this.loaded = [...this.loaded, ...page];
+    // the whole list, not only the page: a refresh may have merged a late row below every row loaded then (Ruling F)
+    this.loaded = [...this.loaded, ...page].sort(newerFirst);
     this.pages += 1;
   }
 
@@ -272,6 +278,10 @@ export class HistorySession {
     }
     // every source was read: commit
     this.total = list.tokenAccountsTotal;
+    const owned = list.tokenAccounts.filter(a => a !== list.sources[0]);
+    if (owned.length !== this.tokenSources.size || owned.some(a => !this.tokenSources.has(a))) {
+      this.tokenSources = new Set(owned); // an unread token account came or went: a new set (else the same object)
+    }
     const added: SignatureItem[] = [];
     this.sources.forEach((source, at) => {
       const fresh = perSource[at]!;
@@ -289,6 +299,21 @@ export class HistorySession {
       this.loaded = [...added, ...this.loaded].sort(newerFirst);
     }
   }
+}
+
+/**
+ * Final review 5 (controller 2026-11-27): a history load in flight when the wallet goes (a wipe, an import)
+ * must not refill the cache after it. `onSecureMmkvReset` (queryClient.ts) ends the generation; a load
+ * takes its `live()` when it starts and stops reading and caching once it is false.
+ */
+let generation = 0;
+export function endHistoryGeneration(): void {
+  generation += 1;
+}
+/** One load's `live()`: true until the next `endHistoryGeneration`. */
+export function historyLiveness(): () => boolean {
+  const mine = generation;
+  return () => mine === generation;
 }
 
 const sessions = new Map<string, HistorySession>();
