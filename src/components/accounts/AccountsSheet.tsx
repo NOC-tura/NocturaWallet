@@ -31,7 +31,7 @@ import {
   TAG_LINKED,
   TAG_MAIN,
   VALUE_HIDDEN,
-  spokenFigure,
+  VALUE_HIDDEN_SPOKEN,
   rowA11y,
   staleRow,
 } from '../../copy/accounts';
@@ -128,13 +128,15 @@ export function AccountsSheet({visible, list, selectedScheme, hidden, onSelect, 
                 const figure = hidden ? VALUE_HIDDEN : rowBalanceText(row, havePrices ? prices : null);
                 // hidden wins over stale: "•••", and the suffix still says the figure is not current
                 const balanceText = stale ? staleRow(figure) : figure;
+                // the same line for a screen reader: only the mask itself is spoken as "Hidden"
+                const spokenBalance = hidden ? (stale ? staleRow(VALUE_HIDDEN_SPOKEN) : VALUE_HIDDEN_SPOKEN) : balanceText;
                 return (
                   <Pressable
                     key={a.scheme}
                     onPress={() => (checked ? onClose() : onSelect(a.scheme))}
                     accessibilityRole="radio"
                     accessibilityState={{checked}}
-                    accessibilityLabel={rowA11y(a.label, tags, shortAccountAddress(a.address), spokenFigure(balanceText))}
+                    accessibilityLabel={rowA11y(a.label, tags, shortAccountAddress(a.address), spokenBalance)}
                     testID={`accounts-row-${a.scheme}`}
                     className="flex-row items-center px-5 py-3 min-h-touch-rec active:bg-bg-surface-2">
                     <View className="flex-1">
@@ -159,7 +161,7 @@ export function AccountsSheet({visible, list, selectedScheme, hidden, onSelect, 
                       <Text variant="caption" mono className="text-fg-tertiary mt-0.5" testID={`accounts-row-${a.scheme}-address`}>
                         {shortAccountAddress(a.address)}
                       </Text>
-                      <Text variant="body-sm" numeral className={cn('mt-0.5', stale ? 'text-fg-tertiary' : 'text-fg-secondary')} testID={`accounts-row-${a.scheme}-balance`} accessibilityLabel={hidden ? spokenFigure(balanceText) : undefined}>
+                      <Text variant="body-sm" numeral className={cn('mt-0.5', stale ? 'text-fg-tertiary' : 'text-fg-secondary')} testID={`accounts-row-${a.scheme}-balance`} accessibilityLabel={hidden ? spokenBalance : undefined}>
                         {balanceText}
                       </Text>
                     </View>

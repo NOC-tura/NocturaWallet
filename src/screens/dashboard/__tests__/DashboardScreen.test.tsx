@@ -10,6 +10,7 @@ import React from 'react';
 import {Alert, RefreshControl} from 'react-native';
 import {render, act, fireEvent, within} from '@testing-library/react-native';
 import {SafeAreaProvider} from 'react-native-safe-area-context';
+import {A0_TOKEN} from '../../../modules/shielded/a0/screenSupport';
 import type {A0ShieldedView} from '../../../hooks/useA0Shielded';
 import type {A0PoolNoteCount} from '../../../modules/shielded/a0/poolSize';
 
@@ -715,7 +716,9 @@ describe('M1d — the Public | Private split inside the balance card (spec §4.5
     };
     walk(r.toJSON() as never);
     expect(labels.length).toBeGreaterThan(0);
-    expect(labels.some(l => l.includes('Hidden'))).toBe(true); // positive control: the walk does see the labels
+    expect(labels.some(l => l.includes('Hidden'))).toBe(true);
+    expect(r.getByTestId('dashboard-hero-hidden').props.accessibilityLabel).toBe('Hidden'); // the hero is in the tree and spoken
+    expect(labels).toContain('Hidden'); // positive control: the walk does see the labels
     expect(labels.filter(l => l.includes('•'))).toEqual([]);
   });
 
@@ -726,13 +729,44 @@ describe('M1d — the Public | Private split inside the balance card (spec §4.5
     let r = await renderDashboard();
     const row = r.getByTestId('shielded-assets-row');
     const amt = r.getByText(/^•{6} /);
-    expect(amt.props.accessibilityLabel).toMatch(/^Hidden \S+$/);
+    expect(amt.props.accessibilityLabel).toBe(`Hidden ${A0_TOKEN.symbol}`);
     expect(row).toBeTruthy();
     r.unmount();
     mockHide.current = false;
     r = await renderDashboard();
     expect(r.getByTestId('shielded-assets-row')).toBeTruthy();
     expect(r.queryByText(/^•{6} /)).toBeNull();
+    const shown = r.getByTestId('shielded-assets-row');
+    const texts = shown.findAll(n => typeof n.props.accessibilityLabel === 'string');
+    expect(texts).toEqual([]); // unhidden: no label on the row
+  });
+
+  it('Task 11b I1: the hidden hero is spoken "Hidden"; unhidden the dots container is absent', async () => {
+    mockHide.current = true;
+    mockMode.current = 'transparent';
+    let r = await renderDashboard();
+    expect(r.getByTestId('dashboard-hero-hidden').props.accessibilityLabel).toBe('Hidden');
+    expect(r.getByTestId('dashboard-hero-hidden').props.accessible).toBe(true);
+    r.unmount();
+    mockHide.current = false;
+    r = await renderDashboard();
+    expect(r.queryByTestId('dashboard-hero-hidden')).toBeNull();
+  });
+
+  it('Task 11b M1: only the mask becomes Hidden — a token symbol with U+2022 is kept, shown and hidden', async () => {
+    const SYM = 'A\u2022B';
+    mockPublic.current = {...READY_MAIN, tokens: [{mint: 'DOTMINT', symbol: SYM, name: 'Dot Coin', decimals: 6, trust: 'core'}], tokenBalances: {DOTMINT: '5000000'}};
+    mockHide.current = true;
+    let r = await renderDashboard();
+    const hiddenRows = r.getAllByText(`•••••• ${SYM}`);
+    expect(hiddenRows.length).toBeGreaterThan(0);
+    for (const t of hiddenRows) expect(t.props.accessibilityLabel).toBe(`Hidden ${SYM}`);
+    r.unmount();
+    mockHide.current = false;
+    r = await renderDashboard();
+    const shownRows = r.getAllByText(`5 ${SYM}`);
+    expect(shownRows.length).toBeGreaterThan(0);
+    for (const t of shownRows) expect(t.props.accessibilityLabel).toBeUndefined();
   });
 
   it('I1: only priced assets held and prices known → the USD form, Public "$150.00"', async () => {

@@ -84,14 +84,3 @@ describe('src/copy/accounts.ts — honesty', () => {
     expect(forbiddenClaims('src/copy/accounts.ts', SRC)).toEqual([]);
   });
 });
-
-describe('spokenFigure (Task 11b)', () => {
-  const {spokenFigure} = require('../accounts') as typeof import('../accounts');
-  it('every bullet run becomes "Hidden", a symbol stays, a text without a mask is unchanged', () => {
-    expect(spokenFigure('•••')).toBe('Hidden');
-    expect(spokenFigure('••••')).toBe('Hidden');
-    expect(spokenFigure('•••••• SOL')).toBe('Hidden SOL');
-    expect(spokenFigure('••• · not updated')).toBe('Hidden · not updated');
-    expect(spokenFigure('1.5 SOL')).toBe('1.5 SOL');
-  });
-});

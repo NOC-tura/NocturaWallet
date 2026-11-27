@@ -88,10 +88,6 @@ export const VALUE_UNKNOWN = '—';
 export const VALUE_HIDDEN = '•••';
 /** what a screen reader says for a figure shown as VALUE_HIDDEN */
 export const VALUE_HIDDEN_SPOKEN = 'Hidden';
-/** A shown text read aloud: every run of mask bullets (any length) becomes VALUE_HIDDEN_SPOKEN; text without a mask is unchanged */
-export function spokenFigure(text: string): string {
-  return text.replace(/•+/g, VALUE_HIDDEN_SPOKEN);
-}
 /** A held, priced side worth under half a cent (never "$0.00" for a non-empty side) */
 export const BELOW_ONE_CENT = '<$0.01';
 
