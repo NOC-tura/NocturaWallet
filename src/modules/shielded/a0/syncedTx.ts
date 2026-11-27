@@ -153,8 +153,32 @@ interface TopIx {
  * Ours = a FeGSS… instruction whose accounts at the IDL positions are [pool 8VMe…, merkle_tree
  * 5URd…]. The one predicate for both the instruction decode and the event admission (R1-I1).
  */
-function isOurA0Ix(ix: {programId: string; accounts: string[]}): boolean {
+export function isOurA0Ix(ix: {programId: string; accounts: string[]}): boolean {
   return ix.programId === A0.programId && ix.accounts[0] === A0.pool && ix.accounts[1] === A0.merkleTree;
+}
+
+/**
+ * History spec (2026-11-26) §4.3 rule 2: which of OUR pool's instructions this is, read from the
+ * first 8 bytes of its data (the Anchor discriminator) — `null` when the instruction is not ours
+ * (`isOurA0Ix`), 'other' for any discriminator the history does not name. It lives here, beside the
+ * sync's decoder, because the R6 source guard (`noSelfRelay.test.ts`) allows the withdraw
+ * discriminator in this file, `constants.ts` and `relayerClient.ts` only.
+ */
+export function a0PoolInstructionKind(
+  ix: {programId: string; accounts: string[]},
+  data: Uint8Array,
+): 'deposit' | 'withdraw' | 'other' | null {
+  if (!isOurA0Ix(ix)) {
+    return null;
+  }
+  if (data.length < 8) {
+    return 'other';
+  }
+  const disc = hex(data.subarray(0, 8));
+  if (disc === A0_IX_DISCRIMINATOR.deposit) {
+    return 'deposit';
+  }
+  return disc === A0_IX_DISCRIMINATOR.withdrawWithChange ? 'withdraw' : 'other';
 }
 
 function decodeDeposit(sig: string, ix: TopIx): A0DepositRecord {
