@@ -361,6 +361,22 @@ describe('wrap / unwrap (§4.3 rule 3, §4.2 rent)', () => {
     expect(deltas(r)).toEqual(['moved:wSOL:59167663567', 'moved:SOL:-59167663567', 'rent:SOL:-1488440']);
   });
 
+  // A23r (r2 N1; owner decision Q3b): a REAL wrap into a new wSOL account (3K3duJXA…, mainnet)
+  it('a real wrap into a NEW wSOL account: the rent is post − pre − the wrapped amount', () => {
+    const FILE = 'tx-wrap-new-3K3duJXA.json';
+    const PAYER = 'FN1xtTLB8fnb6gr5bXxnHc5m9Masm1oRecRLSGooQyxH';
+    const tx = load(FILE);
+    const entry = tx.meta!.postTokenBalances!.find(b => b.mint === WSOL_MINT && b.owner === PAYER)!;
+    const j = entry.accountIndex!;
+    const wrapped = BigInt(entry.uiTokenAmount!.amount!);
+    const rent = BigInt(tx.meta!.postBalances![j]!) - BigInt(tx.meta!.preBalances![j]!) - wrapped;
+    expect(tx.meta!.preBalances![j]).toBe(0);
+    expect(rent).toBe(1_488_440n);
+    const r = classify(tx, PAYER, MAINNET);
+    expect(r.kind).toBe('wrap');
+    expect(deltas(r)).toEqual([`moved:wSOL:${wrapped}`, `moved:SOL:${-wrapped}`, `rent:SOL:${-rent}`]);
+  });
+
   // A24 (r2 N1)
   it('an unwrap by close (3MGayyac…): unwrap; the exact rent refund is split out; someone else paid the fee', () => {
     const r = classify('tx-unwrap-close-3MGayyac.json', UNWRAPPER, MAINNET);
@@ -452,6 +468,34 @@ describe('account setup, no funds moved, failed, unknown (§4.3 rules 1, 7–9)'
     expect(classify('tx-failed-sol-2hdMogDK.json', FAILED_RECIPIENT, MAINNET)).toMatchObject({kind: 'failed', status: 'failed', feePaidByAccount: null});
   });
 
+  // A32b (review I1) — DERIVED from 3MGayyac… (an unwrap by close): made failed — `meta.err` set, every post balance =
+  // its pre balance except the fee at index 0, post token balances = pre
+  it('a failed unwrap by close claims no rent refund: the instructions list a close, the balances show none', () => {
+    const tx = load('tx-unwrap-close-3MGayyac.json');
+    tx.meta!.err = {InstructionError: [0, 'Custom']};
+    tx.meta!.postBalances = [...tx.meta!.preBalances!];
+    tx.meta!.postBalances[0]! -= tx.meta!.fee!;
+    tx.meta!.postTokenBalances = clone(tx.meta!.preTokenBalances!);
+    const r = classify(tx, UNWRAPPER, MAINNET);
+    expect(r).toMatchObject({kind: 'failed', primary: null, deltas: []});
+  });
+
+  // A32c (review I1) — DERIVED from 2HWCCJQd… (a SOL send): a 20000-lamport transfer to the treasury is added, then made
+  // failed in the same way (`meta.err` set, post = pre but the fee at index 0)
+  it('a failed send with the markup transfer claims no markup', () => {
+    const tx = load('tx-sol-transfer.json');
+    tx.transaction!.message!.accountKeys!.push({pubkey: TREASURY, signer: false, writable: true});
+    tx.meta!.preBalances!.push(900_000);
+    tx.transaction!.message!.instructions!.push({
+      program: 'system', programId: '11111111111111111111111111111111',
+      parsed: {type: 'transfer', info: {source: ACC_3, destination: TREASURY, lamports: 20_000}},
+    });
+    tx.meta!.err = {InstructionError: [1, 'Custom']};
+    tx.meta!.postBalances = [...tx.meta!.preBalances!];
+    tx.meta!.postBalances[0]! -= tx.meta!.fee!;
+    expect(classify(tx, ACC_3)).toMatchObject({kind: 'failed', primary: null, deltas: []});
+  });
+
   // A33
   it('the status handed in is kept; `meta.err` overrides it; a failed status makes the kind failed', () => {
     const tx = load('tx-sol-transfer.json');
@@ -476,6 +520,21 @@ describe('unattributable entries (§4.2)', () => {
     expect(r).toMatchObject({kind: 'unknown', incomplete: true, primary: null, deltas: []});
     // without the source list (opened from #21 or a deep link) the entry is simply not this account's
     expect(classify(tx, MAIN)).toMatchObject({kind: 'no-funds-moved', incomplete: false});
+  });
+
+  // A35b (review m1) — DERIVED from QAgzVzY6…: both token-balance arrays deleted; MAIN is no key, its token account is
+  it('token balances missing for an owned token account named in the keys: incomplete, never "no funds moved"', () => {
+    const tx = load('tx-test-to-main.json');
+    delete tx.meta!.preTokenBalances;
+    delete tx.meta!.postTokenBalances;
+    expect(classify(tx, MAIN, {ownTokenAccounts: new Set([MAIN_TA])})).toMatchObject({kind: 'unknown', incomplete: true, primary: null});
+  });
+
+  // A35c (review m1) — DERIVED from 2HWCCJQd…: `meta` is null; the account is a stranger to it
+  it('a response without transaction metadata is incomplete for any account', () => {
+    const tx = load('tx-sol-transfer.json');
+    tx.meta = null;
+    expect(classify(tx, MAIN)).toMatchObject({kind: 'unknown', incomplete: true, deltas: []});
   });
 
   // A36 — DERIVED from QAgzVzY6…: the sender's entries lose their `decimals`

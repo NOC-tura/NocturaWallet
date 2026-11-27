@@ -194,6 +194,10 @@ There is no inference from `pre == 0` / `post == 0` alone (r2 N4).
 
 Either sets `incomplete: true`. An incomplete row is never `no-funds-moved` and never `account-setup`.
 
+A response without transaction metadata, or without token balances for an owned token account it names, is incomplete — never 'no funds moved' (Task 2 review m1).
+
+A failed transaction moved nothing but its fee: the role split is skipped and its deltas are only what the balances show (controller ruling 2026-11-27, Task 2 review I1).
+
 Zero deltas are dropped.
 
 ### 4.3 Kind

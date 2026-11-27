@@ -286,7 +286,12 @@ export function classifyActivity(raw: RawParsedTx, account: string, status: Acti
   // The account's own lamports that are missing, or not a safe integer (above 2^53 the JSON number has already
   // lost digits), are not a balance: no native change is claimed at all, and the row is incomplete rather than wrong.
   const nativeKnown = i >= 0 && lamports(pre, i) !== null && lamports(post, i) !== null;
-  let incomplete = i >= 0 && !nativeKnown;
+  // review m1: balances that were not there to read are not a proof of 'no funds moved'
+  const tokenBalancesMissing = meta.preTokenBalances == null || meta.postTokenBalances == null;
+  let incomplete =
+    (i >= 0 && !nativeKnown) ||
+    !raw.meta ||
+    (tokenBalancesMissing && keys.some(k => ctx.ownTokenAccounts.has(k)));
   const tokenChange = new Map<string, {raw: bigint; decimals: number}>();
   for (const [k, e] of tokenEntries) {
     const owner = ownerOfIndex(k);
@@ -330,7 +335,9 @@ export function classifyActivity(raw: RawParsedTx, account: string, status: Acti
     let rest = lamportChange(i) + (i === 0 ? fee : 0n);
     const paid: bigint[] = [];
     const refunded: bigint[] = [];
-    for (const [k, p] of [...proven].sort((a, b) => a[0] - b[0])) {
+    // a failed transaction moved nothing but its fee: no role split, only what the balances show (review I1)
+    const splitRoles = finalStatus !== 'failed';
+    for (const [k, p] of splitRoles ? [...proven].sort((a, b) => a[0] - b[0]) : []) {
       // An account created AND closed in one transaction (a swap's temporary wSOL account) has 0 lamports
       // before and after and no token entry on either side: both figures below are 0, so it adds nothing.
       if (p.payer === account) {
@@ -355,12 +362,12 @@ export function classifyActivity(raw: RawParsedTx, account: string, status: Acti
         markup += big(ix.info.lamports) ?? 0n;
       }
     }
-    if (markup > 0n && (tokenMoved > 0 || rest + markup !== 0n)) {
+    if (splitRoles && markup > 0n && (tokenMoved > 0 || rest + markup !== 0n)) {
       native('markup', -markup);
       rest += markup;
     }
     // grant (r2 N3): on a relayed Make public, what the relayer sent the account so it can exist and sign
-    if (pool === 'made-public' && keys[0] === ctx.relayerFeePayer && rest > 0n) {
+    if (splitRoles && pool === 'made-public' && keys[0] === ctx.relayerFeePayer && rest > 0n) {
       native('grant', rest);
       rest = 0n;
     }
