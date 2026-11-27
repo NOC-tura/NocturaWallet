@@ -309,6 +309,15 @@ describe('the pool (§4.3 rule 2)', () => {
     expect(r.extraAssets).toBe(1); // it is a second asset that moved: "+1 more", never a labelled grant
   });
 
+  // A17c (Task 2 re-review n5): the grant gate — 54J9kjQ8… unchanged, with 'failed' HANDED IN as its status (a body
+  // that succeeded): a failed row splits no roles, so the relayer's SOL is not labelled a grant either
+  it('a Make public handed in as failed claims no gas grant: its deltas are only what the balances show', () => {
+    const r = classifyActivity(load('tx-unshield-relayed-54J9kjQ8.json'), ACC_3, 'failed', ctx());
+    expect(r.kind).toBe('failed');
+    expect(r.deltas.some(d => d.role === 'grant')).toBe(false);
+    expect(deltas(r)).toEqual(['moved:TEST:10000', 'moved:SOL:3000000']);
+  });
+
   // A18
   it("a relayed unshield into main's existing token account (3tPxm8Ph…): Made public, no grant", () => {
     const r = classify('tx-unshield-relayed-main-3tPxm8Ph.json', MAIN);
@@ -480,8 +489,9 @@ describe('account setup, no funds moved, failed, unknown (§4.3 rules 1, 7–9)'
     expect(r).toMatchObject({kind: 'failed', primary: null, deltas: []});
   });
 
-  // A32c (review I1) — DERIVED from 2HWCCJQd… (a SOL send): a 20000-lamport transfer to the treasury is added, then made
-  // failed in the same way (`meta.err` set, post = pre but the fee at index 0)
+  // A32c (review I1) — DERIVED from 2HWCCJQd… (a SOL send): the TREASURY key is pushed onto the account keys with a
+  // `preBalances` entry of 900 000, a 20000-lamport transfer to it is added, then the transaction is made failed in the
+  // same way (`meta.err` set, post = pre but the fee at index 0)
   it('a failed send with the markup transfer claims no markup', () => {
     const tx = load('tx-sol-transfer.json');
     tx.transaction!.message!.accountKeys!.push({pubkey: TREASURY, signer: false, writable: true});
@@ -528,6 +538,24 @@ describe('unattributable entries (§4.2)', () => {
     delete tx.meta!.preTokenBalances;
     delete tx.meta!.postTokenBalances;
     expect(classify(tx, MAIN, {ownTokenAccounts: new Set([MAIN_TA])})).toMatchObject({kind: 'unknown', incomplete: true, primary: null});
+  });
+
+  // A35d (Task 2 re-review n2) — DERIVED from QAgzVzY6…: only ONE token-balance array is deleted (each in turn)
+  it('one token-balance array missing for an owned token account named in the keys is incomplete too', () => {
+    for (const side of ['preTokenBalances', 'postTokenBalances'] as const) {
+      const tx = load('tx-test-to-main.json');
+      delete tx.meta![side];
+      expect(classify(tx, MAIN, {ownTokenAccounts: new Set([MAIN_TA])})).toMatchObject({incomplete: true});
+    }
+  });
+
+  // A35e (Task 2 re-review n1, the negative control) — DERIVED from 2HWCCJQd… (a SOL send): both token-balance arrays
+  // deleted. No owned token account is in its keys, so nothing is missing for this account: an old SOL send stays a send
+  it('token balances missing where no owned token account is named: complete, and still a send', () => {
+    const tx = load('tx-sol-transfer.json');
+    delete tx.meta!.preTokenBalances;
+    delete tx.meta!.postTokenBalances;
+    expect(classify(tx, ACC_3, {ownTokenAccounts: new Set([MAIN_TA])})).toMatchObject({kind: 'sent', incomplete: false});
   });
 
   // A35c (review m1) — DERIVED from 2HWCCJQd…: `meta` is null; the account is a stranger to it
