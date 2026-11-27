@@ -472,22 +472,77 @@ describe('Task 8 review fixes (controller 2026-11-27)', () => {
     expect(none.getByTestId('tx-detail-date')).toHaveTextContent('—', {exact: true});
   });
 
-  // Copy on From / To / Authorized by
-  it('Copy on From, To and Authorized by puts the full address on the clipboard', () => {
+  // Copy on From / To / Authorized by / Hash. The 30 s clipboard clear is CAPTURED, never scheduled (no fake timers,
+  // nothing left pending after the test); every other delay passes through.
+  function withCapturedClears(body: (clears: Array<{id: number; fn: () => void}>, cleared: unknown[]) => void) {
+    const clears: Array<{id: number; fn: () => void}> = [];
+    const cleared: unknown[] = [];
+    const realSet = global.setTimeout;
+    const realClear = global.clearTimeout;
+    const setSpy = jest.spyOn(global, 'setTimeout').mockImplementation(((fn: () => void, ms?: number, ...rest: unknown[]) => {
+      if (ms === 30_000) {
+        const id = 9000 + clears.length;
+        clears.push({id, fn});
+        return id as unknown as ReturnType<typeof setTimeout>;
+      }
+      return (realSet as unknown as (...a: unknown[]) => ReturnType<typeof setTimeout>)(fn, ms, ...rest);
+    }) as typeof setTimeout);
+    const clearSpy = jest.spyOn(global, 'clearTimeout').mockImplementation(((id?: unknown) => {
+      cleared.push(id);
+      if (typeof id !== 'number' || id < 9000) {
+        (realClear as (i?: unknown) => void)(id);
+      }
+    }) as typeof clearTimeout);
+    try {
+      body(clears, cleared);
+    } finally {
+      setSpy.mockRestore();
+      clearSpy.mockRestore();
+    }
+  }
+
+  function delegated(): RawParsedTx {
     const DELEGATE = 'DLGTxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx';
     const tx = load('tx-test-to-main.json');
     const ix = (tx.transaction!.message!.instructions as Array<{parsed?: {type?: string; info?: Record<string, unknown>}}>).find(x => x.parsed?.type === 'transferChecked')!;
     ix.parsed!.info!.authority = DELEGATE;
-    const r = screen(tx, MAIN);
-    const set = Clipboard.setString as jest.Mock;
-    for (const [id, full] of [
-      ['from', ACC_2],
-      ['to', MAIN],
-      ['authority', DELEGATE],
-    ] as const) {
-      set.mockClear();
-      fireEvent.press(r.getByTestId(`tx-detail-copy-${id}`));
-      expect(set).toHaveBeenCalledWith(full);
-    }
+    return tx;
+  }
+
+  it('Copy on From, To, Authorized by and Hash: the full value on the clipboard, and one clear at 30 s that sets ""', () => {
+    withCapturedClears(clears => {
+      const r = screen(delegated(), MAIN);
+      const set = Clipboard.setString as jest.Mock;
+      for (const [id, full] of [
+        ['from', ACC_2],
+        ['to', MAIN],
+        ['authority', 'DLGTxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'],
+        ['hash', SIG],
+      ] as const) {
+        set.mockClear();
+        const before = clears.length;
+        fireEvent.press(r.getByTestId(`tx-detail-copy-${id}`));
+        expect(set).toHaveBeenCalledTimes(1);
+        expect(set).toHaveBeenCalledWith(full);
+        expect(clears).toHaveLength(before + 1); // exactly one clear scheduled, at 30 000 ms
+        set.mockClear();
+        clears[clears.length - 1]!.fn();
+        expect(set).toHaveBeenCalledWith('');
+      }
+    });
+  });
+
+  // N2: a later copy cancels the earlier clear — From, then To, leaves only the latest pending (never wipes the new copy early)
+  it('a second copy cancels the first clear: only the latest is pending', () => {
+    withCapturedClears((clears, cleared) => {
+      const r = screen(delegated(), MAIN);
+      fireEvent.press(r.getByTestId('tx-detail-copy-from'));
+      expect(cleared).toHaveLength(0); // nothing earlier to cancel
+      fireEvent.press(r.getByTestId('tx-detail-copy-to'));
+      expect(clears).toHaveLength(2);
+      expect(cleared).toEqual([clears[0]!.id]); // the first clear is cancelled, the second stays
+      r.unmount();
+      expect(cleared).toEqual([clears[0]!.id]); // leaving the screen does not cancel it: the clipboard is still wiped at 30 s
+    });
   });
 });

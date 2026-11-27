@@ -83,27 +83,22 @@ it('a read that fails is notFound too; no signature reads nothing', async () => 
   none.unmount();
 });
 
-// I3 (Task 8 review): after the first "not found" the screen never goes back to the spinner while it asks again
-it('a retry never flickers back to loading: loading, notFound, notFound, … ready', async () => {
+// I3 (Task 8 review): after the first "not found" the screen never goes back to the spinner while it asks again.
+// Every read is gated on a promise the test resolves by hand, so the in-flight retry is HELD, not caught in passing.
+it('a retry in flight stays notFound (no spinner), and the answer then arrives', async () => {
   const answer = {slot: 7, transaction: {signatures: ['SIG']}};
-  // each read takes 60 ms, so a refetch is observable between two renders
-  const slow = (v: unknown) => () => new Promise(r => setTimeout(() => r(v), 60));
-  mockGetParsedTransaction.mockImplementationOnce(slow(null)).mockImplementationOnce(slow(null)).mockImplementation(slow(answer));
-  const seen: string[] = [];
-  const {result, unmount} = renderHook(
-    () => {
-      const r = useParsedTx('SIG', 30); // a short retry interval handed in; real timers
-      seen.push(r.raw !== undefined ? 'ready' : r.isLoading ? 'loading' : r.notFound ? 'notFound' : 'neither');
-      return r;
-    },
-    {wrapper},
-  );
-  await waitFor(() => expect(result.current.raw).toEqual(answer), {timeout: 3000});
-  expect(mockGetParsedTransaction.mock.calls.length).toBeGreaterThanOrEqual(3);
-  const first = seen.indexOf('notFound');
-  expect(first).toBeGreaterThan(-1);
-  expect(seen.slice(first).includes('loading')).toBe(false);
-  expect(seen).not.toContain('neither');
+  const gates: Array<(v: unknown) => void> = [];
+  mockGetParsedTransaction.mockImplementation(() => new Promise(resolve => gates.push(resolve)));
+  const {result, unmount} = renderHook(() => useParsedTx('SIG', 20), {wrapper});
+  expect(result.current).toEqual({raw: undefined, isLoading: true, notFound: false});
+  await waitFor(() => expect(gates).toHaveLength(1));
+  gates[0]!(null); // read 1: not indexed yet
+  await waitFor(() => expect(result.current.notFound).toBe(true));
+  await waitFor(() => expect(gates).toHaveLength(2)); // the retry is now in flight, unresolved
+  expect(result.current).toEqual({raw: undefined, isLoading: false, notFound: true});
+  gates[1]!(answer);
+  await waitFor(() => expect(result.current.raw).toEqual(answer));
+  expect(result.current).toMatchObject({isLoading: false, notFound: false});
   unmount();
 });
 

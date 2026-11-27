@@ -131,15 +131,22 @@ export function TransactionDetailScreen({signature, account, onBack}: Props) {
 
   // ── Handlers ───────────────────────────────────────────────────────────────
 
+  // one pending clear: a later copy cancels the earlier one, so it never wipes the new copy early. It is NOT
+  // cancelled on unmount — the clipboard is still wiped 30 s after the copy (never cleared on backgrounding).
+  const clearTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   function copyText(text: string) {
     try {
       Clipboard.setString(text);
-      setTimeout(() => Clipboard.setString(''), 30_000);
+      if (clearTimer.current !== null) {
+        clearTimeout(clearTimer.current);
+      }
+      clearTimer.current = setTimeout(() => Clipboard.setString(''), 30_000);
     } catch {
       // clipboard unavailable — no-op
     }
   }
 
+  const zone = React.useMemo(() => deviceTimeZone(), []);
   const [saved, setSaved] = React.useState(false);
   const alreadyContact = contactAddress !== null ? addressBook.findByAddress(contactAddress) != null : false;
 
@@ -252,7 +259,7 @@ export function TransactionDetailScreen({signature, account, onBack}: Props) {
           <View className="bg-bg-surface-1 rounded-lg px-5 mt-4">
             <DetailRow label="Type" value={directionWord} />
             <DetailRow label="Status" value={tx.status[0].toUpperCase() + tx.status.slice(1)} />
-            <DetailRow label={TX_DATE} value={<Text variant="body-sm" className="text-fg-primary text-right" testID="tx-detail-date">{detailTime(tx.blockTime, deviceTimeZone())}</Text>} />
+            <DetailRow label={TX_DATE} value={<Text variant="body-sm" className="text-fg-primary text-right" testID="tx-detail-date">{detailTime(tx.blockTime, zone)}</Text>} />
             {parties !== null ? (
               <>
                 <DetailRow
