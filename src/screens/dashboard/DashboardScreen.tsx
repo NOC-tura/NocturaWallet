@@ -44,6 +44,8 @@ import {NOC_MINT} from '../../constants/programs';
 import {isShieldedEnabled} from '../../constants/features';
 import {privateSide, publicSide, splitValue, type SplitValue} from '../../modules/accounts/valueLine';
 import {drainLinkQueue} from '../../modules/accounts/linkQueue';
+import {scanLinksForWallet} from '../../modules/accounts/linkScanRunner';
+import {queryClient} from '../../app/queryClient';
 import {CHAIN} from '../../constants/chain';
 import {formatBalanceForDisplay} from '../../utils/parseTokenAmount';
 import {mmkvPublic} from '../../store/mmkv/instances';
@@ -262,13 +264,20 @@ export function DashboardScreen({
     drainLinkQueue(); // post-M1d §4 / R2: a "linked" tag still queued is written before the list is read
     refreshAccountList();
     setSheetOpen(true);
+    // history spec §6.4: every exit not tagged yet is scanned in the background; the sheet does not wait, a tag
+    // found re-reads the list by itself, and a failure is silent (the promise never rejects)
+    scanLinksForWallet(publicKey, queryClient).catch(() => undefined);
     // review r1 m7: unreadable because the encrypted store is closed -> open it (biometric), then re-read
     if (accountList?.unreadable && mmkvSecure() === null) {
       unlockSecureStorage()
-        .then(() => refreshAccountList())
+        .then(() => {
+          refreshAccountList();
+          // H5: the scan above found the store closed and read nothing — the open that unlocked it scans too
+          scanLinksForWallet(publicKey, queryClient).catch(() => undefined);
+        })
         .catch(() => undefined);
     }
-  }, [refreshAccountList, accountList]);
+  }, [refreshAccountList, accountList, publicKey]);
   const handleSelectAccount = useCallback(
     (scheme: string) => {
       selectAccountScheme(scheme);

@@ -50,6 +50,8 @@ export const MMKV_KEYS = {
   ACCOUNTS_SELECTED: 'v1_accounts.selected',
   /** post-M1d §4 / R2: addresses waiting for their "linked" tag (a JSON list). Own accounts → ENCRYPTED instance only. */
   ACCOUNTS_LINK_PENDING: 'v1_accounts.linkPending',
+  /** history spec §6.3: the link scan's records, `{[exit]: {seeds: <digest of the seed set>, sources: {[source]: {cursor?, pending?}}}}`. Own accounts and their token accounts → ENCRYPTED instance only. */
+  LINK_SCAN_CURSORS: 'v1_linkScanCursors',
 
   // ─── Address Book [S] ───────────────────────────────────────────────
   ADDRESS_BOOK_PREFIX: 'v1_contacts_',
@@ -94,11 +96,11 @@ export const MMKV_KEYS = {
   // ─── Security [P] ──────────────────────────────────────────────────
   SECURITY_JAILBREAK_DETECTED: 'v1_security.jailbreakDetected',
   SECURITY_BIOMETRIC_ENABLED: 'v1_security.biometricEnabled',
+  SECURITY_AUTO_LOCK_BG: 'v1_security.autoLockOnBackground',
 
   // ─── Activity [P] ──────────────────────────────────────────────────
   /** #26: the chip last chosen (an id of HISTORY_CHIPS); an unknown value reads as All */
   ACTIVITY_FILTER: 'v1_activity_filter',
-  SECURITY_AUTO_LOCK_BG: 'v1_security.autoLockOnBackground',
 
   // ─── PIN [S] ────────────────────────────────────────────────────────
   PIN_CONFIGURED: 'v1_pin.configured',

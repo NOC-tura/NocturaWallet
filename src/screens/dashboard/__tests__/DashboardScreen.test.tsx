@@ -67,6 +67,10 @@ jest.mock('../../../modules/session/secureStorageSession', () => ({unlockSecureS
 const mockDrain = jest.fn(() => 0);
 jest.mock('../../../modules/accounts/linkQueue', () => ({drainLinkQueue: () => mockDrain()}));
 
+// history spec §6.4: the retroactive link scan, observed here
+const mockScanLinks = jest.fn((_main: string | null, _client: unknown) => Promise.resolve(0));
+jest.mock('../../../modules/accounts/linkScanRunner', () => ({scanLinksForWallet: (main: string | null, client: unknown) => mockScanLinks(main, client)}));
+
 // M1d (spec §4.1): the Accounts sheet, stubbed — records its props, renders a marker
 const mockSheetProps: Array<Record<string, unknown>> = [];
 jest.mock('../../../components/accounts/AccountsSheet', () => ({
@@ -734,6 +738,56 @@ describe('M1d — the numbered avatar opens the Accounts sheet (spec §4.1, D5)'
     });
     expect(mockDrain).toHaveBeenCalledTimes(1);
     expect(mockDrain.mock.invocationCallOrder[0]!).toBeLessThan(mockRefreshAccounts.mock.invocationCallOrder[0]!);
+  });
+
+  it('history spec §6.4: opening the sheet starts the link scan for the main wallet AFTER the queue is drained; the sheet does not wait for it', async () => {
+    const r = await renderDashboard();
+    mockDrain.mockClear();
+    mockScanLinks.mockClear();
+    mockScanLinks.mockImplementationOnce(() => new Promise<number>(() => undefined)); // a scan that never ends
+    await act(async () => {
+      fireEvent.press(r.getByTestId('dashboard-avatar'));
+    });
+    expect(mockScanLinks).toHaveBeenCalledTimes(1);
+    expect(mockScanLinks.mock.calls[0]![0]).toBe('AbCdEfAbCdEf'); // walletStore.publicKey: the MAIN account, whichever is selected
+    expect(mockDrain.mock.invocationCallOrder[0]!).toBeLessThan(mockScanLinks.mock.invocationCallOrder[0]!);
+    expect(r.getByTestId('mock-accounts-sheet')).toBeTruthy();
+  });
+
+  it('history spec H5: an open that has to unlock the encrypted store starts the scan again once it is open', async () => {
+    mockListUnreadable.current = true; // the registry cannot be read: the store is closed (mockSecure.current === null)
+    const r = await renderDashboard();
+    mockScanLinks.mockClear();
+    mockRefreshAccounts.mockClear();
+    let opened: () => void = () => undefined;
+    mockUnlock.mockImplementationOnce(() => new Promise<void>(resolve => { opened = resolve; }));
+    await act(async () => {
+      fireEvent.press(r.getByTestId('dashboard-avatar'));
+    });
+    expect(mockScanLinks).toHaveBeenCalledTimes(1); // at the open: with the store closed this one reads nothing
+    await act(async () => {
+      opened();
+    });
+    expect(mockScanLinks).toHaveBeenCalledTimes(2); // after the unlock
+    expect(mockScanLinks.mock.calls[1]![0]).toBe('AbCdEfAbCdEf');
+    expect(mockRefreshAccounts.mock.invocationCallOrder[1]!).toBeLessThan(mockScanLinks.mock.invocationCallOrder[1]!);
+    // control: a readable list unlocks nothing and scans once
+    mockListUnreadable.current = false;
+    mockScanLinks.mockClear();
+    const r2 = await renderDashboard();
+    await act(async () => {
+      fireEvent.press(r2.getByTestId('dashboard-avatar'));
+    });
+    expect(mockScanLinks).toHaveBeenCalledTimes(1);
+  });
+
+  it('history spec §6.4: a scan that rejects is silent', async () => {
+    const r = await renderDashboard();
+    mockScanLinks.mockImplementationOnce(() => Promise.reject(new Error('rpc down')));
+    await act(async () => {
+      fireEvent.press(r.getByTestId('dashboard-avatar'));
+    });
+    expect(r.getByTestId('mock-accounts-sheet')).toBeTruthy();
   });
 
   it('the avatar shows the selected account\'s number and says what it does', async () => {
