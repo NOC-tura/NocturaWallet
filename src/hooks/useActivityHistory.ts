@@ -54,7 +54,11 @@ export interface ActivityHistory {
   isError: boolean;
   /** the first page, or the refresh once a page is loaded */
   refetch: () => Promise<unknown>;
-  /** the next page; resolves to the new snapshot, or null when it could not be read or nothing was started */
+  /**
+   * the next page; resolves to the new snapshot, or null when it could not be read, was discarded (the entry
+   * or session is gone) or nothing was started. It replaces only `data`: a head error, `isInvalidated` and
+   * the freshness time stay as the last head read left them.
+   */
   loadOlder: () => Promise<HistorySnapshot | null>;
   loadingOlder: boolean;
 }
@@ -112,14 +116,16 @@ export function useActivityHistory(account: string | null): ActivityHistory {
         return null;
       }
       // A page is written back only while the entry it extends and the session it was read from both
-      // still exist and the entry was not invalidated (a wipe, a switch by remount, #21 after a Send).
-      const state = client.getQueryState(queryKey);
-      if (accountRef.current !== account || state === undefined || state.isInvalidated || peekHistorySession(NETWORK, account) !== session) {
+      // still exist (a wipe, a switch by remount, and #21's invalidation — which drops the session — all
+      // end that). `isInvalidated` is NOT checked: TanStack sets it on every fetch error too.
+      const entry = client.getQueryCache().find({queryKey});
+      if (accountRef.current !== account || entry === undefined || peekHistorySession(NETWORK, account) !== session) {
         return null;
       }
-      // keeps the freshness clock of the head read. (setQueryData also clears a head error; TanStack
-      // offers no way to keep it, and the rows stay honest.)
-      client.setQueryData(queryKey, snapshot, {updatedAt: state.dataUpdatedAt});
+      // Only `data` is replaced (`setState`, not `setQueryData`): the status, a head error, `isInvalidated`
+      // and `dataUpdatedAt` stay as the last head read left them, so a page neither hides a failed refresh
+      // nor restarts the 60 s clock, and an invalidated entry still reads on its next mount.
+      entry.setState({data: snapshot});
       return snapshot;
     } catch {
       return null; // the rows already loaded stay; "Load older" can be tapped again

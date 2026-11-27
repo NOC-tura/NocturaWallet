@@ -286,7 +286,8 @@ it('unmount then another account mounts: the old account entry is not re-created
   expect(peekHistorySession('mainnet-beta', A)).toBeUndefined();
 });
 
-it('an invalidation while a page is in flight (screen unmounted): the entry stays invalidated and a remount reads', async () => {
+it('an invalidation while a page is in flight (screen unmounted): the session goes with it, the page is discarded and a remount reads', async () => {
+  const off = dropHistorySessionOnInvalidate(client);
   const f = await olderInFlight(A);
   f.view.unmount();
   await act(async () => {
@@ -300,6 +301,7 @@ it('an invalidation while a page is in flight (screen unmounted): the entry stay
   mockLoad.mockResolvedValue(snap(['n1', 's1']));
   const again = renderHook(() => useActivityHistory(A), {wrapper});
   await waitFor(() => expect(again.result.current.data?.rows[0]?.item.signature).toBe('n1'));
+  off();
 });
 
 // Review Minor 2
@@ -379,4 +381,49 @@ it('a page queued behind a refetch for an account that was left is skipped: load
     expect(await older).toBeNull();
   });
   expect(mockLoad.mock.calls.filter(c => c[0] === A && c[1] === 'older')).toHaveLength(0);
+});
+
+// Re-review: TanStack marks an entry invalidated on every fetch error, so that flag cannot gate the write
+it('after a failed refresh every "load older" still lands; the error stays until a good head', async () => {
+  mockLoad.mockResolvedValueOnce(snap(['s1']));
+  historySession('mainnet-beta', A, deps);
+  const {result} = renderHook(() => useActivityHistory(A), {wrapper});
+  await waitFor(() => expect(result.current.isSuccess).toBe(true));
+  mockLoad.mockRejectedValueOnce(new Error('rpc down'));
+  await act(async () => {
+    await result.current.refetch();
+  });
+  await waitFor(() => expect(result.current.isError).toBe(true));
+  expect(result.current.data!.rows).toHaveLength(1);
+  for (const n of [2, 3, 4]) {
+    mockLoad.mockResolvedValueOnce(snap(Array.from({length: n}, (_, k) => `s${k + 1}`)));
+    await act(async () => {
+      expect(await result.current.loadOlder()).not.toBeNull();
+    });
+    expect(result.current.data!.rows).toHaveLength(n);
+    expect(result.current.isError).toBe(true);
+  }
+  mockLoad.mockResolvedValueOnce(snap(['n1', 's1']));
+  await act(async () => {
+    await result.current.refetch();
+  });
+  await waitFor(() => expect(result.current.isError).toBe(false));
+  expect(result.current.data!.rows).toHaveLength(2);
+});
+
+it('a page landing on an already invalidated entry is written, the entry stays invalidated and a remount reads', async () => {
+  const f = await olderInFlight(A);
+  f.view.unmount();
+  await act(async () => {
+    await client.invalidateQueries({queryKey: ['txHistory', A]}); // no session drop wired on this client
+  });
+  await act(async () => {
+    f.release(snap(['s1', 's2']));
+    expect(await f.older()).not.toBeNull();
+  });
+  expect(client.getQueryData<HistorySnapshot>(historyQueryKey(A))!.rows).toHaveLength(2);
+  expect(client.getQueryState(historyQueryKey(A))!.isInvalidated).toBe(true);
+  mockLoad.mockResolvedValue(snap(['n1', 's1', 's2']));
+  const again = renderHook(() => useActivityHistory(A), {wrapper});
+  await waitFor(() => expect(again.result.current.data?.rows[0]?.item.signature).toBe('n1'));
 });
