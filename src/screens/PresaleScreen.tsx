@@ -135,12 +135,12 @@ export function PresaleActive({
   // the note under the balance says why buying is off; tapping it runs the main sync, one in flight
   const retryingRef = useRef(false);
   const mountedRef = useRef(true);
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    mountedRef.current = true; // StrictMode runs the cleanup once and the effect again
+    return () => {
       mountedRef.current = false;
-    },
-    [],
-  );
+    };
+  }, []);
   const [retrying, setRetrying] = useState(false);
   const retryBalance = useCallback(() => {
     if (retryingRef.current) {
@@ -159,6 +159,15 @@ export function PresaleActive({
   }, []);
   // a first sync not settled yet: the note reads "Checking balance…" and offers no tap
   const noteBusy = retrying || (lastSyncedAt === null && lastSyncFailedAt === null);
+  // plan ruling T (task 11 review): nothing has read the balance — this screen is also reached in onboarding, where
+  // no dashboard runs the sync — so the screen starts the read itself. forceSync is single-flight per wallet, so on
+  // the dashboard route it joins the read already running. A failure lands as the tappable "unavailable" note.
+  const neverRead = lastSyncedAt === null && lastSyncFailedAt === null;
+  useEffect(() => {
+    if (neverRead) {
+      retryBalance();
+    }
+  }, [neverRead, retryBalance]);
 
   // Captured-referrer store (B1 interim manual field; B2's deep link will write
   // here too). Cleared after a successful referred purchase.

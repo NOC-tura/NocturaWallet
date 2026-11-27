@@ -407,18 +407,45 @@ describe('PresaleActive — the main balance must be known (history spec §7, H6
   });
 
   // B4
-  it('a first read in flight: "Checking balance…", which offers no tap', async () => {
+  it('nothing has read the balance yet: the screen starts the read itself, once, and "Checking balance…" offers no tap', async () => {
     Object.assign(mockWallet, NEVER);
     const r = renderActive();
     await r.findByTestId('presale-buy-button');
+    expect(mockForceSync).toHaveBeenCalledTimes(1);
     const note = r.getByTestId('presale-balance-note');
     expect(note).toHaveTextContent('Checking balance…');
     expect(note.props.accessibilityState).toEqual({disabled: true, busy: true});
     fireEvent.press(note);
-    expect(mockForceSync).not.toHaveBeenCalled();
+    expect(mockForceSync).toHaveBeenCalledTimes(1);
     expect(r.getByTestId('presale-available')).toHaveTextContent('—');
     fireEvent.changeText(r.getByTestId('presale-sol-input'), '0.2');
     expect(buyDisabled(r)).toBe(true);
+  });
+
+  // B4b
+  it('the first read the screen started failed: "Balance unavailable · tap to retry", tappable; Buy and MAX off', async () => {
+    Object.assign(mockWallet, NEVER);
+    let finish: () => void = () => undefined;
+    mockForceSync.mockImplementationOnce(() => new Promise(resolve => {
+      finish = () => {
+        Object.assign(mockWallet, UNKNOWN); // the failed sync's mark, as the store would hold it
+        resolve({success: false});
+      };
+    }));
+    const r = renderActive();
+    await r.findByTestId('presale-buy-button');
+    expect(r.getByTestId('presale-balance-note')).toHaveTextContent('Checking balance…');
+    await act(async () => {
+      finish();
+    });
+    const note = r.getByTestId('presale-balance-note');
+    expect(note).toHaveTextContent('Balance unavailable · tap to retry');
+    expect(note.props.accessibilityState).toEqual({disabled: false, busy: false});
+    expect(r.getByTestId('presale-max').props.accessibilityState).toEqual({disabled: true});
+    fireEvent.changeText(r.getByTestId('presale-sol-input'), '0.2');
+    expect(buyDisabled(r)).toBe(true);
+    fireEvent.press(note);
+    expect(mockForceSync).toHaveBeenCalledTimes(2);
   });
 
   // B5
