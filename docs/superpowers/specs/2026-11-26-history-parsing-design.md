@@ -100,7 +100,7 @@ The source list is read once per history session and on every pull-to-refresh. A
 - **Pull-to-refresh** (review r2 N6):
   - re-reads the source list;
   - pages each source from its head with `before` until it meets that source's `newest`, or the source is exhausted. `newest` is the first signature ever fetched for the source in this session, kept in the session (review r3 P1);
-  - takes only the signatures newer than `newest`, sets `newest` to the new head, and merges them at the top;
+  - takes only the signatures newer than `newest`, sets `newest` to the new head, and merges them into place by (slot desc, signature asc) (Task 3 review I2, 2026-11-27);
   - re-tries every loaded row that is still unparsed.
 
   Loaded older pages stay. The session is discarded and history restarts from the head, so no hole can be shown, when:

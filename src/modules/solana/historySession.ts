@@ -44,7 +44,10 @@ export interface SourceList {
 
 export interface HistorySessionDeps {
   listSources: () => Promise<SourceList>;
-  /** newest first; `before` undefined reads from the head */
+  /**
+   * newest first; `before` undefined reads from the head. It must return the RPC page UNFILTERED: a page
+   * shorter than `limit` marks the source exhausted, so a dropped item would end the history early.
+   */
   fetchSignatures: (source: string, before: string | undefined, limit: number) => Promise<SignatureItem[]>;
 }
 
@@ -66,9 +69,9 @@ function newerFirst(a: SignatureItem, b: SignatureItem): number {
 let nextId = 1;
 
 export class HistorySession {
-  /** changes when the session restarts from the head (a restart drops every loaded page) */
-  id = nextId++;
+  private sessionId = nextId++;
   private sources: string[] | null = null;
+  private tokenSources: ReadonlySet<string> = new Set();
   private total = 0;
   private state = new Map<string, SourceState>();
   private emitted = new Set<string>();
@@ -78,6 +81,11 @@ export class HistorySession {
   private queue: Promise<unknown> = Promise.resolve();
 
   constructor(private readonly deps: HistorySessionDeps) {}
+
+  /** changes when the session restarts from the head (a restart drops every loaded page) */
+  get id(): number {
+    return this.sessionId;
+  }
 
   /** every emitted signature, newest page first */
   get items(): readonly SignatureItem[] {
@@ -101,7 +109,7 @@ export class HistorySession {
 
   /** the token accounts this session reads (its sources without the wallet) */
   get tokenAccountSources(): ReadonlySet<string> {
-    return new Set((this.sources ?? []).slice(1));
+    return this.tokenSources;
   }
 
   /** §3.2 footer: how many token accounts are read, of how many the wallet owns */
@@ -128,6 +136,7 @@ export class HistorySession {
   private adopt(list: SourceList): void {
     this.sources = [...list.sources];
     this.total = list.tokenAccountsTotal;
+    this.tokenSources = new Set(this.sources.slice(1));
     this.state = new Map(this.sources.map(s => [s, {buffer: [], cursor: undefined, exhausted: false, newest: undefined}]));
   }
 
@@ -149,6 +158,9 @@ export class HistorySession {
     if (this.sources === null) {
       this.adopt(await this.deps.listSources());
     }
+    if (this.pages > 0 && this.endReached) {
+      return; // nothing older exists: no empty page
+    }
     const sources = this.sources!;
     while (this.carry.length < HISTORY_PAGE_SIZE) {
       // before each take, every source whose buffer ran out is fetched: no row surfaces a page late (r3 m-b)
@@ -156,7 +168,13 @@ export class HistorySession {
         const st = this.state.get(s)!;
         return st.buffer.length === 0 && !st.exhausted;
       });
-      await Promise.all(dry.map(s => this.fetchInto(s)));
+      // allSettled: a failed page leaves no sibling fetch in flight to land after the retry
+      const settled = await Promise.allSettled(dry.map(s => this.fetchInto(s)));
+      for (const result of settled) {
+        if (result.status === 'rejected') {
+          throw result.reason;
+        }
+      }
       let best: SourceState | null = null;
       for (const s of sources) {
         const st = this.state.get(s)!;
@@ -181,13 +199,29 @@ export class HistorySession {
   }
 
   private async restart(list: SourceList): Promise<void> {
-    this.id = nextId++;
+    // built aside: the old list stays until the new page 1 was read
+    const old = {
+      sources: this.sources,
+      total: this.total,
+      tokenSources: this.tokenSources,
+      state: this.state,
+      emitted: this.emitted,
+      loaded: this.loaded,
+      carry: this.carry,
+      pages: this.pages,
+    };
     this.emitted = new Set();
     this.loaded = [];
     this.carry = [];
     this.pages = 0;
     this.adopt(list);
-    await this.buildPage();
+    try {
+      await this.buildPage();
+    } catch (error) {
+      Object.assign(this, old);
+      throw error;
+    }
+    this.sessionId = nextId++;
   }
 
   private async doRefresh(): Promise<void> {
@@ -252,7 +286,7 @@ export class HistorySession {
       }
     });
     if (added.length > 0) {
-      this.loaded = [...added.sort(newerFirst), ...this.loaded];
+      this.loaded = [...added, ...this.loaded].sort(newerFirst);
     }
   }
 }

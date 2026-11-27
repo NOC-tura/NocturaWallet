@@ -320,3 +320,197 @@ it('the registry: one session per cluster and account; drops by account, by exce
   dropHistorySessions();
   expect(peekHistorySession('devnet', 'A')).toBeUndefined();
 });
+
+// ---- Task 3 review fixes (2026-11-27). Real timers only: `tick` yields to the event loop. ----
+const tick = (): Promise<void> => new Promise(resolve => setTimeout(resolve, 0));
+
+/** the same scripted world, but every fetch waits on one gate until `release()`; `started` records fetches as they begin */
+function gated(sources: Record<string, SignatureItem[]>) {
+  const base = chain(sources);
+  const started: Array<{source: string; before: string | undefined}> = [];
+  let release: () => void = () => undefined;
+  const gate = new Promise<void>(resolve => {
+    release = resolve;
+  });
+  const deps: HistorySessionDeps = {
+    listSources: base.deps.listSources,
+    fetchSignatures: async (source, before, limit) => {
+      started.push({source, before});
+      await gate;
+      return base.deps.fetchSignatures(source, before, limit);
+    },
+  };
+  return {deps, started, release, world: base.world};
+}
+
+// R1 (review Important 1): serialisation, pinned by a test that can fail
+it('a refresh and a load-older never interleave (gated)', async () => {
+  const W = run('w', 100, 45);
+  const world = chain({W});
+  let hold: Promise<void> | null = null;
+  let open: () => void = () => undefined;
+  const started: Array<{source: string; before: string | undefined}> = [];
+  const deps: HistorySessionDeps = {
+    listSources: world.deps.listSources,
+    fetchSignatures: async (source, before, limit) => {
+      started.push({source, before});
+      if (hold !== null) {
+        await hold;
+      }
+      return world.deps.fetchSignatures(source, before, limit);
+    },
+  };
+  const s = new HistorySession(deps);
+  await s.loadNextPage(); // w100…w81
+  world.world.sources.W = [item('new', 999), ...W];
+  hold = new Promise<void>(resolve => {
+    open = resolve;
+  });
+  started.length = 0;
+  const refreshing = s.refresh();
+  const loading = s.loadNextPage();
+  await tick();
+  await tick();
+  expect(started).toEqual([{source: 'W', before: undefined}]); // only the refresh's read: no {before: 'w81'} yet
+  open();
+  await Promise.all([refreshing, loading]);
+  expect(started.slice(1)).toEqual([{source: 'W', before: 'w81'}]);
+  expect(sigs(s)).toEqual(['new', ...run('w', 100, 40).map(x => x.signature)]);
+});
+
+it('two concurrent loadNextPage calls run one after the other', async () => {
+  const W = run('w', 100, 45);
+  const g = gated({W});
+  const s = new HistorySession(g.deps);
+  const a = s.loadNextPage();
+  const b = s.loadNextPage();
+  await tick();
+  await tick();
+  expect(g.started).toEqual([{source: 'W', before: undefined}]); // the second call has not begun
+  g.release();
+  await Promise.all([a, b]);
+  expect(g.started).toEqual([
+    {source: 'W', before: undefined},
+    {source: 'W', before: 'w81'},
+  ]);
+  expect(s.pagesLoaded).toBe(2);
+  expect(sigs(s)).toEqual(run('w', 100, 40).map(x => x.signature));
+});
+
+// R2 (review Important 2): the refresh commit places rows by (slot desc, signature asc)
+it('refresh: a row found late on another source, older than one already loaded, goes below it', async () => {
+  const W = [item('y', 501), ...run('w', 100, 3)];
+  const T = run('t', 50, 2);
+  const {deps, world} = chain({W, T});
+  const s = new HistorySession(deps);
+  await s.loadNextPage();
+  world.sources.T = [item('x', 500), ...T]; // T's first read missed x; W's already holds y at 501
+  await s.refresh();
+  expect(sigs(s).slice(0, 3)).toEqual(['y', 'x', 'w100']);
+});
+
+// R3 (review Minor 1)
+it('a restart whose first page fails keeps the list as it was', async () => {
+  const W = run('w', 100, 30);
+  const {deps, world} = chain({W, T: run('t', 50, 2)});
+  const s = new HistorySession(deps);
+  await s.loadNextPage();
+  const before = {items: s.items, pages: s.pagesLoaded, id: s.id, end: s.endReached, tokens: s.tokenAccountSources};
+  world.sources.T2 = run('x', 999, 1);
+  world.list = ['W', 'T', 'T2'];
+  world.failOn = 'T2';
+  await expect(s.refresh()).rejects.toThrow('rpc down');
+  expect(s.items).toEqual(before.items);
+  expect(s.pagesLoaded).toBe(before.pages);
+  expect(s.id).toBe(before.id);
+  expect(s.endReached).toBe(before.end);
+  expect(s.tokenAccountSources).toEqual(before.tokens);
+  world.failOn = null;
+  await s.refresh();
+  expect(s.id).not.toBe(before.id);
+  expect(sigs(s)[0]).toBe('x999');
+});
+
+// R4 (review Minor 2)
+it('a failed page waits for its sibling fetches: the late result lands once and the retry does not re-fetch it', async () => {
+  const W = run('w', 100, 5);
+  const T = run('t', 200, 5);
+  const calls: string[] = [];
+  let failT = true;
+  let openW: () => void = () => undefined;
+  const gateW = new Promise<void>(resolve => {
+    openW = resolve;
+  });
+  const deps: HistorySessionDeps = {
+    listSources: async () => ({sources: ['W', 'T'], tokenAccountsTotal: 1}),
+    fetchSignatures: async (source, before) => {
+      calls.push(`${source}:${String(before)}`);
+      if (source === 'T' && failT) {
+        throw new Error('rpc down');
+      }
+      if (source === 'W') {
+        await gateW;
+      }
+      return before === undefined ? (source === 'W' ? W : T) : [];
+    },
+  };
+  const s = new HistorySession(deps);
+  let settled = false;
+  const page = s.loadNextPage().then(
+    () => {
+      settled = true;
+    },
+    () => {
+      settled = true;
+    },
+  );
+  await tick();
+  await tick();
+  expect(settled).toBe(false); // T failed at once, but W's read is still in flight
+  openW();
+  await page;
+  failT = false;
+  await s.loadNextPage();
+  expect(calls.filter(c => c === 'W:undefined')).toHaveLength(1);
+  expect(sigs(s)).toEqual([...T, ...W].map(x => x.signature));
+});
+
+// R5 (review Minor 3)
+it('loadNextPage after the end of history does not count a page', async () => {
+  const {deps} = chain({W: run('w', 100, 5)});
+  const s = new HistorySession(deps);
+  await s.loadNextPage();
+  expect(s.endReached).toBe(true);
+  await s.loadNextPage();
+  expect(s.pagesLoaded).toBe(1);
+  expect(s.items).toHaveLength(5);
+});
+
+// R6 (review Minor 4)
+it('a same-slot tie across two sources and across a page boundary is ordered by signature', async () => {
+  const mk = (names: string[]): SignatureItem[] => names.map(n => item(n, 7));
+  const W = mk(Array.from({length: 15}, (_, k) => `m${String(2 * k).padStart(2, '0')}`));
+  const T = mk(Array.from({length: 15}, (_, k) => `m${String(2 * k + 1).padStart(2, '0')}`));
+  const {deps} = chain({W, T});
+  const s = new HistorySession(deps);
+  await s.loadNextPage();
+  await s.loadNextPage();
+  expect(sigs(s)).toEqual(Array.from({length: 30}, (_, k) => `m${String(k).padStart(2, '0')}`));
+});
+
+it('a row without a block time keeps its place by slot and stays null', async () => {
+  const W = [{...item('a', 9), blockTime: null}, item('b', 8)];
+  const {deps} = chain({W});
+  const s = new HistorySession(deps);
+  await s.loadNextPage();
+  expect(sigs(s)).toEqual(['a', 'b']);
+  expect(s.items[0]!.blockTime).toBeNull();
+});
+
+// R7 (review Minor 5)
+it('tokenAccountSources is the same object until the source list changes', async () => {
+  const {deps} = chain({W: [], T: []});
+  const s = new HistorySession(deps);
+  await s.loadNextPage();
+  expect(s.tokenAccountSources).toBe(s.tokenAccountSources);
+});
