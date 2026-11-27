@@ -1,6 +1,6 @@
 # PR 2 — Transaction history parsing, retroactive "linked" scan, presale stale label
 
-**Date:** 2026-11-26. **Revision:** r4, **Fable APPROVED** (review r4; minors q1–q3 folded). r4 folds in Fable spec review r3 (P1, m-a to m-g). r3 folded in review r2 (N1–N7, m1–m8). r2 folded in Fable spec review r1, which was NOT APPROVED (5 Critical, 13 Important, 10 Minor), and the owner's answers H7–H8.
+**Date:** 2026-11-26. **Revision:** r5 (2026-11-27) — an amendment of §3.3 after the plan review r2 (`.superpowers/sdd/2026-11-26-history-parsing-plan-review-r2.md`): transactions are read at **version 1** by the **owner's decision of 2026-11-27**, and an answer is matched to a signature by its own signature (review C1). §8 and §9 follow; nothing else changed. r4 was **Fable APPROVED** (review r4; minors q1–q3 folded). r4 folds in Fable spec review r3 (P1, m-a to m-g). r3 folded in review r2 (N1–N7, m1–m8). r2 folded in Fable spec review r1, which was NOT APPROVED (5 Critical, 13 Important, 10 Minor), and the owner's answers H7–H8.
 
 **Branch:** `feat/history-parsing`, from `main` at 7f3f235 (PR #127 merged).
 
@@ -83,15 +83,17 @@ The source list is read once per history session and on every pull-to-refresh. A
 - Raw parsed transactions are cached per signature under the TanStack key `['parsedTx', cluster, signature]`, with `staleTime: Infinity` and `gcTime: 24 h` (the client default of 5 min would collect them). A landed transaction does not change. A null answer is not cached. `onSecureMmkvReset` clears every `parsedTx` entry.
 - **The history query key** keeps today's prefix: `['txHistory', address, cluster, pageSize]`. #21 invalidates `['txHistory', address]` (`TransactionStatusScreen.tsx:132`), and that prefix must keep matching. An invalidation also drops the history session for that account. The `txHistory` query's own refetch (on mount after `staleTime`, or on focus) runs the §3.4 refresh, and loading the next page calls the session (review r3 m-c). That query has its own `staleTime` of 60 s, because a refresh can cost up to 25 signature calls (review r4 q1).
 - A page reads only the signatures not yet cached:
-  - first with one `getParsedTransactions(signatures, {maxSupportedTransactionVersion: 0})`;
+  - first with one `getParsedTransactions(signatures, {maxSupportedTransactionVersion: 1})`;
   - **if the batch call throws,** with single `getParsedTransaction` calls for the same signatures, one at a time through `rpcLimiter`.
+- **Version 1 — owner decision 2026-11-27** (r5; r1–r4 said `maxSupportedTransactionVersion: 0`). The plan review r2 counted about 46 % of sampled mainnet transactions as version 1; asked for at version 0 the node refuses each with `-32015`, so they could never be read. Version 1 is the highest version web3.js 1.99 parses. The owner decided on 2026-11-27 that PR 2 reads them. Every transaction read of this PR uses 1 — the history, #27, the link scan. A transaction of a higher version, or one a node refuses for any other reason, is still refused: its row is a partial row (§3.4), never a guess.
+- **An answer is matched to its signature by the signature it carries** (r5; plan review r2 C1). JSON-RPC 2.0 allows a node to answer a batch in any order, both public endpoints do, and web3.js does not restore the order. So each answer belongs to its own `transaction.signatures[0]`, never to its position in the batch. An answer with no signature, an answer for a signature that was not asked for, and a signature that two answers of one batch claim are all treated as unread: not shown, not cached, asked for again. A single read checks its answer the same way. This is rule §1.2 applied to the read: a row never shows another transaction's data.
 - **Cost, stated honestly:** a batch is one HTTP call carrying N JSON-RPC requests. Providers count and rate-limit each one, so a page of 20 new transactions costs 20 provider requests either way. The batch saves round trips, not quota.
 - **The limiter key** for any history read contains the method and the cluster, plus:
   - for a signature read, the source and its cursor;
   - for a transaction read, a hash of **every** signature in the batch.
 
   `rpcLimiter` dedupes in flight by key. A key with less would hand one page's answer to another, or one retry's answer to another (review r2 m2).
-- **Plan Task 1 measures this first** against both the devnet and the mainnet endpoint: a 20-item batch, and 20 sequential calls. It records the latency and any refusal before the screen work starts. If the batch is refused, the sequential path is the product path.
+- **Plan Task 1 measures this first** against both the devnet and the mainnet endpoint: a 20-item batch, and 20 sequential calls. It records the latency and any refusal before the screen work starts. If the batch is refused, the sequential path is the product path. It also confirms that the app's own provider serves a version-1 transaction (r5); if it does not, the work stops and the owner is told.
 
 ### 3.4 Partial pages, refresh and identity
 - A signature whose transaction comes back null (not indexed yet) or failed to read **still shows a row**. It has the date and status from the signature list, the title "Transaction", and "—" for the amount. It is never dropped, and never becomes a Sent.
@@ -414,6 +416,8 @@ Scanned accounts are role `fresh-exit` with `linked !== true` only; `fresh-pendi
 - The 25-source bound and its footer line.
 - The limiter key differs per page.
 - The batch path, and the fallback when the batch throws.
+- A batch answered out of order, and one holding an answer nobody asked for: each row shows its own transaction or none (r5).
+- Version 1: two real version-1 mainnet transactions (a SOL transfer, a Jupiter swap) are classified like any other; the reads ask for version 1 (r5).
 - A partial row.
 - End of history.
 - The cache is used, with no second read of a cached signature.
@@ -465,6 +469,7 @@ Stale, unknown and never-synced states, each with a fresh control, and the MAX d
 - **Large wallets:** history reads at most 25 sources, so a wallet with more token accounts says so in the list footer.
 - **A stake or other non-token account** created and paid by the account reads "Transaction · Account setup" with its full amount. That is true, but terse.
 - **The RPC provider** sees every request, as #17 already says. History and the scan send one request per signature read.
+- **A transaction above version 1,** or one a node will not serve, stays "Transaction —" (r5). Version-1 reading was tested on Node, not on a phone.
 
 ## 10. Design files
 

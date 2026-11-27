@@ -19,8 +19,9 @@ sources down to a stored finalized cursor.
 Jest + @testing-library/react-native, @solana/web3.js 1.99, `@scure/base` (base58) and `@noble/hashes` (sha256) — both
 already dependencies.
 
-**Spec:** `docs/superpowers/specs/2026-11-26-history-parsing-design.md` (r4, Fable APPROVED). It is BINDING; read the
-whole spec before any task. Its review trail (why each rule is as it is):
+**Spec:** `docs/superpowers/specs/2026-11-26-history-parsing-design.md` (r4, Fable APPROVED; **r5 amends §3.3**:
+version 1 by the owner's decision of 2026-11-27, and answers matched by their own signature). It is BINDING; read
+the whole spec before any task. Its review trail (why each rule is as it is):
 `.superpowers/sdd/2026-11-26-history-parsing-spec-review-r{1,2,3,4}.md`.
 
 **Branch:** `feat/history-parsing` (from `main` 7f3f235; this plan was written at 5588ce7).
@@ -35,10 +36,30 @@ are recorded under "Owner decisions" below and settle I1):
 **Q3** the controller may measure the app's own RPC provider (read-only, from a copy of the env file, the URL never
 printed) and may make the missing wrap transaction on devnet from a throwaway keypair.
 
-**How the code in this plan was checked (2026-11-26).** Every code block of Tasks 2–11 was applied, in task order, to
+**Revision r3 (2026-11-27)** folds the plan review r2
+(`.superpowers/sdd/2026-11-26-history-parsing-plan-review-r2.md`); what each finding became, and the mutation
+that proves each new test, is in `.superpowers/sdd/2026-11-26-history-parsing-plan-fold-r2.md`:
+**C1 (Critical)** an answer of a batch is matched to its signature by the answer's OWN
+`transaction.signatures[0]`, never by its position — both public endpoints answer a batch out of order, and by
+position one transaction would be shown, and cached, on another's row (Task 4; every scripted batch in the tests
+now answers out of order);
+**V1 — owner decision 2026-11-27:** PR 2 reads version-1 transactions (`maxSupportedTransactionVersion: 1`; spec
+§3.3 amended; two real version-1 fixtures; Task 1 confirms the app's provider serves them, with a stop rule);
+**controller ruling:** a hidden figure is the existing `VALUE_HIDDEN` ("•••", `src/copy/accounts.ts`) — there is no
+`TX_HIDDEN`;
+**n2–n5:** one deadline per transaction read; the wrap script refuses any key file it did not write itself; the
+provider measurement is checked before it is shown. n6 is not built (finding 3).
+**One dependency:** the pool's tree sync reads with version 0 (`shielded/a0/treeSync.ts`, review X1). That is
+fixed in a separate PR from `main` (`fix/treesync-v1`: `treeSync.ts`, `web/src/lib/solana.ts`,
+`core/solana/rpc.ts`), not here — **rebase this branch onto `main` once that fix has landed** ("Known limits");
+this plan touches none of those three files. The one version-0 read that is this PR's — `getTransactionDetail`
+in `src/modules/solana/queries.ts`, which #27 reads through until Task 8 — is changed to 1 in Task 4, with a
+test that fails at 0.
+
+**How the code in this plan was checked (2026-11-26, and again for r3 on 2026-11-27).** Every code block of Tasks 2–11 was applied, in task order, to
 a throwaway clone of 5588ce7 holding the Task 1 fixtures (fetched the same day from the public endpoints), and the
 gates were run there: `npx jest` on Node 24 and on Node 22
-(3557 tests in 230 suites passing on each; 1 skipped — the live ZK-manifest suite, as before this plan),
+(3574 tests in 230 suites passing on each; 1 skipped — the live ZK-manifest suite, as before this plan),
 `npx tsc --noEmit` = 0, `npm run lint:ci`
 = `✖ 143 problems (0 errors, 143 warnings)`, `node scripts/check-no-tge-date.mjs` = 0; after each task `tsc` and
 that task's own tests were green too. The classifier's and the scan's tests were also mutation-checked by hand
@@ -46,14 +67,19 @@ that task's own tests were green too. The classifier's and the scan's tests were
 that change nothing observable — which of two proofs of one account is kept, twice, and the cap's `slice`). The
 review then ran 73 single-line mutations across every module; 13 survived. For r2 each survivor the review named
 as a finding was run again on the replayed clone, against the test added for it: the test passes on the plan's
-code, fails with the mutation, and passes again once it is undone (the fold log lists every one). So a
+code, fails with the mutation, and passes again once it is undone (the fold log lists every one). For r3 the
+whole replay was done again on a fresh clone of 7850439 with the 20 fixtures, and 16 single-line mutations of what r3 changed were run on a copy of it — pairing by position again, version 0 again, each deadline removed, the mask changed: each fails the test written for it, and the copy is green and unchanged once it is undone (fold log r2). So a
 block that does not compile, or a test that does not pass as written, means the repository has drifted from
 5588ce7 or a block was mistyped — **stop and report; do not improvise a different implementation.** What was NOT
 checked: anything on a device, and anything against the app's own RPC provider (Tasks 1 and 12 do that). Of Task
-1's scripts, `count-tx-versions.mjs` was run as written (its figures are in finding 1);
-`measure-history-rpc.mjs` was run on the public endpoints, and its new env-file path only against a made-up file
-(to see that nothing of the URL is printed); `make-wrap-new.mjs` was run with `--dry-run` only — the node
-simulated its three instructions without error, and **nothing was sent**.
+1's scripts, `count-tx-versions.mjs` was run as written for r2 (its figures are in finding 1; r3 changed only
+what its report line counts, and that was not run again); `measure-history-rpc.mjs` (r3) was run on both public
+endpoints — it found a version-1 transaction, read it, and printed the batch order — and its env-file path only
+against a made-up file (to see that nothing of the URL is printed); `make-wrap-new.mjs` was run with `--dry-run`
+for r2 — the node simulated its three instructions without error — and for r3 only its refusal of a key file
+without the marker was run; **nothing was sent**. Reading a version-1 transaction was checked in jest (Node) and
+by the review against the live endpoint with the repository's web3.js on Node; **on Hermes it was not** — the
+phone checkpoint is on devnet, where main's own history holds no version-1 transaction.
 
 ## Global Constraints
 
@@ -67,7 +93,8 @@ simulated its three instructions without error, and **nothing was sent**.
   string** — the pool rows read "Made private" / "Made public" and their chip "Private"; their badge is an icon
   with no word (owner decision Q1).
 - **Hide balances (owner decision Q2).** `usePublicSettingsStore(s => s.hideBalances)` — the dashboard's own
-  setting, the only source — also covers #26 and #27: every FIGURE reads "••••" (`TX_HIDDEN`): a row's amount with
+  setting, the only source — also covers #26 and #27: every FIGURE reads "•••" (`VALUE_HIDDEN` of
+  `src/copy/accounts.ts`, the app's existing mask — controller ruling; no `TX_HIDDEN`): a row's amount with
   its "+N more" and the line under it; on #27 the hero, "≈ $x at today's price", each balance-change figure and
   the network fee. Titles, counter-parties, addresses, dates, the status and the role labels stay.
 - The source guard `src/modules/shielded/__tests__/noSelfRelay.test.ts` stays unchanged: the withdraw discriminator
@@ -87,7 +114,7 @@ simulated its three instructions without error, and **nothing was sent**.
 - A test that creates a `QueryClient` calls `client.clear()` in `afterEach` (a `parsedTx` entry holds a 24 h timer).
 - Never run `npx prettier --write`. Never edit a `.env` file. No new npm dependency.
 - Exact values (spec §3, §6), used as named constants and never retyped:
-  - transactions are read with `{maxSupportedTransactionVersion: 0}`;
+  - transactions are read with `{maxSupportedTransactionVersion: 1}` (owner decision 2026-11-27; spec §3.3);
   - a page is 20 signatures (`HISTORY_PAGE_SIZE`); at most 25 sources (`HISTORY_MAX_SOURCES`: the wallet + 24 token
     accounts); a refresh restarts past 5 pages per source (`HISTORY_REFRESH_MAX_PAGES`);
   - query keys `['txHistory', address, cluster, 20]` (`staleTime` 60 s) and `['parsedTx', cluster, signature]`
@@ -98,6 +125,8 @@ simulated its three instructions without error, and **nothing was sent**.
     60 s per exit (`LINK_SCAN_MIN_INTERVAL_MS`); its cursors are the encrypted-MMKV key `v1_linkScanCursors`;
   - Jupiter v6 `JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4`; wSOL `So11111111111111111111111111111111111111112`;
     Token-2022 `TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb`.
+- **An answer of a transaction read belongs to the signature it carries** (`transaction.signatures[0]`), never to
+  its position in a batch. No code and no test pairs answers with signatures by index (plan review r2 C1).
 - A wallet address is shown as first 6 … last 6 (`shortAccountAddress`), never 4…4 (the recorded poisoning address
   collides at 4…4).
 - No TGE date anywhere (owner's rule); the TGE check gate enforces it.
@@ -111,7 +140,7 @@ simulated its three instructions without error, and **nothing was sent**.
   - `src/modules/solana/txDetail.ts`: Task 2 only (types). Tasks 4, 5, 8, 9 import from it.
   - `src/modules/shielded/a0/syncedTx.ts`: Task 2 only.
   - `src/modules/solana/historySession.ts`: Task 3 only. Tasks 4, 6, 8, 9 import from it.
-  - `src/modules/solana/queries.ts`, `src/modules/solana/withTimeout.ts`: Task 4 only.
+  - `src/modules/solana/queries.ts` (and one test added to its `queries.test.ts`), `src/modules/solana/withTimeout.ts`: Task 4 only.
   - `src/copy/transactions.ts`, `src/modules/solana/activityView.ts`, `jest.config.js`: Task 5 only.
   - `src/hooks/useSolanaQueries.ts`: Task 7 (removes `useTransactionHistory`), then Task 8 (removes
     `useTransactionDetail`).
@@ -129,10 +158,11 @@ simulated its three instructions without error, and **nothing was sent**.
 
 ## Review Focus
 
-Six conditions the spec implies but does not spell out, most likely first. Each has a test in its owning task.
+Seven conditions the spec implies but does not spell out. Each has a test in its owning task. The seventh was
+found by the plan review r2 and is the one that showed a wrong row; read it first.
 
 1. **A transaction the node will not serve.** One signature of a page that is refused — a transaction of a version
-   above 0 (they exist on both clusters today, see "Findings"), or one rate-limited inside the batch — makes
+   above 1, a node that does not serve version 1, or one rate-limited inside the batch — makes
    web3.js throw for the whole batch. The page must still show every other row parsed and that one as a partial row
    ("Transaction", "—"), never an empty or failed list (Task 4, tests R14 and H7). And a signature that is NEVER
    served must not sit in the batch of every later page: rows still unparsed are read apart from the page a load
@@ -160,23 +190,31 @@ Six conditions the spec implies but does not spell out, most likely first. Each 
    one hung request would block that account's "Load older" and pull-to-refresh for good, and a hung source-list
    read would hold every later link scan. Each chain call is raced against 20 s inside the limiter's function, so
    the limiter's slot and in-flight key are freed too and the retry is a new request (Task 4, tests R16–R20, H8,
-   H11). A batch that timed out is not followed by twenty single reads.
+   H11). A batch that timed out is not followed by twenty single reads, and one call of the transaction read
+   has one deadline: slow answers or waited-out 429s cannot add up to twenty limits (tests R26, R27, H13).
+7. **An answer that is not the one asked for** (plan review r2 C1, Critical). A node may answer a batch in any
+   order — both public endpoints do — and web3.js does not restore it. Paired by position, one transaction
+   would be shown on another's row with the other's date, and cached there for 24 h. Every answer is matched by
+   its own `transaction.signatures[0]`; an answer nobody asked for, one without a signature, and a signature two
+   answers claim are all dropped — that row is a partial row, asked for again, never someone else's transaction.
+   The single read checks its answer the same way (Task 4, tests R21–R25 and H12; Task 8, test U5; Task 10,
+   test N11b). Every scripted batch in the tests answers out of order.
 
 ## File map
 
 | File | Task | Responsibility after this plan |
 |---|---|---|
-| `src/modules/solana/__tests__/fixtures/*.json` (15 new, and the wrap of Task 1 Step 3) | 1 | verbatim `getTransaction` (jsonParsed) responses |
-| `src/modules/solana/txDetail.ts` | 2 | + the response fields the classifier reads (`RawParsedTx`, `RawInstruction`, `keyString` exported) |
+| `src/modules/solana/__tests__/fixtures/*.json` (17 new — two of version 1 — and the wrap of Task 1 Step 3) | 1 | verbatim `getTransaction` (jsonParsed) responses |
+| `src/modules/solana/txDetail.ts` | 2 | + the response fields the classifier reads (`RawParsedTx` incl. `version` and a version-1 message's `transactionConfig`, `RawInstruction`, `keyString` exported) |
 | `src/modules/shielded/a0/syncedTx.ts` | 2 | `isOurA0Ix` exported; + `a0PoolInstructionKind` |
 | `src/modules/solana/activity.ts` (new) | 2 | `classifyActivity` — net changes, kind, primary, counter-party |
 | `src/modules/solana/historySession.ts` (new) | 3 | the merged signature stream of one account: pages, refresh, restart; the session registry |
-| `src/modules/solana/queries.ts` | 4 | `tokenAccountsOf` exported (one program's accounts, the bare read); `getTokenAccounts` unchanged |
+| `src/modules/solana/queries.ts` | 4 | `tokenAccountsOf` exported (one program's accounts, the bare read); `getTokenAccounts` unchanged; `getTransactionDetail` asks at version 1 |
 | `src/modules/solana/withTimeout.ts` | 4 | rejects with a `TimeoutError` (same message) |
-| `src/modules/solana/historyReads.ts` (new) | 4 | source list (classic + Token-2022), a signature page, parsed transactions + the `parsedTx` cache, limiter keys, the 20 s limit |
+| `src/modules/solana/historyReads.ts` (new) | 4 | source list (classic + Token-2022), a signature page, parsed transactions (version 1; each answer matched by its own signature) + the `parsedTx` cache, limiter keys, the 20 s limit and the one deadline per read |
 | `src/modules/solana/history.ts` (new) | 4 | `loadHistory` — session + reads + classifier → the snapshot #26 shows |
 | `src/modules/solana/activityContext.ts` (new) | 4 | the app's constants for the classifier |
-| `src/copy/transactions.ts` | 5 | + every word of the #26 rows, chips, sections, and of #27's new parts; the badge's screen-reader label; the hidden-amount mark |
+| `src/copy/transactions.ts` | 5 | + every word of the #26 rows, chips, sections, and of #27's new parts; the badge's screen-reader label (the hidden-figure mask is `VALUE_HIDDEN` of `src/copy/accounts.ts`, unchanged) |
 | `src/modules/solana/activityView.ts` (new) | 5 | what a row says (pure): `rowView` (shown or hidden), `sectionOf`, `rowTime`, chips, counter-party label; #27's hero / parties / change lines |
 | `jest.globalSetup.js` (new), `jest.config.js` | 5 | `TZ=UTC` for every test |
 | `src/hooks/useActivityHistory.ts` (new) | 6 | the history query: key, 60 s, load older, account switch |
@@ -205,15 +243,16 @@ one devnet transaction from a throwaway keypair, and Step 4 reads the app's own 
 file. No `.env` file is ever edited, and none is read in place.
 
 **Files:**
-- Create: 15 files in `src/modules/solana/__tests__/fixtures/` (table below)
+- Create: 17 files in `src/modules/solana/__tests__/fixtures/` (table below)
 - Create (local, git-ignored): `.superpowers/sdd/2026-11-26-history-parsing/task1.md` — the ledger of this task
 
 **Interfaces:**
 - Consumes: nothing.
 - Produces: the fixture files, under exactly these names. Each is the verbatim JSON-RPC answer
   `{"jsonrpc":"2.0","result":{…},"id":1}` of `getTransaction(signature, {encoding: "jsonParsed",
-  maxSupportedTransactionVersion: 0})`, as the three files already in that directory are. Later tasks load them as
-  `JSON.parse(file).result`.
+  maxSupportedTransactionVersion: 0})`, as the three files already in that directory are — and with
+  `maxSupportedTransactionVersion: 1` for the two version-1 files (a node refuses them at 0 with `-32015`). Later
+  tasks load them as `JSON.parse(file).result`.
 - Produces: the measurements and their judgement, recorded in the ledger (Steps 4–6). Task 4 proceeds as written
   unless Step 6 says to stop.
 
@@ -240,6 +279,13 @@ the owner's.
 | `tx-token2022-transfer-2j54z2QC.json` | mainnet | `2j54z2QCrsM31f2YpteSSCL1MkSp9oCg6DnTZkpTeb8bbcKwM7mpT9tZ1agkUxxgvpj83A3gtRq2zEjRfjTWkZAp` | 474266213 | a Token-2022 `transferChecked` into an existing account |
 | `tx-jupiter-token-to-sol-2FSgk4Ge.json` | mainnet | `2FSgk4GesoeQuCTGPCFzHvtE8modfoz1zXkZtk9owyUGHeyJnyNtYcPZwjtxVswGeNSrxw1XBdJ6oHXkA9TXQxYJ` | 474266332 | a Jupiter v6 swap, token → SOL (a temporary wSOL account created and closed) |
 | `tx-jupiter-sol-to-token-4C4tZgit.json` | mainnet | `4C4tZgitRbkbp9zasqSNDbdbJwDtXarHKt5dywzhbrHbVSgPqZTDHfiRduLfotxAuQALNfyBacav5nNeyRPVGiLa` | 474266332 | a Jupiter v6 swap, SOL → token (pays the rent of a new token account) |
+| `tx-v1-sol-transfer-4kMGkJzt.json` | mainnet | `4kMGkJztTKPgSzvaNTJYaEY3D2SzXDXGTLTvkQhJ26zkAgC1cuFNo4oE5QwqL9Hyx6KAM5fKKoSkDe3nPf4rNyBn` | 474305397 | **version 1**: a SOL transfer of 202400 lamports, `FQmfF49e…` → `96gYZGLn…`, fee 5000 |
+| `tx-v1-jupiter-token-to-sol-2D2esRV1.json` | mainnet | `2D2esRV1We4rjMAAMVMjYfi4xiLDsuPwa9cHvLLe5xuv5eCnykDqCLamiYTeYTqAY1yQRMRXngCmbSMSMA4WXppg` | 474305360 | **version 1**: a Jupiter v6 swap, token → SOL, by `CkZk4czG…` (a second signer besides the fee payer) |
+
+The two version-1 files (owner decision 2026-11-27; plan review r2 V1) are strangers' public mainnet transactions
+of 2026-11-26, found in three blocks the plan review sampled. They were fetched while this plan was revised
+(2026-11-27, public endpoint) and are what Task 2's tests A43–A47 were run against. A version-1 answer has
+`"version": 1`, a `transactionConfig` in its message and no compute-budget instruction; Step 2 checks all three.
 
 Already in the repository from PR 1 — **do not fetch them again**: `tx-sol-transfer.json` (`2HWCCJQd…`),
 `tx-test-to-main.json` (`QAgzVzY6…`), `tx-test-to-outside.json` (`5i53q9tR…`).
@@ -249,15 +295,16 @@ Not in the list, and why (rulings 4 and 5): no relayed **failed** transaction ex
 brand-new wSOL account was found as a whole transaction in about 700 mainnet blocks (wallets wrap inside a swap).
 Step 3 looks again and, if it finds none, makes one on devnet (plan review r1 m11; owner decision Q3).
 
-- [ ] **Step 1: Fetch the 15 files.** From the repository root:
+- [ ] **Step 1: Fetch the 17 files.** From the repository root (the fourth argument is the highest version asked
+      for: absent = 0, as the existing fixtures were fetched; 1 for the two version-1 files):
 
 ```bash
 cd /home/user/Solana/Project/NocturaWallet
 dir=src/modules/solana/__tests__/fixtures
-fetch() { # cluster signature file
+fetch() { # cluster signature file [highest version: 0 when absent]
   case "$1" in devnet) url=https://api.devnet.solana.com ;; mainnet) url=https://api.mainnet-beta.solana.com ;; esac
   curl -sS --fail -X POST "$url" -H 'content-type: application/json' \
-    --data "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"getTransaction\",\"params\":[\"$2\",{\"encoding\":\"jsonParsed\",\"maxSupportedTransactionVersion\":0}]}" \
+    --data "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"getTransaction\",\"params\":[\"$2\",{\"encoding\":\"jsonParsed\",\"maxSupportedTransactionVersion\":${4:-0}}]}" \
     -o "$dir/$3" && echo "saved $3" && sleep 2
 }
 fetch devnet  3d31ATapk2RmLvyesVTCLA2NsDkq9d3aCaeHCczmYYmPCJM4rTekZJbrzskAdkj42o1pZSLYntkRgAmeeY2k2Txn tx-deposit-3d31ATap.json
@@ -275,10 +322,13 @@ fetch mainnet 2hdMogDKpmakrVjFSKTaedpiXYvAX6dTCwPN8Q8h9nRfsBgYKMdogw4NXam7PMWM5x
 fetch mainnet 2j54z2QCrsM31f2YpteSSCL1MkSp9oCg6DnTZkpTeb8bbcKwM7mpT9tZ1agkUxxgvpj83A3gtRq2zEjRfjTWkZAp tx-token2022-transfer-2j54z2QC.json
 fetch mainnet 2FSgk4GesoeQuCTGPCFzHvtE8modfoz1zXkZtk9owyUGHeyJnyNtYcPZwjtxVswGeNSrxw1XBdJ6oHXkA9TXQxYJ tx-jupiter-token-to-sol-2FSgk4Ge.json
 fetch mainnet 4C4tZgitRbkbp9zasqSNDbdbJwDtXarHKt5dywzhbrHbVSgPqZTDHfiRduLfotxAuQALNfyBacav5nNeyRPVGiLa tx-jupiter-sol-to-token-4C4tZgit.json
+fetch mainnet 4kMGkJztTKPgSzvaNTJYaEY3D2SzXDXGTLTvkQhJ26zkAgC1cuFNo4oE5QwqL9Hyx6KAM5fKKoSkDe3nPf4rNyBn tx-v1-sol-transfer-4kMGkJzt.json 1
+fetch mainnet 2D2esRV1We4rjMAAMVMjYfi4xiLDsuPwa9cHvLLe5xuv5eCnykDqCLamiYTeYTqAY1yQRMRXngCmbSMSMA4WXppg tx-v1-jupiter-token-to-sol-2D2esRV1.json 1
 ```
 
-      Expected: 15 "saved …" lines. A `curl: (22)` line is an HTTP error (usually 429): wait a minute and fetch that
-      one file again.
+      Expected: 17 "saved …" lines. A `curl: (22)` line is an HTTP error (usually 429): wait a minute and fetch that
+      one file again. A saved file that holds `"error"` in place of `"result"` (a version-1 signature fetched
+      without the `1`) is caught by Step 2.
 
 - [ ] **Step 2: Verify every file is the transaction this plan names.** Save the script below as
       `verify-fixtures.mjs` in the session's scratchpad directory (it is not committed) and run it:
@@ -290,7 +340,7 @@ import {readFileSync} from 'node:fs';
 import {join} from 'node:path';
 
 const dir = process.argv[2];
-// file, full signature, slot, failed?
+// file, full signature, slot, failed?, version 1? (absent: legacy or 0)
 const EXPECTED = [
   ['tx-deposit-3d31ATap.json', '3d31ATapk2RmLvyesVTCLA2NsDkq9d3aCaeHCczmYYmPCJM4rTekZJbrzskAdkj42o1pZSLYntkRgAmeeY2k2Txn', 524784597, false],
   ['tx-unshield-relayed-54J9kjQ8.json', '54J9kjQ8N5FuoezPEdGM18qZn1H3KFB8JNf1crjm9A51v1BayoUQNwPPUT4C7LFyUvzmtY3Sx7nkmUK8HpcedNLr', 524767985, false],
@@ -307,6 +357,9 @@ const EXPECTED = [
   ['tx-token2022-transfer-2j54z2QC.json', '2j54z2QCrsM31f2YpteSSCL1MkSp9oCg6DnTZkpTeb8bbcKwM7mpT9tZ1agkUxxgvpj83A3gtRq2zEjRfjTWkZAp', 474266213, false],
   ['tx-jupiter-token-to-sol-2FSgk4Ge.json', '2FSgk4GesoeQuCTGPCFzHvtE8modfoz1zXkZtk9owyUGHeyJnyNtYcPZwjtxVswGeNSrxw1XBdJ6oHXkA9TXQxYJ', 474266332, false],
   ['tx-jupiter-sol-to-token-4C4tZgit.json', '4C4tZgitRbkbp9zasqSNDbdbJwDtXarHKt5dywzhbrHbVSgPqZTDHfiRduLfotxAuQALNfyBacav5nNeyRPVGiLa', 474266332, false],
+  // version 1 (owner decision 2026-11-27): fetched with maxSupportedTransactionVersion: 1
+  ['tx-v1-sol-transfer-4kMGkJzt.json', '4kMGkJztTKPgSzvaNTJYaEY3D2SzXDXGTLTvkQhJ26zkAgC1cuFNo4oE5QwqL9Hyx6KAM5fKKoSkDe3nPf4rNyBn', 474305397, false, true],
+  ['tx-v1-jupiter-token-to-sol-2D2esRV1.json', '2D2esRV1We4rjMAAMVMjYfi4xiLDsuPwa9cHvLLe5xuv5eCnykDqCLamiYTeYTqAY1yQRMRXngCmbSMSMA4WXppg', 474305360, false, true],
   // already in the repository (PR 1) — checked, never fetched again
   ['tx-sol-transfer.json', '2HWCCJQdfzmmgaw77i9JtXmVpjPTGxUqiZt9hkmFiMuCSMWtdtyToSobGbEhvsUbaSNEJtARq96GQFisvThYJWni', 525082222, false],
   ['tx-test-to-main.json', 'QAgzVzY6RhvmFWTiCueAyPfQY3qkyjXVZXXBnbYd9KXfkua1JEHJvxxSEjJbiwvQ2bCupghhRnY6WuwdQMGqgNY', 525080588, false],
@@ -314,7 +367,7 @@ const EXPECTED = [
 ];
 
 let bad = 0;
-for (const [file, signature, slot, failed] of EXPECTED) {
+for (const [file, signature, slot, failed, v1 = false] of EXPECTED) {
   const problems = [];
   let r = null;
   try {
@@ -328,7 +381,8 @@ for (const [file, signature, slot, failed] of EXPECTED) {
     if (r.transaction?.signatures?.[0] !== signature) problems.push('signature differs');
     if (r.slot !== slot) problems.push(`slot ${r.slot}, expected ${slot}`);
     if ((r.meta?.err != null) !== failed) problems.push(`err is ${JSON.stringify(r.meta?.err)}`);
-    if (r.version !== 'legacy' && r.version !== 0) problems.push(`version ${r.version}`);
+    if (v1 ? r.version !== 1 : r.version !== 'legacy' && r.version !== 0) problems.push(`version ${r.version}${v1 ? ', expected 1' : ''}`);
+    if (v1 && typeof r.transaction?.message?.transactionConfig !== 'object') problems.push('a version-1 message without transactionConfig');
     if (!Array.isArray(r.meta?.preBalances) || !Array.isArray(r.meta?.innerInstructions)) problems.push('not a full jsonParsed response');
     if (typeof r.transaction?.message?.accountKeys?.[0]?.pubkey !== 'string') problems.push('accountKeys are not jsonParsed');
   }
@@ -340,7 +394,8 @@ process.exit(bad === 0 ? 0 : 1);
 ```
 
       Run: `node <scratchpad>/verify-fixtures.mjs src/modules/solana/__tests__/fixtures`
-      Expected: 18 `ok` lines and `all 18 fixtures are the transactions the plan names`, exit 0.
+      Expected: 20 `ok` lines and `all 20 fixtures are the transactions the plan names`, exit 0 (for the two
+      version-1 files it also checks `version: 1` and the `transactionConfig`).
       **If a file's `result` is null** the node no longer serves that transaction: STOP. Do not substitute another
       transaction — every expected value in Tasks 2, 4, 8 and 9 is computed from these exact ones. Report to the
       owner; the plan's author must re-find a transaction of that shape and recompute the values.
@@ -421,17 +476,26 @@ print('none in', blocks, 'blocks')
 
       **3b — if 3a found none: make one on devnet** (owner decision Q3b). The payer is a FRESH throwaway keypair
       funded by the devnet airdrop only. **Never the main wallet, never Accounts 2–5, no transfer from any wallet
-      of the seed** — the script holds no other key and cannot. Save the script below as `make-wrap-new.mjs` in
-      the scratchpad (not committed):
+      of the seed.** The script enforces that itself (plan review r2 n3): it signs only with a key file IT wrote —
+      `{"throwaway": true, "madeBy": "make-wrap-new.mjs", "secretKey": […]}` — and REFUSES an existing file
+      without that marker (a mistyped path to a real keypair file, which is a plain array, is never used as a
+      payer); it writes a new key file with the exclusive flag, so it never overwrites one; the endpoint is
+      hard-coded and its genesis hash is checked to be devnet's before a key file is read; funds come from
+      `requestAirdrop` only. Save the script below as `make-wrap-new.mjs` in the scratchpad (not committed):
 
 ```js
 // History plan Task 1 Step 3b (owner, Q3b) — MAKE the one transaction no search found: a wrap of SOL into a NEW
 // wSOL account that is the whole transaction, on DEVNET, from a fresh throwaway keypair funded by the devnet
 // airdrop. It touches no wallet of the owner's seed. Run from the repository root (it uses the repo's web3.js):
-//   node <scratchpad>/make-wrap-new.mjs --dry-run <any funded devnet address>   simulate only: nothing is sent
-//   node <scratchpad>/make-wrap-new.mjs <key file> <fixtures directory>         airdrop, send, save the fixture
+//   node <scratchpad>/make-wrap-new.mjs --dry-run <a funded devnet address>   simulate only: nothing is sent, nothing is signed.
+//                                                 A STRANGER's public address — never the main wallet, never an account of the seed.
+//   node <scratchpad>/make-wrap-new.mjs <key file> <fixtures directory>       airdrop, send, save the fixture
 // The key file is created (mode 600) if it does not exist, so a run the faucet refused can be repeated with the
 // same throwaway address. Delete it afterwards: `rm -f <key file>`.
+// THE ONLY KEY THIS SCRIPT SIGNS WITH is one it generated itself: the file it writes is
+// {"throwaway": true, "madeBy": "make-wrap-new.mjs", "secretKey": [...]}, and an existing file WITHOUT that marker is
+// refused (plan review r2 n3) — a mistyped path to a real keypair file (a plain array of 64 numbers, as the Solana
+// CLI writes it) is never used as a payer. Funds come from the devnet airdrop only; the endpoint is hard-coded.
 import {createRequire} from 'node:module';
 import {chmodSync, existsSync, readFileSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
@@ -445,6 +509,8 @@ const TOKEN = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
 const ATA = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
 const WRAPPED = 10_000_000; // 0.01 SOL
 const AIRDROP = 100_000_000; // 0.1 SOL: the wrap, the account's rent (about 0.002) and the fee
+const MARKER = 'make-wrap-new.mjs';
+const DEVNET_GENESIS = 'EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG';
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const connection = new Connection(URL, 'confirmed');
 
@@ -486,15 +552,31 @@ if (args[0] === '--dry-run' && args[1]) {
 }
 const [keyFile, fixtures] = args;
 if (!keyFile || !fixtures || !existsSync(fixtures)) {
-  console.error('usage: node make-wrap-new.mjs --dry-run <funded devnet address> | <key file> <fixtures directory>');
+  console.error("usage: node make-wrap-new.mjs --dry-run <a stranger's funded devnet address> | <key file> <fixtures directory>");
+  process.exit(2);
+}
+if ((await connection.getGenesisHash()) !== DEVNET_GENESIS) {
+  console.error('the endpoint is not devnet: nothing was read from the key file, nothing was sent');
   process.exit(2);
 }
 let payer;
 if (existsSync(keyFile)) {
-  payer = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(readFileSync(keyFile, 'utf8'))));
+  let stored = null;
+  try {
+    stored = JSON.parse(readFileSync(keyFile, 'utf8'));
+  } catch {
+    stored = null;
+  }
+  const ours = stored !== null && typeof stored === 'object' && !Array.isArray(stored) && stored.throwaway === true && stored.madeBy === MARKER && Array.isArray(stored.secretKey);
+  if (!ours) {
+    console.error(`REFUSED: ${keyFile} exists and is not a throwaway key this script wrote (no marker). It was not used. Name a path that does not exist yet.`);
+    process.exit(2);
+  }
+  payer = Keypair.fromSecretKey(Uint8Array.from(stored.secretKey));
 } else {
   payer = Keypair.generate();
-  writeFileSync(keyFile, JSON.stringify([...payer.secretKey]), {mode: 0o600});
+  // 'wx': never over an existing file
+  writeFileSync(keyFile, JSON.stringify({throwaway: true, madeBy: MARKER, secretKey: [...payer.secretKey]}), {mode: 0o600, flag: 'wx'});
   chmodSync(keyFile, 0o600);
 }
 console.log(`throwaway payer ${payer.publicKey.toBase58()} (devnet)`);
@@ -552,15 +634,22 @@ process.exit(1);
       Run from the repository root, `S` being the scratchpad directory:
 
 ```bash
-node "$S/make-wrap-new.mjs" --dry-run <a funded devnet address with no wSOL account>   # optional: simulate only
+node "$S/make-wrap-new.mjs" --dry-run <a STRANGER's funded devnet address with no wSOL account>   # optional: simulate only
 node "$S/make-wrap-new.mjs" "$S/wrap-throwaway.json" src/modules/solana/__tests__/fixtures
 rm -f "$S/wrap-throwaway.json"                                                          # after it printed FOUND
 ```
 
+      The `--dry-run` address is only simulated against — nothing is signed and nothing is sent — but it must
+      still **not be an address of the seed** (not main, not Accounts 2–5): the rule for this step is "never",
+      and a stranger's public devnet address does the same job. `"$S/wrap-throwaway.json"` must not exist before
+      the first run; if the script prints `REFUSED: … is not a throwaway key this script wrote`, the path names
+      someone's real file — stop, and name a new path.
+
       Expected: `throwaway payer <address> (devnet)`, `sent <signature>`, `FOUND <signature> payer <address>`,
-      `saved tx-wrap-new-<8>.json — …`. The dry run was done while this plan was revised: the node simulated the
+      `saved tx-wrap-new-<8>.json — …`. The dry run was done while this plan was written (r2): the node simulated the
       three instructions (create the associated wSOL account, a 0.01 SOL transfer into it, `syncNative`) without
-      error; nothing was sent then. If the faucet refuses five times the script says so and has sent nothing: run
+      error; nothing was sent then. For r3 only the refusal was run: a plain-array key file and a file with half
+      the marker were both refused with exit 2 before anything was read from the network. If the faucet refuses five times the script says so and has sent nothing: run
       the same command again later (the key file keeps the same throwaway address), and do not delete the key file
       until `FOUND` was printed. If devnet's faucet stays shut for the day, write that into the ledger and go on
       with A23 derived — then tell the owner in Task 12 Step 6 that the real fixture is still missing.
@@ -594,12 +683,21 @@ rm -f "$S/wrap-throwaway.json"                                                  
   });
 ```
 
-- [ ] **Step 4: Measure page 1 and the two ways of reading 20 transactions** (spec §3.2, §3.3), on both clusters.
+- [ ] **Step 4: Measure page 1, the two ways of reading 20 transactions, and the version-1 read** (spec §3.2,
+      §3.3), on both clusters. The script reads as the app will: `jsonParsed`, `maxSupportedTransactionVersion: 1`.
+      Besides the timings it prints two lines added in r3:
+      `version-1 read (<8>…): SERVED (version 1, jsonParsed)` — it takes one version-1 signature from a recent
+      block of the PUBLIC endpoint and asks the measured endpoint for it (owner decision 2026-11-27; review n5) —
+      and `batch order: as asked | NOT as asked (ids …)`, which is **information only**: the app matches every
+      answer by its own signature and must work either way (plan review r2 C1).
       Save the script below as `measure-history-rpc.mjs` in the scratchpad (not committed):
 
 ```js
 // History spec §3.2 / §3.3 — Plan Task 1 measurement. Read-only. Prints timings and refusals, never the endpoint URL.
 //   node measure-history-rpc.mjs <devnet|mainnet> <wallet>
+// It also says (a) whether the endpoint serves a VERSION-1 transaction (the app reads with
+// maxSupportedTransactionVersion: 1 — owner decision 2026-11-27), and (b) whether a batch came back in the order
+// it was asked in (information only: the app matches every answer by its own signature, plan review r2 C1).
 // The endpoint is the PUBLIC one of the cluster, unless RPC_ENV_FILE names a COPY of an env file: then the script
 // reads HELIUS_RPC_URL from that copy itself. The URL holds the key: it is never printed, never put on a command
 // line, and every message this script prints is passed through redact() first.
@@ -625,7 +723,7 @@ const url = keyed ? providerUrl(process.env.RPC_ENV_FILE) : PUBLIC[cluster];
 const label = keyed ? `${cluster} (the app's provider, from RPC_ENV_FILE)` : `${cluster} (public endpoint)`;
 const TOKEN = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
 const TOKEN_2022 = 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb';
-const TX_CONFIG = {encoding: 'jsonParsed', maxSupportedTransactionVersion: 0};
+const TX_CONFIG = {encoding: 'jsonParsed', maxSupportedTransactionVersion: 1};
 /** the URL, its host, and every path or query part of it longer than 7 characters (the key, wherever it sits) */
 const SECRETS = keyed ? [url, new URL(url).host, ...url.split(/[/?&=]/).filter(part => part.length > 7 && !part.startsWith('https'))] : [];
 const redact = s => SECRETS.reduce((text, secret) => text.split(secret).join('<redacted>'), String(s));
@@ -702,6 +800,38 @@ if (merged.length === 0) {
 }
 await sleep(11_000); // let the rate window pass: the two transaction reads below must not shadow each other
 
+// 2b. does this endpoint serve a version-1 transaction? One is taken from a recent block of the PUBLIC endpoint
+// (public data, nothing of the wallet's) and then asked for HERE, as the app asks: jsonParsed, version 1.
+async function publicCall(method, params) {
+  const res = await fetch(PUBLIC[cluster], {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({jsonrpc: '2.0', id: 1, method, params})});
+  const j = res.status === 200 ? await res.json() : {error: {code: res.status, message: 'HTTP'}};
+  return j.error ? {error: `${j.error.code} ${j.error.message}`} : {result: j.result};
+}
+let v1Signature = null;
+const tip = await publicCall('getSlot', [{commitment: 'finalized'}]);
+for (let slot = tip.result, tried = 0; tip.result && v1Signature === null && tried < 40; slot -= 3, tried++) {
+  const block = await publicCall('getBlock', [slot, {encoding: 'json', transactionDetails: 'accounts', rewards: false, maxSupportedTransactionVersion: 1}]);
+  await sleep(500);
+  const found = (block.result?.transactions ?? []).find(t => t.version === 1 && t.meta?.err === null);
+  v1Signature = found ? found.transaction.signatures[0] : null;
+}
+if (v1Signature === null) {
+  console.log('version-1 read: NOT MEASURED — no version-1 transaction in 40 recent public blocks (say so in the ledger; run again later)');
+} else {
+  const refusedAt0 = await call('getTransaction', [v1Signature, {encoding: 'jsonParsed', maxSupportedTransactionVersion: 0}]);
+  await sleep(1500);
+  const servedAt1 = await call('getTransaction', [v1Signature, TX_CONFIG]);
+  const verdict = servedAt1.error
+    ? `REFUSED ${redact(servedAt1.error)}`
+    : servedAt1.result === null
+      ? 'NULL (the endpoint does not have that transaction: run again)'
+      : servedAt1.result.version === 1
+        ? 'SERVED (version 1, jsonParsed)'
+        : `UNEXPECTED version ${servedAt1.result.version}`;
+  console.log(`version-1 read (${v1Signature.slice(0, 8)}…): ${verdict}; asked with version 0: ${refusedAt0.error ? 'refused — ' + redact(refusedAt0.error).slice(0, 60) : 'answered'}`);
+}
+await sleep(3000);
+
 // 3. ONE batch of N getTransaction requests
 const batch = await post(merged.map((s, id) => ({jsonrpc: '2.0', id, method: 'getTransaction', params: [s, TX_CONFIG]})));
 if (batch.status !== 200) {
@@ -715,6 +845,9 @@ if (batch.status !== 200) {
     const nulls = answers.filter(a => !a.error && a.result === null).length;
     console.log(`batch of ${merged.length}: ${batch.ms} ms; ${answers.length - errors.length - nulls} transactions, ${nulls} null, ${errors.length} errors${errors.length ? ' — ' + redact(`${errors[0].error.code} ${errors[0].error.message}`) : ''}`);
     console.log(`batch size: ${(batch.text.length / 1024).toFixed(0)} kB`);
+    // information only — the app never relies on it (answers are matched by their own signature)
+    const ids = answers.map(a => a.id);
+    console.log(`batch order: ${ids.every((id, at) => id === at) ? 'as asked' : 'NOT as asked'} (ids ${ids.join(' ')})`);
   }
 }
 await sleep(11_000);
@@ -754,38 +887,48 @@ node <scratchpad>/measure-history-rpc.mjs mainnet F1hVXLM73vvUUi55wFdUuBr8grSrrf
       requests in the hour, so NOT a clean measurement) gave, on both public endpoints: page-1 signature calls not
       refused; a batch of 20 answered in about 1–1.5 s but with 11 of its 20 items refused
       (`429 Too many requests for a specific RPC call`); the 20 sequential reads then refused by HTTP 429.
+      The r3 script on public devnet (2026-11-27, again not a quiet machine): `version-1 read (4Gyw1fHN…): SERVED
+      (version 1, jsonParsed); asked with version 0: refused — -32015 …`; a batch of 20 with 13 items refused
+      (429); `batch order: NOT as asked (ids 8 10 7 17 12 13 14 9 11 16 15 0 18 19 1 5 2 6 4 3)`.
 
       **Then the app's own provider** (owner decision Q3a: allowed, read-only, before Task 4). Its URL holds the
       key, so: the env file is COPIED (mode 600) into the scratchpad, the script reads `HELIUS_RPC_URL` from that
       copy itself — the URL is never on a command line, never in a variable of the shell, never printed (every
       line the script prints passes its `redact()`; a failure prints `FAILED: …` with the URL, its host and its
-      key removed) — and the copy is deleted at once. **The original `.env` files are never edited.** `S` is the
-      scratchpad directory:
+      key removed) — and the copy is deleted at once. **The original `.env` files are never edited.**
+      **Which file:** the devnet build is made with `ENVFILE=.env.devnet` and the production (mainnet) build with
+      `ENVFILE=.env.production` — those two are the files to copy. The repository root also holds `.env`,
+      `.env.development`, `.env.example` and `.env.pinprobe`: none of them is what a release build reads, so none
+      is measured. **The output goes to a file and is checked BEFORE anything of it is shown** (review n5 — a
+      `| tee` would print it first). `S` is the scratchpad directory:
 
 ```bash
 install -m 600 .env.devnet "$S/env.devnet-measure"
-RPC_ENV_FILE="$S/env.devnet-measure" node "$S/measure-history-rpc.mjs" devnet Da83cAfGUrsm896FUghCkNKutgFc96WNGWN73bZxe31B | tee "$S/measure-provider-devnet.txt"
+RPC_ENV_FILE="$S/env.devnet-measure" node "$S/measure-history-rpc.mjs" devnet Da83cAfGUrsm896FUghCkNKutgFc96WNGWN73bZxe31B > "$S/measure-provider-devnet.txt" 2>&1
 rm -f "$S/env.devnet-measure"
-grep -c -i -E 'https?://|api-key|helius' "$S/measure-provider-devnet.txt"   # must print 0 before the file is pasted anywhere
+if [ "$(grep -c -i -E 'https?://|api-key|helius' "$S/measure-provider-devnet.txt")" = 0 ]; then cat "$S/measure-provider-devnet.txt"; else rm -f "$S/measure-provider-devnet.txt"; echo 'NOT SHOWN: the output held part of the URL — deleted; report it'; fi
 ```
 
       Expected: the first line reads `# devnet (the app's provider, from RPC_ENV_FILE) — wallet Da83cA…`, then the
-      same six kinds of lines as the public run; the last command prints `0`. If it prints anything else, do not
-      paste the output: delete it and report. Paste the output into the ledger with the time of day.
-      **Mainnet's provider** is measured the same way only if a mainnet env file exists in the repository root
-      (`ls .env.production .env.mainnet 2>/dev/null`): `install -m 600 <that file> "$S/env.mainnet-measure"`, the
-      same command with `mainnet F1hVXLM73vvUUi55wFdUuBr8grSrrf9BDFVy35UwcFQK`, `rm -f`, the same `grep`. If there
-      is none, say so in the ledger; the mainnet provider is then judged on a mainnet build, if one is made.
+      same kinds of lines as the public run, among them `version-1 read (…): SERVED (version 1, jsonParsed)`. If
+      the last command prints `NOT SHOWN`, the file is already deleted: report it and paste nothing. Otherwise
+      paste the output into the ledger with the time of day.
+      **Mainnet's provider** is measured the same way from `.env.production` if that file exists
+      (`ls .env.production 2>/dev/null`): `install -m 600 .env.production "$S/env.mainnet-measure"`, the same
+      command with `mainnet F1hVXLM73vvUUi55wFdUuBr8grSrrf9BDFVy35UwcFQK` and `measure-provider-mainnet.txt`,
+      `rm -f`, the same check. If there is none, say so in the ledger; the mainnet provider is then judged on a
+      mainnet build, if one is made.
 
-- [ ] **Step 5: Count the transactions the app cannot read** (plan review r1 I5). The app reads with
-      `maxSupportedTransactionVersion: 0` (spec §3.3, fixed); a transaction of a higher version is refused by the
-      node and shows as "Transaction —" for good. Whether that is rare decides how useful #26 is, so it is counted
-      before the screen work. Save the script below as `count-tx-versions.mjs` in the scratchpad (not committed):
+- [ ] **Step 5: Count the transactions the app cannot read** (plan review r1 I5; r2 V1). The app reads with
+      `maxSupportedTransactionVersion: 1` (spec §3.3 as amended — owner decision 2026-11-27); a transaction of a
+      HIGHER version is refused by the node and shows as "Transaction —" for good. None is expected today
+      (web3.js 1.99 itself knows only legacy, 0 and 1); the count is the evidence, and it also records how common
+      version 1 is. Save the script below as `count-tx-versions.mjs` in the scratchpad (not committed):
 
 ```js
-// History plan Task 1 Step 5 (plan review r1 I5c) — how many transactions have a version above 0?
-// The app reads with maxSupportedTransactionVersion: 0; a transaction of a higher version is refused and shows as
-// "Transaction —". Read-only, public endpoints, prints counts only.
+// History plan Task 1 Step 5 (plan review r1 I5c; r2 V1) — which versions do transactions have?
+// The app reads with maxSupportedTransactionVersion: 1 (owner decision 2026-11-27); a transaction of a HIGHER version
+// is refused and shows as "Transaction —". Read-only, public endpoints, prints counts only.
 //   node count-tx-versions.mjs blocks <devnet|mainnet> <how many recent blocks>
 //   node count-tx-versions.mjs wallet <devnet|mainnet> <wallet>
 const [mode, cluster, arg] = process.argv.slice(2);
@@ -827,9 +970,10 @@ function report(what) {
   console.log(`# ${cluster} — ${what}`);
   for (const [name, m] of Object.entries(counts)) {
     const total = [...m.values()].reduce((a, b) => a + b, 0);
-    const above = [...m].filter(([v]) => v !== 'legacy' && v !== '0').reduce((a, [, n]) => a + n, 0);
+    const of = versions => [...m].filter(([v]) => versions(v)).reduce((a, [, n]) => a + n, 0);
+    const share = n => `${n} of ${total}${total > 0 ? ` (${((100 * n) / total).toFixed(2)} %)` : ''}`;
     const versions = [...m].sort().map(([v, n]) => `${v}: ${n}`).join(', ') || 'none';
-    console.log(`${name} — ${versions} — above 0: ${above} of ${total}${total > 0 ? ` (${((100 * above) / total).toFixed(2)} %)` : ''}`);
+    console.log(`${name} — ${versions} — version 1: ${share(of(v => v === '1'))} — above 1 (the app cannot read them): ${share(of(v => !['legacy', '0', '1'].includes(v)))}`);
   }
 }
 
@@ -903,7 +1047,7 @@ node <scratchpad>/count-tx-versions.mjs wallet devnet Da83cAfGUrsm896FUghCkNKutg
       The third line is main's own history: its address and every token account it owns, each transaction asked
       for once. Paste the three outputs into the ledger. A first, small sample while this plan was revised
       (2026-11-26) is under "Findings for the owner", finding 1: on mainnet 3,638 of 7,955 transactions in 20
-      blocks were version 1; in main's own devnet history, none of 58.
+      blocks were version 1 and none was above 1; in main's own devnet history, none of 58 was above 0.
 
 - [ ] **Step 6: Judge the results against the spec's rule and write the judgement into the ledger.** The rule: "If
       the batch is refused, the sequential path is the product path."
@@ -915,29 +1059,40 @@ node <scratchpad>/count-tx-versions.mjs wallet devnet Da83cAfGUrsm896FUghCkNKutg
     quiet, the rule bites in two cases, and in both the batch call must be skipped — the sequential path is then
     the product path: (1) the batch is refused **as a whole** — an HTTP error, or a JSON-RPC error in place of an
     array; (2) **single items** of the batch are refused (the line reads `batch of 20: … N errors` with N > 0,
-    and the error is a rate limit, not a version) while the sequential run of the same 20 reads them all.
+    and the error is a rate limit) while the sequential run of the same 20 reads them all.
     Case 2 matters because web3.js throws for the whole batch on one refused item: every page would then cost the
     batch AND 20 single reads. In either case **stop before Task 4 and tell the owner.** Skipping the batch is a
     small amendment to Task 4 (the reader's first attempt, and the test expectations that count batch calls: R7,
-    R8, R11, R13, R18, H2, H9); it is not pre-written because nothing measured so far points there.
+    R8, R11, R13, R18, R21–R24, R27, H2, H9, H12, H13); it is not pre-written because nothing measured so far
+    points there.
+  - **The provider must serve version 1** (owner decision 2026-11-27; review n5). If the provider's run prints
+    `version-1 read … REFUSED` (or `UNEXPECTED`), on either cluster: **STOP before Task 4 and tell the owner.**
+    The app would then show every version-1 transaction as "Transaction —" on that provider — about 46 % of
+    mainnet traffic — and each one would cost a refused batch and twenty single reads on the page it arrives
+    in. That is a provider decision (another plan, another provider, or a per-provider setting), not something
+    to work around in code. `NOT MEASURED` or `NULL` is not a pass: run the script again later. The public
+    endpoints serve version 1 (measured 2026-11-26 and 2026-11-27).
+  - **The `batch order` line decides nothing.** Write it into the ledger. Whatever it says, Task 4 matches every
+    answer by its own signature (plan review r2 C1); a provider that keeps the order today is not a reason to
+    rely on it.
   - If the sequential run on the provider is refused too, or page 1's 25 signature calls are: stop and tell the
     owner — the history cannot be read at the provider's limits as planned, whatever the path.
-  - **The version count (Step 5).** If main's own history holds ANY transaction above version 0, or more than
-    1 in 20 of the sampled mainnet transactions are above 0: **tell the owner before Task 4 starts**, with the
-    three outputs. The plan stays correct either way — such a row is a partial row, never a wrong one, and Task 4
-    keeps it out of every later page's batch (test H9) — but how many rows read "Transaction —" is a product
-    question, and reading those transactions is outside this spec (finding 1).
+  - **The version count (Step 5).** If ANY counted transaction is above version 1 — in main's own history or
+    in either block sample: **tell the owner before Task 4 starts**, with the three outputs. The plan stays
+    correct either way — such a row is a partial row, never a wrong one, and Task 4 keeps it out of every later
+    page's batch (test H9) — but it would mean a format web3.js 1.99 cannot parse is already live, which is a
+    dependency question for the owner (finding 1).
   - Either way, add the measured figures to the PR description in Task 12.
 
 - [ ] **Step 7: Gates and commit.** The fixtures are data: nothing else may change.
 
 ```bash
-git status --short            # exactly the 15 new files, and tx-wrap-new-<8>.json if Step 3 found or made one
-ls "$S"/env.*-measure "$S"/wrap-throwaway.json 2>/dev/null   # must print nothing: both were deleted
+git status --short            # exactly the 17 new files, and tx-wrap-new-<8>.json if Step 3 found or made one
+ls "$S"/env.*-measure "$S"/wrap-throwaway.json 2>/dev/null   # must print nothing: all were deleted
 node scripts/check-no-tge-date.mjs
 npx jest src/modules/solana --forceExit      # the existing suites still pass: nothing reads the new files yet
 git add src/modules/solana/__tests__/fixtures
-git commit -m "test(history): 15 verbatim chain responses for the history classifier (devnet own accounts, mainnet public)"
+git commit -m "test(history): 17 verbatim chain responses for the history classifier (devnet own accounts, mainnet public, two of version 1)"
 ```
 
 ---
@@ -952,7 +1107,7 @@ Spec: §4.1–§4.5 (all of it), §8 "Classifier", H2, H3; Review Focus 2.
 - Modify: `src/modules/shielded/a0/syncedTx.ts:152-158` (`isOurA0Ix`)
 - Create: `src/modules/solana/activity.ts`
 - Test: `src/modules/solana/__tests__/activity.test.ts` (new)
-- Reads: the 18 fixtures of Task 1 in `src/modules/solana/__tests__/fixtures/`
+- Reads: the 20 fixtures of Task 1 in `src/modules/solana/__tests__/fixtures/` (two of them version 1)
 
 **Interfaces:**
 - Consumes (Task 1): the fixture files, loaded as `JSON.parse(readFileSync(path, 'utf8')).result as RawParsedTx`.
@@ -963,7 +1118,8 @@ Spec: §4.1–§4.5 (all of it), §8 "Classifier", H2, H3; Review Focus 2.
   - `RawTokenBalance.uiTokenAmount?: {decimals?: number; amount?: string}`
   - `RawParsedTx.meta.preBalances?: number[]`, `.postBalances?: number[]`,
     `.innerInstructions?: Array<{index?: number; instructions?: RawInstruction[]}> | null`;
-    `RawParsedTx.transaction.signatures?: string[]`
+    `RawParsedTx.transaction.signatures?: string[]`; `RawParsedTx.version?: 'legacy' | number`;
+    `RawParsedTx.transaction.message.transactionConfig?: unknown` (a version-1 message has it; nothing reads it)
   - `export function keyString(k: unknown): string` (was private)
 - Produces, from `src/modules/shielded/a0/syncedTx.ts`:
   - `export function isOurA0Ix(ix: {programId: string; accounts: string[]}): boolean` (was private, unchanged)
@@ -995,6 +1151,13 @@ Spec: §4.1–§4.5 (all of it), §8 "Classifier", H2, H3; Review Focus 2.
   (spec review r4 q3: exported, not copied) and tells `activity.ts` only 'deposit' / 'withdraw' / 'other' (ruling 2).
 - **Lamports are JSON numbers.** Above 2^53 they have already lost digits when the response is parsed. The
   classifier then claims no native change at all and marks the row `incomplete` (Review Focus 2).
+- **Version-1 transactions need no rule of their own** (owner decision 2026-11-27; plan review r2 V1). In
+  jsonParsed a version-1 message differs from a legacy one in two ways the classifier never looks at: it carries a
+  `transactionConfig` (compute limit, priority fee) in place of ComputeBudget instructions, and it has no address
+  lookups. Account keys, instructions, `meta.fee`, the balance arrays and the token balances (with `owner`) are as
+  before. Tests A43–A47 pin that on two real mainnet transactions — a SOL transfer and a Jupiter v6 swap — and
+  that removing `transactionConfig` changes nothing. They pass on the classifier as written: they are evidence
+  that the reader of Task 4 may ask for version 1, not a change to `activity.ts`.
 
 - [ ] **Step 1: Write the failing test.** Create `src/modules/solana/__tests__/activity.test.ts`:
 
@@ -1047,6 +1210,10 @@ const SELLER = '4wK1vV3d1ZoZvYED9RafrDAS1XvsvkYJuLN3XxSHTpd5';
 const SOLD_MINT = '3gmFG4sFDJErDV8pacFrL2uUPXeGJTYLjfRy4hFypump';
 const BUYER = 'F1hVXLM73vvUUi55wFdUuBr8grSrrf9BDFVy35UwcFQK';
 const BOUGHT_MINT = '5yC9BM8KUsJTPbWPLfA2N8qH1s9V8DQ3Vcw1G6Jdpump';
+// mainnet, version 1 (plan review r2 V1; owner decision 2026-11-27)
+const V1_SENDER = 'FQmfF49eSNg5PiWdCovBQ4GDe7FKcMyz9ygB275A4bdj';
+const V1_RECIPIENT = '96gYZGLnJYVFmbjzopPSU6QiEV5fGqZNyN9nmNhvrZU5';
+const V1_SELLER = 'CkZk4czG9RsXhLvw14fJWD3VypM7E9ZXG88QRtKvjgmb';
 const TREASURY = 'TreasuryXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX'; // any key that is in no fixture: it is only compared
 
 const symbolOf = (mint: string): string => (mint === 'native' ? 'SOL' : mint === TEST_MINT ? 'TEST' : mint === WSOL_MINT ? 'wSOL' : `short(${mint.slice(0, 4)})`);
@@ -1547,15 +1714,69 @@ describe('the response as web3.js hands it over', () => {
     expect(deltas(r)).toEqual(['moved:TEST:-100000', 'rent:SOL:-695960']);
   });
 });
+
+describe('version 1 transactions (spec §3.3, owner decision 2026-11-27)', () => {
+  const V1_SOL = 'tx-v1-sol-transfer-4kMGkJzt.json';
+  const V1_SWAP = 'tx-v1-jupiter-token-to-sol-2D2esRV1.json';
+
+  // A43 — a pin: the two files ARE version 1, in the shape the node serves it
+  it('the two fixtures are version 1: a `transactionConfig` in the message, and no compute-budget instruction', () => {
+    for (const file of [V1_SOL, V1_SWAP]) {
+      const tx = load(file);
+      expect(tx.version).toBe(1);
+      expect(tx.transaction!.message!.transactionConfig).toMatchObject({computeUnitLimit: expect.any(Number)});
+      const programs = (tx.transaction!.message!.instructions as RawInstruction[]).map(ix => String(ix.programId));
+      expect(programs).not.toContain('ComputeBudget111111111111111111111111111111');
+    }
+  });
+
+  // A44
+  it('a version-1 SOL transfer (4kMGkJzt…): Sent for the sender — the fee is not part of the amount', () => {
+    const r = classify(V1_SOL, V1_SENDER, MAINNET);
+    expect(r).toMatchObject({kind: 'sent', counterparty: V1_RECIPIENT, feePaidByAccount: 5000n, extraAssets: 0, incomplete: false, via: null});
+    expect(deltas(r)).toEqual(['moved:SOL:-202400']); // post − pre is −207400: the 5000 fee is apart
+    expect(r).toMatchObject({signature: '4kMGkJztTKPgSzvaNTJYaEY3D2SzXDXGTLTvkQhJ26zkAgC1cuFNo4oE5QwqL9Hyx6KAM5fKKoSkDe3nPf4rNyBn', slot: 474305397});
+  });
+
+  // A45
+  it('the same transfer is Received for the recipient, from the sender', () => {
+    const r = classify(V1_SOL, V1_RECIPIENT, MAINNET);
+    expect(r).toMatchObject({kind: 'received', counterparty: V1_SENDER, feePaidByAccount: null, incomplete: false});
+    expect(deltas(r)).toEqual(['moved:SOL:202400']);
+  });
+
+  // A46
+  it('a version-1 Jupiter v6 swap, token → SOL (2D2esRV1…): the outgoing leg first, the SOL received, via Jupiter', () => {
+    const r = classify(V1_SWAP, V1_SELLER, MAINNET);
+    expect(r).toMatchObject({kind: 'swap', via: 'Jupiter', counterparty: null, feePaidByAccount: 12127n, extraAssets: 0, incomplete: false});
+    // SOL: post 2843155983 − pre 2633609484 + the 12127 fee
+    expect(deltas(r)).toEqual(['moved:short(4mKf):-1199362376042', 'moved:SOL:209558626']);
+    expect(r.primary).toMatchObject({mint: '4mKfxSWjz58mL1juoUwmyPXTuC21UYZMCMx42reEC6ZB', decimals: 6});
+  });
+
+  // A47 — DERIVED from each: `transactionConfig` removed and `version` set to 0
+  it('`transactionConfig` and `version` are never read: the row is the same without them', () => {
+    for (const [file, account] of [
+      [V1_SOL, V1_SENDER],
+      [V1_SOL, V1_RECIPIENT],
+      [V1_SWAP, V1_SELLER],
+    ] as const) {
+      const tx = load(file);
+      delete tx.transaction!.message!.transactionConfig;
+      tx.version = 0;
+      expect(classify(tx, account, MAINNET)).toEqual(classify(file, account, MAINNET));
+    }
+  });
+});
 ```
 
 - [ ] **Step 2: Run it.** `npx jest src/modules/solana/__tests__/activity.test.ts --forceExit`
       Expected: FAIL — `Cannot find module '../activity'`.
 
-- [ ] **Step 3: Extend the response types in `src/modules/solana/txDetail.ts`.** Two edits; nothing else in the
-      file changes (`parseTxDetail` keeps reading what it read).
+- [ ] **Step 3: Extend the response types in `src/modules/solana/txDetail.ts`.** One block (the three types and
+      `keyString`); nothing else in the file changes (`parseTxDetail` keeps reading what it read).
 
-**Edit 1 of 2 — `src/modules/solana/txDetail.ts`. Find:**
+**The edit — `src/modules/solana/txDetail.ts`. Find:**
 
 ```ts
   mint?: string;
@@ -1564,36 +1785,9 @@ describe('the response as web3.js hands it over', () => {
 }
 
 export interface RawParsedTx {
-```
-
-**Replace with:**
-
-```ts
-  mint?: string;
-  owner?: string;
-  /** history spec §4.1: `amount` is the base-unit figure (a decimal string); `uiAmount` is never read */
-  uiTokenAmount?: {decimals?: number; amount?: string};
-}
-
-/**
- * history spec §4.1: an instruction in either of its two forms — parsed `{program, programId, parsed}` or
- * unparsed `{programId, accounts, data}` (`data` is base58). `programId` and `accounts` are strings in a
- * raw RPC response and PublicKey objects from web3.js: read them with `keyString`.
- */
-export interface RawInstruction {
-  program?: string;
-  programId?: unknown;
-  parsed?: {type?: string; info?: Record<string, unknown>} | string;
-  accounts?: unknown[];
-  data?: string;
-}
-
-export interface RawParsedTx {
-```
-
-**Edit 2 of 2 — `src/modules/solana/txDetail.ts`. Find:**
-
-```ts
+  slot?: number;
+  blockTime?: number | null;
+  meta?: {
     fee?: number;
     err?: unknown;
     preTokenBalances?: RawTokenBalance[] | null;
@@ -1622,6 +1816,31 @@ function keyString(k: unknown): string {
 **Replace with:**
 
 ```ts
+  mint?: string;
+  owner?: string;
+  /** history spec §4.1: `amount` is the base-unit figure (a decimal string); `uiAmount` is never read */
+  uiTokenAmount?: {decimals?: number; amount?: string};
+}
+
+/**
+ * history spec §4.1: an instruction in either of its two forms — parsed `{program, programId, parsed}` or
+ * unparsed `{programId, accounts, data}` (`data` is base58). `programId` and `accounts` are strings in a
+ * raw RPC response and PublicKey objects from web3.js: read them with `keyString`.
+ */
+export interface RawInstruction {
+  program?: string;
+  programId?: unknown;
+  parsed?: {type?: string; info?: Record<string, unknown>} | string;
+  accounts?: unknown[];
+  data?: string;
+}
+
+export interface RawParsedTx {
+  slot?: number;
+  blockTime?: number | null;
+  /** 'legacy', 0 or 1 — the history reads with `maxSupportedTransactionVersion: 1` (history spec §3.3) */
+  version?: 'legacy' | number;
+  meta?: {
     fee?: number;
     err?: unknown;
     /** lamports per account key, same order as `accountKeys` (history spec §4.1) */
@@ -1638,6 +1857,8 @@ function keyString(k: unknown): string {
       /** the FULL list: a parsed response already includes the lookup-table addresses */
       accountKeys?: Array<{pubkey?: unknown; signer?: boolean; writable?: boolean}>;
       instructions?: unknown[];
+      /** a version-1 message only: its compute and fee settings (it has no ComputeBudget instructions). Never read. */
+      transactionConfig?: unknown;
     };
   };
 }
@@ -2201,7 +2422,7 @@ export function classifyActivity(raw: RawParsedTx, account: string, status: Acti
 }
 ```
 
-- [ ] **Step 6: Run the tests.** The Step 2 command. Expected: PASS (49 tests). Then the neighbours this task
+- [ ] **Step 6: Run the tests.** The Step 2 command. Expected: PASS (54 tests). Then the neighbours this task
       touched: `npx jest src/modules/solana src/modules/shielded/__tests__/noSelfRelay.test.ts src/modules/shielded/a0 --forceExit`
       Expected: PASS — in particular `noSelfRelay.test.ts` ("the withdraw_with_change discriminator lives in
       constants, the sync's decoder and the relayer client only") and every `txDetail.test.ts` case.
@@ -2934,10 +3155,12 @@ git commit -m "feat(history): the history session — one account's sources merg
 ### Task 4: The chain reads, the per-signature cache, and `loadHistory`
 
 Spec: §3.1 (sources, Token-2022), §3.2 (the bound and the order of sources), §3.3 (the cache, the batch and its
-fallback, the limiter keys), §3.4 (partial rows), §8 "History reading"; Review Focus 1, 5 and 6.
+fallback, version 1, answers matched by their own signature, the limiter keys), §3.4 (partial rows), §8 "History
+reading"; Review Focus 1, 5, 6 and 7.
 
 **Files:**
-- Modify: `src/modules/solana/queries.ts:42-72` (`getTokenAccounts`)
+- Modify: `src/modules/solana/queries.ts:42-72` (`getTokenAccounts`) and `:143-148` (`getTransactionDetail` asks at version 1)
+- Modify: `src/modules/solana/__tests__/queries.test.ts` (one test added)
 - Modify: `src/modules/solana/withTimeout.ts` (the rejection becomes a `TimeoutError`)
 - Create: `src/modules/solana/historyReads.ts`
 - Create: `src/modules/solana/activityContext.ts`
@@ -2964,7 +3187,7 @@ fallback, the limiter keys), §3.4 (partial rows), §8 "History reading"; Review
 - Produces, from `src/modules/solana/historyReads.ts`:
   - `export const PARSED_TX_KEY = 'parsedTx'`, `PARSED_TX_GC_MS = 24 * 60 * 60 * 1000`,
     `HISTORY_READ_TIMEOUT_MS = 20_000`. Every read below takes a last, optional `timeoutMs` (that constant by
-    default); tests hand in 30.
+    default); tests hand in 30 or 60. Transactions are asked for with `{maxSupportedTransactionVersion: 1}`.
   - `export const parsedTxKey: (cluster: string, signature: string) => readonly [string, string, string]`
   - `export function applyParsedTxDefaults(client: QueryClient): void`
   - `export function orderSources(wallet: string, tokenAccounts: readonly TokenAccount[]): SourceList`
@@ -2973,8 +3196,14 @@ fallback, the limiter keys), §3.4 (partial rows), §8 "History reading"; Review
   - `export async function listHistorySources(connection: Connection, cluster: string, wallet: string, timeoutMs?: number): Promise<SourceList>`
   - `export async function getSignaturePage(connection: Pick<Connection, 'getSignaturesForAddress'>, cluster: string, source: string, before: string | undefined, limit: number, timeoutMs?: number): Promise<SignatureItem[]>`
   - `export async function readParsedTransaction(connection: Pick<Connection, 'getParsedTransaction'>, cluster: string, signature: string, timeoutMs?: number): Promise<RawParsedTx | null>`
-  - `export async function readParsedTransactions(connection: Pick<Connection, 'getParsedTransactions' | 'getParsedTransaction'>, client: QueryClient, cluster: string, signatures: readonly string[], timeoutMs?: number): Promise<Map<string, RawParsedTx>>`
-    — a signature that could not be read is ABSENT from the map and is not cached.
+    — null when the node has not indexed it, and when the answer's own signature is not `signature`.
+  - `export function cachedParsedTransactions(client: QueryClient, cluster: string, signatures: readonly string[]): Map<string, RawParsedTx>`
+    — what the cache holds; no request.
+  - `export async function readParsedTransactionsTimed(connection: Pick<Connection, 'getParsedTransactions' | 'getParsedTransaction'>, client: QueryClient, cluster: string, signatures: readonly string[], timeoutMs?: number): Promise<{transactions: Map<string, RawParsedTx>; timedOut: boolean}>`
+    — a signature that could not be read is ABSENT from the map and is not cached; `timedOut` says a read got no
+    answer in time or the whole call ran past `timeoutMs` (nothing further was started).
+  - `export async function readParsedTransactions(…same arguments…): Promise<Map<string, RawParsedTx>>` — the
+    same read, the map alone (Task 10's scan uses this one).
 - Produces, from `src/modules/solana/activityContext.ts`:
   - `export function activityContext(ownTokenAccounts?: ReadonlySet<string>): ActivityContext`
 - Produces, from `src/modules/solana/history.ts`:
@@ -3002,10 +3231,45 @@ fallback, the limiter keys), §3.4 (partial rows), §8 "History reading"; Review
 - **Rows that are still unparsed are read apart from the page a load adds** (plan review r1 I5). One signature
   the node never serves would otherwise sit in the batch of every later page, fail it (the next bullet), and turn
   each page into 20 single reads. Apart, it costs its own two calls per load (a batch of one, refused, then the
-  single read) and no new page pays for it (test H9, ruling 20).
+  single read) and no new page pays for it (test H9, ruling 20). Since version 1 is read (owner decision
+  2026-11-27) such a signature is rare: a version above 1, or a node that does not serve version 1.
 - web3.js `getParsedTransactions` throws if ANY item of the batch came back as an error, so one refused signature
   loses the whole answer. The fallback reads the same signatures one at a time; the one that fails is simply absent
   (Review Focus 1). A null answer is never cached: an unindexed transaction must be asked for again.
+- **An answer belongs to the signature IT carries, never to its place in the batch** (plan review r2 C1 —
+  Critical; Review Focus 7). JSON-RPC 2.0 lets a node answer a batch in any order. Both public endpoints do
+  (measured 2026-11-26 and again 2026-11-27: ids `8 10 7 17 12 …` for a batch asked `0 1 2 3 …`), and web3.js
+  1.99 `getParsedTransactions` maps over the response array as it arrived — nothing sorts by `id`. Paired by
+  position, transaction A would be classified and shown on the row of signature B, with B's date and A's amount
+  and counter-party, and cached for 24 h under B's key (so #27 opened from that row shows A too): the "wrong
+  row" spec §1.2 puts above everything else. So `matchBySignature` indexes a batch's answers by their own
+  `transaction.signatures[0]`, and:
+  - an answer that carries no signature, or one for a signature that was not asked for, is dropped;
+  - a signature that TWO answers of one batch claim is unread — which of them is right cannot be told (ruling 27);
+  - a signature with no answer of its own is unread. An ANSWERED batch is final: nothing is asked for one at a
+    time after it (the old "the array has the wrong length → single reads" shortcut is gone);
+  - the single read checks its one answer the same way (`readParsedTransaction` returns null for another
+    transaction — review n4), so #27 and the fallback are covered too.
+  "Unread" is the honest state the rest of the plan already has: a partial row ("Transaction", "—"), not cached,
+  asked for again by the next load. **Whether the app's own provider keeps the order is not something the code
+  may depend on**; Task 1 Step 4 prints it for the record only.
+  In the tests every scripted batch gives each answer its own signature and hands them back out of order
+  (`shuffled`), so a reader that pairs by position fails most of them — R7, R8, R13, H1 among others — not only
+  the tests written for it (R21–R25, H12; N11b and U5 in Tasks 10 and 8).
+- **Version 1** (owner decision 2026-11-27; spec §3.3 as amended): `READ_CONFIG` is
+  `{maxSupportedTransactionVersion: 1}`, the highest version web3.js 1.99 parses (`TransactionVersionStruct` is
+  `0 | 1 | 'legacy'` in the build Metro loads). With 0, about 46 % of mainnet transactions were refused with
+  `-32015` and could never be read. A node may still refuse a signature — a version above 1, a provider that
+  does not serve version 1, a rate limit: that is the refused-signature path above (R14, H7, H9), unchanged.
+  There is no memo of refused signatures: with version 1 read, a never-served signature is the rare case again.
+- **One deadline per call of `readParsedTransactions`** (plan review r2 n2). Each chain call has its own 20 s
+  limit, but a node that answers every single read slowly — or with HTTP 429s that web3.js itself waits out
+  (the app's `Connection` does not set `disableRetryOnRateLimit`) — could hold one load for twenty limits in a
+  row. So the call takes the time when it begins and starts no further batch and no further single read once
+  `timeoutMs` has passed (tests R26, R27: real delays of 25 and 40 ms against a limit of 60). And `loadHistory`
+  does not start its second read when the first reported `timedOut`; the older rows then keep what the cache
+  holds — they must not turn into partial rows because a read was skipped (test H13). The worst case of one
+  load is now about two limits for the transactions, not twenty-one.
 - The limiter key decides which calls share one answer. A key without the cursor would hand page 1's signatures to
   page 2; a batch key made of the first signature only would hand one page's transactions to another (review r2 m2).
 - **In jest `@solana/web3.js` is a mock** (`__mocks__/@solana/web3.js.ts`): `new PublicKey('x').toBase58()` returns
@@ -3019,6 +3283,10 @@ fallback, the limiter keys), §3.4 (partial rows), §8 "History reading"; Review
  * transaction read with its cache — against a scripted connection. The real rpcLimiter runs (its
  * keys are what is tested); it is reset between tests. The time limit is HANDED IN (30 ms against a
  * promise that never settles): real timers, no fake ones.
+ *
+ * Plan review r2 C1: a node may answer a batch in ANY order, so every scripted batch here gives each
+ * answer its own signature and hands them back out of order (`shuffled`) — a reader that pairs by
+ * position fails most of the tests below, not only the two written for it (R21, R22).
  */
 import {QueryClient} from '@tanstack/react-query';
 import {Connection} from '@solana/web3.js';
@@ -3033,6 +3301,7 @@ import {
   parsedTxKey,
   readParsedTransaction,
   readParsedTransactions,
+  readParsedTransactionsTimed,
 } from '../historyReads';
 import {TimeoutError} from '../withTimeout';
 import type {RawParsedTx} from '../txDetail';
@@ -3040,7 +3309,12 @@ import type {TokenAccount} from '../types';
 
 const WALLET = 'Da83cAfGUrsm896FUghCkNKutgFc96WNGWN73bZxe31B';
 const ta = (address: string, amount: string): TokenAccount => ({address, amount, mint: 'M', owner: WALLET, decimals: 9});
-const tx = (slot: number): RawParsedTx => ({slot, meta: {fee: 5000}});
+/** a transaction that says itself which one it is — as every real answer does */
+const tx = (signature: string, slot = 1): RawParsedTx => ({slot, meta: {fee: 5000}, transaction: {signatures: [signature]}});
+/** the same answers in another order: every position is wrong when there are two or more */
+const shuffled = <T,>(answers: T[]): T[] => [...answers.slice(1), ...answers.slice(0, 1)];
+/** resolves after `ms` real milliseconds */
+const after = <T,>(ms: number, value: T): Promise<T> => new Promise(resolve => setTimeout(() => resolve(value), ms));
 /** a request the node never answers */
 const never = <T,>(): Promise<T> => new Promise<T>(() => undefined);
 const SHORT = 30;
@@ -3185,15 +3459,16 @@ describe('readParsedTransactions', () => {
   // R7
   it('the batch path: one call for every uncached signature; the answers are cached for 24 h', async () => {
     const connection = {
-      getParsedTransactions: jest.fn(async (s: string[]) => s.map((_x, k) => tx(k + 1))),
+      getParsedTransactions: jest.fn(async (s: string[]) => shuffled(s.map((x, k) => tx(x, k + 1)))),
       getParsedTransaction: jest.fn(),
     };
     const got = await readParsedTransactions(connection as never, client, 'devnet', ['a', 'b']);
-    expect(connection.getParsedTransactions).toHaveBeenCalledWith(['a', 'b'], {maxSupportedTransactionVersion: 0});
-    expect(got.get('a')).toEqual(tx(1));
-    expect(got.get('b')).toEqual(tx(2));
+    // version 1: the highest web3.js 1.99 parses (spec §3.3, owner decision 2026-11-27)
+    expect(connection.getParsedTransactions).toHaveBeenCalledWith(['a', 'b'], {maxSupportedTransactionVersion: 1});
+    expect(got.get('a')).toEqual(tx('a', 1));
+    expect(got.get('b')).toEqual(tx('b', 2));
     expect(connection.getParsedTransaction).not.toHaveBeenCalled();
-    expect(client.getQueryData(parsedTxKey('devnet', 'a'))).toEqual(tx(1));
+    expect(client.getQueryData(parsedTxKey('devnet', 'a'))).toEqual(tx('a', 1));
     const query = client.getQueryCache().find({queryKey: parsedTxKey('devnet', 'a')})!;
     expect(query.gcTime).toBe(PARSED_TX_GC_MS);
     expect(query.isStale()).toBe(false);
@@ -3202,17 +3477,18 @@ describe('readParsedTransactions', () => {
   // R8
   it('the cache is used: no second read of a cached signature; only the new ones are asked for', async () => {
     const connection = {
-      getParsedTransactions: jest.fn(async (s: string[]) => s.map(() => tx(7))),
+      getParsedTransactions: jest.fn(async (s: string[]) => shuffled(s.map(x => tx(x, 7)))),
       getParsedTransaction: jest.fn(),
     };
     await readParsedTransactions(connection as never, client, 'devnet', ['a', 'b']);
-    await readParsedTransactions(connection as never, client, 'devnet', ['a', 'b']);
+    const second = await readParsedTransactions(connection as never, client, 'devnet', ['a', 'b']);
     expect(connection.getParsedTransactions).toHaveBeenCalledTimes(1);
+    expect([second.get('a'), second.get('b')]).toEqual([tx('a', 7), tx('b', 7)]);
     await readParsedTransactions(connection as never, client, 'devnet', ['a', 'c']);
-    expect(connection.getParsedTransactions).toHaveBeenLastCalledWith(['c'], {maxSupportedTransactionVersion: 0});
+    expect(connection.getParsedTransactions).toHaveBeenLastCalledWith(['c'], {maxSupportedTransactionVersion: 1});
     // another cluster shares nothing
     await readParsedTransactions(connection as never, client, 'mainnet-beta', ['a']);
-    expect(connection.getParsedTransactions).toHaveBeenLastCalledWith(['a'], {maxSupportedTransactionVersion: 0});
+    expect(connection.getParsedTransactions).toHaveBeenLastCalledWith(['a'], {maxSupportedTransactionVersion: 1});
   });
 
   // R9
@@ -3221,26 +3497,30 @@ describe('readParsedTransactions', () => {
       getParsedTransactions: jest.fn(async () => {
         throw new Error('batch requests are not allowed');
       }),
-      getParsedTransaction: jest.fn(async (s: string) => (s === 'b' ? null : tx(s === 'a' ? 1 : 3))),
+      getParsedTransaction: jest.fn(async (s: string, _config: unknown) => (s === 'b' ? null : tx(s, s === 'a' ? 1 : 3))),
     };
     const got = await readParsedTransactions(connection as never, client, 'devnet', ['a', 'b', 'c']);
     expect(connection.getParsedTransaction.mock.calls.map(c => c[0])).toEqual(['a', 'b', 'c']);
+    expect(connection.getParsedTransaction.mock.calls[0]![1]).toEqual({maxSupportedTransactionVersion: 1});
     expect([...got.keys()]).toEqual(['a', 'c']);
+    expect(got.get('c')).toEqual(tx('c', 3));
   });
 
   // R10 (§3.4)
   it('a null answer and a failed single read are absent and NOT cached; the next read asks again', async () => {
     const connection = {
-      getParsedTransactions: jest.fn(async () => [tx(1), null]),
+      getParsedTransactions: jest.fn(async (_s: string[]): Promise<Array<RawParsedTx | null>> => [null, tx('a', 1)]),
       getParsedTransaction: jest.fn(),
     };
     const got = await readParsedTransactions(connection as never, client, 'devnet', ['a', 'b']);
+    expect(got.get('a')).toEqual(tx('a', 1));
     expect(got.has('b')).toBe(false);
     expect(client.getQueryCache().find({queryKey: parsedTxKey('devnet', 'b')})).toBeUndefined();
-    connection.getParsedTransactions.mockResolvedValueOnce([tx(2)]);
+    expect(connection.getParsedTransaction).not.toHaveBeenCalled(); // an answered batch is final: no single read for the null
+    connection.getParsedTransactions.mockResolvedValueOnce([tx('b', 2)]);
     const again = await readParsedTransactions(connection as never, client, 'devnet', ['a', 'b']);
-    expect(connection.getParsedTransactions).toHaveBeenLastCalledWith(['b'], {maxSupportedTransactionVersion: 0});
-    expect(again.get('b')).toEqual(tx(2));
+    expect(connection.getParsedTransactions).toHaveBeenLastCalledWith(['b'], {maxSupportedTransactionVersion: 1});
+    expect(again.get('b')).toEqual(tx('b', 2));
 
     const failing = {
       getParsedTransactions: jest.fn(async () => {
@@ -3254,29 +3534,104 @@ describe('readParsedTransactions', () => {
     expect(client.getQueryCache().find({queryKey: parsedTxKey('devnet', 'z')})).toBeUndefined();
   });
 
-  // R14 (Review Focus 1): a transaction the node will not serve at version 0, or one it rate-limits inside the batch
+  // R14 (Review Focus 1): a transaction the node will not serve — a version above 1, a node that knows no
+  // version 1, or one signature rate-limited inside the batch
   it('one refused signature fails the batch, then only itself: every other transaction of the page is still read', async () => {
     const connection = {
       getParsedTransactions: jest.fn(async () => {
-        throw new Error('failed to get transactions: Transaction version (1) is not supported by the requesting client');
+        throw new Error('failed to get transactions: Transaction version (2) is not supported by the requesting client');
       }),
       getParsedTransaction: jest.fn(async (s: string) => {
-        if (s === 'v1') {
-          throw new Error('Transaction version (1) is not supported by the requesting client');
+        if (s === 'refused') {
+          throw new Error('Transaction version (2) is not supported by the requesting client');
         }
-        return tx(1);
+        return tx(s);
       }),
     };
-    const got = await readParsedTransactions(connection as never, client, 'devnet', ['a', 'v1', 'b']);
+    const got = await readParsedTransactions(connection as never, client, 'devnet', ['a', 'refused', 'b']);
     expect([...got.keys()]).toEqual(['a', 'b']);
-    expect(client.getQueryCache().find({queryKey: parsedTxKey('devnet', 'v1')})).toBeUndefined();
+    expect(client.getQueryCache().find({queryKey: parsedTxKey('devnet', 'refused')})).toBeUndefined();
+  });
+
+  // R21 (plan review r2 C1): JSON-RPC 2.0 lets a node answer a batch in any order; both public endpoints do
+  it('a batch answered in REVERSE order: each transaction is returned and cached under its own signature', async () => {
+    const connection = {
+      getParsedTransactions: jest.fn(async (s: string[]) => s.map((x, k) => tx(x, 100 + k)).reverse()),
+      getParsedTransaction: jest.fn(),
+    };
+    const asked = ['a', 'b', 'c', 'd', 'e'];
+    const got = await readParsedTransactions(connection as never, client, 'devnet', asked);
+    asked.forEach((signature, k) => {
+      expect(got.get(signature)).toEqual(tx(signature, 100 + k));
+      expect(client.getQueryData(parsedTxKey('devnet', signature))).toEqual(tx(signature, 100 + k));
+    });
+    expect(connection.getParsedTransaction).not.toHaveBeenCalled();
+  });
+
+  // R22 (plan review r2 C1)
+  it('an answer for a signature that was not asked for is dropped: not returned, not cached — under any key', async () => {
+    const connection = {
+      // in a's place: a transaction nobody asked for
+      getParsedTransactions: jest.fn(async (_s: string[]) => [tx('foreign', 9), tx('b', 2)]),
+      getParsedTransaction: jest.fn(),
+    };
+    const got = await readParsedTransactions(connection as never, client, 'devnet', ['a', 'b']);
+    expect([...got.keys()]).toEqual(['b']);
+    expect(got.get('b')).toEqual(tx('b', 2));
+    expect(client.getQueryCache().find({queryKey: parsedTxKey('devnet', 'a')})).toBeUndefined();
+    expect(client.getQueryCache().find({queryKey: parsedTxKey('devnet', 'foreign')})).toBeUndefined();
+    expect(connection.getParsedTransaction).not.toHaveBeenCalled();
+  });
+
+  // R23 (plan review r2 C1): which of two answers is right cannot be told
+  it('a signature that two answers of one batch claim is unread: neither is returned or cached', async () => {
+    const connection = {
+      getParsedTransactions: jest.fn(async (_s: string[]) => [tx('a', 1), tx('b', 2), tx('a', 3)]),
+      getParsedTransaction: jest.fn(),
+    };
+    const got = await readParsedTransactions(connection as never, client, 'devnet', ['a', 'b', 'c']);
+    expect([...got.keys()]).toEqual(['b']);
+    expect(client.getQueryCache().find({queryKey: parsedTxKey('devnet', 'a')})).toBeUndefined();
+  });
+
+  // R24 (plan review r2 C1)
+  it('an answer that carries no signature, a short answer and a non-array answer leave their signatures unread', async () => {
+    const connection = {
+      getParsedTransactions: jest.fn(async (_s: string[]): Promise<unknown> => [{slot: 5, meta: {fee: 5000}}, tx('b', 2)]),
+      getParsedTransaction: jest.fn(),
+    };
+    expect([...(await readParsedTransactions(connection as never, client, 'devnet', ['a', 'b'])).keys()]).toEqual(['b']);
+    connection.getParsedTransactions.mockResolvedValueOnce([tx('d', 4)]); // one answer for two signatures
+    expect([...(await readParsedTransactions(connection as never, client, 'devnet', ['c', 'd'])).keys()]).toEqual(['d']);
+    connection.getParsedTransactions.mockResolvedValueOnce({error: 'not an array'});
+    expect((await readParsedTransactions(connection as never, client, 'devnet', ['e', 'f'])).size).toBe(0);
+    expect(connection.getParsedTransaction).not.toHaveBeenCalled();
+  });
+
+  // R25 (plan review r2 C1 / n4): the single read checks its one answer the same way
+  it('a single read answered with another transaction is null — in the fallback too, where it is not cached', async () => {
+    const wrong = {getParsedTransaction: jest.fn(async (_s: string) => tx('other', 9))};
+    expect(await readParsedTransaction(wrong as never, 'devnet', 'a')).toBeNull();
+    const right = {getParsedTransaction: jest.fn(async (s: string) => tx(s, 4))};
+    expect(await readParsedTransaction(right as never, 'devnet', 'a')).toEqual(tx('a', 4));
+    _resetRateLimitersForTest();
+    const connection = {
+      getParsedTransactions: jest.fn(async () => {
+        throw new Error('batch requests are not allowed');
+      }),
+      getParsedTransaction: jest.fn(async (s: string) => (s === 'b' ? tx('a', 9) : tx(s, 1))),
+    };
+    const got = await readParsedTransactions(connection as never, client, 'devnet', ['a', 'b', 'c']);
+    expect([...got.keys()]).toEqual(['a', 'c']);
+    expect(got.get('a')).toEqual(tx('a', 1)); // b's wrong answer did not overwrite a's own
+    expect(client.getQueryCache().find({queryKey: parsedTxKey('devnet', 'b')})).toBeUndefined();
   });
 
   // R11 (r2 m2)
   it('the batch key is a hash of EVERY signature: two pages sharing a first signature never share an answer', async () => {
     const spy = jest.spyOn(rpcLimiter, 'execute');
     const connection = {
-      getParsedTransactions: jest.fn(async (s: string[]) => s.map(() => tx(1))),
+      getParsedTransactions: jest.fn(async (s: string[]) => shuffled(s.map(x => tx(x)))),
       getParsedTransaction: jest.fn(),
     };
     await readParsedTransactions(connection as never, client, 'devnet', ['a', 'b']);
@@ -3293,12 +3648,13 @@ describe('readParsedTransactions', () => {
   // R13
   it('more than 20 uncached signatures are read in batches of 20', async () => {
     const connection = {
-      getParsedTransactions: jest.fn(async (s: string[]) => s.map(() => tx(1))),
+      getParsedTransactions: jest.fn(async (s: string[]) => shuffled(s.map(x => tx(x, Number(x.slice(1)))))),
       getParsedTransaction: jest.fn(),
     };
     const many = Array.from({length: 45}, (_, k) => `s${k}`);
     const got = await readParsedTransactions(connection as never, client, 'devnet', many);
     expect(got.size).toBe(45);
+    expect(many.every(s => got.get(s)!.slot === Number(s.slice(1)))).toBe(true); // each under its own signature
     expect(connection.getParsedTransactions.mock.calls.map(c => c[0].length)).toEqual([20, 20, 5]);
   });
 
@@ -3306,17 +3662,24 @@ describe('readParsedTransactions', () => {
   it('a batch that never answers: its signatures stay unread and uncached, and are NOT asked for one at a time', async () => {
     const connection = {
       getParsedTransactions: jest.fn((_s: string[]): Promise<Array<RawParsedTx | null>> => never()),
-      getParsedTransaction: jest.fn(async () => tx(1)),
+      getParsedTransaction: jest.fn(async (s: string) => tx(s)),
     };
     const many = Array.from({length: 45}, (_, k) => `s${k}`);
-    const got = await readParsedTransactions(connection as never, client, 'devnet', many, SHORT);
+    const {transactions: got, timedOut} = await readParsedTransactionsTimed(connection as never, client, 'devnet', many, SHORT);
+    expect(timedOut).toBe(true);
     expect(got.size).toBe(0);
     expect(connection.getParsedTransaction).not.toHaveBeenCalled();
     expect(connection.getParsedTransactions).toHaveBeenCalledTimes(1); // no second batch after a timeout
     expect(client.getQueryCache().find({queryKey: parsedTxKey('devnet', 's0')})).toBeUndefined();
     // the next read asks again, and is answered
-    connection.getParsedTransactions.mockImplementation(async (s: string[]) => s.map(() => tx(2)));
-    expect((await readParsedTransactions(connection as never, client, 'devnet', ['s0', 's1'], SHORT)).size).toBe(2);
+    connection.getParsedTransactions.mockImplementation(async (s: string[]) => shuffled(s.map(x => tx(x, 2))));
+    expect(await readParsedTransactionsTimed(connection as never, client, 'devnet', ['s0', 's1'], SHORT)).toEqual({
+      transactions: new Map([
+        ['s0', tx('s0', 2)],
+        ['s1', tx('s1', 2)],
+      ]),
+      timedOut: false,
+    });
   });
 
   // R19 (plan review r1 I6)
@@ -3325,11 +3688,50 @@ describe('readParsedTransactions', () => {
       getParsedTransactions: jest.fn(async () => {
         throw new Error('batch requests are not allowed');
       }),
-      getParsedTransaction: jest.fn((s: string): Promise<RawParsedTx | null> => (s === 'b' ? never() : Promise.resolve(tx(1)))),
+      getParsedTransaction: jest.fn((s: string): Promise<RawParsedTx | null> => (s === 'b' ? never() : Promise.resolve(tx(s)))),
     };
-    const got = await readParsedTransactions(connection as never, client, 'devnet', ['a', 'b', 'c', 'd'], SHORT);
+    const {transactions: got, timedOut} = await readParsedTransactionsTimed(connection as never, client, 'devnet', ['a', 'b', 'c', 'd'], SHORT);
+    expect(timedOut).toBe(true);
     expect([...got.keys()]).toEqual(['a']);
     expect(connection.getParsedTransaction.mock.calls.map(c => c[0])).toEqual(['a', 'b']);
+  });
+
+  // R26 (plan review r2 n2): a node that answers every single read, but slowly (or after web3.js waited out a 429)
+  it('one deadline for the whole call: once the time limit has passed, no further single read is started', async () => {
+    const connection = {
+      getParsedTransactions: jest.fn(async () => {
+        throw new Error('429 Too Many Requests');
+      }),
+      // each read answers after 25 ms: well inside its own 60 ms limit
+      getParsedTransaction: jest.fn((s: string): Promise<RawParsedTx | null> => after(25, tx(s))),
+    };
+    const six = ['a', 'b', 'c', 'd', 'e', 'f'];
+    const {transactions: got, timedOut} = await readParsedTransactionsTimed(connection as never, client, 'devnet', six, 60);
+    expect(timedOut).toBe(true);
+    // 6 × 25 ms is past 60 ms: the reads started at about 0, 25 and 50 ms are the only ones (fewer on a slow machine)
+    const started = connection.getParsedTransaction.mock.calls.length;
+    expect(started).toBeGreaterThanOrEqual(1);
+    expect(started).toBeLessThanOrEqual(3);
+    expect(got.size).toBe(started); // what was read before the deadline is kept …
+    expect(client.getQueryData(parsedTxKey('devnet', 'a'))).toEqual(tx('a')); // … and cached
+    expect(got.has('f')).toBe(false);
+  });
+
+  // R27 (plan review r2 n2)
+  it('one deadline for the whole call: no further batch is started either', async () => {
+    const connection = {
+      // each batch answers after 40 ms: inside its own 60 ms limit
+      getParsedTransactions: jest.fn((s: string[]): Promise<Array<RawParsedTx | null>> => after(40, shuffled(s.map(x => tx(x))))),
+      getParsedTransaction: jest.fn(),
+    };
+    const many = Array.from({length: 45}, (_, k) => `s${k}`);
+    const {transactions: got, timedOut} = await readParsedTransactionsTimed(connection as never, client, 'devnet', many, 60);
+    expect(timedOut).toBe(true);
+    const batches = connection.getParsedTransactions.mock.calls.length;
+    expect(batches).toBeGreaterThanOrEqual(1);
+    expect(batches).toBeLessThanOrEqual(2); // never the third (it would start at about 80 ms)
+    expect(got.size).toBe(batches * 20);
+    expect(connection.getParsedTransaction).not.toHaveBeenCalled();
   });
 
   // R20 (plan review r1 I6): #27's read
@@ -3354,6 +3756,10 @@ describe('readParsedTransactions', () => {
  * History spec §3, §8 "History reading": `loadHistory` against a scripted chain built from the REAL
  * fixtures. The connection is a plain object; the query client is real (the per-signature cache).
  * Real timers only: where a time limit is tested it is handed in (`env.timeoutMs`).
+ *
+ * Plan review r2 C1: the scripted node answers every batch OUT OF ORDER (`shuffled`), as the public
+ * endpoints do, and the signatures here are the fixtures' own — a reader that pairs an answer with a
+ * signature by position puts one transaction on another's row and fails H1.
  */
 import {readFileSync} from 'fs';
 import {join} from 'path';
@@ -3376,12 +3782,20 @@ const ACC_4 = 'AmeAwTLmadVu6ZvVQ3Y44svysj8sjXxL98mq6RcLnLuR';
 const TEST_MINT = 'ERkpCFGaoWmeZPhKTUHumrqHTP1QmyHVhMJUnxbRPKCs';
 const TOKEN_2022 = 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb';
 
+// the fixtures' own signatures: an answer is matched to its row by the signature it carries (plan review r2 C1)
+// QAgzVzY6…: Account 2 → main's EXISTING token account; main's wallet address is not in it (review C1)
+const QAGZ = 'QAgzVzY6RhvmFWTiCueAyPfQY3qkyjXVZXXBnbYd9KXfkua1JEHJvxxSEjJbiwvQ2bCupghhRnY6WuwdQMGqgNY';
+const XGJN = '2XgjNKS8cJ9LrFofPLJqgm4mFbHxgoDem4BpQCv1Hy3WMwHyyXKrpmKkHhqvcjPPAfZqEE7Ac3m4G71o5BXrEfds';
+const BGSO = '2bGSoVSGjYHJC2VFvjG8eU16vwVEhsd9VzeCfHfdRowhXQ4bSVwmvgzQn18u29YY3T64RbBxL14XGo5qVxLFRtMH';
 const FIXTURES: Record<string, RawParsedTx> = {
-  // QAgzVzY6…: Account 2 → main's EXISTING token account; main's wallet address is not in it (review C1)
-  QAgz: load('tx-test-to-main.json'),
-  '2Xgj': load('tx-test-acc4-to-main-2XgjNKS8.json'),
-  '2bGS': load('tx-sol-to-empty-2bGSoVSG.json'),
+  [QAGZ]: load('tx-test-to-main.json'),
+  [XGJN]: load('tx-test-acc4-to-main-2XgjNKS8.json'),
+  [BGSO]: load('tx-sol-to-empty-2bGSoVSG.json'),
 };
+/** DERIVED: a fixture under another signature — the filler rows of a long list (only its signature is changed) */
+const stamped = (fixture: RawParsedTx, signature: string): RawParsedTx => ({...fixture, transaction: {...fixture.transaction, signatures: [signature]}});
+/** the same answers in another order: every position is wrong when there are two or more */
+const shuffled = <T,>(answers: T[]): T[] => [...answers.slice(1), ...answers.slice(0, 1)];
 
 const ctxFor = (own: ReadonlySet<string>): ActivityContext => ({
   symbolOf: m => (m === 'native' ? 'SOL' : m === TEST_MINT ? 'TEST' : 'short'),
@@ -3403,7 +3817,10 @@ interface Sig {
 const sig = (signature: string, slot: number): Sig => ({signature, slot, blockTime: slot, confirmationStatus: 'finalized', err: null});
 
 function world(bySource: Record<string, Sig[]>, tokenAccounts: Record<string, string[]>) {
-  const state = {bySource, unreadable: new Set<string>(), signatureCalls: 0, txCalls: [] as string[][]};
+  const state = {bySource, unreadable: new Set<string>(), signatureCalls: 0, txCalls: [] as string[][], filler: null as RawParsedTx | null};
+  /** the node's answer for one signature: its fixture, else (when the test set one) the filler under that signature */
+  const answer = (s: string): RawParsedTx | null =>
+    state.unreadable.has(s) ? null : FIXTURES[s] ?? (state.filler === null ? null : stamped(state.filler, s));
   const connection = {
     getParsedTokenAccountsByOwner: jest.fn(async (owner: {toBase58: () => string}, filter: {programId: {toBase58: () => string}}) => ({
       value:
@@ -3422,11 +3839,11 @@ function world(bySource: Record<string, Sig[]>, tokenAccounts: Record<string, st
     }),
     getParsedTransactions: jest.fn(async (signatures: string[]) => {
       state.txCalls.push(signatures);
-      return signatures.map(s => (state.unreadable.has(s) ? null : FIXTURES[s] ?? null));
+      return shuffled(signatures.map(answer));
     }),
-    getParsedTransaction: jest.fn(async () => null),
+    getParsedTransaction: jest.fn(async (_signature: string): Promise<RawParsedTx | null> => null),
   };
-  return {connection, state};
+  return {connection, state, answer};
 }
 
 let client: QueryClient;
@@ -3445,11 +3862,11 @@ afterEach(() => {
 // H1 (review C1)
 it("QAgzVzY6… appears in main's history through main's token-account source, as Received from Account 2", async () => {
   // the wallet's own signature list does not hold it: only the token account's does
-  const {connection} = world({[MAIN]: [sig('2bGS', 100)], [MAIN_TA]: [sig('QAgz', 300), sig('2Xgj', 400)]}, {[MAIN]: [MAIN_TA]});
+  const {connection} = world({[MAIN]: [sig(BGSO, 100)], [MAIN_TA]: [sig(QAGZ, 300), sig(XGJN, 400)]}, {[MAIN]: [MAIN_TA]});
   const snap = await loadHistory(MAIN, 'head', env(connection));
-  expect(snap.rows.map(r => r.item.signature)).toEqual(['2Xgj', 'QAgz', '2bGS']);
+  expect(snap.rows.map(r => r.item.signature)).toEqual([XGJN, QAGZ, BGSO]);
   const q = snap.rows[1]!.activity!;
-  expect(q).toMatchObject({signature: 'QAgz', slot: 300, blockTime: 300, kind: 'received', counterparty: ACC_2, status: 'finalized'});
+  expect(q).toMatchObject({signature: QAGZ, slot: 300, blockTime: 300, kind: 'received', counterparty: ACC_2, status: 'finalized'});
   expect(q.primary).toMatchObject({mint: TEST_MINT, symbol: 'TEST', raw: 200000n, decimals: 9});
   expect(snap.rows[0]!.activity).toMatchObject({kind: 'received', counterparty: ACC_4});
   expect(snap.rows[2]!.activity).toMatchObject({kind: 'sent', counterparty: '2ixJm1hh6Ff8KuUCoaAe1myqKAT2PimVJ3B6ubuYQMr9'});
@@ -3459,42 +3876,42 @@ it("QAgzVzY6… appears in main's history through main's token-account source, a
 
 // H2 (§3.4)
 it('a partial row: a transaction that is not readable yet still has a row, and the next load re-tries it', async () => {
-  const {connection, state} = world({[MAIN]: [sig('2bGS', 100)], [MAIN_TA]: [sig('QAgz', 300)]}, {[MAIN]: [MAIN_TA]});
-  state.unreadable.add('QAgz');
+  const {connection, state} = world({[MAIN]: [sig(BGSO, 100)], [MAIN_TA]: [sig(QAGZ, 300)]}, {[MAIN]: [MAIN_TA]});
+  state.unreadable.add(QAGZ);
   const first = await loadHistory(MAIN, 'head', env(connection));
   expect(first.rows.map(r => [r.item.signature, r.activity === null])).toEqual([
-    ['QAgz', true],
-    ['2bGS', false],
+    [QAGZ, true],
+    [BGSO, false],
   ]);
-  expect(first.rows[0]!.item).toEqual({signature: 'QAgz', slot: 300, blockTime: 300, status: 'finalized', finalized: true});
+  expect(first.rows[0]!.item).toEqual({signature: QAGZ, slot: 300, blockTime: 300, status: 'finalized', finalized: true});
   state.unreadable.clear();
   const second = await loadHistory(MAIN, 'head', env(connection)); // a refresh
   expect(second.rows[0]!.activity).toMatchObject({kind: 'received'});
   // the second transaction read asked ONLY for the unparsed one (the other is cached)
-  expect(state.txCalls).toEqual([['QAgz', '2bGS'], ['QAgz']]);
+  expect(state.txCalls).toEqual([[QAGZ, BGSO], [QAGZ]]);
 });
 
 // H7 (Review Focus 1)
 it('a transaction the node refuses is one partial row; the rest of the page is parsed', async () => {
-  const {connection} = world({[MAIN]: [sig('2bGS', 100), sig('refused', 90)], [MAIN_TA]: [sig('QAgz', 300)]}, {[MAIN]: [MAIN_TA]});
-  connection.getParsedTransactions.mockRejectedValue(new Error('failed to get transactions: Transaction version (1) is not supported'));
-  connection.getParsedTransaction.mockImplementation((async (s: string) => {
+  const {connection} = world({[MAIN]: [sig(BGSO, 100), sig('refused', 90)], [MAIN_TA]: [sig(QAGZ, 300)]}, {[MAIN]: [MAIN_TA]});
+  connection.getParsedTransactions.mockRejectedValue(new Error('failed to get transactions: Transaction version (2) is not supported'));
+  connection.getParsedTransaction.mockImplementation(async (s: string) => {
     if (s === 'refused') {
-      throw new Error('Transaction version (1) is not supported');
+      throw new Error('Transaction version (2) is not supported');
     }
     return FIXTURES[s] ?? null;
-  }) as never);
+  });
   const snap = await loadHistory(MAIN, 'head', env(connection));
   expect(snap.rows.map(r => [r.item.signature, r.activity?.kind ?? 'partial'])).toEqual([
-    ['QAgz', 'received'],
-    ['2bGS', 'sent'],
+    [QAGZ, 'received'],
+    [BGSO, 'sent'],
     ['refused', 'partial'],
   ]);
 });
 
 // H3 (§3.3)
 it('the status of a row comes from the signature list; a failed one is failed', async () => {
-  const failed: Sig = {...sig('2bGS', 100), err: {InstructionError: [0, 'Custom']}};
+  const failed: Sig = {...sig(BGSO, 100), err: {InstructionError: [0, 'Custom']}};
   const {connection} = world({[MAIN]: [failed]}, {});
   const snap = await loadHistory(MAIN, 'head', env(connection));
   expect(snap.rows[0]!.activity).toMatchObject({kind: 'failed', status: 'failed'});
@@ -3518,11 +3935,11 @@ it('older pages: "older" appends, "head" after that refreshes and keeps them', a
 
 // H5 (§3.4)
 it("an account switch never shows the old account's rows: sessions and rows are per account", async () => {
-  const {connection} = world({[MAIN]: [sig('2bGS', 100)], [ACC_4]: [sig('2Xgj', 400)]}, {});
+  const {connection} = world({[MAIN]: [sig(BGSO, 100)], [ACC_4]: [sig(XGJN, 400)]}, {});
   const a = await loadHistory(MAIN, 'head', env(connection));
   const b = await loadHistory(ACC_4, 'head', env(connection));
-  expect(a.rows.map(r => r.item.signature)).toEqual(['2bGS']);
-  expect(b.rows.map(r => r.item.signature)).toEqual(['2Xgj']);
+  expect(a.rows.map(r => r.item.signature)).toEqual([BGSO]);
+  expect(b.rows.map(r => r.item.signature)).toEqual([XGJN]);
   expect(b.rows[0]!.activity).toMatchObject({kind: 'sent', counterparty: MAIN});
   expect(b.sessionId).not.toBe(a.sessionId);
 });
@@ -3535,18 +3952,18 @@ it('a signature the node never serves does not sit in the batch of a later page:
   connection.getParsedTransactions.mockImplementation(async (signatures: string[]) => {
     batches.push(signatures);
     if (signatures.includes('refused')) {
-      throw new Error('failed to get transactions: Transaction version (1) is not supported');
+      throw new Error('failed to get transactions: Transaction version (2) is not supported');
     }
-    return signatures.map(() => FIXTURES['2bGS']!);
+    return shuffled(signatures.map(s => stamped(FIXTURES[BGSO]!, s)));
   });
   const singles: string[] = [];
-  connection.getParsedTransaction.mockImplementation((async (s: string) => {
+  connection.getParsedTransaction.mockImplementation(async (s: string) => {
     singles.push(s);
     if (s === 'refused') {
-      throw new Error('Transaction version (1) is not supported');
+      throw new Error('Transaction version (2) is not supported');
     }
-    return FIXTURES['2bGS']!;
-  }) as never);
+    return stamped(FIXTURES[BGSO]!, s);
+  });
   const p1 = await loadHistory(MAIN, 'head', env(connection));
   expect(p1.rows.filter(r => r.activity === null).map(r => r.item.signature)).toEqual(['refused']);
   expect(singles).toHaveLength(20); // page 1 holds it: that page, and only that one, is read one at a time
@@ -3561,13 +3978,35 @@ it('a signature the node never serves does not sit in the batch of a later page:
   expect(p2.rows.filter(r => r.activity === null).map(r => r.item.signature)).toEqual(['refused']);
 });
 
+// H12 (plan review r2 C1; spec §1.2 "a wrong row is worse than none")
+it("a batch answered in another order, with a stranger's transaction in it: every row shows its OWN transaction or none", async () => {
+  const {connection} = world({[MAIN]: [sig(BGSO, 100)], [MAIN_TA]: [sig(QAGZ, 300), sig(XGJN, 400)]}, {[MAIN]: [MAIN_TA]});
+  // asked for [2Xgj, QAgz, 2bGS]; answered [2bGS, a transaction nobody asked for, 2Xgj] — nothing for QAgz
+  const stranger = load('tx-test-to-outside.json');
+  connection.getParsedTransactions.mockImplementationOnce(async () => [FIXTURES[BGSO]!, stranger, FIXTURES[XGJN]!]);
+  const snap = await loadHistory(MAIN, 'head', env(connection));
+  expect(snap.rows.map(r => [r.item.signature, r.activity?.kind ?? 'partial', r.activity?.counterparty ?? null])).toEqual([
+    [XGJN, 'received', ACC_4],
+    [QAGZ, 'partial', null], // never the stranger's transaction, never a neighbour's
+    [BGSO, 'sent', '2ixJm1hh6Ff8KuUCoaAe1myqKAT2PimVJ3B6ubuYQMr9'],
+  ]);
+  // each cached under its own signature; nothing under QAgz, nothing under the stranger's
+  expect(client.getQueryData(['parsedTx', 'devnet', XGJN])).toBe(FIXTURES[XGJN]);
+  expect(client.getQueryData(['parsedTx', 'devnet', BGSO])).toBe(FIXTURES[BGSO]);
+  expect(client.getQueryData(['parsedTx', 'devnet', QAGZ])).toBeUndefined();
+  expect(client.getQueryData(['parsedTx', 'devnet', stranger.transaction!.signatures![0]!])).toBeUndefined();
+  // the refresh asks for the one unread row again, and it is then itself
+  const again = await loadHistory(MAIN, 'head', env(connection));
+  expect(again.rows[1]!.activity).toMatchObject({kind: 'received', counterparty: ACC_2});
+});
+
 // H10 (plan review r1 m6; spec §4.6): the session's token accounts reach the classifier
 it("the session's token accounts are handed to the classifier: an owner-less entry of one of them is incomplete", async () => {
   // DERIVED from QAgzVzY6…: main's token entries lose their `owner` (the classifier's test A35)
   const ownerless = load('tx-test-to-main.json');
   delete ownerless.meta!.preTokenBalances![1]!.owner;
   delete ownerless.meta!.postTokenBalances![1]!.owner;
-  FIXTURES.ownerless = ownerless;
+  FIXTURES.ownerless = stamped(ownerless, 'ownerless');
   const {connection} = world({[MAIN]: [], [MAIN_TA]: [sig('ownerless', 300)]}, {[MAIN]: [MAIN_TA]});
   const snap = await loadHistory(MAIN, 'head', env(connection));
   delete FIXTURES.ownerless;
@@ -3577,22 +4016,51 @@ it("the session's token accounts are handed to the classifier: an owner-less ent
 
 // H8 (plan review r1 I6): the session serialises its reads — one that never settles must not block the next
 it('a signature read that never answers fails the load after the time limit; the next load is not stuck behind it', async () => {
-  const {connection} = world({[MAIN]: [sig('2bGS', 100)]}, {});
+  const {connection} = world({[MAIN]: [sig(BGSO, 100)]}, {});
   connection.getSignaturesForAddress.mockImplementationOnce(() => new Promise<never>(() => undefined));
   await expect(loadHistory(MAIN, 'head', {...env(connection), timeoutMs: 30})).rejects.toThrow('timed out');
   const ok = await loadHistory(MAIN, 'head', {...env(connection), timeoutMs: 30});
-  expect(ok.rows.map(r => r.item.signature)).toEqual(['2bGS']);
+  expect(ok.rows.map(r => r.item.signature)).toEqual([BGSO]);
 });
 
 // H11 (plan review r1 I6)
 it('transaction reads that never answer leave partial rows after the time limit: the list is shown, not held', async () => {
-  const {connection} = world({[MAIN]: [sig('2bGS', 100)]}, {});
+  const {connection} = world({[MAIN]: [sig(BGSO, 100)]}, {});
   connection.getParsedTransactions.mockImplementationOnce(() => new Promise<never>(() => undefined));
   const snap = await loadHistory(MAIN, 'head', {...env(connection), timeoutMs: 30});
-  expect(snap.rows.map(r => [r.item.signature, r.activity === null])).toEqual([['2bGS', true]]);
+  expect(snap.rows.map(r => [r.item.signature, r.activity === null])).toEqual([[BGSO, true]]);
   expect(connection.getParsedTransaction).not.toHaveBeenCalled();
   const again = await loadHistory(MAIN, 'head', {...env(connection), timeoutMs: 30}); // the refresh re-tries it
   expect(again.rows[0]!.activity).toMatchObject({kind: 'sent'});
+});
+
+// H13 (plan review r2 n2): the node ran out of time on this load's rows — it is not asked again for the older ones
+it('after a transaction read that timed out the second read is not started; older rows keep what the cache holds', async () => {
+  const many = Array.from({length: 45}, (_, k) => sig(`s${45 - k}`, 45 - k));
+  const {connection, state} = world({[MAIN]: many}, {});
+  state.filler = FIXTURES[BGSO]!;
+  state.unreadable.add('s30'); // one row of page 1 stays unparsed: the second read of the next load would ask for it
+  const p1 = await loadHistory(MAIN, 'head', {...env(connection), timeoutMs: 30});
+  expect(p1.rows.filter(r => r.activity === null).map(r => r.item.signature)).toEqual(['s30']);
+  state.txCalls.length = 0;
+  connection.getParsedTransactions.mockImplementationOnce((signatures: string[]) => {
+    state.txCalls.push(signatures);
+    return new Promise<never>(() => undefined);
+  });
+  const p2 = await loadHistory(MAIN, 'older', {...env(connection), timeoutMs: 30});
+  expect(state.txCalls).toHaveLength(1); // page 2's batch only: no ['s30'] read behind it
+  expect(state.txCalls[0]).toHaveLength(20);
+  expect(connection.getParsedTransaction).not.toHaveBeenCalled();
+  // page 1's rows are still parsed (from the cache); page 2's are partial rows, not an error
+  expect(p2.rows.slice(0, 20).filter(r => r.activity !== null)).toHaveLength(19);
+  expect(p2.rows.slice(20).every(r => r.activity === null)).toBe(true);
+  expect(p2.rows).toHaveLength(40);
+  // the next load (a refresh that adds nothing) reads every row still unparsed: page 2's twenty and the old one
+  state.txCalls.length = 0;
+  state.unreadable.clear();
+  const p3 = await loadHistory(MAIN, 'head', {...env(connection), timeoutMs: 30});
+  expect(p3.rows.every(r => r.activity !== null)).toBe(true);
+  expect(state.txCalls.map(c => c.length).sort()).toEqual([1, 20]);
 });
 
 // H6 (§3.4)
@@ -3605,14 +4073,44 @@ it('a failed signature read throws: nothing is claimed about an account that was
 });
 ```
 
+      and add one test to the existing `src/modules/solana/__tests__/queries.test.ts` — `getTransactionDetail`
+      is what #27 reads through until Task 8 replaces it, and it asks with version 0 today, so #27 cannot load
+      any version-1 transaction (review of the tree-sync fix, m1; owner decision 2026-11-27):
+
+**The edit — `src/modules/solana/__tests__/queries.test.ts`. Find:**
+
+```ts
+    expect(await getTransactionDetail(conn, 'SIG')).toBeNull();
+  });
+});
+```
+
+**Replace with:**
+
+```ts
+    expect(await getTransactionDetail(conn, 'SIG')).toBeNull();
+  });
+
+  // history plan r3 (owner decision 2026-11-27): at version 0 a node refuses every version-1 transaction
+  it('asks for the transaction at version 1', async () => {
+    const getParsedTransaction = jest.fn(async (_signature: string, _config: unknown) => null);
+    await getTransactionDetail({getParsedTransaction} as never, 'SIG');
+    expect(getParsedTransaction).toHaveBeenCalledWith('SIG', {maxSupportedTransactionVersion: 1});
+  });
+});
+```
+
 - [ ] **Step 2: Run them.**
-      `npx jest src/modules/solana/__tests__/historyReads.test.ts src/modules/solana/__tests__/history.test.ts --forceExit`
-      Expected: FAIL — `Cannot find module '../historyReads'` and `'../history'`.
+      `npx jest src/modules/solana/__tests__/historyReads.test.ts src/modules/solana/__tests__/history.test.ts src/modules/solana/__tests__/queries.test.ts --forceExit`
+      Expected: FAIL — `Cannot find module '../historyReads'` and `'../history'`; and in `queries.test.ts` the one
+      new test, "asks for the transaction at version 1" (received `{maxSupportedTransactionVersion: 0}`).
 
-- [ ] **Step 3: Two small edits to existing files.** In `src/modules/solana/queries.ts`, `getTokenAccounts` keeps
-      its name, key and result; its body moves into an exported helper that takes the program:
+- [ ] **Step 3: Small edits to two existing files.** In `src/modules/solana/queries.ts`, `getTokenAccounts` keeps
+      its name, key and result; its body moves into an exported helper that takes the program. And
+      `getTransactionDetail` asks with `maxSupportedTransactionVersion: 1` (the one value; nothing else of it
+      changes — it stays PR 1's reader, and has no caller left after Task 8):
 
-**The edit — `src/modules/solana/queries.ts`. Find:**
+**Edit 1 of 2 — `src/modules/solana/queries.ts`. Find:**
 
 ```ts
 }
@@ -3696,6 +4194,29 @@ export async function getTokenAccounts(
 export interface GetTransactionHistoryOptions {
 ```
 
+**Edit 2 of 2 — `src/modules/solana/queries.ts`. Find:**
+
+```ts
+export async function getTransactionDetail(connection: Connection, signature: string): Promise<TxDetail | null> {
+  // R11: the cast names exactly the fields parseTxDetail reads (RawParsedTx), token balances included
+  const tx = (await connection.getParsedTransaction(signature, {
+    maxSupportedTransactionVersion: 0,
+  })) as unknown as RawParsedTx | null;
+  if (!tx) {
+```
+
+**Replace with:**
+
+```ts
+export async function getTransactionDetail(connection: Connection, signature: string): Promise<TxDetail | null> {
+  // R11: the cast names exactly the fields parseTxDetail reads (RawParsedTx), token balances included
+  // version 1: the highest web3.js 1.99 parses; at 0 the node refuses every version-1 transaction (-32015)
+  const tx = (await connection.getParsedTransaction(signature, {
+    maxSupportedTransactionVersion: 1,
+  })) as unknown as RawParsedTx | null;
+  if (!tx) {
+```
+
       In `src/modules/solana/withTimeout.ts`, the rejection becomes a `TimeoutError` with the same message (its
       one existing user, `treeSync.ts`, reads only the message):
 
@@ -3757,6 +4278,19 @@ export function withTimeout<T>(
  * (`applyParsedTxDefaults`). A null answer (not indexed yet) and a failed read are NOT cached: the
  * signature is simply absent from the result, and the caller shows a partial row or retries.
  *
+ * WHICH ANSWER IS WHOSE (plan review r2 C1): an answer is matched to a signature by ITS OWN
+ * `transaction.signatures[0]`, never by its position in the batch. JSON-RPC 2.0 lets a node answer a
+ * batch in any order — both public endpoints do — and web3.js hands the array over as it arrived.
+ * Paired by position, transaction A would be shown, and cached for 24 h, on the row of signature B.
+ * So: an answer that carries no signature, one nobody asked for, and a signature that two answers
+ * of one batch claim are all dropped — that signature is unread (a partial row, asked for again),
+ * never somebody else's transaction. The single read checks its one answer the same way.
+ *
+ * THE VERSION (owner decision 2026-11-27, spec §3.3): transactions are asked for with
+ * `maxSupportedTransactionVersion: 1`, the highest web3.js 1.99 parses. A node that still refuses a
+ * signature (a higher version, an old node, a rate limit) fails its batch; the one-at-a-time path
+ * then leaves only that signature unread.
+ *
  * THE LIMITER KEY (`rpcLimiter` dedupes in flight by key) holds the method and the cluster, plus the
  * owner and the token program for a source-list read, the source and its cursor for a signature
  * read, and a hash of EVERY signature for a batch — a shorter key would hand one page's answer to
@@ -3770,7 +4304,10 @@ export function withTimeout<T>(
  * join of the hung one). A read that times out is a failed read: nothing is cached, a retry works.
  * When the BATCH times out the node is not answering: the same signatures are NOT asked for one at
  * a time (20 more limits in a row); they stay unread until the next load. The one-at-a-time path
- * stops at its first timeout for the same reason.
+ * stops at its first timeout for the same reason. And ONE call of `readParsedTransactions` has one
+ * deadline (plan review r2 n2): once its time limit has passed since it began, it starts no further
+ * batch and no further single read — a node that answers every request slowly, or with 429s that
+ * web3.js itself waits out, cannot hold a load for twenty limits in a row.
  *
  * COST, stated honestly: a batch is one HTTP call carrying N JSON-RPC requests; providers count each.
  * The batch saves round trips, not quota.
@@ -3870,64 +4407,151 @@ function hashOf(signatures: readonly string[]): string {
   return Array.from(digest.subarray(0, 16), b => b.toString(16).padStart(2, '0')).join('');
 }
 
-const READ_CONFIG = {maxSupportedTransactionVersion: 0} as const;
+/** Version 1 is the highest web3.js 1.99 parses (spec §3.3, owner decision 2026-11-27). */
+const READ_CONFIG = {maxSupportedTransactionVersion: 1} as const;
+
+/** The signature an answer carries itself — the only thing that says which transaction it is. */
+function ownSignature(answer: unknown): string | null {
+  const first = (answer as RawParsedTx | null | undefined)?.transaction?.signatures?.[0];
+  return typeof first === 'string' && first !== '' ? first : null;
+}
 
 /**
- * One batch of at most HISTORY_PAGE_SIZE signatures: the batch call, else one at a time. `answers` is
- * index-aligned; null = no answer. A batch that TIMED OUT is not followed by single reads, and the
- * single reads stop at the first one that times out (`timedOut`): a node that does not answer is not
- * asked twenty more times.
+ * The answers of one batch, each under ITS OWN signature (never its position). Dropped: a null, an
+ * answer without a signature, one for a signature that was not asked for, and BOTH answers when two
+ * claim the same signature (which of them is right cannot be told).
+ */
+function matchBySignature(asked: readonly string[], answers: unknown): Map<string, RawParsedTx> {
+  const wanted = new Set(asked);
+  const own = new Map<string, RawParsedTx>();
+  const claimedTwice = new Set<string>();
+  for (const answer of Array.isArray(answers) ? (answers as unknown[]) : []) {
+    const signature = ownSignature(answer);
+    if (signature === null || !wanted.has(signature)) {
+      continue;
+    }
+    if (own.has(signature)) {
+      claimedTwice.add(signature);
+    } else {
+      own.set(signature, answer as RawParsedTx);
+    }
+  }
+  for (const signature of claimedTwice) {
+    own.delete(signature);
+  }
+  return own;
+}
+
+/**
+ * One batch of at most HISTORY_PAGE_SIZE signatures: the batch call, else one at a time. `read` holds
+ * what was read, by signature; a signature absent from it has no answer. A batch that was ANSWERED is
+ * final — a signature it did not answer for is unread, not asked for again here. A batch that TIMED
+ * OUT is not followed by single reads; the single reads stop at the first one that times out, and
+ * none is started once `deadline` (a `Date.now()` value) has passed. `timedOut` reports all three:
+ * a node that does not answer in time is not asked twenty more times.
  */
 async function readChunk(
   connection: Pick<Connection, 'getParsedTransactions' | 'getParsedTransaction'>,
   cluster: string,
   chunk: string[],
   timeoutMs: number,
-): Promise<{answers: Array<RawParsedTx | null>; timedOut: boolean}> {
+  deadline: number,
+): Promise<{read: Map<string, RawParsedTx>; timedOut: boolean}> {
   try {
-    const answers = (await rpcLimiter.execute(`getParsedTransactions:${cluster}:${hashOf(chunk)}`, () =>
+    const answers: unknown = await rpcLimiter.execute(`getParsedTransactions:${cluster}:${hashOf(chunk)}`, () =>
       withTimeout(connection.getParsedTransactions(chunk, READ_CONFIG), timeoutMs, 'getParsedTransactions'),
-    )) as unknown as Array<RawParsedTx | null>;
-    if (Array.isArray(answers) && answers.length === chunk.length) {
-      return {answers, timedOut: false};
-    }
+    );
+    return {read: matchBySignature(chunk, answers), timedOut: false};
   } catch (e) {
     if (e instanceof TimeoutError) {
-      return {answers: chunk.map(() => null), timedOut: true};
+      return {read: new Map(), timedOut: true};
     }
     // refused or failed (one refused item fails the whole batch in web3.js): the same signatures, one at a time
   }
-  const answers: Array<RawParsedTx | null> = chunk.map(() => null);
-  for (let at = 0; at < chunk.length; at++) {
+  const read = new Map<string, RawParsedTx>();
+  for (const signature of chunk) {
+    if (Date.now() >= deadline) {
+      return {read, timedOut: true};
+    }
     try {
-      answers[at] = await readParsedTransaction(connection, cluster, chunk[at]!, timeoutMs);
+      const tx = await readParsedTransaction(connection, cluster, signature, timeoutMs);
+      if (tx !== null) {
+        read.set(signature, tx);
+      }
     } catch (e) {
       if (e instanceof TimeoutError) {
-        return {answers, timedOut: true};
+        return {read, timedOut: true};
       }
     }
   }
-  return {answers, timedOut: false};
+  return {read, timedOut: false};
 }
 
-/** One transaction, uncached: null when the node has not indexed it. Throws when the read fails or times out. */
+/**
+ * One transaction, uncached: null when the node has not indexed it — or answered with a transaction
+ * whose own signature is not the one asked for (never shown as this one). Throws when the read fails
+ * or times out.
+ */
 export async function readParsedTransaction(
   connection: Pick<Connection, 'getParsedTransaction'>,
   cluster: string,
   signature: string,
   timeoutMs: number = HISTORY_READ_TIMEOUT_MS,
 ): Promise<RawParsedTx | null> {
-  return (await rpcLimiter.execute(`getParsedTransaction:${cluster}:${signature}`, () =>
+  const answer: unknown = await rpcLimiter.execute(`getParsedTransaction:${cluster}:${signature}`, () =>
     withTimeout(connection.getParsedTransaction(signature, READ_CONFIG), timeoutMs, 'getParsedTransaction'),
-  )) as unknown as RawParsedTx | null;
+  );
+  return ownSignature(answer) === signature ? (answer as RawParsedTx) : null;
+}
+
+/** What the cache already holds of `signatures` — no request. */
+export function cachedParsedTransactions(client: QueryClient, cluster: string, signatures: readonly string[]): Map<string, RawParsedTx> {
+  const out = new Map<string, RawParsedTx>();
+  for (const signature of new Set(signatures)) {
+    const cached = client.getQueryData<RawParsedTx>(parsedTxKey(cluster, signature));
+    if (cached !== undefined) {
+      out.set(signature, cached);
+    }
+  }
+  return out;
 }
 
 /**
  * §3.3: the parsed transactions of `signatures`, from the cache where it has them. The rest is read
  * in batches of HISTORY_PAGE_SIZE: ONE batch call each; if a batch throws, one at a time. A signature
- * the node answers null for, or whose read fails or times out, is absent from the result and is not
- * cached. After a timeout no further batch is started: what is left stays unread until the next call.
+ * the node answers null for, has no answer of its own for, or whose read fails or times out, is
+ * absent from `transactions` and is not cached. `timedOut`: a read got no answer within `timeoutMs`,
+ * or the whole call ran past it — no further batch or single read was started, and what is left
+ * stays unread until the next call.
  */
+export async function readParsedTransactionsTimed(
+  connection: Pick<Connection, 'getParsedTransactions' | 'getParsedTransaction'>,
+  client: QueryClient,
+  cluster: string,
+  signatures: readonly string[],
+  timeoutMs: number = HISTORY_READ_TIMEOUT_MS,
+): Promise<{transactions: Map<string, RawParsedTx>; timedOut: boolean}> {
+  const deadline = Date.now() + timeoutMs;
+  const transactions = cachedParsedTransactions(client, cluster, signatures);
+  const missing = [...new Set(signatures)].filter(signature => !transactions.has(signature));
+  for (let from = 0; from < missing.length; from += HISTORY_PAGE_SIZE) {
+    if (from > 0 && Date.now() >= deadline) {
+      return {transactions, timedOut: true};
+    }
+    const chunk = missing.slice(from, from + HISTORY_PAGE_SIZE);
+    const {read, timedOut} = await readChunk(connection, cluster, chunk, timeoutMs, deadline);
+    for (const [signature, tx] of read) {
+      client.setQueryData(parsedTxKey(cluster, signature), tx);
+      transactions.set(signature, tx);
+    }
+    if (timedOut) {
+      return {transactions, timedOut: true};
+    }
+  }
+  return {transactions, timedOut: false};
+}
+
+/** `readParsedTransactionsTimed` for a caller that only wants the transactions (the link scan). */
 export async function readParsedTransactions(
   connection: Pick<Connection, 'getParsedTransactions' | 'getParsedTransaction'>,
   client: QueryClient,
@@ -3935,34 +4559,7 @@ export async function readParsedTransactions(
   signatures: readonly string[],
   timeoutMs: number = HISTORY_READ_TIMEOUT_MS,
 ): Promise<Map<string, RawParsedTx>> {
-  const out = new Map<string, RawParsedTx>();
-  const missing: string[] = [];
-  for (const signature of new Set(signatures)) {
-    const cached = client.getQueryData<RawParsedTx>(parsedTxKey(cluster, signature));
-    if (cached !== undefined) {
-      out.set(signature, cached);
-    } else {
-      missing.push(signature);
-    }
-  }
-  if (missing.length === 0) {
-    return out;
-  }
-  for (let from = 0; from < missing.length; from += HISTORY_PAGE_SIZE) {
-    const chunk = missing.slice(from, from + HISTORY_PAGE_SIZE);
-    const {answers, timedOut} = await readChunk(connection, cluster, chunk, timeoutMs);
-    chunk.forEach((signature, at) => {
-      const tx = answers[at] ?? null;
-      if (tx !== null) {
-        client.setQueryData(parsedTxKey(cluster, signature), tx);
-        out.set(signature, tx);
-      }
-    });
-    if (timedOut) {
-      break;
-    }
-  }
-  return out;
+  return (await readParsedTransactionsTimed(connection, client, cluster, signatures, timeoutMs)).transactions;
 }
 ```
 
@@ -4009,15 +4606,17 @@ export function activityContext(ownTokenAccounts: ReadonlySet<string> = NO_ACCOU
  *
  * TWO READS PER LOAD (plan review r1 I5): the signatures this load ADDED are one read, and the rows
  * loaded before that are still unparsed are another. web3.js fails a whole batch for one refused
- * item, so a signature the node will never serve (a transaction of a version above 0) would
- * otherwise sit in the batch of every later page and turn each into 20 single reads. Apart, it costs
- * its own two calls per load and touches no new page.
+ * item, so a signature the node will not serve (a transaction of a version above 1, or one an old
+ * node refuses) would otherwise sit in the batch of every later page and turn each into 20 single
+ * reads. Apart, it costs its own two calls per load and touches no new page. When the first read
+ * ran out of time the second is not started (plan review r2 n2): the node is not answering, and the
+ * older rows keep what the cache already holds.
  */
 import type {Connection} from '@solana/web3.js';
 import type {QueryClient} from '@tanstack/react-query';
 import {classifyActivity} from './activity';
 import type {ActivityContext, ActivityRow} from './activity';
-import {HISTORY_READ_TIMEOUT_MS, getSignaturePage, listHistorySources, readParsedTransactions} from './historyReads';
+import {HISTORY_READ_TIMEOUT_MS, cachedParsedTransactions, getSignaturePage, listHistorySources, readParsedTransactionsTimed} from './historyReads';
 import {historySession} from './historySession';
 import type {SignatureItem} from './historySession';
 
@@ -4072,8 +4671,13 @@ export async function loadHistory(account: string, step: 'head' | 'older', env: 
   const added = items.map(x => x.signature).filter(isNew);
   const loaded = items.map(x => x.signature).filter(s => !isNew(s));
   // only the uncached ones are read — this load's rows first, then (apart) every older row still unparsed
-  const raws = await readParsedTransactions(env.connection, env.client, env.cluster, added, timeoutMs);
-  for (const [signature, raw] of await readParsedTransactions(env.connection, env.client, env.cluster, loaded, timeoutMs)) {
+  const first = await readParsedTransactionsTimed(env.connection, env.client, env.cluster, added, timeoutMs);
+  const raws = first.transactions;
+  // a node that ran out of time on this load's rows is not asked again for the older ones: the cache alone
+  const older = first.timedOut
+    ? cachedParsedTransactions(env.client, env.cluster, loaded)
+    : (await readParsedTransactionsTimed(env.connection, env.client, env.cluster, loaded, timeoutMs)).transactions;
+  for (const [signature, raw] of older) {
     raws.set(signature, raw);
   }
   const ctx = env.context(session.tokenAccountSources);
@@ -4097,20 +4701,36 @@ export async function loadHistory(account: string, step: 'head' | 'older', env: 
 ```
 
 - [ ] **Step 7: Run them.** The Step 2 command. Expected: PASS
-      (21 + 11 tests). Also
+      (28 + 13 tests). Also
       `npx jest src/modules/solana/__tests__/queries.test.ts src/modules/accounts src/modules/backgroundSync src/modules/shielded/a0/__tests__/treeSync.test.ts --forceExit`
-      — every existing user of `getTokenAccounts` and of `withTimeout` still passes.
+      — every existing user of `getTokenAccounts` and of `withTimeout` still passes, and `queries.test.ts` now
+      has 14 passing tests (the new one among them).
 
-- [ ] **Step 8: Gates.**
+- [ ] **Step 8: Prove the new tests are tests (mutation, by hand, four of them).** Make each change, run the
+      Step 2 command, see the named tests FAIL, undo it:
+  - in `historyReads.ts` `readChunk`, pair by position again — replace
+    `return {read: matchBySignature(chunk, answers), timedOut: false};` by
+    `return {read: new Map((answers as RawParsedTx[]).flatMap((a, at) => (a ? [[chunk[at]!, a] as [string, RawParsedTx]] : []))), timedOut: false};`
+    → R21, R22 and H12 must FAIL (and with them R7, R8, R10, H1: every scripted batch answers out of order);
+  - in `readParsedTransaction`, `return ownSignature(answer) === signature ? (answer as RawParsedTx) : null;` →
+    `return (answer ?? null) as RawParsedTx | null;` → R25 must FAIL;
+  - `const READ_CONFIG = {maxSupportedTransactionVersion: 1}` → `0` → R7, R8, R9, R10 must FAIL; and in
+    `queries.ts` the same value → `0` → "asks for the transaction at version 1" must FAIL;
+  - in `history.ts`, `? cachedParsedTransactions(env.client, env.cluster, loaded)` → `? new Map<string, never>()`
+    → H13 must FAIL (the older rows lost their cached transactions).
+      Report the failing test names in the task report. `git diff` must be empty against Steps 3–6 afterwards.
+
+- [ ] **Step 9: Gates.**
       `npx tsc --noEmit && npm run lint:ci && npx jest && node scripts/check-no-tge-date.mjs`, then
       `/usr/bin/node node_modules/.bin/jest src/modules/solana --forceExit`.
 
-- [ ] **Step 9: Commit.**
+- [ ] **Step 10: Commit.**
 
 ```bash
 git add src/modules/solana/queries.ts src/modules/solana/withTimeout.ts src/modules/solana/historyReads.ts \
   src/modules/solana/activityContext.ts src/modules/solana/history.ts \
-  src/modules/solana/__tests__/historyReads.test.ts src/modules/solana/__tests__/history.test.ts
+  src/modules/solana/__tests__/historyReads.test.ts src/modules/solana/__tests__/history.test.ts \
+  src/modules/solana/__tests__/queries.test.ts
 git commit -m "feat(history): sources incl. Token-2022, the per-signature transaction cache, time limits, and loadHistory"
 ```
 
@@ -4142,12 +4762,13 @@ Review Focus 2 and 4.
   `HISTORY_CHIPS: ReadonlyArray<{id: HistoryChipId; label: string}>`, `historyChipNoneLoaded(chipLabel, loaded)`,
   `historyChipNone(chipLabel)`, `HISTORY_LOAD_OLDER`, `historyCoverage(read, total)`, `SECTION_TODAY`,
   `SECTION_YESTERDAY`, `TX_POOL_BADGE_LABEL` ('Pool transaction' — the screen-reader label of the icon-only
-  badge), `TX_HIDDEN` ('••••'), `TX_BALANCE_CHANGES`, `txAtTodaysPrice(usd: string)`.
+  badge), `TX_BALANCE_CHANGES`, `txAtTodaysPrice(usd: string)`. **No new mask constant:** a hidden figure is the
+  existing `VALUE_HIDDEN` ('•••') of `src/copy/accounts.ts` (controller ruling, plan review r2 n1).
 - Produces, from `src/modules/solana/activityView.ts`:
   - `export type RowIcon = 'sent' | 'received' | 'swap' | 'private' | 'setup' | 'failed' | 'dot'`
   - `export interface RowView {icon: RowIcon; title: string; badge: boolean; secondary: string; amount: string; amountTone: 'default' | 'success' | 'tertiary'; note: string | null; sub: string | null}`
   - `export function rowView(row: HistoryRow, labelOf: (address: string) => string, now: number, tz: string, hidden?: boolean): RowView`
-    — `hidden` (the hide-balances setting) turns every figure of the row into "••••".
+    — `hidden` (the hide-balances setting) turns every figure of the row into "•••" (`VALUE_HIDDEN`).
   - `export function sectionOf(blockTime: number | null, now: number, tz: string): {key: string; title: string}` —
     keys `'today' | 'yesterday' | 'week' | 'month' | 'YYYY-MM' | 'unknown'`; `blockTime` in seconds, `now` in ms.
   - `export function rowTime(blockTime: number | null, now: number, tz: string): string`
@@ -4172,8 +4793,10 @@ Review Focus 2 and 4.
   gets `TX_POOL_BADGE_LABEL` — "Pool transaction": what the row is, and no claim. It is in `src/copy/transactions.ts`,
   so both copy guards read it (Step 7).
 - **Hide balances is part of what a row says** (owner decision Q2), so it is a parameter of the pure functions
-  here and is tested here (V20b, V27): `rowView(…, hidden)` and `changeLine(d, hidden)`. A FIGURE becomes "••••"
-  (`TX_HIDDEN`): the amount with its "+N more", the incoming leg of a swap, the fee under a failed row. What is
+  here and is tested here (V20b, V27): `rowView(…, hidden)` and `changeLine(d, hidden)`. A FIGURE becomes "•••"
+  (`VALUE_HIDDEN`, imported from `src/copy/accounts.ts` — the mask the Accounts sheet and the balance card's
+  split already show; the tests assert the constant, and `src/copy/__tests__/accounts.test.ts` pins its value):
+  the amount with its "+N more", the incoming leg of a swap, the fee under a failed row. What is
   not a figure stays: "—", "No funds moved", " · incomplete", the role label of a balance change. A hidden
   received amount also loses its green.
 - **Rows use the shared 4-place formatter** (spec §5.1 "Formatting"), so 0.00001 TEST reads "<0.0001" there; **#27
@@ -4220,6 +4843,7 @@ import {
   sectionOf,
   zonedDate,
 } from '../activityView';
+import {VALUE_HIDDEN} from '../../../copy/accounts';
 import type {ActivityRow, Delta} from '../activity';
 import type {TxTransfer} from '../txDetail';
 import type {HistoryRow} from '../history';
@@ -4426,17 +5050,17 @@ describe('rowView (§5.1)', () => {
   });
 
   // V20b (owner, Q2): the dashboard's hide-balances setting
-  it('hidden: every figure reads "••••" — the amount with its "+N more", and the line under it; words stay', () => {
+  it('hidden: every figure reads "•••" — the amount with its "+N more", and the line under it; words stay', () => {
     const hide = (r: HistoryRow) => rowView(r, label, NOW, LJ, true);
     const sent = row({kind: 'sent', primary: TEST, counterparty: 'CP', extraAssets: 2, incomplete: true});
-    expect(hide(sent)).toEqual({...view(sent), amount: '••••', amountTone: 'default'});
+    expect(hide(sent)).toEqual({...view(sent), amount: VALUE_HIDDEN, amountTone: 'default'});
     expect(hide(sent)).toMatchObject({title: 'Sent TEST', secondary: 'to <CP> · 09:14', note: ' · incomplete'});
     // a received amount loses its green too
-    expect(hide(row({kind: 'received', primary: SOL_IN}))).toMatchObject({title: 'Received SOL', amount: '••••', amountTone: 'default'});
+    expect(hide(row({kind: 'received', primary: SOL_IN}))).toMatchObject({title: 'Received SOL', amount: VALUE_HIDDEN, amountTone: 'default'});
     // the incoming leg of a swap, and the fee of a failed transaction, are figures
-    expect(hide(row({kind: 'swap', primary: delta('native', 'SOL', -1n), secondary: delta('N', 'NOC', 5n)}))).toMatchObject({amount: '••••', sub: '••••'});
-    expect(hide(row({kind: 'failed', feePaidByAccount: 5000n}))).toMatchObject({title: 'Failed', amount: '—', sub: '••••'});
-    expect(hide(row({kind: 'account-setup', primary: delta('native', 'SOL', -1_488_440n, 9, 'rent')})).amount).toBe('••••');
+    expect(hide(row({kind: 'swap', primary: delta('native', 'SOL', -1n), secondary: delta('N', 'NOC', 5n)}))).toMatchObject({amount: VALUE_HIDDEN, sub: VALUE_HIDDEN});
+    expect(hide(row({kind: 'failed', feePaidByAccount: 5000n}))).toMatchObject({title: 'Failed', amount: '—', sub: VALUE_HIDDEN});
+    expect(hide(row({kind: 'account-setup', primary: delta('native', 'SOL', -1_488_440n, 9, 'rent')})).amount).toBe(VALUE_HIDDEN);
     // what is not an amount stays as it is
     expect(hide(row({kind: 'no-funds-moved'}))).toEqual(view(row({kind: 'no-funds-moved'})));
     expect(hide(row({kind: 'unknown'})).amount).toBe('—');
@@ -4558,8 +5182,8 @@ describe('the detail (#27, §4.6)', () => {
     expect(changeLine(delta('native', 'SOL', 2_000_000n, 9, 'grant'))).toBe('+0.002 SOL · gas grant');
     expect(changeLine(delta('native', 'SOL', -20_000n, 9, 'markup'))).toBe('−0.00002 SOL · Noctura fee');
     // hidden (owner, Q2): the figure goes, the role stays
-    expect(changeLine(delta('MINT', 'TEST', -100000n), true)).toBe('••••');
-    expect(changeLine(delta('native', 'SOL', -2_040_000n, 9, 'rent'), true)).toBe('•••• · account rent');
+    expect(changeLine(delta('MINT', 'TEST', -100000n), true)).toBe(VALUE_HIDDEN);
+    expect(changeLine(delta('native', 'SOL', -2_040_000n, 9, 'rent'), true)).toBe(`${VALUE_HIDDEN} · account rent`);
   });
 
   // V28 (H7)
@@ -4615,8 +5239,6 @@ export const TX_VIA_JUPITER = 'via Jupiter';
 export const TX_INCOMPLETE = 'incomplete';
 /** What a screen reader says for the icon-only badge of the two pool rows: what the row is, no claim about it */
 export const TX_POOL_BADGE_LABEL = 'Pool transaction';
-/** An amount while the dashboard's hide-balances eye is on (owner, Q2): #26 rows and #27 */
-export const TX_HIDDEN = '••••';
 
 export function txSentTitle(symbol: string): string {
   return `${TX_SENT} ${symbol}`;
@@ -4719,7 +5341,6 @@ import {
   TX_ACCOUNT_SETUP,
   TX_AMOUNT_UNKNOWN,
   TX_FAILED,
-  TX_HIDDEN,
   TX_INCOMPLETE,
   TX_MADE_PRIVATE,
   TX_MADE_PUBLIC,
@@ -4745,6 +5366,7 @@ import {
   txTo,
 } from '../../copy/transactions';
 import type {HistoryChipId} from '../../copy/transactions';
+import {VALUE_HIDDEN} from '../../copy/accounts';
 
 export type RowIcon = 'sent' | 'received' | 'swap' | 'private' | 'setup' | 'failed' | 'dot';
 
@@ -4927,7 +5549,8 @@ const joined = (...parts: Array<string | null>): string => parts.filter(p => p !
 
 /**
  * §5.1: one row. `labelOf` names a counter-party (`counterpartyLabel`). `hidden` is the dashboard's
- * hide-balances setting (owner, Q2): every FIGURE of the row reads "••••" — the amount with its
+ * hide-balances setting (owner, Q2): every FIGURE of the row reads "•••" (`VALUE_HIDDEN`, the mask
+ * the Accounts sheet and the balance card's split already use) — the amount with its
  * "+N more", and the line under it. The title, the counter-party, the time and the icon stay, and so
  * do "—" and "No funds moved", which are not amounts.
  */
@@ -4939,9 +5562,9 @@ export function rowView(row: HistoryRow, labelOf: (address: string) => string, n
   const figure = row.activity !== null && row.activity.primary !== null;
   return {
     ...view,
-    amount: figure ? TX_HIDDEN : view.amount,
+    amount: figure ? VALUE_HIDDEN : view.amount,
     amountTone: figure ? 'default' : view.amountTone,
-    sub: view.sub === null ? null : TX_HIDDEN,
+    sub: view.sub === null ? null : VALUE_HIDDEN,
   };
 }
 
@@ -5064,9 +5687,9 @@ export function partiesAgree(transfer: TxTransfer | null, row: ActivityRow | nul
 
 const ROLE_LABEL: Record<Delta['role'], string | null> = {moved: null, markup: TX_ROLE_MARKUP, grant: TX_ROLE_GRANT, rent: TX_ROLE_RENT};
 
-/** One line of "Balance changes": "−0.0001 TEST", "−0.00204 SOL · account rent"; hidden: "••••", "•••• · account rent". */
+/** One line of "Balance changes": "−0.0001 TEST", "−0.00204 SOL · account rent"; hidden: "•••", "••• · account rent". */
 export function changeLine(d: Delta, hidden = false): string {
-  return joined(hidden ? TX_HIDDEN : `${d.raw < 0n ? MINUS : '+'}${exactAmount(d)} ${d.symbol}`, ROLE_LABEL[d.role]);
+  return joined(hidden ? VALUE_HIDDEN : `${d.raw < 0n ? MINUS : '+'}${exactAmount(d)} ${d.symbol}`, ROLE_LABEL[d.role]);
 }
 
 /** H7: today's value of `primary`, for the "≈ $x at today's price" line; null with no price. Display float. */
@@ -5650,7 +6273,7 @@ Every element of the design, and what this task does with it — nothing is drop
 | Date sections Today / Yesterday / This week | built, plus "This month", "{Month YYYY}", "Date unknown" (spec §5.3) |
 | `TxRow`: 40 dp round icon, title, secondary line, amount with a line under it | built: `rowView` (Task 5) says what, this screen places it |
 | the pool rows' icon and the mode badge (`#i-shield-lock`: a shield holding a lock) | built with lucide's `Shield` in both places — the glyph the app's other private-side screens already draw for that symbol (lucide has no shield-with-lock). **The badge is the icon alone — the design's word in it is NOT shown** (owner decision Q1); a screen reader hears "Pool transaction" |
-| (not in the design) hide balances | every figure of a row reads "••••" while the dashboard's eye is closed (owner decision Q2); Task 12 draws it |
+| (not in the design) hide balances | every figure of a row reads "•••" (`VALUE_HIDDEN`) while the dashboard's eye is closed (owner decision Q2); Task 12 draws it |
 | the footer of a wallet with more than 24 token accounts (spec §3.2) | built under the rows, and ALSO under "No transactions yet" and under an empty chip's line (plan review r1 I4 — not in the design; Task 12 draws it) |
 | 5-row skeleton across 2 sections (26a) | built |
 | Pull-to-refresh | built (the §3.4 refresh) |
@@ -5728,6 +6351,7 @@ import React from 'react';
 import {AppState} from 'react-native';
 import {render, fireEvent, act} from '@testing-library/react-native';
 import {TransactionHistoryScreen} from '../TransactionHistoryScreen';
+import {VALUE_HIDDEN} from '../../../copy/accounts';
 import type {ActivityKind, ActivityRow, Delta} from '../../../modules/solana/activity';
 import type {HistoryRow, HistorySnapshot} from '../../../modules/solana/history';
 
@@ -5881,7 +6505,7 @@ describe('rows (§5.1)', () => {
   });
 
   // T1b (owner, Q2)
-  it('hide balances: every figure of a row reads "••••"; title, counter-party, time and status stay', () => {
+  it('hide balances: every figure of a row reads "•••"; title, counter-party, time and status stay', () => {
     const rows = () => [
       row('sent', {signature: 'sent', primary: delta('M', 'TEST', -100000n), counterparty: OUTSIDE}),
       row('swap', {signature: 'swap', primary: delta('native', 'SOL', -1_200_000_000n), secondary: delta('N', 'NOC', 9_524_100_000_000n), via: 'Jupiter'}),
@@ -5891,14 +6515,14 @@ describe('rows (§5.1)', () => {
     mockHide.current = true;
     show(rows());
     const hidden = screen();
-    expect(hidden.getByTestId('tx-row-sent-amount')).toHaveTextContent('••••');
+    expect(hidden.getByTestId('tx-row-sent-amount')).toHaveTextContent(VALUE_HIDDEN, {exact: true});
     expect(hidden.getByTestId('tx-row-sent-title')).toHaveTextContent('Sent TEST');
     expect(hidden.getByTestId('tx-row-sent-secondary')).toHaveTextContent('to EfHSPx…mwXGgk · 09:14');
-    expect(hidden.getByTestId('tx-row-sent').props.accessibilityLabel).toBe('Sent TEST, to EfHSPx…mwXGgk · 09:14, ••••');
-    expect(hidden.getByTestId('tx-row-swap-amount')).toHaveTextContent('••••');
-    expect(hidden.getByTestId('tx-row-swap-sub')).toHaveTextContent('••••');
+    expect(hidden.getByTestId('tx-row-sent').props.accessibilityLabel).toBe(`Sent TEST, to EfHSPx…mwXGgk · 09:14, ${VALUE_HIDDEN}`);
+    expect(hidden.getByTestId('tx-row-swap-amount')).toHaveTextContent(VALUE_HIDDEN, {exact: true});
+    expect(hidden.getByTestId('tx-row-swap-sub')).toHaveTextContent(VALUE_HIDDEN, {exact: true});
     expect(hidden.getByTestId('tx-row-fail-title')).toHaveTextContent('Failed');
-    expect(hidden.getByTestId('tx-row-fail-sub')).toHaveTextContent('••••');
+    expect(hidden.getByTestId('tx-row-fail-sub')).toHaveTextContent(VALUE_HIDDEN, {exact: true});
     expect(hidden.getByTestId('tx-row-none-amount')).toHaveTextContent('No funds moved');
     expect(hidden.queryByText(/0\.0001|1\.2|9,524|0\.000005/)).toBeNull();
     hidden.unmount();
@@ -6301,7 +6925,7 @@ describe('states (§5.3)', () => {
  * 31 token accounts") stands under the rows AND under either empty line: "no transactions" is never
  * said alone about a history that was only partly read.
  *
- * HIDE BALANCES (owner, Q2): with the dashboard's eye closed every figure of a row reads "••••";
+ * HIDE BALANCES (owner, Q2): with the dashboard's eye closed every figure of a row reads "•••";
  * the title, the counter-party, the time and the status stay.
  *
  * THE CLOCK the sections are cut by is read again when the data changes and when the app comes back
@@ -6840,7 +7464,7 @@ mockups in `index.html` (search `27a · transparent-send`; states 27a–27f). Do
 | "Authorized by" (27f) | kept for a delegated transfer; its second case (From "—") is **not reachable** any more (spec §11) |
 | [View on explorer], [Save to address book] | kept; the contact button only when From / To are shown and the recipient is not this account |
 | OriginBadge | **NOT shown** (spec §11) |
-| (not in the design) hide balances | the hero, "≈ $x at today's price", each balance-change figure and the network fee read "••••" while the dashboard's eye is closed (owner decision Q2); Task 12 draws it |
+| (not in the design) hide balances | the hero, "≈ $x at today's price", each balance-change figure and the network fee read "•••" (`VALUE_HIDDEN`) while the dashboard's eye is closed (owner decision Q2); Task 12 draws it |
 | "token account" caption under an address | **no longer reachable** — a recipient that is only a token account now shows the balance-changes form (ruling 8) |
 
 **Files:**
@@ -6853,13 +7477,15 @@ mockups in `index.html` (search `27a · transparent-send`; states 27a–27f). Do
 **Interfaces:**
 - Consumes (Task 2): `classifyActivity`, `parseTxDetail` (existing), `RawParsedTx`.
 - Consumes (Task 3): `peekHistorySession(cluster, account)?.tokenAccountSources`.
-- Consumes (Task 4): `parsedTxKey(cluster, signature)`, `readParsedTransaction(connection, cluster, signature): Promise<RawParsedTx | null>`,
+- Consumes (Task 4): `parsedTxKey(cluster, signature)`, `readParsedTransaction(connection, cluster, signature): Promise<RawParsedTx | null>`
+  (null also when the node answered with a transaction whose own signature is not the one asked for — test U5),
   `applyParsedTxDefaults(client)` from `src/modules/solana/historyReads`; `activityContext(own?)` from
   `src/modules/solana/activityContext`.
 - Consumes (Task 5): `activityWord`, `heroAmount`, `partiesAgree`, `changeLine`, `primaryUsdToday` from
   `src/modules/solana/activityView`; `TX_BALANCE_CHANGES`, `txAtTodaysPrice(usd)` (and the existing `TX_FEE_PAYER`,
   `TX_AUTHORIZED_BY`) from `src/copy/transactions`.
-- Consumes (Task 5): `TX_HIDDEN` ('••••'); `changeLine(d, hidden)`.
+- Consumes (existing): `VALUE_HIDDEN` ('•••') from `src/copy/accounts` — the app's one mask for a hidden figure
+  (plan review r2 n1; there is no `TX_HIDDEN`). Consumes (Task 5): `changeLine(d, hidden)`.
 - Consumes (existing): `usePublicSettingsStore(s => s.hideBalances)` (`src/store/zustand/publicSettingsStore`) —
   the dashboard's setting, read only.
 - Consumes (existing): `useResolvedPrices(): {prices: Record<string, {usd: number; change24h: number | null}>; havePrices: boolean}`;
@@ -6886,7 +7512,7 @@ mockups in `index.html` (search `27a · transparent-send`; states 27a–27f). Do
   of the 143 lint warnings, and the gate is exact.
 - With no account (a deep link) nothing is claimed: "Transaction", no amount, the fee payer.
 - **Hide balances** (owner decision Q2): four places hold a figure — the hero, today's value, the balance
-  changes, the network fee. Each reads "••••" (a change keeps its role: "•••• · gas grant"). The eyebrow word,
+  changes, the network fee. Each reads "•••" (a change keeps its role: "••• · gas grant"). The eyebrow word,
   the status, the addresses, the hash and the block stay. A hero that would not be shown anyway (no primary) is
   not replaced by a mask (test D22, with the same transaction unhidden as its control).
 - Opened from #26, the history session of that account exists, and its token accounts are handed to the
@@ -6929,14 +7555,25 @@ afterEach(() => {
 });
 
 // U1
-it('reads the transaction once, at version 0, and keeps it under the shared key', async () => {
-  mockGetParsedTransaction.mockResolvedValue({slot: 7});
+it('reads the transaction once, at version 1, and keeps it under the shared key', async () => {
+  const answer = {slot: 7, transaction: {signatures: ['SIG']}};
+  mockGetParsedTransaction.mockResolvedValue(answer);
   const {result, unmount} = renderHook(() => useParsedTx('SIG'), {wrapper});
   expect(result.current).toEqual({raw: undefined, isLoading: true, notFound: false});
-  await waitFor(() => expect(result.current.raw).toEqual({slot: 7}));
+  await waitFor(() => expect(result.current.raw).toEqual(answer));
   expect(result.current).toMatchObject({isLoading: false, notFound: false});
-  expect(mockGetParsedTransaction).toHaveBeenCalledWith('SIG', {maxSupportedTransactionVersion: 0});
-  expect(client.getQueryData(KEY)).toEqual({slot: 7});
+  expect(mockGetParsedTransaction).toHaveBeenCalledWith('SIG', {maxSupportedTransactionVersion: 1});
+  expect(client.getQueryData(KEY)).toEqual(answer);
+  unmount();
+});
+
+// U5 (plan review r2 C1 / n4): #27 never shows a transaction under another one's signature
+it('an answer that is another transaction is notFound, and nothing is cached', async () => {
+  mockGetParsedTransaction.mockResolvedValue({slot: 7, transaction: {signatures: ['OTHER']}});
+  const {result, unmount} = renderHook(() => useParsedTx('SIG'), {wrapper});
+  await waitFor(() => expect(result.current.notFound).toBe(true));
+  expect(result.current.raw).toBeUndefined();
+  expect(client.getQueryData(KEY)).toBeUndefined();
   unmount();
 });
 
@@ -6992,6 +7629,7 @@ import {classifyActivity} from '../../../modules/solana/activity';
 import {heroAmount} from '../../../modules/solana/activityView';
 import {dropHistorySessions, historySession} from '../../../modules/solana/historySession';
 import {NETWORK} from '../../../constants/programs';
+import {VALUE_HIDDEN} from '../../../copy/accounts';
 import type {ActivityContext} from '../../../modules/solana/activity';
 import type {RawParsedTx} from '../../../modules/solana/txDetail';
 
@@ -7330,13 +7968,15 @@ describe('From / To only when the transfer agrees with the row (§4.6, r2 N7)', 
 
 describe('hide balances (owner, Q2)', () => {
   // D22
-  it('every figure reads "••••": the hero, today\'s value, each balance change, the fee — words and addresses stay', () => {
+  it('every figure reads "•••": the hero, today\'s value, each balance change, the fee — words and addresses stay', () => {
     mockPrices.current = {native: {usd: 150, change24h: null}};
     mockHide.current = true;
     const hidden = screen('tx-sol-to-empty-2bGSoVSG.json', MAIN); // main sent 0.001 SOL
     expect(hidden.getByTestId('tx-detail-direction')).toHaveTextContent('Sent');
-    expect(hidden.getByTestId('tx-detail-amount')).toHaveTextContent('••••');
-    expect(hidden.getByTestId('tx-detail-usd')).toHaveTextContent('••••');
+    // exact: "•••" and nothing else (a substring match would also pass on a longer mask)
+    expect(hidden.getByTestId('tx-detail-amount')).toHaveTextContent(VALUE_HIDDEN, {exact: true});
+    expect(hidden.getByTestId('tx-detail-usd')).toHaveTextContent(VALUE_HIDDEN, {exact: true});
+    expect(hidden.getAllByText(VALUE_HIDDEN)).toHaveLength(3); // the hero, today's value, and the network fee
     expect(hidden.queryByText(/SOL|\$/)).toBeNull(); // no figure anywhere: not the hero, not the value, not the fee
     expect(hidden.getByText('Network fee')).toBeTruthy();
     expect(hidden.getByText('From')).toBeTruthy();
@@ -7344,7 +7984,7 @@ describe('hide balances (owner, Q2)', () => {
     hidden.unmount();
     const changesHidden = screen('tx-unshield-relayed-54J9kjQ8.json', ACC_3);
     expect(changesHidden.getByTestId('tx-detail-direction')).toHaveTextContent('Made public');
-    expect(changes(changesHidden)).toEqual(['••••', '•••• · gas grant']);
+    expect(changes(changesHidden)).toEqual([VALUE_HIDDEN, `${VALUE_HIDDEN} · gas grant`]);
     changesHidden.unmount();
     // a row with no amount has no line to mask
     const none = screen('tx-test-to-main.json', OUTSIDE);
@@ -7469,9 +8109,9 @@ import {peekHistorySession} from '../../modules/solana/historySession';
 import {activityWord, changeLine, heroAmount, partiesAgree, primaryUsdToday} from '../../modules/solana/activityView';
 import {priceKeyFor} from '../../modules/prices/portfolio';
 import {trustedSymbol} from '../../modules/tokens/trustedSymbol';
-import {TX_FEE_PAYER, TX_AUTHORIZED_BY, TX_BALANCE_CHANGES, TX_HIDDEN, txAtTodaysPrice} from '../../copy/transactions';
+import {TX_FEE_PAYER, TX_AUTHORIZED_BY, TX_BALANCE_CHANGES, txAtTodaysPrice} from '../../copy/transactions';
 import {usePublicSettingsStore} from '../../store/zustand/publicSettingsStore';
-import {BELOW_ONE_CENT} from '../../copy/accounts';
+import {BELOW_ONE_CENT, VALUE_HIDDEN} from '../../copy/accounts';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -7557,7 +8197,7 @@ export function TransactionDetailScreen({signature, account, onBack}: Props) {
   // figure here: the hero, today's value, the balance changes and the fee. Words, addresses and the hash stay.
   const hidden = usePublicSettingsStore(s => s.hideBalances);
   const shownHero = heroAmount(row);
-  const hero = shownHero !== null && hidden ? TX_HIDDEN : shownHero;
+  const hero = shownHero !== null && hidden ? VALUE_HIDDEN : shownHero;
   // From / To only when the transfer the parser read IS the row (§4.6); then both wallets are known
   const parties = transfer !== null && transfer.from !== null && partiesAgree(transfer, row, account) ? {...transfer, from: transfer.from} : null;
   const {prices} = useResolvedPrices();
@@ -7657,7 +8297,7 @@ export function TransactionDetailScreen({signature, account, onBack}: Props) {
             {/* H7: only today's price is known — the line says so, and is absent with no price */}
             {usdToday !== null ? (
               <Text variant="body-sm" numeral className="text-fg-secondary mt-1" testID="tx-detail-usd">
-                {hidden ? TX_HIDDEN : txAtTodaysPrice(usdToday < 0.005 ? BELOW_ONE_CENT : formatUsdString(usdToday))}
+                {hidden ? VALUE_HIDDEN : txAtTodaysPrice(usdToday < 0.005 ? BELOW_ONE_CENT : formatUsdString(usdToday))}
               </Text>
             ) : null}
 
@@ -7742,7 +8382,7 @@ export function TransactionDetailScreen({signature, account, onBack}: Props) {
             <DetailRow label="Block" value={String(tx.slot)} />
             <DetailRow
               label="Network fee"
-              value={hidden ? TX_HIDDEN : `${formatTokenAmount(tx.feeLamports, 9)} SOL`}
+              value={hidden ? VALUE_HIDDEN : `${formatTokenAmount(tx.feeLamports, 9)} SOL`}
             />
             {tx.memo ? (
               <DetailRow label="Memo" value={tx.memo} />
@@ -7829,7 +8469,7 @@ export function useTransactionDetail(signature: string | null) {
 ```
 
 - [ ] **Step 6: Run them.** The Step 2 command. Expected: PASS
-      (4 + 22 tests). Then
+      (5 + 22 tests). Then
       `grep -rn "useTransactionDetail\|useSolanaQueries'" src --include=*.tsx --include=*.ts | grep -v "useBalance\|useTokenAccounts"`
       — expected: no line names `useTransactionDetail`.
 
@@ -8359,6 +8999,11 @@ Spec: §6.1 (who is scanned, `seedWallets`), §6.3 (the cursor's storage), §6.4
   another store, releases, and reads the new store. Every replacement of the instance also bumps the generation,
   so through `scanLinksForWallet` the guard's two halves always fail together; `linkScanDepsFor` takes `live` as
   an argument so that test N14 can show each half alone refuses.
+- **The scripted chain answers a batch in reverse order and is keyed by the fixtures' FULL signatures** (plan
+  review r2 C1): Task 4's reader matches an answer to a signature by the answer's own
+  `transaction.signatures[0]`, so a fixture stored under a short key such as `'QAgz'` would simply be unread.
+  Test N11b hands the linking transaction back for ANOTHER signature: the scan must tag nothing and move no
+  cursor — it trusts an answer only for the signature it carries.
 - The open that has to UNLOCK the store (PR 1's r1 m7) finds it closed when the scan is first started, so that
   scan reads nothing; the scan is started again when the unlock resolves (H5; plan review r1 m1).
 - Hook registration happens on first use, not at import — a screen test that stubs `instances` loads this module
@@ -8393,12 +9038,14 @@ import type {LinkScanRunnerEnv} from '../linkScanRunner';
 import type {AccountList, WalletAccount} from '../accountList';
 import type {LinkScanResult} from '../linkScan';
 
-// the chain behind scanLinksForWallet, scripted per test
+// the chain behind scanLinksForWallet, scripted per test. A batch is answered in REVERSE order (a node may: plan
+// review r2 C1) and the reader matches each answer by its own signature — so `transactions` is keyed by the
+// fixtures' full signatures.
 const mockChain: {signatures: Record<string, unknown[]>; transactions: Record<string, unknown>} = {signatures: {}, transactions: {}};
 const mockConnection = {
   getParsedTokenAccountsByOwner: jest.fn(async () => ({value: []})),
   getSignaturesForAddress: jest.fn(async (address: {toBase58: () => string}) => mockChain.signatures[address.toBase58()] ?? []),
-  getParsedTransactions: jest.fn(async (signatures: string[]) => signatures.map(s => mockChain.transactions[s] ?? null)),
+  getParsedTransactions: jest.fn(async (signatures: string[]) => signatures.map(s => mockChain.transactions[s] ?? null).reverse()),
   getParsedTransaction: jest.fn(async () => null),
 };
 jest.mock('../../solana/connection', () => ({getConnection: () => mockConnection}));
@@ -8590,6 +9237,8 @@ describe('scanLinksForWallet', () => {
   const DEV_EXIT = '9Y7FtteLhCJABAQtkYEFZs46rJgy1ixMA1JFMUepTki4';
   const fixture = (name: string): unknown =>
     (JSON.parse(readFileSync(join(__dirname, '../../solana/__tests__/fixtures', name), 'utf8')) as {result: unknown}).result;
+  const QAGZ = 'QAgzVzY6RhvmFWTiCueAyPfQY3qkyjXVZXXBnbYd9KXfkua1JEHJvxxSEjJbiwvQ2bCupghhRnY6WuwdQMGqgNY';
+  const I53Q = '5i53q9tRrCQUyoXjc41cBtW3gb9wcMeD7hspooqz3cPBmndWAXfWn5FXMMv2sCR2kjLMYakvFvWpobNzcSy6LGNZ';
   const finalized = (signature: string) => ({signature, slot: 9, blockTime: 9, confirmationStatus: 'finalized', err: null});
   const devRegistry = (): void =>
     mmkvSecure()!.set(
@@ -8607,8 +9256,8 @@ describe('scanLinksForWallet', () => {
   // N11
   it('end to end: a link on chain tags the exit in the registry — and never main', async () => {
     devRegistry();
-    mockChain.signatures = {[DEV_EXIT]: [finalized('QAgz')]};
-    mockChain.transactions = {QAgz: fixture('tx-test-to-main.json')};
+    mockChain.signatures = {[DEV_EXIT]: [finalized(QAGZ)]};
+    mockChain.transactions = {[QAGZ]: fixture('tx-test-to-main.json')};
     const client = new QueryClient();
     expect(await scanLinksForWallet(DEV_MAIN, client)).toBe(1);
     expect(exitEntry().linked).toBe(true);
@@ -8617,23 +9266,36 @@ describe('scanLinksForWallet', () => {
     client.clear();
   });
 
-  // N12
-  it('end to end: a clean history writes the cursor and no tag; a wipe during the scan writes nothing', async () => {
+  // N11b (plan review r2 C1): the scan trusts an answer only for the signature it carries
+  it('end to end: a linking transaction answered for ANOTHER signature tags nothing and moves no cursor', async () => {
     devRegistry();
-    mockChain.signatures = {[DEV_EXIT]: [finalized('5i53')]};
-    mockChain.transactions = {'5i53': fixture('tx-test-to-outside.json')};
+    // the exit's one signature is a clean transaction's; the node answers it with the linking QAgzVzY6…
+    mockChain.signatures = {[DEV_EXIT]: [finalized(I53Q)]};
+    mockChain.transactions = {[I53Q]: fixture('tx-test-to-main.json')};
     const client = new QueryClient();
     expect(await scanLinksForWallet(DEV_MAIN, client)).toBe(0);
     expect(exitEntry().linked).toBeUndefined();
-    expect(readLinkScanCursor(mmkvSecure()!, DEV_EXIT, DEV_EXIT)).toBe('5i53');
+    expect(mmkvSecure()!.getString('v1_linkScanCursors')).toBeUndefined(); // unread, not clean: the cursor stays
+    client.clear();
+  });
+
+  // N12
+  it('end to end: a clean history writes the cursor and no tag; a wipe during the scan writes nothing', async () => {
+    devRegistry();
+    mockChain.signatures = {[DEV_EXIT]: [finalized(I53Q)]};
+    mockChain.transactions = {[I53Q]: fixture('tx-test-to-outside.json')};
+    const client = new QueryClient();
+    expect(await scanLinksForWallet(DEV_MAIN, client)).toBe(0);
+    expect(exitEntry().linked).toBeUndefined();
+    expect(readLinkScanCursor(mmkvSecure()!, DEV_EXIT, DEV_EXIT)).toBe(I53Q);
 
     // a new wallet in the same process: the old scan's tag and cursor must not land in it
     clearAllStores();
     initSecureMmkv('test-key');
     storeTransparentScheme({kind: 'slip10', account: 0});
     devRegistry();
-    mockChain.signatures = {[DEV_EXIT]: [finalized('QAgz')]};
-    mockChain.transactions = {QAgz: fixture('tx-test-to-main.json')};
+    mockChain.signatures = {[DEV_EXIT]: [finalized(QAGZ)]};
+    mockChain.transactions = {[QAGZ]: fixture('tx-test-to-main.json')};
     let release: () => void = () => undefined;
     mockConnection.getParsedTransactions.mockImplementationOnce(async (signatures: string[]) => {
       await new Promise<void>(r => {
@@ -8656,8 +9318,8 @@ describe('scanLinksForWallet', () => {
   /** a CLEAN scan of the dev exit, held open at its transaction read; resolves once the read was asked for */
   async function heldCleanScan(client: QueryClient): Promise<{scan: Promise<number>; release: () => void}> {
     devRegistry();
-    mockChain.signatures = {[DEV_EXIT]: [finalized('5i53')]};
-    mockChain.transactions = {'5i53': fixture('tx-test-to-outside.json')};
+    mockChain.signatures = {[DEV_EXIT]: [finalized(I53Q)]};
+    mockChain.transactions = {[I53Q]: fixture('tx-test-to-outside.json')};
     let release: () => void = () => undefined;
     const asked = new Promise<void>(reached => {
       mockConnection.getParsedTransactions.mockImplementationOnce(async (signatures: string[]) => {
@@ -8680,7 +9342,7 @@ describe('scanLinksForWallet', () => {
     const control = await heldCleanScan(client);
     control.release();
     expect(await control.scan).toBe(0);
-    expect(readLinkScanCursor(mmkvSecure()!, DEV_EXIT, DEV_EXIT)).toBe('5i53');
+    expect(readLinkScanCursor(mmkvSecure()!, DEV_EXIT, DEV_EXIT)).toBe(I53Q);
 
     clearAllStores();
     initSecureMmkv('test-key');
@@ -9101,14 +9763,14 @@ import {formatBalanceForDisplay} from '../../utils/parseTokenAmount';
 ```
 
 - [ ] **Step 6: Run them.** The Step 2 command. Expected: PASS
-      (15 runner tests; the dashboard file's 93 existing tests and the 3 new ones). Then the queue this sits
+      (16 runner tests; the dashboard file's 93 existing tests and the 3 new ones). Then the queue this sits
       beside, and the registry: `npx jest src/modules/accounts src/modules/shielded/a0/__tests__/accountRegistry.test.ts --forceExit`
       Expected: PASS, unchanged.
 
 - [ ] **Step 7: Prove the guard's tests are tests (mutation, by hand).** In `linkScanRunner.ts`, in
       `linkScanDepsFor`, change `live() && mmkvSecure() === store` and run
       `npx jest src/modules/accounts/__tests__/linkScanRunner.test.ts --forceExit`; undo after each:
-  - → `true`: N13 and N14 must FAIL (the cursor `{[exit]: {[exit]: '5i53'}}` is in the next wallet's store);
+  - → `true`: N13 and N14 must FAIL (the cursor `{[exit]: {[exit]: '5i53q9tR…'}}` is in the next wallet's store);
   - → `live()`: N14 must FAIL (N13 passes: a wipe bumps the generation too — that is why N14 exists).
       And in `DashboardScreen.tsx`, delete the `scanLinksForWallet(…)` line inside the `.then(…)`: the "H5" dashboard
       test must FAIL (1 call, not 2). `git diff` must be empty against Steps 4 and 5 afterwards.
@@ -9631,6 +10293,14 @@ git commit -m "fix(presale): a stale or unknown main balance reads —, says why
 Spec: §8 "Gates", §10, §11, §9. The controller does this itself after Task 11's review: it edits the owner's own
 files outside the repository, and it needs a device.
 
+- [ ] **Step 0: Rebase onto `main`** (plan review r2 X1). The tree sync's version-1 fix is a separate PR from
+      `main`: `fix/treesync-v1`, which changes `src/modules/shielded/a0/treeSync.ts`, `web/src/lib/solana.ts` and
+      `core/solana/rpc.ts`. Once it has landed: `git fetch origin && git rebase origin/main`. If it has NOT landed
+      yet, stop and ask the owner whether to wait — the phone checkpoint should run on a build that has it. A
+      conflict (likely in `src/modules/solana/withTimeout.ts` or `src/modules/solana/queries.ts`, which Task 4
+      changed, or in `treeSync.ts`, which this plan never touches): stop and report. After the rebase, Step 1's
+      gates are the proof.
+
 - [ ] **Step 1: The gates, whole, on both Node versions.** From a clean tree at the last task's commit:
 
 ```bash
@@ -9641,7 +10311,7 @@ git diff --stat main -- src/copy/__tests__ src/screens/shielded/__tests__/privac
 ```
 
       Expected: `✖ 143 problems (0 errors, 143 warnings)`; both jest runs green (the plan's dry run:
-      3557 tests in 230 suites passing on each; 1 skipped — the live ZK-manifest suite, as before this plan);
+      3574 tests in 230 suites passing on each; 1 skipped — the live ZK-manifest suite, as before this plan);
       the last command prints nothing — no guard was edited. Read the output, not the exit code alone: a jest run
       that reports fewer suites than the previous task's did has skipped something.
 
@@ -9684,10 +10354,10 @@ git diff --stat main -- src/copy/__tests__ src/screens/shielded/__tests__/privac
       reads "Transaction" with "—" (the node has the signature but not yet the transaction), pull to refresh: it
       becomes "Sent TEST" with its amount, in the same place, once. If it was a real row from the start, say so
       in the report — the case was then not seen on the device, and tests H2 and H11 are its only evidence.
-  12. **Hide balances** (owner decision Q2): on the dashboard close the eye. History: every amount reads "••••",
+  12. **Hide balances** (owner decision Q2): on the dashboard close the eye. History: every amount reads "•••",
       and so does the line under a swap's or a failed row's amount; titles ("Sent TEST"), counter-parties, times
       and sections are unchanged; "No funds moved" and "—" stay. Open "Made private TEST": the hero, the
-      balance-change figures ("•••• · account rent") and "Network fee" read "••••"; "MADE PRIVATE", the status,
+      balance-change figures ("••• · account rent") and "Network fee" read "•••"; "MADE PRIVATE", the status,
       the hash and the fee payer's address stay. Open the eye again: every figure is back, on both screens,
       without a reload.
 
@@ -9722,7 +10392,7 @@ test -n "$suffix" && cp -n index.html "index.html.bak-$suffix" && cp -n screen.m
       its screen-reader label, "Pool transaction"; the pool rows' icon and the badge glyph stay the design's
       `#i-shield-lock` — the app draws lucide's plain shield there, which `screen.md` should say;
     - one new state, **hide balances** (owner decision Q2): the same list with every amount, and the line under
-      it, as "••••"; `screen.md`: which parts are hidden (figures) and which stay (title, counter-party, date,
+      it, as "•••"; `screen.md`: which parts are hidden (figures) and which stay (title, counter-party, date,
       status), and that the setting is the dashboard's eye;
     - the line "History from 24 of {m} token accounts": under the rows of a wallet with more than 24 token
       accounts, and under "No transactions yet" and an empty chip's line of such a wallet;
@@ -9744,7 +10414,7 @@ test -n "$suffix" && cp -n index.html "index.html.bak-$suffix" && cp -n screen.m
       reads "FAILED" with no amount;
     - a note at 27f: its second case (From "—") is not reachable — a null From shows the balance-changes form;
     - one new state, **hide balances** (owner decision Q2): the hero, "≈ $x at today's price", the balance-change
-      figures ("•••• · account rent") and "Network fee" as "••••";
+      figures ("••• · account rent") and "Network fee" as "•••";
     - `screen.md`: replace the 2026-11-22 "Build status" paragraph (only the first transfer is read) with the
       agreement rule.
   - **#23 presale** (`screen.md` section `23 · presale`): one new state of `active` — Available "—", the note
@@ -9756,14 +10426,16 @@ test -n "$suffix" && cp -n index.html "index.html.bak-$suffix" && cp -n screen.m
 - [ ] **Step 6: Tell the owner (in Slovenian — the owner's rule for chat), per screen, what changed**, name the
       backup files of Step 4, and say explicitly what was **not** built or drawn (the table of Task 7, the table of
       Task 8). Then, in these words, the limits and the findings below ("Known limits", "Findings for the owner").
-      The findings are questions for the owner, not decisions the plan made. Say also how the three owner
-      decisions of 2026-11-26 were built (Q1 the icon-only badge, Q2 hide balances on #26 and #27, Q3 the
-      provider measurement and the devnet wrap — with the throwaway address and the signature, if one was made).
+      The findings are questions for the owner, not decisions the plan made. Say also how the owner's
+      decisions were built: of 2026-11-26, Q1 the icon-only badge, Q2 hide balances on #26 and #27, Q3 the
+      provider measurement and the devnet wrap — with the throwaway address and the signature, if one was made;
+      of 2026-11-27, version-1 transactions are read (and whether the provider serves them — Task 1's line),
+      and the mask is "•••". Say plainly that no version-1 row was seen on the phone, if none was.
 
 - [ ] **Step 7: The PR.** `GODEBUG=netdns=cgo gh pr create` against `main` (the prefix if `gh` cannot resolve
       `api.github.com`). The description holds: what each screen now does; the Task 1 measurement, with the
       sentence that it is the public endpoints', and the version count of Task 1 Step 5; the phone checkpoint's
-      twelve lines with their results; the rulings and the three owner decisions; the known limits; the
+      twelve lines with their results; the rulings and the owner decisions (2026-11-26 and 2026-11-27); the known limits; the
       findings; the provider measurement (never its URL); that `getTransactionHistory` / `getTransactionDetail` in `queries.ts` are now dead code with
       tests (ruling 18). No TGE date anywhere in it.
 
@@ -9782,6 +10454,9 @@ test -n "$suffix" && cp -n index.html "index.html.bak-$suffix" && cp -n screen.m
 | H3 "Made private" / "Made public", the badge (an icon alone — owner decision Q1), their chip, never Sent / Received | 2 (rule 2), 5 (V13, V21), 7 (T1, T6) |
 | Owner decision Q2: hide balances covers every figure of #26 and #27 | 5 (V20b, V27), 7 (T1b), 8 (D22), 12 (checkpoint line 12) |
 | Owner decision Q3: the provider measurement; the devnet wrap | 1 (Steps 3b, 4, 6) |
+| Owner decision 2026-11-27 (spec §3.3 r5): transactions are read at version 1 | 1 (two fixtures; Steps 4–6: the provider must serve it), 2 (A43–A47), 4 (`READ_CONFIG`; R7, R8, R9, R10; `getTransactionDetail` and its new test in `queries.test.ts`), 8 (U1) |
+| Spec §3.3 r5 / plan review r2 C1: an answer is matched by its own signature, never by position | 4 (R21–R25, H12; every scripted batch out of order), 8 (U5), 10 (N11b) |
+| Controller ruling: the mask is `VALUE_HIDDEN` | 5 (V20b, V27), 7 (T1b), 8 (D22) |
 | H4 the linked rule (either direction, a failed tx counts, a relayed Make public does not, main never) | 9 (L1–L8), 10 (N1, N11) |
 | H5 the scan runs when the sheet opens, in the background; silent; never removed | 10 (incl. the open that unlocks the store) |
 | H6 presale's three wordings; MAX and Buy off | 11 |
@@ -9792,12 +10467,12 @@ test -n "$suffix" && cp -n index.html "index.html.bak-$suffix" && cp -n screen.m
 | §3.2 the 25-source bound, the order of sources, the footer | 4 (R2), 3 (S13), 7 (T18, T18b, T18c) |
 | §3.2 a session is dropped on an account switch, a network switch, `onSecureMmkvReset` | 6 (K4, the reset test); the cluster is part of every key (K1) — a build has one network |
 | §3.2 / §3.3 "Plan Task 1 measures" | 1 (Steps 4–6) |
-| §3.3 `['parsedTx', cluster, signature]`, never stale, 24 h; a null is not cached; cleared on reset | 4 (R7, R8, R10), 6 (the reset and `gcTime` tests) |
+| §3.3 `['parsedTx', cluster, signature]`, never stale, 24 h; a null is not cached; cleared on reset | 4 (R7, R8, R10, R22–R25), 6 (the reset and `gcTime` tests) |
 | §3.3 the history key keeps the `['txHistory', address]` prefix; an invalidation drops the session; 60 s | 6 (K1, K2b, K7, the invalidation test) |
 | §3.3 the batch, and the fallback when it throws | 4 (R7, R9, R13, R14, H9) |
 | §3.3 limiter keys: method + cluster + source + cursor; a hash of every signature; "any history read" | 4 (R6, R11, R15) |
-| (not in the spec) a time limit on every chain call, inside the limiter | 4 (R16–R20, H8, H11) — ruling 19 |
-| §3.4 a partial row; never dropped; re-tried | 4 (H2, H7, H9, H11), 5 (V17), 7 (T1) |
+| (not in the spec) a time limit on every chain call, inside the limiter; one deadline per transaction read | 4 (R16–R20, R26, R27, H8, H11, H13) — rulings 19 and 28 |
+| §3.4 a partial row; never dropped; re-tried | 4 (H2, H7, H9, H11, H12, H13), 5 (V17), 7 (T1) |
 | §3.4 pull-to-refresh: source list re-read, pages down to `newest`, `newest` moved, merged on top, older pages stay | 3 (S6, S6b, S6c, S8, S10, S11, S12), 4 (H4), 7 (T19) |
 | §3.4 the three restart conditions | 3 (S7, S9, S10) |
 | §3.4 rows keyed and deduped by signature; keys hold cluster and address | 3 (S1), 6 (K1, K4, K8), 4 (H5) |
@@ -9821,7 +10496,7 @@ test -n "$suffix" && cp -n index.html "index.html.bak-$suffix" && cp -n screen.m
 | §6.3 sources; the cursor (finalized, encrypted, by value); 20 at a time; the cap (reads AND paging: L15); a failed source; stop at a link; a null read | 9 (L9–L18), 10 (N7, N8) |
 | §6.4 sheet open → drain → scan; single-flight; 60 s; generation guard (tag AND cursor); a hit re-reads the list; silent | 10 (N2–N6, N11–N14, the three dashboard tests) |
 | §7 presale | 11 (B1–B6) |
-| §8 fixtures: verbatim, each signature named | 1 |
+| §8 fixtures: verbatim, each signature named (incl. two of version 1) | 1 |
 | §8 gates: Node 24 and Node 22; no fake timers with async act; tsc; lint 143; TGE | every task; 12 (whole) |
 | §9 known limits | "Known limits" below; told to the owner in Task 12 Step 6 |
 | §10 design files | 12 (Steps 4–5) |
@@ -9866,34 +10541,68 @@ Added by this plan:
   transfer's parties there (ruling 7).
 - **No real "wrap into a new wSOL account" fixture** only if Task 1 Step 3 neither finds one nor can make one
   (the devnet faucet shut): test A23 is then derived alone (ruling 5).
-- **A signature the node never serves** (a transaction of a version above 0 — finding 1) is a "Transaction —" row
-  for good. Each later load asks for it again, apart from the new page: two calls per such row per load. In an
+- **A signature the node never serves** is a "Transaction —" row for good. Since version 1 is read (owner
+  decision 2026-11-27) that means a transaction of a version above 1 — none was seen in any sample — or a node
+  that does not serve version 1 (Task 1 Step 6 stops on that for the app's provider; the public endpoints serve
+  it). Each later load asks for it again, apart from the new page: two calls per such row per load. In an
   exit's link scan it keeps that source's result at `failed`, so the source's cursor never moves: every sheet
   open after the 60 s interval pages that source's signatures again (at most 300 — 15 calls); the transactions
-  come from the 24 h cache, except the unreadable one. The scan still finds a link that is there.
+  come from the 24 h cache, except the unreadable one. The scan still finds a link that is there. No memo of
+  refused signatures is kept: the case is rare again, and a memo would also hide a transaction a node refuses
+  only for a while.
+- **Version-1 transactions were read in jest and on Node, not on a phone.** web3.js 1.99's native build accepts
+  version 1 by reading its code (plan review r2), and the classifier's tests run on two real version-1
+  responses; the phone checkpoint is on devnet, where main's own history holds none. The first version-1 row on
+  a device is unverified until one is seen (tell the owner — Task 12 Step 6).
+- **An answer the node gives for another signature, or twice, is not shown at all** (plan review r2 C1): that row
+  reads "Transaction —" until a later load reads it properly. A node that did this for every answer would leave
+  every row partial — never a wrong row.
 - **A request that gets no answer fails after 20 s** (the first page then shows the retry line; "Load older" can be
   tapped again). A batch that timed out is not re-read one at a time: its rows are "Transaction —" until the next
-  load.
+  load. One call of the transaction read starts nothing new once 20 s have passed since it began, and a load
+  whose first transaction read ran out of time does not start the second; a call already in flight can still
+  take its own 20 s, so the transactions of one load can hold it for about 40 s at worst, not longer.
+- **`web/src/lib/solana.ts` asks with version 0** (plan review r2 X1, last bullet): the web wallet, outside this
+  PR — the `fix/treesync-v1` PR changes it (below). `getTransactionDetail` in `queries.ts` asked with 0 too; Task
+  4 changes it to 1 (it is #27's read until Task 8, and dead code after — ruling 18).
 - **A list that stays in the foreground through midnight** with no new data keeps "Today" until the next load or
   the next return to the foreground.
 - **`getTransactionHistory` and `getTransactionDetail`** (`queries.ts`) have no caller left; they and their tests
   stay (ruling 18) — dead code, to be removed in a later PR.
 
-## Owner decisions (2026-11-26, answering the plan review's Q1–Q3; relayed by the controller)
+**Dependency on another PR (plan review r2 X1):** the pool's tree sync (`src/modules/shielded/a0/treeSync.ts`)
+reads with `maxSupportedTransactionVersion: 0`; one version-1 transaction naming the tree account would stop
+every wallet's sync. That is being fixed in its own PR from `main`, `fix/treesync-v1`, which changes
+`src/modules/shielded/a0/treeSync.ts`, `web/src/lib/solana.ts` and `core/solana/rpc.ts`. **This branch is rebased
+onto `main` after that PR has landed, before Task 12's gates and the phone checkpoint** (Task 12 Step 0); this
+plan touches none of those three files (Task 4 only re-runs `treeSync`'s tests, because `withTimeout` gains a
+`TimeoutError`). If the rebase conflicts — `withTimeout.ts`, `treeSync.ts` or `queries.ts` are the likely
+places — stop and report.
+
+## Owner decisions (2026-11-26, answering the plan review's Q1–Q3; 2026-11-27, answering review r2; relayed by the controller)
 
 - **Q1 — the chip and the badge.** The fifth chip reads "Private". The badge on "Made private" / "Made public"
   rows is the icon alone, with no word: both transactions are public on chain and the badge must not claim
   privacy. Its screen-reader label is "Pool transaction" (Tasks 5, 7, 12). This settles the review's I1 and
   replaces what ruling 1 said about the badge.
 - **Q2 — hide balances.** The dashboard's eye also hides the amounts on #26 rows and on #27 (the hero,
-  "≈ $x at today's price", the balance-change lines, the fee), as "••••"; the title, the counter-party, the date
-  and the status stay. One source: `usePublicSettingsStore`'s `hideBalances` (Tasks 5, 7, 8, 12). This closes
-  what was finding 3.
+  "≈ $x at today's price", the balance-change lines, the fee); the title, the counter-party, the date
+  and the status stay. One source: `usePublicSettingsStore`'s `hideBalances` (Tasks 5, 7, 8, 12). The mask is
+  the existing `VALUE_HIDDEN` "•••" (controller ruling of 2026-11-27, below).
 - **Q3 — two things the controller may do in Task 1.** (a) Measure the app's own RPC provider, read-only, before
   Task 4: from a mode-600 copy of the env file in the scratchpad, the URL read inside the script and never
   printed, the copy deleted afterwards, the original never edited; the stop rule applies to the provider's
   results. (b) If no real wrap into a new wSOL account is found, make one on devnet from a fresh throwaway keypair
   funded by airdrop only — never the main wallet or Accounts 2–5 — and capture it as a verbatim fixture.
+- **2026-11-27 — version 1 (plan review r2 V1, its question Q1).** PR 2 reads version-1 transactions: spec §3.3
+  changes from `maxSupportedTransactionVersion: 0` to `1` in this PR (spec r5). About 46 % of sampled mainnet
+  transactions are version 1; with 0 they could never be read. Two real version-1 fixtures, the classifier
+  tests on them, and a stop rule if the app's provider does not serve version 1 (Tasks 1, 2, 4).
+- **2026-11-27 — controller ruling: the mask.** A hidden figure is `VALUE_HIDDEN` ("•••") of
+  `src/copy/accounts.ts`, the mask the Accounts sheet and the balance card's split already use. `TX_HIDDEN`
+  ("••••") is deleted; this replaces r2's choice (Tasks 5, 7, 8, 12).
+- **2026-11-27 — X1 (the review's question Q2).** The tree sync's version 0 is fixed now, in its own PR from
+  `main`; this branch is rebased onto it ("Known limits").
 
 ## Rulings made while writing this plan (the spec was silent, or two rules met)
 
@@ -9993,29 +10702,63 @@ Added in r2, while folding the plan review r1:
     the plan). It says what the row is and claims nothing; "pool" is not a banned word, and the string sits in
     `src/copy/transactions.ts`, which both copy guards read.
 
+Added in r3, while folding the plan review r2:
+
+27. **A signature that two answers of one batch claim is unread — both are dropped** (Task 4; review C1 asked
+    only for "index by own signature", which would silently keep the last). A batch is asked with distinct
+    signatures, so two answers for one of them means the node is wrong about at least one, and which cannot be
+    told. Unread is the conservative state: a partial row, retried.
+28. **One deadline per transaction read counts from when the call begins and only stops NEW requests** (Task 4;
+    review n2). A request already in flight keeps its own 20 s limit. So one call can take up to about two
+    limits, and a load — which skips its second read after a first that ran out of time — about the same; the
+    review's "twenty limits in a row" is gone, an exact 20 s cap for the whole load is not claimed.
+29. **After a transaction read that ran out of time, the older rows are filled from the cache alone** (Task 4;
+    review n2). The review said "skip the second read"; skipped outright, every older row that was already
+    parsed would turn into "Transaction —" for that load, because the second read is also what hands their
+    cached transactions back. `cachedParsedTransactions` reads the cache without a request (test H13).
+30. **An answered batch is final** (Task 4; review C1 "drop the length shortcut"). A signature the batch did not
+    answer for (a null, a short array, a stranger's transaction in its place) is not asked for one at a time in
+    the same load; only a batch that THROWS falls back to single reads. A node that answers wrongly is not
+    asked twenty more times; the next load asks again.
+31. **`RawParsedTx` gains `version` and `message.transactionConfig`** (Task 2). Nothing reads them; they are in
+    the type so that the tests can pin that the two new fixtures are version 1 and that removing the field
+    changes no row (A43, A47).
+32. **The mask's value is asserted through the constant** (Tasks 5, 7, 8; review n1 "change the literal to the
+    constant"). The tests import `VALUE_HIDDEN`; its value "•••" is pinned by the existing
+    `src/copy/__tests__/accounts.test.ts`, so a change of the mask is still a failing test.
+33. **Review n6 is not built.** With balances hidden a row's `accessibilityLabel` ends in the mask, so a screen
+    reader says the bullets. The app already does exactly that, on purpose and under test, for the balance
+    card's split (`splitA11y('Public', '•••', …)` → "Public, •••, not updated" —
+    `src/copy/__tests__/accountsStale.test.ts`: "hidden: no figure, still said"). A word on #26 alone would give
+    two neighbouring screens two conventions, and which word a screen reader says is the owner's wording to
+    choose. It is finding 3.
+
 ## Findings for the owner (questions, not decisions — Task 12 Step 6)
 
-1. **Transactions of a version above 0 exist on chain today — and in a first small sample they are not rare.**
-   While looking for fixtures, `getBlock` on both public endpoints answered `-32015 Transaction version (1) is not
-   supported by the requesting client` when asked with `maxSupportedTransactionVersion: 0`. The spec fixes that
-   parameter at 0; whether web3.js 1.99 can parse an answer of another version was not checked. Such a transaction
-   in a wallet's history shows as "Transaction —" (a partial row, never dropped — tests R14, H7); it makes the page
-   it arrives in fall back to one-at-a-time reads, and after that it is read apart, so no later page pays for it
-   (test H9; r1 said "that page" while the r1 code made it every later page — review I5). **Counted while
-   revising this plan (2026-11-26, public endpoints, `count-tx-versions.mjs` of Task 1 Step 5):**
-   mainnet, 20 recent blocks: **3,638 of 7,955 transactions are version 1 (45.7 %)**; devnet, 5 blocks: 13 of 91
-   (14.3 %); main's own devnet history (its address and 2 token accounts, 58 transactions): **none**. No sampled
-   block held a vote transaction, so these are not validators' votes; which programs or wallets send version 1
-   was not looked at, and a block sample is not a wallet's history. So on devnet the phone checkpoint should see
-   no such row, while a mainnet wallet that receives from, or swaps through, whatever sends version 1 may see
-   many. Task 1 Step 5 repeats the count on 50 blocks per cluster and Step 6 brings it to the owner before the
-   screen work. Reading such transactions needs a reader that knows the version: a later PR, and a spec change.
+1. *(Answered — owner decision 2026-11-27: version-1 transactions are read in this PR.)* The figures behind it:
+   with `maxSupportedTransactionVersion: 0` both public endpoints answer `-32015 Transaction version (1) is not
+   supported by the requesting client`. Counted on 2026-11-26 (public endpoints, `count-tx-versions.mjs`):
+   mainnet, 20 recent blocks: **3,638 of 7,955 transactions are version 1 (45.7 %)**, none above 1; devnet,
+   5 blocks: 13 of 91 (14.3 %); main's own devnet history (58 transactions): none. The plan review r2 looked at
+   who sends them (three mainnet blocks, 916 transactions): mostly program traffic, but 96 distinct fee payers,
+   Jupiter v6 swaps and plain SOL transfers among them; it read all 916 through this plan's classifier with no
+   error and none `incomplete`, and found that web3.js 1.99 parses version 1 by design. **What is left for the
+   owner to know:** (a) Task 1 Step 6 stops if the app's own provider does not serve version 1; (b) the first
+   version-1 row on a phone is unverified until one is seen ("Known limits"); (c) a version above 1, should one
+   appear, is again a "Transaction —" row and a dependency question (a newer web3.js).
 2. **On the public endpoints a 20-request batch is partly refused.** The first try of Task 1's measurement gave 11
    of 20 items `429` on both clusters (not a clean measurement — see Task 1 Step 4). A build that falls back to
    the public endpoint (`HELIUS_RPC_URL` missing) would show mostly partial rows. The app's own provider is not
    measured in this plan; the owner has allowed it (Q3a), Task 1 Step 4 does it, and Step 6 holds the rule for
    what it finds — a batch refused as a whole, or single items of it refused on a quiet provider, both make the
    sequential path the product path.
-3. *(Answered — owner decision Q2: the hide-balances eye hides the figures of #26 and #27.)* One thing it leaves
-   for the owner to see on the phone: the mask is "••••" (the dashboard's token rows), while the dashboard's
-   balance card uses "•••" (`VALUE_HIDDEN`). Two lengths exist in the app already; this PR adds no third.
+3. **What should a screen reader say for a hidden figure?** (plan review r2 n6.) With balances hidden, a row's
+   label ends in the mask — "Sent TEST, to EfHSPx…mwXGgk · 09:14, •••" — and a screen reader reads the bullets.
+   The balance card's split does the same today, deliberately ("hidden: no figure, still said"). A word
+   ("hidden") would be better for both; it is one wording decision for the whole app, so it is asked here and
+   not built for #26 alone (ruling 33). For the record, on the mask itself: #26 and #27 use `VALUE_HIDDEN`
+   "•••" (controller ruling); the dashboard's two token rows still hold an inline "••••"
+   (`DashboardScreen.tsx`), so the app keeps two lengths — this PR adds no third.
+4. **The pool's tree sync and version 1** (plan review r2 X1): fixed in its own PR from `main`, by the owner's
+   answer; this branch is rebased onto it. Until that fix is in a build, one version-1 transaction that names
+   the tree account stops the pool's sync for every wallet — not something PR 2 changes either way.
