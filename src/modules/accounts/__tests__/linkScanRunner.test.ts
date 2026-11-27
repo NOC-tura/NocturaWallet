@@ -21,6 +21,7 @@ import {
   writeLinkScanRecord,
 } from '../linkScanRunner';
 import type {LinkScanRunnerEnv} from '../linkScanRunner';
+import {lastLinkScanResult, linkCheckUnfinished} from '../linkScanResults';
 import type {AccountList, WalletAccount} from '../accountList';
 import type {LinkScanResult} from '../linkScan';
 
@@ -194,6 +195,68 @@ describe('runLinkScans (§6.4)', () => {
     expect(calls.map(c => c.exit)).toEqual([A3]);
     await next;
     expect(fresh.calls.map(c => c.exit)).toEqual([A3, A4]);
+  });
+});
+
+// owner Q3 (2026-11-27): the sheet says "Link check not finished" for an exit whose LAST scan was failed or capped
+describe('the last result per exit (owner Q3)', () => {
+  const list = listOf([account(0, MAIN, 'main'), account(3, A3, 'fresh-exit'), account(4, A4, 'fresh-exit')]);
+
+  it('is kept per exit: failed and capped are unfinished, clean and linked are not', async () => {
+    const {e} = env(list, {[A3]: 'failed', [A4]: 'capped'});
+    await runLinkScans(e);
+    expect(lastLinkScanResult(A3)).toBe('failed');
+    expect(lastLinkScanResult(A4)).toBe('capped');
+    expect(linkCheckUnfinished(A3)).toBe(true);
+    expect(linkCheckUnfinished(A4)).toBe(true);
+    expect(linkCheckUnfinished(MAIN)).toBe(false); // main is never scanned
+  });
+
+  it('a later clean or linked scan clears it', async () => {
+    const first = env(list, {[A3]: 'failed', [A4]: 'capped'});
+    await runLinkScans(first.e);
+    const second = env(list, {[A3]: 'clean', [A4]: 'linked'});
+    second.state.now = first.state.now + LINK_SCAN_MIN_INTERVAL_MS;
+    await runLinkScans(second.e);
+    expect(lastLinkScanResult(A3)).toBe('clean');
+    expect(lastLinkScanResult(A4)).toBe('linked');
+    expect(linkCheckUnfinished(A3)).toBe(false);
+    expect(linkCheckUnfinished(A4)).toBe(false);
+  });
+
+  it('a scan that throws is failed: unfinished', async () => {
+    const {e} = env(list);
+    e.scanExit = async () => {
+      throw new Error('rpc down');
+    };
+    await runLinkScans(e);
+    expect(lastLinkScanResult(A3)).toBe('failed');
+  });
+
+  it('is memory only: cleared on onSecureMmkvReset, and a stale scan records nothing', async () => {
+    const {e} = env(list, {[A3]: 'failed'});
+    await runLinkScans(e);
+    expect(linkCheckUnfinished(A3)).toBe(true);
+    clearAllStores();
+    expect(lastLinkScanResult(A3)).toBeUndefined();
+    initSecureMmkv('test-key');
+    // a scan whose wallet goes while it runs: its result is not recorded
+    let release: (r: LinkScanResult) => void = () => undefined;
+    const stale = env(list);
+    stale.e.scanExit = () =>
+      new Promise<LinkScanResult>(r => {
+        release = r;
+      });
+    const run = runLinkScans(stale.e);
+    await Promise.resolve();
+    clearAllStores();
+    release('capped');
+    await run;
+    expect(lastLinkScanResult(A3)).toBeUndefined();
+    // and nothing is stored: no key holds it
+    initSecureMmkv('test-key');
+    expect(mmkvSecure()!.getAllKeys().some(k => k.toLowerCase().includes('result'))).toBe(false);
+    expect(mmkvPublic.getAllKeys().some(k => k.toLowerCase().includes('result'))).toBe(false);
   });
 });
 

@@ -20,6 +20,8 @@ const mockFeatures = {shielded: true};
 jest.mock('../../../constants/features', () => ({isShieldedEnabled: () => mockFeatures.shielded}));
 
 import {AccountsSheet, rowBalanceText} from '../AccountsSheet';
+import {act} from '@testing-library/react-native';
+import {clearLinkScanResults, recordLinkScanResult} from '../../../modules/accounts/linkScanResults';
 import {useWalletStore} from '../../../store/zustand/walletStore';
 
 const MAIN = 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk';
@@ -52,6 +54,7 @@ beforeEach(() => {
   useWalletStore.setState({publicKey: MAIN, solBalance: '0', nocBalance: '0', tokenBalances: {}, tokens: [], lastSyncedAt: null, lastSyncFailedAt: null}); // M1d: the main row reads walletStore (review M11)
   mockPrices.current = {prices: {}, havePrices: false};
   mockFeatures.shielded = true;
+  clearLinkScanResults();
 });
 
 it('title "Accounts"; rows in order with label, tags and the short address', () => {
@@ -260,4 +263,51 @@ it('main row: read, no failed sync → the figure (control)', () => {
 it('rowBalanceText: a stale row returns the figure (the caller adds the suffix)', () => {
   const snap = {solBalance: '20000000', nocBalance: '0', tokenBalances: {}, tokens: []};
   expect(rowBalanceText({state: 'stale', data: snap, at: 1}, null)).toBe('0.02 SOL');
+});
+
+// owner Q3 (2026-11-27): an exit whose last link scan did not finish says so — neutrally, never "not linked"
+describe('"Link check not finished"', () => {
+  const CAPTION = 'Link check not finished';
+
+  it('shows under an exit whose last scan was failed or capped, in tertiary text', () => {
+    recordLinkScanResult(A3, 'failed');
+    const {r} = sheet();
+    const line = r.getByTestId('accounts-row-slip10:3-link-unfinished');
+    expect(line).toHaveTextContent(CAPTION);
+    expect(line.props.className).toContain('text-fg-tertiary');
+    expect(r.getByTestId('accounts-row-slip10:3').props.accessibilityLabel).toContain(CAPTION);
+    r.unmount();
+    clearLinkScanResults();
+    recordLinkScanResult(A3, 'capped');
+    expect(sheet().r.getByTestId('accounts-row-slip10:3-link-unfinished')).toHaveTextContent(CAPTION);
+  });
+
+  it('never for clean or linked, nor for an exit not scanned yet, nor for main', () => {
+    for (const result of ['clean', 'linked'] as const) {
+      clearLinkScanResults();
+      recordLinkScanResult(A3, result);
+      const {r} = sheet();
+      expect(r.queryByTestId('accounts-row-slip10:3-link-unfinished')).toBeNull();
+      expect(r.queryByText(CAPTION)).toBeNull();
+      r.unmount();
+    }
+    clearLinkScanResults();
+    const {r} = sheet();
+    expect(r.queryByText(CAPTION)).toBeNull();
+    expect(r.queryByText(/not linked/i)).toBeNull();
+  });
+
+  it('an exit already tagged linked carries no caption: the tag says more', () => {
+    recordLinkScanResult(A2, 'failed'); // A2 is tagged linked in LIST
+    expect(sheet().r.queryByTestId('accounts-row-slip10:2-link-unfinished')).toBeNull();
+  });
+
+  it('appears while the sheet is open when a scan ends unfinished, and goes once one ends clean', () => {
+    const {r} = sheet();
+    expect(r.queryByTestId('accounts-row-slip10:3-link-unfinished')).toBeNull();
+    act(() => recordLinkScanResult(A3, 'capped'));
+    expect(r.getByTestId('accounts-row-slip10:3-link-unfinished')).toBeTruthy();
+    act(() => recordLinkScanResult(A3, 'clean'));
+    expect(r.queryByTestId('accounts-row-slip10:3-link-unfinished')).toBeNull();
+  });
 });

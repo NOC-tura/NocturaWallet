@@ -17,6 +17,11 @@ export const TAG_EXIT = 'exit';
 export const TAG_LINKED = 'linked';
 /** slip10 wallets only (a cli wallet has one account, S9) */
 export const ACCOUNTS_FOOTER = 'New accounts appear here when you make funds public to “A new account”.';
+/**
+ * Owner Q3 (2026-11-27): an exit whose last "linked" scan ended failed or capped. Neutral: it claims
+ * neither a link nor its absence (never "not linked").
+ */
+export const LINK_CHECK_UNFINISHED = 'Link check not finished';
 /** §3.1: the registry could not be read — the main account only, and this one line */
 export const ACCOUNTS_UNREADABLE = "Other accounts can't be read right now.";
 /** §3.4: a row whose balances were not read yet, or failed */

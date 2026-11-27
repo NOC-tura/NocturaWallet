@@ -9,7 +9,9 @@
  *   - GENERATION GUARD: `onSecureMmkvReset` (a wipe, an import, a new encrypted instance) bumps a
  *     generation; a tag or a cursor from an older generation is dropped — the wallet it belongs to
  *     is gone (the class of the sync's wallet-change guard, 237752a).
- *   - A failure is silent: nothing is shown, and the next open after the interval tries again.
+ *   - A failure is not worded as anything but itself: the last result per exit is kept in memory
+ *     (`linkScanResults.ts`) and the sheet says "Link check not finished" for `failed` / `capped`
+ *     (owner Q3, 2026-11-27) — never "not linked". The next open after the interval tries again.
  *
  * THE RECORDS live in the ENCRYPTED store only (`v1_linkScanCursors`,
  * `{[exit]: {seeds: <digest>, sources: {[source]: LinkScanRecord}}}`): a list of one's own accounts and their
@@ -33,6 +35,7 @@ import type {AccountList} from './accountList';
 import {readAccountList, refreshAccounts} from './selectedAccount';
 import {scanExitForLinks} from './linkScan';
 import type {LinkScanDeps, LinkScanRecord, LinkScanResult} from './linkScan';
+import {clearLinkScanResults, recordLinkScanResult} from './linkScanResults';
 
 export const LINK_SCAN_MIN_INTERVAL_MS = 60_000;
 const KEY = MMKV_KEYS.LINK_SCAN_CURSORS;
@@ -52,6 +55,7 @@ function hook(): void {
     generation += 1;
     inFlight = null;
     lastRun.clear();
+    clearLinkScanResults(); // owner Q3: memory only, gone with the wallet's other scan state
   });
 }
 
@@ -127,6 +131,9 @@ export function runLinkScans(env: LinkScanRunnerEnv): Promise<number> {
         result = await env.scanExit(exit.address, seedWallets, live);
       } catch {
         result = 'failed';
+      }
+      if (live()) {
+        recordLinkScanResult(exit.address, result); // a stale scan's result belongs to a wallet that is gone
       }
       if (result === 'linked' && live()) {
         linked += 1;
