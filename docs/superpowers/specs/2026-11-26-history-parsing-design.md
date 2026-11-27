@@ -510,3 +510,8 @@ Make dated backups (`*.bak-2026-11-26c`, or the next free letter), then change t
 | #27 state 27f, second case ("Authorized by" with From "—") | Not reachable; the Balance-changes form shows instead | The §4.6 agreement rule. |
 | Date format "May 6" | "6 May" | Day-first, as the app's other dates (PR 1 History rows). |
 | Sections end at "This week" | Adds "This month", "{Month YYYY}" and "Date unknown" | Longer histories need them. |
+| Row swipe actions (Mark unread / Save to address book) and a long-press context menu | Not built (Task 7 review I3, controller 2026-11-27) | The design itself scopes the swipe actions to v0.3 (index.html ~line 8501). Deferred. |
+| Skeleton shimmer and its reduced-motion halt | Static skeleton blocks (Task 7 review I3, controller 2026-11-27) | No animation yet; a static skeleton has nothing to halt. Deferred. |
+| The `mode` route param to #27 | Not passed; #27 gets `signature` and `account` (Task 7 review I3, controller 2026-11-27) | Unless Task 8's brief uses it. |
+| Row time "9:14 AM" (12-hour) in the mockup | 24-hour "09:14" (Task 7 review I3, controller 2026-11-27) | §5.1 specifies "HH:mm". |
+| Fifth chip glyph, dated headers ("TODAY · MAY 8"), counter-party addresses in mono, chip kept across remounts (`v1_activity_filter`) | Built (Task 7 review I3, controller 2026-11-27) | Cheap, and the design draws them. Dated headers read "Today · Nov 26" / "Yesterday · Nov 25"; the overline style sets the case. |

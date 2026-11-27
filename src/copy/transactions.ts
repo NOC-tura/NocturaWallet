@@ -101,6 +101,14 @@ export function historyCoverage(read: number, total: number): string {
   return `History from ${read} of ${total} token accounts`;
 }
 
+/** #26's title and its way back (they lived as literals in the screen) */
+export const HISTORY_TITLE = 'Transaction History';
+export const HISTORY_BACK = '← Back';
+/** The design's dated header ("Today · May 8"; the overline style sets the case): the day's name and its date */
+export function sectionWithDate(title: string, monthShort: string, day: number): string {
+  return `${title} · ${monthShort} ${day}`;
+}
+
 export const SECTION_TODAY = 'Today';
 export const SECTION_YESTERDAY = 'Yesterday';
 export const SECTION_THIS_WEEK = 'This week';

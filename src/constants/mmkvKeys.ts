@@ -94,6 +94,10 @@ export const MMKV_KEYS = {
   // ─── Security [P] ──────────────────────────────────────────────────
   SECURITY_JAILBREAK_DETECTED: 'v1_security.jailbreakDetected',
   SECURITY_BIOMETRIC_ENABLED: 'v1_security.biometricEnabled',
+
+  // ─── Activity [P] ──────────────────────────────────────────────────
+  /** #26: the chip last chosen (an id of HISTORY_CHIPS); an unknown value reads as All */
+  ACTIVITY_FILTER: 'v1_activity_filter',
   SECURITY_AUTO_LOCK_BG: 'v1_security.autoLockOnBackground',
 
   // ─── PIN [S] ────────────────────────────────────────────────────────

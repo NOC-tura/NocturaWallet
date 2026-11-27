@@ -21,6 +21,7 @@ import {
   SECTION_THIS_WEEK,
   SECTION_TODAY,
   SECTION_YESTERDAY,
+  sectionWithDate,
   TX_ACCOUNT_SETUP,
   TX_AMOUNT_UNKNOWN,
   TX_FAILED,
@@ -193,6 +194,24 @@ export function groupSections(rows: readonly HistoryRow[], now: number, tz: stri
   }
   const all = [...groups.values()];
   return [...all.filter(g => g.key !== 'unknown'), ...all.filter(g => g.key === 'unknown')];
+}
+
+/**
+ * The design's header (#26 26b: "TODAY · MAY 8"): Today and Yesterday carry their date, in the zone; the
+ * other sections are their title alone. Today's date is the clock's (a row ahead of the clock is still Today);
+ * Yesterday's is its first row's. Added by controller ruling (Task 7 review I3), after Task 5.
+ */
+export function sectionHeading(section: Section, first: HistoryRow | undefined, now: number, tz: string): string {
+  if (section.key === 'today') {
+    const z = zonedDate(now, tz);
+    return sectionWithDate(section.title, MONTH_SHORT[z.month - 1], z.day);
+  }
+  const t = first === undefined ? null : rowBlockTime(first);
+  if (section.key === 'yesterday' && t !== null && Number.isFinite(t)) {
+    const z = zonedDate(t * 1000, tz);
+    return sectionWithDate(section.title, MONTH_SHORT[z.month - 1], z.day);
+  }
+  return section.title;
 }
 
 /** §5.2 */

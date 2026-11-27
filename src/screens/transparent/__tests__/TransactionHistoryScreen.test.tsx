@@ -8,6 +8,9 @@ import React from 'react';
 import {AppState} from 'react-native';
 import {render, fireEvent, act} from '@testing-library/react-native';
 import {TransactionHistoryScreen} from '../TransactionHistoryScreen';
+import * as activityView from '../../../modules/solana/activityView';
+import {mmkvPublic} from '../../../store/mmkv/instances';
+import {MMKV_KEYS} from '../../../constants/mmkvKeys';
 import {VALUE_HIDDEN, VALUE_HIDDEN_SPOKEN} from '../../../copy/accounts';
 import type {ActivityKind, ActivityRow, Delta} from '../../../modules/solana/activity';
 import type {HistoryRow, HistorySnapshot} from '../../../modules/solana/history';
@@ -21,17 +24,19 @@ const at = (iso: string): number => Date.parse(iso) / 1000;
 
 // M1d (spec §4.2): the history is the SELECTED account's
 const mockHistSelected: {current: {address: string; label: string} | null} = {current: {address: ME, label: 'Account 1'}};
+// one stable object, as the real hook's memoised list is (a fresh one per call would defeat the row memo)
+const mockAccountList = {
+  accounts: [
+    {scheme: 'slip10:0', address: 'Da83cAfGUrsm896FUghCkNKutgFc96WNGWN73bZxe31B', label: 'Account 1', number: 1, role: 'main', isMain: true, linked: false},
+    {scheme: 'slip10:1', address: '9Y7FtteLhCJABAQtkYEFZs46rJgy1ixMA1JFMUepTki4', label: 'Account 2', number: 2, role: 'fresh-exit', isMain: false, linked: false},
+  ],
+  seed: [],
+  walletKind: 'slip10',
+  unreadable: false,
+};
 jest.mock('../../../hooks/useSelectedAccount', () => ({
   useSelectedAccount: () => mockHistSelected.current,
-  useAccountList: () => ({
-    accounts: [
-      {scheme: 'slip10:0', address: 'Da83cAfGUrsm896FUghCkNKutgFc96WNGWN73bZxe31B', label: 'Account 1', number: 1, role: 'main', isMain: true, linked: false},
-      {scheme: 'slip10:1', address: '9Y7FtteLhCJABAQtkYEFZs46rJgy1ixMA1JFMUepTki4', label: 'Account 2', number: 2, role: 'fresh-exit', isMain: false, linked: false},
-    ],
-    seed: [],
-    walletKind: 'slip10',
-    unreadable: false,
-  }),
+  useAccountList: () => mockAccountList,
 }));
 
 const mockHistory: {
@@ -80,6 +85,7 @@ const screen = () => render(<TransactionHistoryScreen onSelectTx={onSelectTx} on
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mmkvPublic.remove(MMKV_KEYS.ACTIVITY_FILTER);
   n = 0;
   mockHide.current = false;
   mockHistSelected.current = {address: ME, label: 'Account 1'};
@@ -221,7 +227,7 @@ describe('rows (§5.1)', () => {
       row('unknown', {signature: 'old'}, at('2026-05-06T08:00:00Z')),
     ]);
     const {getByTestId, getAllByTestId} = screen();
-    expect(getAllByTestId(/^history-section-/).map(x => x.props.children)).toEqual(['Today', 'Yesterday', 'May 2026', 'Date unknown']);
+    expect(getAllByTestId(/^history-section-/).map(x => x.props.children)).toEqual(['Today · Nov 26', 'Yesterday · Nov 25', 'May 2026', 'Date unknown']);
     expect(getByTestId('tx-row-old-secondary')).toHaveTextContent('6 May');
   });
 
@@ -232,6 +238,69 @@ describe('rows (§5.1)', () => {
     const {getByTestId} = screen();
     expect(mockUseActivityHistory).toHaveBeenLastCalledWith(ACC_2);
     expect(getByTestId('history-account-label')).toHaveTextContent('Account 2');
+  });
+});
+
+describe('design elements of #26', () => {
+  it('the Private chip carries the shield glyph, the others none', () => {
+    show([]);
+    const {getByTestId, queryByTestId} = screen();
+    expect(getByTestId('history-chip-private-icon')).toBeTruthy();
+    expect(queryByTestId('history-chip-sent-icon')).toBeNull();
+  });
+
+  it('the dated headers: Today and Yesterday carry their date in the zone, the others none', () => {
+    show([
+      row('unknown', {signature: 'late'}, at('2026-11-26T23:30:00Z')), // Nov 27 in Ljubljana: ahead of the clock, still Today
+      row('unknown', {signature: 'yday'}, at('2026-11-25T08:00:00Z')),
+      row('unknown', {signature: 'week'}, at('2026-11-24T08:00:00Z')),
+    ]);
+    const {getByTestId} = screen();
+    expect(getByTestId('history-section-today')).toHaveTextContent('Today · Nov 26');
+    expect(getByTestId('history-section-yesterday')).toHaveTextContent('Yesterday · Nov 25');
+    expect(getByTestId('history-section-week')).toHaveTextContent('This week', {exact: true});
+  });
+
+  it('a counter-party address is set in the mono face; a wallet label and a time-only line are not', () => {
+    show([
+      row('sent', {signature: 'out', primary: delta('M', 'TEST', -1n), counterparty: OUTSIDE}),
+      row('received', {signature: 'own', primary: delta('M', 'TEST', 1n), counterparty: ACC_2}),
+      row('swap', {signature: 'swp', primary: delta('native', 'SOL', -1n), secondary: delta('N', 'NOC', 1n), via: 'Jupiter'}),
+    ]);
+    const {getByTestId} = screen();
+    expect(getByTestId('tx-row-out-secondary').props.className).toContain('font-geist-mono');
+    expect(getByTestId('tx-row-own-secondary').props.className).not.toContain('font-geist-mono');
+    expect(getByTestId('tx-row-swp-secondary').props.className).not.toContain('font-geist-mono');
+  });
+
+  it('the chip chosen survives a remount; an unknown stored value reads as All', () => {
+    show([row('sent', {signature: 's', primary: delta('M', 'TEST', -1n)}), row('received', {signature: 'r', primary: delta('M', 'TEST', 1n)})]);
+    const first = screen();
+    fireEvent.press(first.getByTestId('history-chip-received'));
+    expect(mmkvPublic.getString(MMKV_KEYS.ACTIVITY_FILTER)).toBe('received');
+    first.unmount();
+    const again = screen();
+    expect(again.getByTestId('history-chip-received').props.accessibilityState).toEqual({selected: true});
+    expect(again.queryByTestId('tx-row-s')).toBeNull();
+    again.unmount();
+    mmkvPublic.set(MMKV_KEYS.ACTIVITY_FILTER, 'nonsense');
+    const unknown = screen();
+    expect(unknown.getByTestId('history-chip-all').props.accessibilityState).toEqual({selected: true});
+    expect(unknown.getByTestId('tx-row-s')).toBeTruthy();
+  });
+
+  it('a row that did not change is not rendered again when an unrelated state flips', () => {
+    show([row('sent', {signature: 'a', primary: delta('M', 'TEST', -1n)})], false);
+    const view = screen();
+    const spy = jest.spyOn(activityView, 'rowView');
+    try {
+      mockHistory.loadingOlder = true;
+      view.rerender(<TransactionHistoryScreen onSelectTx={onSelectTx} onBack={onBack} now={NOW} timeZone={LJ} />);
+      expect(view.getByTestId('history-loading-older')).toBeTruthy(); // the screen did re-render
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
 
@@ -358,20 +427,73 @@ describe('chips (§5.2)', () => {
     expect(mockHistory.loadOlder).toHaveBeenCalledTimes(4); // Sent has its own three
   });
 
-  // T10 (r2 m4)
-  it('the All chip never stops loading on scroll', async () => {
+  // T10 (I1): a failed page on All is not retried by the list's own re-firing; the user's tap retries
+  it('All: one failed older page → no further automatic reads, "Load older" shown; a tap reads once; a success clears it', async () => {
     show([row('sent', {primary: delta('M', 'TEST', -1n)})], false);
-    mockHistory.loadOlder = jest.fn(async () => null); // even pages that could not be read do not stop All
+    mockHistory.loadOlder = jest.fn(async () => null);
     const view = screen();
     const reachEnd = async () => {
       await act(async () => {
         fireEvent(view.getByTestId('history-list'), 'endReached');
       });
     };
-    for (let k = 0; k < 6; k++) {
-      await reachEnd();
+    expect(view.queryByTestId('history-load-older')).toBeNull();
+    await reachEnd();
+    expect(mockHistory.loadOlder).toHaveBeenCalledTimes(1);
+    await reachEnd();
+    await reachEnd();
+    expect(mockHistory.loadOlder).toHaveBeenCalledTimes(1);
+    expect(view.getByTestId('history-load-older')).toBeTruthy();
+    await act(async () => {
+      fireEvent.press(view.getByTestId('history-load-older'));
+    });
+    expect(mockHistory.loadOlder).toHaveBeenCalledTimes(2);
+    // a page that is read clears it: scrolling loads again, the button is gone
+    mockHistory.loadOlder.mockImplementationOnce(async () => snapshot([row('sent', {primary: delta('M', 'TEST', -1n)})], false));
+    await act(async () => {
+      fireEvent.press(view.getByTestId('history-load-older'));
+    });
+    expect(view.queryByTestId('history-load-older')).toBeNull();
+    await reachEnd();
+    expect(mockHistory.loadOlder).toHaveBeenCalledTimes(4);
+  });
+
+  // I1: the failure belongs to the chip and the account it was read under
+  it('a chip change clears a failed-page stop on All', async () => {
+    show([row('sent', {primary: delta('M', 'TEST', -1n)})], false);
+    mockHistory.loadOlder = jest.fn(async () => null);
+    const view = screen();
+    const reachEnd = async () => {
+      await act(async () => {
+        fireEvent(view.getByTestId('history-list'), 'endReached');
+      });
+    };
+    await reachEnd();
+    fireEvent.press(view.getByTestId('history-chip-sent'));
+    fireEvent.press(view.getByTestId('history-chip-all'));
+    await reachEnd();
+    expect(mockHistory.loadOlder).toHaveBeenCalledTimes(2);
+  });
+
+  // m2: a page that finishes after the chip changed says nothing about the new chip
+  it('a load that finishes after a chip change does not count against the new chip', async () => {
+    const base = [row('sent', {signature: 's', primary: delta('M', 'TEST', -1n)}), row('received', {signature: 'r', primary: delta('M', 'TEST', 1n)})];
+    show(base, false);
+    const pending: Array<(v: HistorySnapshot | null) => void> = [];
+    mockHistory.loadOlder = jest.fn(() => new Promise<HistorySnapshot | null>(r => pending.push(r)));
+    const view = screen();
+    fireEvent.press(view.getByTestId('history-chip-received'));
+    for (let k = 0; k < 3; k++) {
+      fireEvent.press(view.getByTestId('history-load-older'));
     }
-    expect(mockHistory.loadOlder).toHaveBeenCalledTimes(6);
+    fireEvent.press(view.getByTestId('history-chip-sent'));
+    await act(async () => {
+      pending.forEach(r => r(snapshot(base, false))); // each adds nothing under Received
+    });
+    await act(async () => {
+      fireEvent(view.getByTestId('history-list'), 'endReached');
+    });
+    expect(mockHistory.loadOlder).toHaveBeenCalledTimes(4); // Sent still has its own three: the scroll loads
   });
 
   // T11
@@ -405,6 +527,17 @@ describe('states (§5.3)', () => {
     const notEnd = screen();
     expect(notEnd.queryByText('No transactions yet')).toBeNull();
     expect(notEnd.queryByTestId('history-skeleton')).toBeNull();
+  });
+
+  // I2: the three conditions at once — a failed refresh of an empty, fully read history claims nothing
+  it('a failed refresh after an empty read: no "No transactions yet", the retry line instead', () => {
+    show([], true);
+    expect(screen().getByText('No transactions yet')).toBeTruthy();
+    mockHistory.isSuccess = false;
+    mockHistory.isError = true;
+    const failed = screen();
+    expect(failed.queryByText('No transactions yet')).toBeNull();
+    expect(failed.getByTestId('history-retry')).toBeTruthy();
   });
 
   // T14 (post-M1d §7, m1)
@@ -551,6 +684,23 @@ describe('states (§5.3)', () => {
       act(() => onChange.forEach(f => f('background')));
       expect(view.getByTestId('history-section-today')).toBeTruthy(); // going away re-reads nothing
       act(() => onChange.forEach(f => f('active')));
+      expect(view.queryByTestId('history-section-today')).toBeNull();
+      expect(view.getByTestId('history-section-yesterday')).toBeTruthy();
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  // m1: the clock is read again when the data changes, not only on the foreground
+  it('new data re-reads the clock', () => {
+    const clock = jest.spyOn(Date, 'now').mockReturnValue(NOW);
+    try {
+      show([row('unknown', {signature: 'a'}, at('2026-11-26T08:00:00Z'))]);
+      const view = render(<TransactionHistoryScreen onSelectTx={onSelectTx} onBack={onBack} timeZone={LJ} />);
+      expect(view.getByTestId('history-section-today')).toBeTruthy();
+      clock.mockReturnValue(NOW + 86_400_000);
+      show([row('unknown', {signature: 'a'}, at('2026-11-26T08:00:00Z'))]); // a new data object
+      view.rerender(<TransactionHistoryScreen onSelectTx={onSelectTx} onBack={onBack} timeZone={LJ} />);
       expect(view.queryByTestId('history-section-today')).toBeNull();
       expect(view.getByTestId('history-section-yesterday')).toBeTruthy();
     } finally {

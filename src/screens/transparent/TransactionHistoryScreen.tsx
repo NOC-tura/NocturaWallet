@@ -22,20 +22,22 @@
  * list shorter than the screen would otherwise read the whole history in a burst). After that only
  * "Load older" loads. The All chip never stops: every page adds rows.
  */
-import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import React, {memo, useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {ActivityIndicator, AppState, Pressable, RefreshControl, ScrollView, SectionList, View} from 'react-native';
 import {ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Circle, Settings, Shield, TriangleAlert} from 'lucide-react-native';
 import {Text} from '../../components/ui';
 import {cn} from '../../utils/cn';
 import {useAccountList, useSelectedAccount} from '../../hooks/useSelectedAccount';
 import {useActivityHistory} from '../../hooks/useActivityHistory';
-import {chipMatches, counterpartyLabel, deviceTimeZone, groupSections, rowView} from '../../modules/solana/activityView';
+import {chipMatches, counterpartyLabel, deviceTimeZone, groupSections, rowView, sectionHeading} from '../../modules/solana/activityView';
 import type {RowIcon, RowView} from '../../modules/solana/activityView';
 import type {HistoryRow, HistorySnapshot} from '../../modules/solana/history';
 import {HISTORY_PAGE_SIZE} from '../../modules/solana/historySession';
 import {HISTORY_EMPTY, HISTORY_ERROR, HISTORY_LOADING, VALUE_HIDDEN, VALUE_HIDDEN_SPOKEN} from '../../copy/accounts';
 import {
+  HISTORY_BACK,
   HISTORY_CHIPS,
+  HISTORY_TITLE,
   HISTORY_LOAD_OLDER,
   SECTION_TODAY,
   SECTION_YESTERDAY,
@@ -45,6 +47,9 @@ import {
   historyCoverage,
 } from '../../copy/transactions';
 import type {HistoryChipId} from '../../copy/transactions';
+import {mmkvPublic} from '../../store/mmkv/instances';
+import {MMKV_KEYS} from '../../constants/mmkvKeys';
+import {shortAccountAddress} from '../../modules/accounts/accountList';
 import {usePublicSettingsStore} from '../../store/zustand/publicSettingsStore';
 
 interface Props {
@@ -96,7 +101,23 @@ const TONE: Record<RowView['amountTone'], string> = {
 /** Controller ruling C: the figure reads "•••" on screen and "Hidden" to a screen reader */
 const spoken = (part: string, hidden: boolean): string => (hidden && part === VALUE_HIDDEN ? VALUE_HIDDEN_SPOKEN : part);
 
-function HistoryRowItem({signature, view, hidden, onPress}: {signature: string; view: RowView; hidden: boolean; onPress: () => void}) {
+interface RowItemProps {
+  row: HistoryRow;
+  labelOf: (address: string) => string;
+  clock: number;
+  zone: string;
+  hidden: boolean;
+  onSelect: (signature: string) => void;
+}
+
+/** memoised: only a change of its own row, the clock, the zone, the mask or the labels re-renders it */
+const HistoryRowItem = memo(function HistoryRowItem({row, labelOf, clock, zone, hidden, onSelect}: RowItemProps) {
+  const signature = row.item.signature;
+  const view = useMemo(() => rowView(row, labelOf, clock, zone, hidden), [row, labelOf, clock, zone, hidden]);
+  // the design sets a counter-party ADDRESS in the mono face; a wallet's label ("Account 2") stays in the body face
+  const counterparty = row.activity?.counterparty ?? null;
+  const mono = counterparty !== null && view.secondary.includes(shortAccountAddress(counterparty));
+  const onPress = useCallback(() => onSelect(signature), [onSelect, signature]);
   const id = `tx-row-${signature}`;
   return (
     <Pressable
@@ -126,7 +147,7 @@ function HistoryRowItem({signature, view, hidden, onPress}: {signature: string; 
           ) : null}
         </View>
         {view.secondary !== '' ? (
-          <Text variant="body-sm" numberOfLines={1} className="text-fg-tertiary" testID={`${id}-secondary`}>
+          <Text variant="body-sm" mono={mono} numberOfLines={1} className="text-fg-tertiary" testID={`${id}-secondary`}>
             {view.secondary}
           </Text>
         ) : null}
@@ -144,7 +165,7 @@ function HistoryRowItem({signature, view, hidden, onPress}: {signature: string; 
       </View>
     </Pressable>
   );
-}
+});
 
 function SkeletonRow() {
   return (
@@ -188,7 +209,19 @@ export function TransactionHistoryScreen({onSelectTx, onBack, now, timeZone}: Pr
   const {data, isSuccess, isError, refetch, loadOlder, loadingOlder} = useActivityHistory(publicKey);
   // owner, Q2: the dashboard's hide-balances setting (its one source) also hides the figures of these rows
   const hidden = usePublicSettingsStore(s => s.hideBalances);
-  const [chip, setChip] = useState<HistoryChipId>('all');
+  // #26 (design): the chip last chosen survives a remount; an unknown stored value reads as All
+  const [chip, setChip] = useState<HistoryChipId>(() => {
+    const stored = mmkvPublic.getString(MMKV_KEYS.ACTIVITY_FILTER);
+    return HISTORY_CHIPS.find(c => c.id === stored)?.id ?? 'all';
+  });
+  const pickChip = useCallback((next: HistoryChipId) => {
+    setChip(next);
+    mmkvPublic.set(MMKV_KEYS.ACTIVITY_FILTER, next);
+  }, []);
+  // I1: an older page that could not be read stops the scrolling's own loading until the user taps "Load older"
+  const [olderFailed, setOlderFailed] = useState(false);
+  // m2: the chip a load was started under, against the one now
+  const chipRef = useRef(chip);
 
   // r1-1: one read in flight at a time (the pattern of #12); the line says "Loading…" while it runs
   const retryingRef = useRef(false);
@@ -203,10 +236,13 @@ export function TransactionHistoryScreen({onSelectTx, onBack, now, timeZone}: Pr
     retryingRef.current = false;
     setRetrying(false);
     setRefreshing(false);
+    setOlderFailed(false);
     dryPagesRef.current = 0;
   }, [publicKey]);
   useEffect(() => {
+    chipRef.current = chip;
     dryPagesRef.current = 0;
+    setOlderFailed(false);
   }, [chip]);
 
   const read = useCallback(
@@ -233,6 +269,7 @@ export function TransactionHistoryScreen({onSelectTx, onBack, now, timeZone}: Pr
       return;
     }
     setRetrying(true);
+    setOlderFailed(false);
     read(() => setRetrying(false));
   }, [read]);
   const onRefresh = useCallback(() => {
@@ -240,6 +277,7 @@ export function TransactionHistoryScreen({onSelectTx, onBack, now, timeZone}: Pr
       return;
     }
     setRefreshing(true);
+    setOlderFailed(false);
     read(() => setRefreshing(false));
   }, [read]);
 
@@ -268,17 +306,40 @@ export function TransactionHistoryScreen({onSelectTx, onBack, now, timeZone}: Pr
     if (data === undefined || endReached || loadingOlder) {
       return;
     }
+    const startedChip = chip;
+    const generation = generationRef.current;
     const before = countUnder(rows, chip);
     const next: HistorySnapshot | null = await loadOlder();
-    if (next !== null) {
-      dryPagesRef.current = countUnder(next.rows, chip) > before ? 0 : dryPagesRef.current + 1;
+    if (chipRef.current !== startedChip || generation !== generationRef.current) {
+      return; // the verdict belongs to a chip or an account that is no longer shown
     }
+    if (next === null) {
+      setOlderFailed(true);
+      return;
+    }
+    setOlderFailed(false);
+    dryPagesRef.current = countUnder(next.rows, chip) > before ? 0 : dryPagesRef.current + 1;
   }, [data, endReached, loadingOlder, rows, chip, loadOlder]);
   const onEndReached = useCallback(() => {
+    if (olderFailed) {
+      return; // I1: a failed page is retried by the user's tap, never by the list's own re-firing
+    }
     if (chip === 'all' || dryPagesRef.current < DRY_PAGE_LIMIT) {
       loadMore().catch(() => undefined);
     }
-  }, [chip, loadMore]);
+  }, [chip, loadMore, olderFailed]);
+  const onSelect = useCallback(
+    (signature: string) => {
+      if (publicKey !== null) {
+        onSelectTx(signature, publicKey);
+      }
+    },
+    [publicKey, onSelectTx],
+  );
+  const renderItem = useCallback(
+    ({item}: {item: HistoryRow}) => <HistoryRowItem row={item} labelOf={labelOf} clock={clock} zone={zone} hidden={hidden} onSelect={onSelect} />,
+    [labelOf, clock, zone, hidden, onSelect],
+  );
 
   const loadOlderButton =
     data !== undefined && !endReached ? (
@@ -335,11 +396,16 @@ export function TransactionHistoryScreen({onSelectTx, onBack, now, timeZone}: Pr
       <View className="pb-8">
         {/* the All chip loads by itself; under a filter the explicit control is always there (§5.2) */}
         {chip === 'all' ? (
-          loadingOlder ? (
-            <View className="py-4" testID="history-loading-older">
-              <ActivityIndicator color="#B084FC" />
-            </View>
-          ) : null
+          // a constant height: the spinner coming and going must not change the list's length (that re-fires onEndReached)
+          <View className="h-16 items-center justify-center">
+            {loadingOlder ? (
+              <View testID="history-loading-older">
+                <ActivityIndicator color="#B084FC" />
+              </View>
+            ) : olderFailed ? (
+              loadOlderButton
+            ) : null}
+          </View>
         ) : (
           loadOlderButton
         )}
@@ -352,11 +418,11 @@ export function TransactionHistoryScreen({onSelectTx, onBack, now, timeZone}: Pr
       <View className="flex-row items-center gap-3 p-4">
         <Pressable onPress={onBack} accessibilityRole="button" hitSlop={8}>
           <Text variant="body-lg" className="text-accent-transparent">
-            ← Back
+            {HISTORY_BACK}
           </Text>
         </Pressable>
         <View>
-          <Text variant="h2">Transaction History</Text>
+          <Text variant="h2">{HISTORY_TITLE}</Text>
           {selected ? (
             <Text variant="body-sm" className="text-fg-secondary mt-0.5" testID="history-account-label">
               {selected.label}
@@ -374,13 +440,19 @@ export function TransactionHistoryScreen({onSelectTx, onBack, now, timeZone}: Pr
               <Pressable
                 key={c.id}
                 testID={`history-chip-${c.id}`}
-                onPress={() => setChip(c.id)}
+                onPress={() => pickChip(c.id)}
                 accessibilityRole="button"
                 accessibilityState={{selected: active}}
                 className={cn(
                   'min-h-[44px] min-w-[44px] px-4 rounded-pill items-center justify-center',
+                  mint && 'flex-row gap-1.5',
                   active ? (mint ? 'bg-accent-shielded-tint' : 'bg-accent-transparent-tint') : 'bg-bg-surface-2',
                 )}>
+                {mint ? (
+                  <View testID={`history-chip-${c.id}-icon`}>
+                    <Shield size={13} color={active ? '#5BE3C2' : '#A8ACB5'} />
+                  </View>
+                ) : null}
                 <Text variant="body-sm" className={active ? (mint ? 'text-accent-shielded' : 'text-accent-transparent') : 'text-fg-secondary'}>
                   {c.label}
                 </Text>
@@ -398,21 +470,10 @@ export function TransactionHistoryScreen({onSelectTx, onBack, now, timeZone}: Pr
         initialNumToRender={HISTORY_PAGE_SIZE}
         renderSectionHeader={({section}) => (
           <Text variant="overline" className="px-5 pt-4 pb-2 text-fg-secondary" testID={`history-section-${section.key}`}>
-            {section.title}
+            {sectionHeading(section, section.data[0], clock, zone)}
           </Text>
         )}
-        renderItem={({item}) => (
-          <HistoryRowItem
-            signature={item.item.signature}
-            hidden={hidden}
-            view={rowView(item, labelOf, clock, zone, hidden)}
-            onPress={() => {
-              if (publicKey !== null) {
-                onSelectTx(item.item.signature, publicKey);
-              }
-            }}
-          />
-        )}
+        renderItem={renderItem}
         onEndReached={onEndReached}
         onEndReachedThreshold={0.5}
         refreshControl={
