@@ -419,39 +419,46 @@ describe('readParsedTransactions', () => {
 
   // R26 (plan review r2 n2): a node that answers every single read, but slowly (or after web3.js waited out a 429)
   it('one deadline for the whole call: once the time limit has passed, no further single read is started', async () => {
+    // final review 14: a SPIED clock (as R28), so a timer that fires late on a loaded machine cannot change the count
+    let clock = 1_000_000;
+    jest.spyOn(Date, 'now').mockImplementation(() => clock);
     const connection = {
       getParsedTransactions: jest.fn(async () => {
         throw new Error('429 Too Many Requests');
       }),
-      // each read answers after 25 ms: well inside its own 60 ms limit
-      getParsedTransaction: jest.fn((s: string): Promise<RawParsedTx | null> => after(25, tx(s))),
+      // each read takes "25 ms": well inside its own 60 ms limit
+      getParsedTransaction: jest.fn(async (s: string): Promise<RawParsedTx | null> => {
+        clock += 25;
+        return tx(s);
+      }),
     };
     const six = ['a', 'b', 'c', 'd', 'e', 'f'];
     const {transactions: got, timedOut} = await readParsedTransactionsTimed(connection as never, client, 'devnet', six, 60);
     expect(timedOut).toBe(true);
-    // 6 × 25 ms is past 60 ms: the reads started at about 0, 25 and 50 ms are the only ones (fewer on a slow machine)
-    const started = connection.getParsedTransaction.mock.calls.length;
-    expect(started).toBeGreaterThanOrEqual(1);
-    expect(started).toBeLessThanOrEqual(3);
-    expect(got.size).toBe(started); // what was read before the deadline is kept …
+    // the reads start at 0, 25 and 50; at 75 the deadline (60) has passed
+    expect(connection.getParsedTransaction.mock.calls.map(c => c[0])).toEqual(['a', 'b', 'c']);
+    expect([...got.keys()]).toEqual(['a', 'b', 'c']); // what was read before the deadline is kept …
     expect(client.getQueryData(parsedTxKey('devnet', 'a'))).toEqual(tx('a')); // … and cached
-    expect(got.has('f')).toBe(false);
   });
 
   // R27 (plan review r2 n2)
   it('one deadline for the whole call: no further batch is started either', async () => {
+    let clock = 1_000_000;
+    jest.spyOn(Date, 'now').mockImplementation(() => clock);
     const connection = {
-      // each batch answers after 40 ms: inside its own 60 ms limit
-      getParsedTransactions: jest.fn((s: string[]): Promise<Array<RawParsedTx | null>> => after(40, shuffled(s.map(x => tx(x))))),
+      // each batch takes "40 ms": inside its own 60 ms limit
+      getParsedTransactions: jest.fn(async (s: string[]): Promise<Array<RawParsedTx | null>> => {
+        clock += 40;
+        return shuffled(s.map(x => tx(x)));
+      }),
       getParsedTransaction: jest.fn(),
     };
     const many = Array.from({length: 45}, (_, k) => `s${k}`);
     const {transactions: got, timedOut} = await readParsedTransactionsTimed(connection as never, client, 'devnet', many, 60);
     expect(timedOut).toBe(true);
-    const batches = connection.getParsedTransactions.mock.calls.length;
-    expect(batches).toBeGreaterThanOrEqual(1);
-    expect(batches).toBeLessThanOrEqual(2); // never the third (it would start at about 80 ms)
-    expect(got.size).toBe(batches * 20);
+    // batches start at 0 and 40; the third would start at 80, past the deadline
+    expect(connection.getParsedTransactions).toHaveBeenCalledTimes(2);
+    expect(got.size).toBe(40);
     expect(connection.getParsedTransaction).not.toHaveBeenCalled();
   });
 
@@ -480,6 +487,52 @@ describe('readParsedTransactions', () => {
   it('a single read that never answers rejects with a TimeoutError', async () => {
     const connection = {getParsedTransaction: jest.fn((_s: string): Promise<RawParsedTx | null> => never())};
     await expect(readParsedTransaction(connection as never, 'devnet', 'a', SHORT)).rejects.toBeInstanceOf(TimeoutError);
+  });
+
+  // R29–R32 (final review 2): the limit is raced INSIDE the limiter's function, so it starts only once a slot is
+  // free. Ten reads elsewhere in the app that never settle (they have no limit) hold every slot: a history read must
+  // still settle, with a TimeoutError, instead of waiting in the queue for good.
+  describe('while the limiter is full of reads that never settle', () => {
+    const fillLimiter = (): void => {
+      for (let k = 0; k < 10; k++) {
+        rpcLimiter.execute(`hung:${k}`, () => never()).catch(() => undefined);
+      }
+    };
+
+    // R29
+    it('a signature page rejects with a TimeoutError, and no call was made', async () => {
+      fillLimiter();
+      const connection = {getSignaturesForAddress: jest.fn()};
+      await expect(getSignaturePage(connection as never, 'devnet', WALLET, undefined, 20, SHORT)).rejects.toBeInstanceOf(TimeoutError);
+      expect(connection.getSignaturesForAddress).not.toHaveBeenCalled();
+    });
+
+    // R30
+    it('a single transaction read rejects with a TimeoutError', async () => {
+      fillLimiter();
+      const connection = {getParsedTransaction: jest.fn()};
+      await expect(readParsedTransaction(connection as never, 'devnet', 'a', SHORT)).rejects.toBeInstanceOf(TimeoutError);
+      expect(connection.getParsedTransaction).not.toHaveBeenCalled();
+    });
+
+    // R31
+    it('a batch read settles with timedOut, nothing read and nothing cached', async () => {
+      fillLimiter();
+      const connection = {getParsedTransactions: jest.fn(), getParsedTransaction: jest.fn()};
+      const {transactions: got, timedOut} = await readParsedTransactionsTimed(connection as never, client, 'devnet', ['a', 'b'], SHORT);
+      expect(timedOut).toBe(true);
+      expect(got.size).toBe(0);
+      expect(connection.getParsedTransactions).not.toHaveBeenCalled();
+      expect(client.getQueryData(parsedTxKey('devnet', 'a'))).toBeUndefined();
+    });
+
+    // R32
+    it('the source list rejects with a TimeoutError', async () => {
+      fillLimiter();
+      const connection = {getParsedTokenAccountsByOwner: jest.fn()};
+      await expect(listHistorySources(connection as never, 'devnet', WALLET, SHORT)).rejects.toBeInstanceOf(TimeoutError);
+      expect(connection.getParsedTokenAccountsByOwner).not.toHaveBeenCalled();
+    });
   });
 
   // R12

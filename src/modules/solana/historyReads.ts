@@ -31,6 +31,10 @@
  * Every chain call here is raced against HISTORY_READ_TIMEOUT_MS INSIDE the limiter's function, so
  * a timeout also frees the limiter's slot and its in-flight key (the retry is a new request, not a
  * join of the hung one). A read that times out is a failed read: nothing is cached, a retry works.
+ * That inner limit starts only once a slot is free, and the app's other reads (the dashboard's, the
+ * sheet's) have none: ten of them that never settle would hold every slot. So the whole call —
+ * the wait for a slot included — is raced again against TWICE the limit (`limitedRead`, final
+ * review 2, controller 2026-11-27): the caller always settles, at the latest after 2 × the limit.
  * When the BATCH times out the node is not answering: the same signatures are NOT asked for one at
  * a time (20 more limits in a row); they stay unread until the next load. The one-at-a-time path
  * stops at its first timeout for the same reason. And ONE call of `readParsedTransactions` has one
@@ -59,6 +63,21 @@ export const PARSED_TX_GC_MS = 24 * 60 * 60 * 1000;
 /** the limit of ONE chain call of the history, the detail and the link scan (the sync's own default, `treeSync.ts`) */
 export const HISTORY_READ_TIMEOUT_MS = 20_000;
 export const parsedTxKey = (cluster: string, signature: string): readonly [string, string, string] => [PARSED_TX_KEY, cluster, signature];
+
+/**
+ * One chain call of the history (final review 2): the read is limited inside the limiter's function
+ * (that frees the slot and the in-flight key), and the whole call, its wait for a slot included, is
+ * limited again at twice that — so the caller settles even while every slot is held by a read that
+ * never does. An outer timeout leaves the queued request behind; when it runs later, its own inner
+ * limit still bounds it.
+ */
+function limitedRead<T>(key: string, read: () => Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  return withTimeout(
+    rpcLimiter.execute(key, () => withTimeout(read(), timeoutMs, label)),
+    2 * timeoutMs,
+    label,
+  );
+}
 
 /** The client default `gcTime` (5 min) would collect them: every `parsedTx` entry lives 24 h and never goes stale. */
 export function applyParsedTxDefaults(client: QueryClient): void {
@@ -89,9 +108,7 @@ export async function readOwnedTokenAccounts(
 ): Promise<TokenAccount[]> {
   const key = new PublicKey(owner);
   const read = (program: string): Promise<TokenAccount[]> =>
-    rpcLimiter.execute(`historyTokenAccounts:${cluster}:${owner}:${program}`, () =>
-      withTimeout(tokenAccountsOf(connection, key, new PublicKey(program)), timeoutMs, 'history source list'),
-    );
+    limitedRead(`historyTokenAccounts:${cluster}:${owner}:${program}`, () => tokenAccountsOf(connection, key, new PublicKey(program)), timeoutMs, 'history source list');
   const [classic, token2022] = await Promise.all([read(TOKEN_PROGRAM_ID), read(TOKEN_2022_PROGRAM_ID)]);
   return [...classic, ...token2022];
 }
@@ -115,20 +132,20 @@ export async function getSignaturePage(
   limit: number,
   timeoutMs: number = HISTORY_READ_TIMEOUT_MS,
 ): Promise<SignatureItem[]> {
-  return rpcLimiter.execute(`getSignaturesForAddress:${cluster}:${source}:${before ?? 'head'}:${limit}`, async () => {
-    const options: {limit: number; before?: string} = {limit};
-    if (before !== undefined) {
-      options.before = before;
-    }
-    const signatures = await withTimeout(connection.getSignaturesForAddress(new PublicKey(source), options), timeoutMs, 'getSignaturesForAddress');
-    return signatures.map(s => ({
+  const options: {limit: number; before?: string} = {limit};
+  if (before !== undefined) {
+    options.before = before;
+  }
+  const key = `getSignaturesForAddress:${cluster}:${source}:${before ?? 'head'}:${limit}`;
+  return limitedRead(key, () => connection.getSignaturesForAddress(new PublicKey(source), options), timeoutMs, 'getSignaturesForAddress').then(signatures =>
+    signatures.map(s => ({
       signature: s.signature,
       slot: s.slot,
       blockTime: s.blockTime ?? null,
       status: s.err != null ? ('failed' as const) : s.confirmationStatus === 'finalized' ? ('finalized' as const) : ('confirmed' as const),
       finalized: s.confirmationStatus === 'finalized',
-    }));
-  });
+    })),
+  );
 }
 
 function hashOf(signatures: readonly string[]): string {
@@ -187,9 +204,7 @@ async function readChunk(
   deadline: number,
 ): Promise<{read: Map<string, RawParsedTx>; timedOut: boolean}> {
   try {
-    const answers: unknown = await rpcLimiter.execute(`getParsedTransactions:${cluster}:${hashOf(chunk)}`, () =>
-      withTimeout(connection.getParsedTransactions(chunk, READ_CONFIG), timeoutMs, 'getParsedTransactions'),
-    );
+    const answers: unknown = await limitedRead(`getParsedTransactions:${cluster}:${hashOf(chunk)}`, () => connection.getParsedTransactions(chunk, READ_CONFIG), timeoutMs, 'getParsedTransactions');
     return {read: matchBySignature(chunk, answers), timedOut: false};
   } catch (e) {
     if (e instanceof TimeoutError) {
@@ -227,9 +242,7 @@ export async function readParsedTransaction(
   signature: string,
   timeoutMs: number = HISTORY_READ_TIMEOUT_MS,
 ): Promise<RawParsedTx | null> {
-  const answer: unknown = await rpcLimiter.execute(`getParsedTransaction:${cluster}:${signature}`, () =>
-    withTimeout(connection.getParsedTransaction(signature, READ_CONFIG), timeoutMs, 'getParsedTransaction'),
-  );
+  const answer: unknown = await limitedRead(`getParsedTransaction:${cluster}:${signature}`, () => connection.getParsedTransaction(signature, READ_CONFIG), timeoutMs, 'getParsedTransaction');
   return ownSignature(answer) === signature ? (answer as RawParsedTx) : null;
 }
 

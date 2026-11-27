@@ -10562,6 +10562,11 @@ Added by this plan:
   load. One call of the transaction read starts nothing new once 20 s have passed since it began, and a load
   whose first transaction read ran out of time does not start the second; a call already in flight can still
   take its own 20 s, so the transactions of one load can hold it for about 40 s at worst, not longer.
+  *Amended (final review 2, controller 2026-11-27):* the 20 s starts only once an `rpcLimiter` slot is free, and the
+  app's other reads have no limit, so each call is also raced, its wait for a slot included, against 40 s
+  (`limitedRead` in `historyReads.ts`). One call therefore settles within 40 s even while every slot is held by a
+  read that never does, and the transactions of one load within about 60 s (a call started just before the 20 s
+  deadline can take its full 40 s).
 - **`web/src/lib/solana.ts` asks with version 0** (plan review r2 X1, last bullet): the web wallet, outside this
   PR — the `fix/treesync-v1` PR changes it (below). `getTransactionDetail` in `queries.ts` asked with 0 too; Task
   4 changes it to 1 (it is #27's read until Task 8, and dead code after — ruling 18).
