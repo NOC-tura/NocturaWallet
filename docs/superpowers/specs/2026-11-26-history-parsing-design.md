@@ -337,8 +337,8 @@ Copy lives in `src/copy/transactions.ts`, which is inside both copy guards. No g
 
 ### 6.1 Module
 `src/modules/accounts/linkScan.ts` has two parts:
-- `transactionLinks(raw, exit, seedWallets) → boolean`: pure.
-- `scanExitForLinks(exit, seedWallets, deps) → Promise<'linked' | 'clean' | 'failed'>`.
+- `linkedSeedWallets(raw, exit, seedWallets) → string[]` and `transactionLinks(...) → boolean` (its `length > 0`): pure. The rule returns the set of OTHER seed wallets the transaction matched (by key or token-balance owner). (Task 9 review, controller 2026-11-27)
+- `scanExitForLinks(exit, seedWallets, deps) → Promise<'linked' | 'clean' | 'capped' | 'failed'>`: `clean` = read through to the cursor or the end; `capped` = a source stopped at the cap and has history left. (Task 9 review, controller 2026-11-27)
 
 Scanned accounts are role `fresh-exit` with `linked !== true` only; `fresh-pending` is not scanned. `seedWallets` is every address in `AccountList.seed` (main and `fresh-pending` included) other than `exit`.
 
@@ -347,18 +347,18 @@ Scanned accounts are role `fresh-exit` with `linked !== true` only; `fresh-pendi
 - `exit`, or a token account whose owner in `pre`/`postTokenBalances` is `exit`; and
 - a `seedWallets` member, or a token account whose owner there is one.
 
-`meta.err` is not consulted. A third party can put an exit and main into one transaction (dust); the tag then errs on the warning side (§9).
+`meta.err` is not consulted. On a link the scan marks the exit AND every seed wallet the transaction matched (`markLinked` takes a list; the registry's `markA0AccountsLinked` ignores main and `fresh-pending`, so main is never tagged). (Task 9 review, controller 2026-11-27) A third party can put an exit and main into one transaction (dust); the tag then errs on the warning side (§9).
 
 ### 6.3 Sources, cursor and paging (review C2, I1, I2)
-- **Sources.** As in §3.1: the exit wallet and every token account it owns (classic and Token-2022). Each has its own cursor.
-- **The cursor** is the newest **finalized** signature fully scanned for that source. It is stored in **encrypted** MMKV under the new key `v1_linkScanCursors` as `{[exit]: {[source]: signature}}`, and cleared through `onSecureMmkvReset`.
+- **Sources.** As in §3.1: the exit wallet and every token account it owns (classic and Token-2022). Each has its own record (below).
+- **The cursor** is the newest **finalized** signature fully scanned for that source. It is stored in **encrypted** MMKV under the new key `v1_linkScanCursors` as `{[exit]: {[source]: LinkScanRecord}}` (Task 9 review, controller 2026-11-27; I1.1, keying on a seed-set digest, is Task 10), and cleared through `onSecureMmkvReset`.
 - **Reading a source.** Page backwards with `before`, 20 at a time, until a signature equal to the stored cursor is met (matched by value, not by `until`) or the source is exhausted. Transactions are read as in §3.3, and the cache is shared with history.
-- **Cap.** Every scan of a source, first or later, reads at most 300 signatures (review r2 m6). A first scan stopped by the cap sets the cursor (§9). A later scan stopped by the cap is treated as a first scan: it sets the cursor to the newest finalized signature read, and §9's "older history is not scanned" covers the rest (review r3 m-d).
+- **Cap.** Every scan of a source, first or later, reads at most 300 signatures (review r2 m6). A scan the cap stopped does NOT skip the rest for good: the stored record per source is `{cursor?, pending?: {newest?, resumeBelow}}` (exported `LinkScanRecord`). On a cap stop the old `cursor` is kept, `pending.newest` is the newest finalized signature read this scan (if any) and `pending.resumeBelow` the oldest signature read. The next scan of that source first continues from `resumeBelow` down to the old cursor (or the end), still capped; when it reaches the cursor or the end with nothing unread, `cursor` becomes `pending.newest` and `pending` is cleared; then it reads the head down to the cursor as usual. The result of a scan that ended on the cap is `capped`, never `clean`. (Task 9 review, controller 2026-11-27)
 - **A failed source** does not stop the exit's other sources: a link may still be found there.
-- **Stopping at a link.** A link found → `markA0AccountsLinked([exit])`, and the scan of that exit ends. No cursor is needed after a link.
-- **Any null or failed transaction read** → the result is `failed`, and no cursor for that source moves.
+- **Stopping at a link.** A link found → `markA0AccountsLinked([exit, ...matched seed wallets])`, and the scan of that exit ends. No cursor is needed after a link.
+- **Any null or failed transaction read** → the result is `failed`, and neither the cursor nor `pending` for that source moves (also while resuming).
 - **A clean source** moves its cursor to the newest finalized signature read. A confirmed-but-not-finalized signature is scanned but never becomes the cursor, so it is scanned again next time.
-- **When the cap stopped a first scan,** the cursor is still set (§9: older history is not scanned).
+- **`fetchSignatures` must return an unfiltered page:** a short page ends the scan. (Task 9 review, controller 2026-11-27)
 
 ### 6.4 When it runs (review I3)
 - The sheet opens → `drainLinkQueue()` → the scan for each scannable exit, one at a time.
@@ -466,7 +466,7 @@ Stale, unknown and never-synced states, each with a fresh control, and the MAX d
 
 ## 9. Known limits
 
-- **Older history.** An exit's first scan reads at most 300 signatures per source. History reads page on demand.
+- **Older history.** A scan reads at most 300 signatures per source, then resumes where it stopped on the next scan (§6.3), so the tag may lag on a very busy address. History reads page on demand.
 - **Closed token accounts.** History and the scan read the token accounts a wallet owns now. Transactions that touched only a token account the wallet has since closed are not found.
 - **Token-2022 holdings** appear in history but not in the dashboard balances, which still read only the classic program (pre-existing).
 - **The "linked" tag is a lower bound,** and it may err on the warning side: a third party's transaction naming two seed wallets (dust) tags the exit.
@@ -477,6 +477,7 @@ Stale, unknown and never-synced states, each with a fresh control, and the MAX d
 - **Large wallets:** history reads at most 25 sources, so a wallet with more token accounts says so in the list footer.
 - **A stake or other non-token account** created and paid by the account reads "Transaction · Account setup" with its full amount. That is true, but terse.
 - **The RPC provider** sees every request, as #17 already says. History and the scan send one request per signature read.
+- **A transaction no node serves** keeps its source at `failed`: the cursor never moves past it and the exit is re-read on every scan. The UI must never word `failed` as "not linked". (Task 9 review, controller 2026-11-27)
 - **A transaction above version 1,** or one a node will not serve, stays "Transaction —" (r5). Version-1 reading was tested on Node, not on a phone.
 
 ## 10. Design files

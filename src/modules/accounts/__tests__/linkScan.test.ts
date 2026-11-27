@@ -5,11 +5,16 @@
  */
 import {readFileSync} from 'fs';
 import {join} from 'path';
-import {LINK_SCAN_CAP, LINK_SCAN_PAGE, scanExitForLinks, transactionLinks} from '../linkScan';
-import type {LinkScanDeps} from '../linkScan';
+import {LINK_SCAN_CAP, LINK_SCAN_PAGE, linkedSeedWallets, scanExitForLinks, transactionLinks} from '../linkScan';
+import type {LinkScanDeps, LinkScanRecord} from '../linkScan';
 import type {RawParsedTx} from '../../solana/txDetail';
 import type {SignatureItem} from '../../solana/historySession';
 
+const withKey = (tx: RawParsedTx, address: string): RawParsedTx => {
+  const copy = JSON.parse(JSON.stringify(tx)) as RawParsedTx;
+  copy.transaction!.message!.accountKeys!.push({pubkey: address, signer: false, writable: false} as never);
+  return copy;
+};
 const load = (name: string): RawParsedTx =>
   (JSON.parse(readFileSync(join(__dirname, '../../solana/__tests__/fixtures', name), 'utf8')) as {result: RawParsedTx}).result;
 
@@ -70,6 +75,31 @@ describe('transactionLinks (§6.2)', () => {
     tx.transaction!.message!.accountKeys = tx.transaction!.message!.accountKeys!.map(k => ({...k, pubkey: {toString: () => String(k.pubkey)}}));
     expect(transactionLinks(tx, ACC_2, seedWithout(ACC_2))).toBe(true);
   });
+
+  // L8a / L8b (review M3) — DERIVED from 2XgjNKS8…: main (the exit here) is named by ONE side of the token balances only
+  it('derived: the exit is an owner in the POST token balances only — still links', () => {
+    const tx = load('tx-test-acc4-to-main-2XgjNKS8.json');
+    const before = tx.meta!.preTokenBalances!.length;
+    tx.meta!.preTokenBalances = tx.meta!.preTokenBalances!.filter(b => b.owner !== MAIN);
+    expect(tx.meta!.postTokenBalances!.some(b => b.owner === MAIN)).toBe(true);
+    expect(tx.meta!.preTokenBalances.length).toBeLessThanOrEqual(before);
+    expect(transactionLinks(tx, MAIN, new Set([ACC_4]))).toBe(true);
+  });
+  it('derived: the exit is an owner in the PRE token balances only — still links', () => {
+    const tx = load('tx-test-acc4-to-main-2XgjNKS8.json');
+    tx.meta!.postTokenBalances = tx.meta!.postTokenBalances!.filter(b => b.owner !== MAIN);
+    tx.meta!.preTokenBalances = [...tx.meta!.preTokenBalances!, {...tx.meta!.postTokenBalances![0]!, owner: MAIN}];
+    expect(transactionLinks(tx, MAIN, new Set([ACC_4]))).toBe(true);
+  });
+
+  // L8c (review I1.2) — the matched set
+  it('linkedSeedWallets names EVERY other seed wallet the transaction holds, never the exit, and [] when the exit is absent', () => {
+    const tx = withKey(load('tx-test-to-main.json'), ACC_3);
+    expect(linkedSeedWallets(tx, ACC_2, seedWithout(ACC_2)).sort()).toEqual([MAIN, ACC_3].sort());
+    expect(linkedSeedWallets(tx, ACC_2, new Set([ACC_2, MAIN]))).toEqual([MAIN]);
+    expect(linkedSeedWallets(load('tx-test-to-outside.json'), ACC_2, seedWithout(ACC_2))).toEqual([]);
+    expect(linkedSeedWallets(load('tx-test-acc4-to-main-2XgjNKS8.json'), ACC_2, seedWithout(ACC_2))).toEqual([]);
+  });
 });
 
 // ── the paging, against scripted sources ────────────────────────────────────────────────────────────
@@ -83,6 +113,8 @@ function chain(sources: Record<string, SignatureItem[]>) {
   const world = {
     sources,
     cursors: {} as Record<string, string>,
+    pendings: {} as Record<string, NonNullable<LinkScanRecord['pending']>>,
+    txs: {} as Record<string, RawParsedTx>,
     linking: new Set<string>(),
     unreadable: new Set<string>(),
     failSource: null as string | null,
@@ -106,17 +138,30 @@ function chain(sources: Record<string, SignatureItem[]>) {
       const out = new Map<string, RawParsedTx>();
       for (const s of signatures) {
         if (!world.unreadable.has(s)) {
-          out.set(s, world.linking.has(s) ? LINKING : CLEAN);
+          out.set(s, world.txs[s] ?? (world.linking.has(s) ? LINKING : CLEAN));
         }
       }
       return out;
     },
-    getCursor: (exit, source) => world.cursors[`${exit}/${source}`],
-    setCursor: (exit, source, signature) => {
-      world.cursors[`${exit}/${source}`] = signature;
+    getRecord: (exit, source) => {
+      const key = `${exit}/${source}`;
+      return {cursor: world.cursors[key], pending: world.pendings[key]};
     },
-    markLinked: exit => {
-      world.marked.push(exit);
+    setRecord: (exit, source, record) => {
+      const key = `${exit}/${source}`;
+      if (record.cursor === undefined) {
+        delete world.cursors[key];
+      } else {
+        world.cursors[key] = record.cursor;
+      }
+      if (record.pending === undefined) {
+        delete world.pendings[key];
+      } else {
+        world.pendings[key] = record.pending;
+      }
+    },
+    markLinked: wallets => {
+      world.marked.push(...wallets);
     },
   };
   return {world, deps};
@@ -130,10 +175,9 @@ describe('scanExitForLinks (§6.3)', () => {
     const {world, deps} = chain({[ACC_2]: all});
     world.linking.add('s120');
     expect(await scan(deps)).toBe('linked');
-    expect(world.marked).toEqual([ACC_2]);
+    expect(world.marked).toEqual([ACC_2, MAIN]); // the exit AND the wallet it met (the registry itself never tags main: accountRegistry.test)
     expect(world.fetched.map(f => f.before)).toEqual([undefined, 's20', 's40', 's60', 's80', 's100']);
     expect(world.cursors).toEqual({});
-    expect(world.marked).not.toContain(MAIN); // main is never passed to markLinked
   });
 
   // L10
@@ -181,7 +225,7 @@ describe('scanExitForLinks (§6.3)', () => {
     world.unreadable.add('s2');
     world.linking.add('s25');
     expect(await scan(deps)).toBe('linked');
-    expect(world.marked).toEqual([ACC_2]);
+    expect(world.marked).toEqual([ACC_2, MAIN]);
   });
 
   // L14
@@ -197,23 +241,80 @@ describe('scanExitForLinks (§6.3)', () => {
     expect(second.world.cursors).toEqual({[`${ACC_2}/${ACC_2_TA}`]: 't1'});
   });
 
-  // L15 (r2 m6, r3 m-d)
-  it('the cap: at most 300 signatures per source per scan, first or later; the cursor is still set', async () => {
+  // L15 (r2 m6, r3 m-d; review I2) — the cap ends the paging and the scan is 'capped', never 'clean'
+  it('the cap: at most 300 signatures per source per scan; result capped; the OLD cursor is kept and the gap is recorded as pending', async () => {
     const {world, deps} = chain({[ACC_2]: run('s', 400)});
-    world.linking.add('s350'); // beyond the cap: not found (spec §9)
-    expect(await scan(deps)).toBe('clean');
+    expect(await scan(deps)).toBe('capped');
     expect(world.readCount).toBe(LINK_SCAN_CAP);
     // the cap also ends the PAGING: 15 signature pages of 20, not the source's whole list (21 fetches)
     expect(world.fetched).toHaveLength(LINK_SCAN_CAP / LINK_SCAN_PAGE);
+    expect(world.cursors).toEqual({});
+    expect(world.pendings[`${ACC_2}/${ACC_2}`]).toEqual({newest: 's1', resumeBelow: 's300'});
+  });
+
+  // L15a — the next scan resumes below the oldest signature read and promotes `pending.newest` once it reaches the end
+  it('the next scan resumes at resumeBelow, finds a link beyond the first 300, and otherwise promotes the cursor and clears pending', async () => {
+    const {world, deps} = chain({[ACC_2]: run('s', 400)});
+    await scan(deps);
+    world.fetched.length = 0;
+    world.readCount = 0;
+    expect(await scan(deps)).toBe('clean');
+    expect(world.fetched[0]!.before).toBe('s300');
+    expect(world.readCount).toBe(100); // s301..s400, then the head down to the new cursor is empty
     expect(world.cursors[`${ACC_2}/${ACC_2}`]).toBe('s1');
-    // a LATER scan with more than 300 new signatures above the cursor is capped the same way
+    expect(world.pendings).toEqual({});
+
+    const found = chain({[ACC_2]: run('s', 400)});
+    found.world.linking.add('s350');
+    expect(await scan(found.deps)).toBe('capped');
+    expect(await scan(found.deps)).toBe('linked');
+    expect(found.world.marked).toEqual([ACC_2, MAIN]);
+  });
+
+  // L15b
+  it('a later scan with more than 300 new signatures keeps the old cursor, records pending, and the one after promotes it', async () => {
+    const {world, deps} = chain({[ACC_2]: run('s', 10)});
+    expect(await scan(deps)).toBe('clean');
     world.sources[ACC_2] = [...run('n', 320), ...world.sources[ACC_2]!];
     world.readCount = 0;
     world.fetched.length = 0;
-    expect(await scan(deps)).toBe('clean');
+    expect(await scan(deps)).toBe('capped');
     expect(world.readCount).toBe(LINK_SCAN_CAP);
     expect(world.fetched).toHaveLength(LINK_SCAN_CAP / LINK_SCAN_PAGE);
+    expect(world.cursors[`${ACC_2}/${ACC_2}`]).toBe('s1'); // the old cursor
+    expect(world.pendings[`${ACC_2}/${ACC_2}`]).toEqual({newest: 'n1', resumeBelow: 'n300'});
+    expect(await scan(deps)).toBe('clean'); // n301..n320, then the old cursor s1
     expect(world.cursors[`${ACC_2}/${ACC_2}`]).toBe('n1');
+    expect(world.pendings).toEqual({});
+  });
+
+  // L15c
+  it('an unread transaction while resuming → failed, and neither the cursor nor pending moves', async () => {
+    const {world, deps} = chain({[ACC_2]: run('s', 400)});
+    await scan(deps);
+    const before = JSON.stringify([world.cursors, world.pendings]);
+    world.unreadable.add('s350');
+    expect(await scan(deps)).toBe('failed');
+    expect(JSON.stringify([world.cursors, world.pendings])).toBe(before);
+    expect(world.marked).toEqual([]);
+  });
+
+  // L15d — a second cap stop while resuming moves resumeBelow only
+  it('a resume that is itself capped moves resumeBelow down and keeps pending.newest and the old cursor', async () => {
+    const {world, deps} = chain({[ACC_2]: run('s', 700)});
+    await scan(deps);
+    expect(await scan(deps)).toBe('capped');
+    expect(world.pendings[`${ACC_2}/${ACC_2}`]).toEqual({newest: 's1', resumeBelow: 's600'});
+    expect(world.cursors).toEqual({});
+  });
+
+  // L15e (review I1.2) — B's scan that finds a transaction holding A marks both
+  it('a link marks the exit AND every other seed wallet the transaction names', async () => {
+    const {world, deps} = chain({[ACC_3]: run('s', 3)});
+    world.txs.s2 = withKey(LINKING, ACC_3); // main + ACC_2 + ACC_3 in one transaction
+    expect(await scanExitForLinks(ACC_3, seedWithout(ACC_3), deps)).toBe('linked');
+    expect(world.marked.sort()).toEqual([ACC_3, ACC_2, MAIN].sort());
+    expect(world.marked[0]).toBe(ACC_3);
   });
 
   // L16
