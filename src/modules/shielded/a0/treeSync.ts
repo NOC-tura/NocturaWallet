@@ -42,6 +42,13 @@ import {A0SyncError} from './syncErrors';
 import {parseA0TreeAccount} from './treeAccount';
 import type {A0TreeAccount} from './treeAccount';
 
+/**
+ * The newest transaction version the sync asks the node for. Asked with a lower number the node
+ * answers a listed transaction of a newer version with error -32015 instead of the transaction;
+ * `parseA0SyncedTx` reads a version-1 message (static keys only, no lookup tables) like a legacy one.
+ */
+export const A0_MAX_TX_VERSION = 1;
+
 declare const verifiedBrand: unique symbol;
 
 /** A history that passed every check of §9 against one account snapshot. Only `verifyA0Tree` makes one. */
@@ -301,9 +308,11 @@ async function run(
     const answers = await Promise.all(
       chunk.map(s =>
         timed(
+          // 1, not 0: asked with 0 the node refuses a version-1 transaction (-32015), and anyone can
+          // land one that lists the tree — a single such tx would stop this sync for every wallet.
           connection.getTransaction(s.signature, {
             commitment: 'confirmed',
-            maxSupportedTransactionVersion: 0,
+            maxSupportedTransactionVersion: A0_MAX_TX_VERSION,
           }),
           'getTransaction',
         ),

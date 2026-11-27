@@ -975,7 +975,7 @@ describe('the in-flight nullifier lives in memory only (R12) and nothing specifi
     const from = w.net.requests.length;
     await w.net.connection.getSignatureStatuses([w.relayer.landed[0]!]);
     await w.net.connection.getAccountInfo(new PublicKey(nullifierPda(n)));
-    await w.net.connection.getTransaction(w.relayer.landed[0]!, {commitment: 'confirmed', maxSupportedTransactionVersion: 0});
+    await w.net.connection.getTransaction(w.relayer.landed[0]!, {commitment: 'confirmed', maxSupportedTransactionVersion: 1});
     expect(noteSpecificRequests(w.net.requests.slice(from), n, w.relayer.landed[0]!)).toEqual([
       'getTransaction of the relayed signature outside a sync',
       'getSignatureStatuses',

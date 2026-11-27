@@ -138,7 +138,7 @@ async function syncedOf(prefix: string, edit?: (chain: RecordedChain, sig: strin
   const {sig} = txOf(chain, prefix);
   edit?.(chain, sig);
   const {connection} = recordedConnection(chain);
-  const tx = await connection.getTransaction(sig, {commitment: 'confirmed', maxSupportedTransactionVersion: 0});
+  const tx = await connection.getTransaction(sig, {commitment: 'confirmed', maxSupportedTransactionVersion: 1});
   const r = tx && parseA0SyncedTx(sig, tx);
   if (!r) {
     throw new Error(`${prefix}: not a successful tx`);
@@ -620,7 +620,7 @@ describe('the M1b ledger carry: an appended (ownHistory) tx carries its OWN toke
     const chain = chainFrom(TREE);
     const sig = edit(chain);
     const {connection} = recordedConnection(chain);
-    const tx = await connection.getTransaction(sig, {commitment: 'confirmed', maxSupportedTransactionVersion: 0});
+    const tx = await connection.getTransaction(sig, {commitment: 'confirmed', maxSupportedTransactionVersion: 1});
     return parseA0SyncedTx(sig, tx!)!;
   }
   // the 3UfCx5TD… template's destination (owner HV996…, ATA DzU8…, created in that tx)

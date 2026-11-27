@@ -13,8 +13,13 @@
  *   - getSignaturesForAddress(<addr>, {limit, before?, until?, commitment}) — `before` / `until`
  *     exclusive, newest first, like the RPC; an unknown `before` / `until` is an error (the real
  *     RPC's answer there is not something a test should lean on); another address → [];
- *   - getTransaction(<sig>, {commitment, maxSupportedTransactionVersion: 0}) — JSON encoding
- *     only (the recording's), `null` for an unknown signature;
+ *   - getTransaction(<sig>, {commitment, maxSupportedTransactionVersion: 0 | 1}) — JSON encoding
+ *     only (the recording's), `null` for an unknown signature. On the version the fake answers
+ *     as the node does, because that answer is the failure under test: a version-1 transaction
+ *     asked for with `maxSupportedTransactionVersion: 0` is error -32015 (`UNSUPPORTED_V1_ERROR`,
+ *     recorded verbatim from devnet in fixtures/devnet-v1-tx-4T9Juo9P.json), and a legacy or v0
+ *     one is served either way. That the sync asks with 1 (`RECORDED_MAX_TX_VERSION`) is
+ *     asserted on `requests` in treeSync.test.ts, not here;
  *   - getAccountInfo(<addr>, {encoding: 'base64', commitment}) — the recorded tree, else null.
  * Every request is appended to `requests` (method + params), for the I-3 assertions of Task 3.
  */
@@ -85,6 +90,23 @@ export interface RpcRequest {
 /** A request the recording cannot answer (answered as a JSON-RPC error). */
 export class RpcRefusal extends Error {}
 
+/** The newest transaction version the wallet reads: what every production getTransaction asks with. */
+export const RECORDED_MAX_TX_VERSION = 1;
+
+/** The node's answer to a version-1 transaction asked for with `maxSupportedTransactionVersion: 0`. */
+export const UNSUPPORTED_V1_ERROR = {
+  code: -32015,
+  message:
+    'Transaction version (1) is not supported by the requesting client. Please try the request again with the following configuration parameter: "maxSupportedTransactionVersion": 1',
+} as const;
+
+/** A request the node itself answers with a JSON-RPC error (passed on with the node's code). */
+export class RpcNodeError extends Error {
+  constructor(readonly rpcError: {code: number; message: string}) {
+    super(rpcError.message);
+  }
+}
+
 /** The recording's answer to one request (exported for liveDevnet.ts, which extends it). */
 export function answer(chain: RecordedChain, method: string, params: unknown[]): unknown {
   const cfg = (params[1] ?? {}) as Record<string, unknown>;
@@ -111,10 +133,15 @@ export function answer(chain: RecordedChain, method: string, params: unknown[]):
   }
   if (method === 'getTransaction') {
     const keys = Object.keys(cfg).sort().join(',');
-    if (!commitmentOk || keys !== 'commitment,maxSupportedTransactionVersion' || cfg.maxSupportedTransactionVersion !== 0) {
-      throw new RpcRefusal(`getTransaction config ${JSON.stringify(cfg)} (the recording is JSON, v0-capable)`);
+    const max = cfg.maxSupportedTransactionVersion;
+    if (!commitmentOk || keys !== 'commitment,maxSupportedTransactionVersion' || (max !== 0 && max !== 1)) {
+      throw new RpcRefusal(`getTransaction config ${JSON.stringify(cfg)} (the recording is JSON, versions up to 1)`);
     }
-    return chain.transactions[String(params[0])] ?? null;
+    const tx = chain.transactions[String(params[0])] ?? null;
+    if (tx?.version === 1 && max < 1) {
+      throw new RpcNodeError(UNSUPPORTED_V1_ERROR);
+    }
+    return tx;
   }
   if (method === 'getAccountInfo') {
     if (!commitmentOk || cfg.encoding !== 'base64') {
@@ -142,10 +169,13 @@ export function recordedConnection(chain: RecordedChain): {
     try {
       payload = {jsonrpc: '2.0', id: body.id, result: answer(chain, body.method, params)};
     } catch (e) {
-      if (!(e instanceof RpcRefusal)) {
+      if (e instanceof RpcNodeError) {
+        payload = {jsonrpc: '2.0', id: body.id, error: e.rpcError};
+      } else if (e instanceof RpcRefusal) {
+        payload = {jsonrpc: '2.0', id: body.id, error: {code: -32602, message: `recordedRpc: ${e.message}`}};
+      } else {
         throw e;
       }
-      payload = {jsonrpc: '2.0', id: body.id, error: {code: -32602, message: `recordedRpc: ${e.message}`}};
     }
     const text = JSON.stringify(payload);
     return {ok: true, status: 200, statusText: 'OK', text: async () => text, json: async () => payload};
