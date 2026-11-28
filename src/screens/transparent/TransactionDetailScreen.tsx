@@ -10,22 +10,27 @@ import {SafeAreaView} from 'react-native-safe-area-context';
 import Clipboard from '@react-native-clipboard/clipboard';
 import {Check, X, Copy, ArrowLeft} from 'lucide-react-native';
 import {Text, Button} from '../../components/ui';
-import {useTransactionDetail} from '../../hooks/useSolanaQueries';
+import {useParsedTx} from '../../hooks/useParsedTx';
+import {useResolvedPrices} from '../../hooks/useResolvedPrices';
 import {formatChecksumParts} from '../../modules/solana/transferRisk';
 import {formatAddress} from '../../utils/formatAddress';
 import {formatTokenAmount} from '../../utils/parseTokenAmount';
+import {formatUsdString} from '../../utils/formatUsd';
 import {getExplorerUrl} from '../../utils/explorerUrl';
 import {addressBook} from '../../modules/addressBook/addressBookModule';
 import {cn} from '../../utils/cn';
-import {txDirection} from '../../modules/solana/txDetail';
-import {
-  TX_SENT,
-  TX_RECEIVED,
-  TX_NEUTRAL,
-  TX_TOKEN_ACCOUNT,
-  TX_FEE_PAYER,
-  TX_AUTHORIZED_BY,
-} from '../../copy/transactions';
+import {NETWORK} from '../../constants/programs';
+import {parseTxDetail} from '../../modules/solana/txDetail';
+import {classifyActivity} from '../../modules/solana/activity';
+import {activityContext} from '../../modules/solana/activityContext';
+import {peekHistorySession} from '../../modules/solana/historySession';
+import {activityWord, changeLine, detailTime, deviceTimeZone, heroAmount, partiesAgree, primaryUsdToday} from '../../modules/solana/activityView';
+import {priceKeyFor} from '../../modules/prices/portfolio';
+import {trustedSymbol} from '../../modules/tokens/trustedSymbol';
+import {TX_FEE_PAYER, TX_AUTHORIZED_BY, TX_BALANCE_CHANGES, TX_DATE, TX_FROM_UNKNOWN_CAUTION, TX_INCOMPLETE, txAtTodaysPrice} from '../../copy/transactions';
+import {useAccountList} from '../../hooks/useSelectedAccount';
+import {usePublicSettingsStore} from '../../store/zustand/publicSettingsStore';
+import {BELOW_ONE_CENT, VALUE_HIDDEN, VALUE_HIDDEN_SPOKEN} from '../../copy/accounts';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -57,10 +62,13 @@ interface DetailRowProps {
   label: string;
   value: React.ReactNode;
   mono?: boolean;
+  /** what a screen reader says for a string value (a masked figure says "Hidden") */
+  valueLabel?: string;
   onCopy?: () => void;
+  copyTestID?: string;
 }
 
-function DetailRow({label, value, mono, onCopy}: DetailRowProps) {
+function DetailRow({label, value, mono, valueLabel, onCopy, copyTestID}: DetailRowProps) {
   return (
     <View className="flex-row items-start justify-between gap-4 py-3 border-b border-bg-surface-2 min-h-[48px]">
       <Text variant="overline" className="text-fg-secondary pt-0.5 shrink-0 pr-1">
@@ -71,14 +79,15 @@ function DetailRow({label, value, mono, onCopy}: DetailRowProps) {
           <Text
             variant="body-sm"
             className={cn('text-right', mono ? 'font-geist-mono text-fg-secondary text-[13px]' : 'text-fg-primary')}
-            numberOfLines={2}>
+            numberOfLines={2}
+            accessibilityLabel={valueLabel}>
             {value}
           </Text>
         ) : (
           value
         )}
         {onCopy ? (
-          <Pressable onPress={onCopy} className="flex-row items-center gap-1 mt-1">
+          <Pressable onPress={onCopy} className="flex-row items-center gap-1 mt-1" testID={copyTestID}>
             <Copy size={14} color="#B084FC" />
             <Text variant="caption" className="text-accent-transparent">
               Copy
@@ -93,24 +102,61 @@ function DetailRow({label, value, mono, onCopy}: DetailRowProps) {
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function TransactionDetailScreen({signature, account, onBack}: Props) {
-  const {data: tx, isLoading} = useTransactionDetail(signature);
+  // history spec §4.6: the raw transaction (the cache #26 fills), read twice — `parseTxDetail` for the rows PR 1
+  // built, `classifyActivity` for the hero: what the transaction was for the account it was opened from
+  const {raw, isLoading, notFound} = useParsedTx(signature);
+  const tx = React.useMemo(() => (raw === undefined ? null : parseTxDetail(raw, signature, trustedSymbol)), [raw, signature]);
+  const row = React.useMemo(() => {
+    if (raw === undefined || account === null) {
+      return null; // a deep link: no account, so nothing is claimed about a direction or an amount
+    }
+    // the history session's token accounts when one exists; otherwise (from #21, a deep link) none (r3 m-f)
+    const own = peekHistorySession(NETWORK, account)?.tokenAccountSources;
+    return classifyActivity(raw, account, raw.meta?.err ? 'failed' : 'confirmed', activityContext(own));
+  }, [raw, account]);
   const transfer = tx?.transfer ?? null;
-  const direction = tx ? txDirection(tx, account) : 'none';
-  const directionWord = direction === 'sent' ? TX_SENT : direction === 'received' ? TX_RECEIVED : TX_NEUTRAL;
+  const directionWord = activityWord(row);
+  // owner, Q2: the dashboard's hide-balances setting (the one source — `publicSettingsStore`) also covers every
+  // figure here: the hero, today's value, the balance changes and the fee. Words, addresses and the hash stay.
+  const hidden = usePublicSettingsStore(s => s.hideBalances);
+  const shownHero = heroAmount(row);
+  const hero = shownHero !== null && hidden ? VALUE_HIDDEN : shownHero;
+  // From / To only when the transfer the parser read IS the row (§4.6); then both wallets are known
+  const parties = transfer !== null && transfer.from !== null && partiesAgree(transfer, row, account) ? {...transfer, from: transfer.from} : null;
+  const {prices} = useResolvedPrices();
+  // an incomplete row claims no value: no "≈ $x" line (Task 8 review I1)
+  const incomplete = row?.incomplete === true;
+  const usdToday = incomplete ? null : primaryUsdToday(row, mint => prices[priceKeyFor(mint)]?.usd ?? null);
   // a contact is a WALLET that is not this account: never a token account, never oneself
-  const contactAddress = transfer !== null && !transfer.toIsTokenAccount && transfer.to !== account ? transfer.to : null;
+  const contactAddress = parties !== null && parties.to !== account ? parties.to : null;
+  // owner Q2: a sender that is neither one of this wallet's accounts nor a saved contact is marked under From
+  // (address poisoning). An unreadable registry names no account as one's own. Only From: To is this account
+  // on a receive, and the address the user chose on a send.
+  const accountList = useAccountList();
+  const fromIsOwn =
+    parties !== null &&
+    (parties.from === account ||
+      (accountList !== null && !accountList.unreadable && [...accountList.accounts, ...accountList.seed].some(a => a.address === parties.from)));
+  const fromUnknown = parties !== null && !fromIsOwn && addressBook.findByAddress(parties.from) == null;
 
   // ── Handlers ───────────────────────────────────────────────────────────────
 
-  function handleCopySig() {
+  // one pending clear: a later copy cancels the earlier one, so it never wipes the new copy early. It is NOT
+  // cancelled on unmount — the clipboard is still wiped 30 s after the copy (never cleared on backgrounding).
+  const clearTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  function copyText(text: string) {
     try {
-      Clipboard.setString(signature);
-      setTimeout(() => Clipboard.setString(''), 30_000);
+      Clipboard.setString(text);
+      if (clearTimer.current !== null) {
+        clearTimeout(clearTimer.current);
+      }
+      clearTimer.current = setTimeout(() => Clipboard.setString(''), 30_000);
     } catch {
       // clipboard unavailable — no-op
     }
   }
 
+  const zone = React.useMemo(() => deviceTimeZone(), []);
   const [saved, setSaved] = React.useState(false);
   const alreadyContact = contactAddress !== null ? addressBook.findByAddress(contactAddress) != null : false;
 
@@ -151,14 +197,14 @@ export function TransactionDetailScreen({signature, account, onBack}: Props) {
       </View>
 
       {/* Loading state */}
-      {(isLoading || tx === undefined) ? (
+      {isLoading ? (
         <View className="flex-1 items-center justify-center gap-3">
           <ActivityIndicator size="large" color="#B084FC" />
           <Text variant="body-sm" className="text-fg-tertiary">
             Loading transaction…
           </Text>
         </View>
-      ) : tx === null ? (
+      ) : notFound || tx === null ? (
         /* Not-found state */
         <>
           <View className="flex-1 items-center justify-center px-6">
@@ -183,9 +229,23 @@ export function TransactionDetailScreen({signature, account, onBack}: Props) {
             <Text variant="overline" className="text-fg-secondary" testID="tx-detail-direction">
               {directionWord}
             </Text>
-            <Text className="text-fg-primary font-geist-semibold mt-2" style={{fontSize: 28}} testID="tx-detail-amount">
-              {transfer?.amount ? `${transfer.amount} ${transfer.symbol}`.trim() : '—'}
-            </Text>
+            {/* §4.6: with no `primary` there is no amount line */}
+            {hero !== null ? (
+              <Text className="text-fg-primary font-geist-semibold mt-2 text-center" style={{fontSize: 28}} testID="tx-detail-amount" accessibilityLabel={hidden ? VALUE_HIDDEN_SPOKEN : undefined}>
+                {hero}
+              </Text>
+            ) : null}
+            {incomplete && hero !== null ? (
+              <Text variant="caption" className="text-fg-tertiary mt-1" testID="tx-detail-incomplete">
+                {TX_INCOMPLETE}
+              </Text>
+            ) : null}
+            {/* H7: only today's price is known — the line says so, and is absent with no price */}
+            {usdToday !== null ? (
+              <Text variant="body-sm" numeral className="text-fg-secondary mt-1" testID="tx-detail-usd" accessibilityLabel={hidden ? VALUE_HIDDEN_SPOKEN : undefined}>
+                {hidden ? VALUE_HIDDEN : txAtTodaysPrice(usdToday < 0.005 ? BELOW_ONE_CENT : formatUsdString(usdToday))}
+              </Text>
+            ) : null}
 
             {/* Status pill */}
             {tx.status === 'failed' ? (
@@ -209,54 +269,86 @@ export function TransactionDetailScreen({signature, account, onBack}: Props) {
           <View className="bg-bg-surface-1 rounded-lg px-5 mt-4">
             <DetailRow label="Type" value={directionWord} />
             <DetailRow label="Status" value={tx.status[0].toUpperCase() + tx.status.slice(1)} />
-            {transfer !== null ? (
+            <DetailRow label={TX_DATE} value={<Text variant="body-sm" className="text-fg-primary text-right" testID="tx-detail-date">{detailTime(tx.blockTime, zone)}</Text>} />
+            {parties !== null ? (
               <>
                 <DetailRow
                   label="From"
+                  onCopy={() => copyText(parties.from)}
+                  copyTestID="tx-detail-copy-from"
                   value={
                     <View className="items-end" testID="tx-detail-from">
-                      {transfer.from !== null ? <ChecksumAddr address={transfer.from} /> : <Text className="text-fg-primary">—</Text>}
+                      <ChecksumAddr address={parties.from} />
+                      {fromUnknown ? (
+                        <Text variant="caption" className="text-warning text-right mt-1" testID="tx-detail-from-caution">
+                          {TX_FROM_UNKNOWN_CAUTION}
+                        </Text>
+                      ) : null}
                     </View>
                   }
                 />
-                {/* review r1-10: a delegate (or an authority whose relation to the funds is not known) is named apart */}
-                {transfer.authority !== null && transfer.authority !== transfer.from ? (
+                {/* review r1-10: a delegate is named apart (state 27f) */}
+                {parties.authority !== null && parties.authority !== parties.from ? (
                   <DetailRow
                     label={TX_AUTHORIZED_BY}
+                    onCopy={() => copyText(parties.authority ?? '')}
+                    copyTestID="tx-detail-copy-authority"
                     value={
                       <View className="items-end" testID="tx-detail-authority">
-                        <ChecksumAddr address={transfer.authority} />
+                        <ChecksumAddr address={parties.authority} />
                       </View>
                     }
                   />
                 ) : null}
                 <DetailRow
                   label="To"
+                  onCopy={() => copyText(parties.to)}
+                  copyTestID="tx-detail-copy-to"
                   value={
                     <View className="items-end" testID="tx-detail-to">
-                      <ChecksumAddr address={transfer.to} />
-                      {transfer.toIsTokenAccount ? (
-                        <Text variant="caption" className="text-fg-tertiary mt-0.5">
-                          {TX_TOKEN_ACCOUNT}
-                        </Text>
-                      ) : null}
+                      <ChecksumAddr address={parties.to} />
                     </View>
                   }
                 />
               </>
             ) : (
-              <DetailRow label={TX_FEE_PAYER} value={<ChecksumAddr address={tx.feePayer} />} />
+              <>
+                <DetailRow label={TX_FEE_PAYER} value={<ChecksumAddr address={tx.feePayer} />} />
+              </>
             )}
+            {/* §4.6: every net change of this account, each with its role — in place of From / To, and under them
+                whenever there is more than the one figure (a rent paid, a markup, a second asset; review I2) */}
+            {row !== null && row.deltas.length > 0 && (parties === null || row.deltas.length > 1) ? (
+              <DetailRow
+                label={TX_BALANCE_CHANGES}
+                value={
+                  <View className="items-end" testID="tx-detail-changes">
+                    {row.deltas.map((d, k) => (
+                      <Text key={`${d.role}-${d.mint}-${k}`} variant="body-sm" numeral className="text-fg-primary text-right" testID={`tx-detail-change-${k}`} accessibilityLabel={hidden ? changeLine(d, true).replace(VALUE_HIDDEN, VALUE_HIDDEN_SPOKEN) : undefined}>
+                        {changeLine(d, hidden)}
+                      </Text>
+                    ))}
+                    {incomplete ? (
+                      <Text variant="caption" className="text-fg-tertiary" testID="tx-detail-changes-incomplete">
+                        {TX_INCOMPLETE}
+                      </Text>
+                    ) : null}
+                  </View>
+                }
+              />
+            ) : null}
             <DetailRow
               label="Hash"
               value={truncatedSig}
               mono
-              onCopy={handleCopySig}
+              onCopy={() => copyText(signature)}
+              copyTestID="tx-detail-copy-hash"
             />
             <DetailRow label="Block" value={String(tx.slot)} />
             <DetailRow
               label="Network fee"
-              value={`${formatTokenAmount(tx.feeLamports, 9)} SOL`}
+              value={hidden ? VALUE_HIDDEN : `${formatTokenAmount(tx.feeLamports, 9)} SOL`}
+              valueLabel={hidden ? VALUE_HIDDEN_SPOKEN : undefined}
             />
             {tx.memo ? (
               <DetailRow label="Memo" value={tx.memo} />

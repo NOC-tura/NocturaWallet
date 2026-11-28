@@ -1,4 +1,4 @@
-import React, {useCallback, useMemo, useState} from 'react';
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
   View,
   Text as RNText,
@@ -18,6 +18,10 @@ import {ArrowLeft, X} from 'lucide-react-native';
 import {Text, Button} from '../components/ui';
 import {usePresaleStore} from '../store/zustand/presaleStore';
 import {useWalletStore} from '../store/zustand/walletStore';
+import {mainBalanceIsStale, mainBalanceIsUnknown} from '../modules/accounts/staleness';
+import {forceSync} from '../modules/backgroundSync/backgroundSyncModule';
+import {SEND_BALANCE_CHECKING, SEND_BALANCE_RETRY, SEND_BALANCE_STALE, VALUE_UNKNOWN} from '../copy/accounts';
+import {cn} from '../utils/cn';
 import {useReferralCaptureStore} from '../store/zustand/referralCaptureStore';
 import {parseReferralInput} from '../modules/presale/referralInput';
 import {useResolvedPrices} from '../hooks/useResolvedPrices';
@@ -122,6 +126,49 @@ export function PresaleActive({
   const solBalance = Number(solBalanceLamports) / 1e9;
   const publicKey = useWalletStore(s => s.publicKey);
 
+  // history spec §7 (H6): a stale, unknown or never-read main balance is not a figure to buy from — the rule and
+  // the words of Send (#12), Swap and #16. The float conversions above and below are pre-existing (spec §9).
+  const lastSyncedAt = useWalletStore(s => s.lastSyncedAt);
+  const lastSyncFailedAt = useWalletStore(s => s.lastSyncFailedAt);
+  const staleBalance = mainBalanceIsStale(lastSyncedAt, lastSyncFailedAt);
+  const balanceKnown = lastSyncedAt !== null && !staleBalance && !mainBalanceIsUnknown(lastSyncedAt, lastSyncFailedAt);
+  // the note under the balance says why buying is off; tapping it runs the main sync, one in flight
+  const retryingRef = useRef(false);
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true; // StrictMode runs the cleanup once and the effect again
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+  const [retrying, setRetrying] = useState(false);
+  const retryBalance = useCallback(() => {
+    if (retryingRef.current) {
+      return;
+    }
+    retryingRef.current = true;
+    setRetrying(true);
+    forceSync()
+      .catch(() => undefined)
+      .finally(() => {
+        retryingRef.current = false;
+        if (mountedRef.current) {
+          setRetrying(false);
+        }
+      });
+  }, []);
+  // a first sync not settled yet: the note reads "Checking balance…" and offers no tap
+  const noteBusy = retrying || (lastSyncedAt === null && lastSyncFailedAt === null);
+  // plan ruling T (task 11 review): nothing has read the balance — this screen is also reached in onboarding, where
+  // no dashboard runs the sync — so the screen starts the read itself. forceSync is single-flight per wallet, so on
+  // the dashboard route it joins the read already running. A failure lands as the tappable "unavailable" note.
+  const neverRead = lastSyncedAt === null && lastSyncFailedAt === null;
+  useEffect(() => {
+    if (neverRead) {
+      retryBalance();
+    }
+  }, [neverRead, retryBalance]);
+
   // Captured-referrer store (B1 interim manual field; B2's deep link will write
   // here too). Cleared after a successful referred purchase.
   const capturedReferrer = useReferralCaptureStore(s => s.capturedReferrer);
@@ -180,8 +227,10 @@ export function PresaleActive({
       : estimateNocForUsd(amountNum, stagePriceUsd);
 
   const gate = useMemo(
-    () => canBuy({paymentToken, amount, solUsd, solBalance, tokenBalance}),
-    [paymentToken, amount, solUsd, solBalance, tokenBalance],
+    // H6: with the balance not known the purchase is off and NO reason is shown — "Insufficient…" would be a
+    // claim about a balance that was not read; the note under the balance says what is wrong
+    () => (balanceKnown ? canBuy({paymentToken, amount, solUsd, solBalance, tokenBalance}) : {enabled: false, reason: null}),
+    [balanceKnown, paymentToken, amount, solUsd, solBalance, tokenBalance],
   );
 
   const onChangeAmount = useCallback((raw: string) => {
@@ -195,6 +244,9 @@ export function PresaleActive({
   }, []);
 
   const onMax = useCallback(() => {
+    if (!balanceKnown) {
+      return;
+    }
     if (paymentToken === 'SOL') {
       const max = Math.max(0, solBalance - FEE_HEADROOM_SOL);
       // Trim trailing zeros; keep up to 9 dp (lamport precision).
@@ -203,7 +255,7 @@ export function PresaleActive({
       // Stablecoin fee is paid in SOL, so no headroom is reserved here.
       setAmount(tokenBalance > 0 ? String(tokenBalance) : '0');
     }
-  }, [paymentToken, solBalance, tokenBalance]);
+  }, [balanceKnown, paymentToken, solBalance, tokenBalance]);
 
   const onBuy = useCallback(() => {
     if (!gate.enabled) {
@@ -353,18 +405,31 @@ export function PresaleActive({
               <Text variant="overline">YOU PAY</Text>
               <Text variant="caption">
                 Available{' '}
-                <Text variant="caption" numeral className="text-fg-secondary">
-                  {(paymentToken === 'SOL'
-                    ? solBalance
-                    : tokenBalance
-                  ).toLocaleString('en-US', {
-                    minimumFractionDigits: 0,
-                    maximumFractionDigits: 4,
-                  })}
+                <Text variant="caption" numeral className="text-fg-secondary" testID="presale-available">
+                  {balanceKnown
+                    ? (paymentToken === 'SOL' ? solBalance : tokenBalance).toLocaleString('en-US', {
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 4,
+                      })
+                    : VALUE_UNKNOWN}
                 </Text>{' '}
                 {paymentToken}
               </Text>
             </View>
+            {!balanceKnown ? (
+              <Pressable
+                onPress={retryBalance}
+                disabled={noteBusy}
+                accessibilityRole="button"
+                accessibilityState={{disabled: noteBusy, busy: noteBusy}}
+                testID="presale-balance-note"
+                hitSlop={8}
+                className="self-end mb-2">
+                <Text variant="body-sm" className="text-fg-secondary">
+                  {noteBusy ? SEND_BALANCE_CHECKING : staleBalance ? SEND_BALANCE_STALE : SEND_BALANCE_RETRY}
+                </Text>
+              </Pressable>
+            ) : null}
             <View className="flex-row items-center gap-3">
               <TextInput
                 value={amount}
@@ -381,9 +446,12 @@ export function PresaleActive({
               </Text>
               <Pressable
                 onPress={onMax}
+                disabled={!balanceKnown}
+                accessibilityState={{disabled: !balanceKnown}}
                 accessibilityRole="button"
                 accessibilityLabel="Use max balance"
-                className="px-3 h-8 rounded-pill bg-bg-surface-3 items-center justify-center">
+                testID="presale-max"
+                className={cn('px-3 h-8 rounded-pill bg-bg-surface-3 items-center justify-center', !balanceKnown && 'opacity-40')}>
                 <Text variant="caption" className="text-fg-primary font-semibold">
                   MAX
                 </Text>

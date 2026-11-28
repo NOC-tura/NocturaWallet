@@ -313,6 +313,15 @@ describe('M1d review M1 — the source account is re-read after a confirmed send
     spy.mockRestore();
   });
 
+  // final review 11: a send to one of one's own accounts lands in THAT account's history too
+  it("success also invalidates the recipient's txHistory entry (a send between one's own accounts)", async () => {
+    const spy = jest.spyOn(queryClient, 'invalidateQueries');
+    const r = render(withSafeArea(<TransactionStatusScreen intent={intent} onDashboard={jest.fn()} onViewDetails={jest.fn()} />));
+    await waitFor(() => expect(r.getByTestId('tx-status-done')).toBeTruthy());
+    expect(spy).toHaveBeenCalledWith({queryKey: ['txHistory', intent.recipient]});
+    spy.mockRestore();
+  });
+
   it('a failed send invalidates nothing', async () => {
     const spy = jest.spyOn(queryClient, 'invalidateQueries');
     mockSubmit.mockRejectedValueOnce(new Error('boom'));

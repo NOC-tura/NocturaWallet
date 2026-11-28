@@ -3,7 +3,6 @@ import {
   getBalance,
   getMultipleBalances,
   getTokenAccounts,
-  getTransactionHistory,
   getAccountInfo,
 } from '../queries';
 
@@ -111,60 +110,6 @@ describe('getTokenAccounts', () => {
   });
 });
 
-describe('getTransactionHistory', () => {
-  it('returns parsed transactions with confirmed/failed status from getSignaturesForAddress', async () => {
-    const connection = new Connection('https://api.mainnet-beta.solana.com');
-    const address = new PublicKey('So11111111111111111111111111111111111111112');
-
-    const mockSignatures = [
-      {
-        signature: 'sig1111111111111111111111111111111111111111111111111111111111111111',
-        slot: 100,
-        blockTime: 1700000000,
-        confirmationStatus: 'confirmed',
-        err: null,
-      },
-      {
-        signature: 'sig2222222222222222222222222222222222222222222222222222222222222222',
-        slot: 101,
-        blockTime: 1700000001,
-        confirmationStatus: 'finalized',
-        err: {InstructionError: [0, 'Custom']},
-      },
-    ];
-
-    (connection.getSignaturesForAddress as jest.Mock).mockResolvedValueOnce(mockSignatures);
-
-    const result = await getTransactionHistory(connection, address, {limit: 10});
-
-    expect(result).toHaveLength(2);
-    expect(result[0].signature).toBe(mockSignatures[0].signature);
-    expect(result[0].slot).toBe(100);
-    expect(result[0].timestamp).toBe(1700000000);
-    expect(result[0].status).toBe('confirmed');
-
-    expect(result[1].signature).toBe(mockSignatures[1].signature);
-    expect(result[1].status).toBe('failed');
-  });
-
-  it('passes limit and before options to getSignaturesForAddress', async () => {
-    const connection = new Connection('https://api.mainnet-beta.solana.com');
-    const address = new PublicKey('So11111111111111111111111111111111111111112');
-
-    (connection.getSignaturesForAddress as jest.Mock).mockResolvedValueOnce([]);
-
-    await getTransactionHistory(connection, address, {
-      limit: 5,
-      before: 'some-signature',
-    });
-
-    expect(connection.getSignaturesForAddress).toHaveBeenCalledWith(address, {
-      limit: 5,
-      before: 'some-signature',
-    });
-  });
-});
-
 describe('getAccountInfo', () => {
   it('returns executable=true when the account is a program', async () => {
     const connection = {
@@ -178,50 +123,5 @@ describe('getAccountInfo', () => {
     const connection = {getAccountInfo: jest.fn(async () => null)} as never;
     const res = await getAccountInfo(connection, {toBase58: () => 'X'} as never);
     expect(res).toEqual({exists: false, executable: false});
-  });
-});
-
-import {getTransactionDetail} from '../queries';
-import {NOCTURA_FEE_TREASURY} from '../../../constants/programs';
-
-function parsedTxConn(opts: {err?: unknown} = {}) {
-  return {
-    getParsedTransaction: jest.fn(async () => ({
-      slot: 271_408_924,
-      blockTime: 1_760_000_000,
-      meta: {fee: 5005, err: opts.err ?? null},
-      transaction: {
-        message: {
-          accountKeys: [{pubkey: 'SENDER_ADDR'}],
-          instructions: [
-            {program: 'system', parsed: {type: 'transfer', info: {source: 'SENDER_ADDR', destination: 'RECIPIENT_ADDR', lamports: 10_000_000}}},
-            {program: 'system', parsed: {type: 'transfer', info: {source: 'SENDER_ADDR', destination: NOCTURA_FEE_TREASURY, lamports: 20_000}}},
-          ],
-        },
-      },
-    })),
-  } as never;
-}
-
-describe('getTransactionDetail', () => {
-  it('parses a SOL transfer, skipping the Noctura fee-markup transfer', async () => {
-    const d = await getTransactionDetail(parsedTxConn(), 'SIG');
-    expect(d).not.toBeNull();
-    // post-M1d §5: TxDetail.transfer replaces the flat from/to/amount/tokenSymbol/type
-    expect(d!.transfer).toMatchObject({from: 'SENDER_ADDR', authority: null, to: 'RECIPIENT_ADDR', amount: '0.01', symbol: 'SOL', mint: 'native'});
-    expect(d!.feePayer).toBe('SENDER_ADDR');
-    expect(d!.feeLamports).toBe(5005n);
-    expect(d!.slot).toBe(271_408_924);
-    expect(d!.status).toBe('confirmed');
-  });
-
-  it('marks a tx with meta.err as failed', async () => {
-    const d = await getTransactionDetail(parsedTxConn({err: {InstructionError: [0, 'X']}}), 'SIG');
-    expect(d!.status).toBe('failed');
-  });
-
-  it('returns null when the tx is not found', async () => {
-    const conn = {getParsedTransaction: jest.fn(async () => null)} as never;
-    expect(await getTransactionDetail(conn, 'SIG')).toBeNull();
   });
 });

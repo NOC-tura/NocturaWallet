@@ -1,9 +1,8 @@
 import {useQuery} from '@tanstack/react-query';
 import {PublicKey} from '@solana/web3.js';
 import {getConnection} from '../modules/solana/connection';
-import {getBalance, getTokenAccounts, getTransactionHistory, getTransactionDetail} from '../modules/solana/queries';
-import type {TokenAccount, ParsedTransaction} from '../modules/solana/types';
-import type {TxDetail} from '../modules/solana/queries';
+import {getBalance, getTokenAccounts} from '../modules/solana/queries';
+import type {TokenAccount} from '../modules/solana/types';
 
 /**
  * React Query hook for SOL balance.
@@ -36,46 +35,5 @@ export function useTokenAccounts(publicKey: string | null) {
     enabled: !!publicKey,
     staleTime: 60_000,
     gcTime: 5 * 60_000,
-  });
-}
-
-/**
- * React Query hook for transaction history.
- * TTL: 30 seconds (spec: tx history refresh)
- */
-export function useTransactionHistory(
-  publicKey: string | null,
-  options?: {limit?: number; before?: string},
-) {
-  return useQuery<ParsedTransaction[]>({
-    queryKey: ['txHistory', publicKey, options?.before],
-    queryFn: async () => {
-      if (!publicKey) throw new Error('No public key');
-      return getTransactionHistory(getConnection(), new PublicKey(publicKey), {
-        limit: options?.limit ?? 20,
-        before: options?.before,
-      });
-    },
-    enabled: !!publicKey,
-    staleTime: 30_000,
-    gcTime: 5 * 60_000,
-  });
-}
-
-/**
- * React Query hook for a single transaction detail.
- * Retries with 4s interval until the tx is indexed by RPC.
- */
-export function useTransactionDetail(signature: string | null) {
-  return useQuery<TxDetail | null>({
-    queryKey: ['txDetail', signature],
-    queryFn: async () => {
-      if (!signature) return null;
-      return getTransactionDetail(getConnection(), signature);
-    },
-    enabled: !!signature,
-    // Retry every 4 s until the tx is indexed, then stop (a confirmed tx detail
-    // does not change).
-    refetchInterval: query => (query.state.data ? false : 4_000),
   });
 }

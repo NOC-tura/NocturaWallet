@@ -32,7 +32,7 @@ import {Text} from '../../components/ui';
 import {useWalletStore} from '../../store/zustand/walletStore';
 import {useAccountList, useRefreshAccounts, useSelectAccount, useSelectedAccount} from '../../hooks/useSelectedAccount';
 import {NO_PUBLIC_DATA, useAccountPublicData} from '../../hooks/useAccountPublicData';
-import {ACCOUNTS_TITLE, HISTORY_A11Y, PUBLIC_LOADING, REFRESH_ACCOUNT_FAILED, REFRESH_FAILED_TITLE, PUBLIC_UNAVAILABLE, SPLIT_PRIVATE, SPLIT_PUBLIC, SPLIT_STALE_CAPTION, VALUE_UNKNOWN, avatarA11y, relativeAge, splitA11y, staleLine} from '../../copy/accounts';
+import {ACCOUNTS_TITLE, HISTORY_A11Y, PUBLIC_LOADING, REFRESH_ACCOUNT_FAILED, REFRESH_FAILED_TITLE, PUBLIC_UNAVAILABLE, SPLIT_PRIVATE, SPLIT_PUBLIC, SPLIT_STALE_CAPTION, VALUE_HIDDEN_SPOKEN, VALUE_UNKNOWN, avatarA11y, relativeAge, splitA11y, staleLine} from '../../copy/accounts';
 import {AccountsSheet} from '../../components/accounts/AccountsSheet';
 import {useShieldedStore} from '../../store/zustand/shieldedStore';
 import {usePublicSettingsStore} from '../../store/zustand/publicSettingsStore';
@@ -44,6 +44,8 @@ import {NOC_MINT} from '../../constants/programs';
 import {isShieldedEnabled} from '../../constants/features';
 import {privateSide, publicSide, splitValue, type SplitValue} from '../../modules/accounts/valueLine';
 import {drainLinkQueue} from '../../modules/accounts/linkQueue';
+import {scanLinksForWallet} from '../../modules/accounts/linkScanRunner';
+import {queryClient} from '../../app/queryClient';
 import {CHAIN} from '../../constants/chain';
 import {formatBalanceForDisplay} from '../../utils/parseTokenAmount';
 import {mmkvPublic} from '../../store/mmkv/instances';
@@ -262,13 +264,20 @@ export function DashboardScreen({
     drainLinkQueue(); // post-M1d §4 / R2: a "linked" tag still queued is written before the list is read
     refreshAccountList();
     setSheetOpen(true);
+    // history spec §6.4: every exit not tagged yet is scanned in the background; the sheet does not wait, a tag
+    // found re-reads the list by itself, and a failure is silent (the promise never rejects)
+    scanLinksForWallet(publicKey, queryClient).catch(() => undefined);
     // review r1 m7: unreadable because the encrypted store is closed -> open it (biometric), then re-read
     if (accountList?.unreadable && mmkvSecure() === null) {
       unlockSecureStorage()
-        .then(() => refreshAccountList())
+        .then(() => {
+          refreshAccountList();
+          // H5: the scan above found the store closed and read nothing — the open that unlocked it scans too
+          scanLinksForWallet(publicKey, queryClient).catch(() => undefined);
+        })
         .catch(() => undefined);
     }
-  }, [refreshAccountList, accountList]);
+  }, [refreshAccountList, accountList, publicKey]);
   const handleSelectAccount = useCallback(
     (scheme: string) => {
       selectAccountScheme(scheme);
@@ -723,7 +732,7 @@ function DashboardHeader({
 
           {/* Balance value */}
           {hidden ? (
-            <View className="flex-row items-center gap-2 mb-2 h-[50px]">
+            <View className="flex-row items-center gap-2 mb-2 h-[50px]" accessible accessibilityLabel={VALUE_HIDDEN_SPOKEN} testID="dashboard-hero-hidden">
               {[0, 1, 2, 3, 4, 5].map(i => (
                 <View
                   key={i}
@@ -829,6 +838,7 @@ function DashboardHeader({
                 <SplitColumn
                   label={SPLIT_PUBLIC}
                   lines={split.publicLines}
+                  hidden={hidden}
                   isActive={!isShielded}
                   dotClass="bg-accent-transparent"
                   onSelect={() => onModeToggle('transparent')}
@@ -838,6 +848,7 @@ function DashboardHeader({
                 <SplitColumn
                   label={SPLIT_PRIVATE}
                   lines={split.privateLines}
+                  hidden={hidden}
                   isActive={isShielded}
                   dotClass="bg-accent-shielded"
                   onSelect={() => onModeToggle('shielded')}
@@ -980,6 +991,8 @@ interface SplitColumnProps {
   label: string;
   /** Already formatted by `splitValue`: "•••" when hidden, "—" when unknown — one line each */
   lines: string[];
+  /** the figures are masks: a screen reader says "Hidden" for each */
+  hidden: boolean;
   isActive: boolean;
   /** The mode's accent: Public #B084FC, Private #5BE3C2 */
   dotClass: 'bg-accent-transparent' | 'bg-accent-shielded';
@@ -990,7 +1003,7 @@ interface SplitColumnProps {
   stale?: boolean;
 }
 
-function SplitColumn({label, lines, isActive, dotClass, onSelect, testID, stale}: SplitColumnProps) {
+function SplitColumn({label, lines, hidden, isActive, dotClass, onSelect, testID, stale}: SplitColumnProps) {
   return (
     <Pressable
       // the active column is the mode already shown: a tap does nothing
@@ -998,7 +1011,7 @@ function SplitColumn({label, lines, isActive, dotClass, onSelect, testID, stale}
       // final review m6: the active column offers no action, so TalkBack does not announce one
       accessibilityRole={isActive ? 'text' : 'button'}
       accessibilityState={{selected: isActive}}
-      accessibilityLabel={splitA11y(label, lines.join(', '), isActive, stale === true)}
+      accessibilityLabel={splitA11y(label, hidden ? lines.map(() => VALUE_HIDDEN_SPOKEN).join(', ') : lines.join(', '), isActive, stale === true)}
       testID={testID}
       className="flex-1 active:opacity-80">
       <View className="flex-row items-center gap-2 mb-1">
@@ -1016,7 +1029,8 @@ function SplitColumn({label, lines, isActive, dotClass, onSelect, testID, stale}
           adjustsFontSizeToFit
           minimumFontScale={0.75}
           className={stale ? 'text-fg-tertiary' : 'text-fg-secondary'}
-          testID={`${testID}-line`}>
+          testID={`${testID}-line`}
+          accessibilityLabel={hidden ? VALUE_HIDDEN_SPOKEN : undefined}>
           {line}
         </Text>
       ))}
@@ -1050,6 +1064,7 @@ function SubBalanceCell({
         variant="body-sm"
         numeral={!hidden}
         testID={testID}
+        accessibilityLabel={hidden ? VALUE_HIDDEN_SPOKEN : undefined}
         className={cn(
           'font-geist-semibold',
           hidden ? 'text-fg-secondary' : dim ? 'text-fg-tertiary' : 'text-fg-primary',
@@ -1140,7 +1155,8 @@ function TokenListRow({
         <Text
           variant="body-sm"
           numeral={!hidden}
-          className={hidden || stale ? 'text-fg-tertiary' : 'text-fg-secondary'}>
+          className={hidden || stale ? 'text-fg-tertiary' : 'text-fg-secondary'}
+          accessibilityLabel={hidden ? `${VALUE_HIDDEN_SPOKEN} ${symbol}${isShielded ? PRIVATE_SUFFIX : ''}` : undefined}>
           {formattedBalance}
           {isShielded ? PRIVATE_SUFFIX : ''}
         </Text>
@@ -1258,7 +1274,7 @@ function ShieldedAssetsBody({view, hidden, checkAgain}: Omit<ShieldedAssetsSecti
         <Text variant="body-lg" className="text-fg-primary">
           {A0_TOKEN.name}
         </Text>
-        <Text variant="body-sm" numeral={!hidden} className={hidden ? 'text-fg-tertiary' : 'text-accent-shielded'}>
+        <Text variant="body-sm" numeral={!hidden} className={hidden ? 'text-fg-tertiary' : 'text-accent-shielded'} accessibilityLabel={hidden ? `${VALUE_HIDDEN_SPOKEN} ${A0_TOKEN.symbol}` : undefined}>
           {amount}
         </Text>
         {!hidden && view.pending > 0n ? (

@@ -1,9 +1,6 @@
 import {Connection, PublicKey} from '@solana/web3.js';
 import {rpcLimiter} from './rpcLimiter';
-import type {TokenAccount, ParsedTransaction} from './types';
-import {parseTxDetail} from './txDetail';
-import type {RawParsedTx, TxDetail} from './txDetail';
-import {trustedSymbol} from '../tokens/trustedSymbol';
+import type {TokenAccount} from './types';
 
 // TOKEN_PROGRAM_ID constant — matches @solana/web3.js export
 const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
@@ -40,75 +37,39 @@ export async function getMultipleBalances(
 }
 
 /**
- * Get all SPL token accounts for an owner.
+ * One token program's accounts of an owner — the bare read: no limiter key and no time limit. The
+ * history's source list (`historyReads.ts`, history spec §3.1) calls it under its own keys and its
+ * own time limit; `getTokenAccounts` below is the dashboard's read and is unchanged.
+ */
+export async function tokenAccountsOf(connection: Connection, owner: PublicKey, programId: PublicKey): Promise<TokenAccount[]> {
+  // getParsedTokenAccountsByOwner returns jsonParsed data with typed info,
+  // avoiding manual binary decoding of SPL Token account layout.
+  const response = await connection.getParsedTokenAccountsByOwner(owner, {programId});
+  return response.value.map(item => {
+    const info = item.account.data.parsed.info as {
+      mint: string;
+      owner: string;
+      tokenAmount: {amount: string; decimals: number};
+    };
+    return {
+      mint: info.mint,
+      owner: info.owner,
+      amount: info.tokenAmount.amount,
+      decimals: info.tokenAmount.decimals,
+      address: item.pubkey.toBase58(),
+    };
+  });
+}
+
+/**
+ * Get all SPL token accounts for an owner (the classic Token program).
  * Uses getParsedTokenAccountsByOwner for jsonParsed encoding (returns typed data).
  */
 export async function getTokenAccounts(
   connection: Connection,
   owner: PublicKey,
 ): Promise<TokenAccount[]> {
-  return rpcLimiter.execute(`getTokenAccounts:${owner.toBase58()}`, async () => {
-    // getParsedTokenAccountsByOwner returns jsonParsed data with typed info,
-    // avoiding manual binary decoding of SPL Token account layout.
-    const response = await connection.getParsedTokenAccountsByOwner(owner, {
-      programId: TOKEN_PROGRAM_ID,
-    });
-
-    return response.value.map(item => {
-      const info = item.account.data.parsed.info as {
-        mint: string;
-        owner: string;
-        tokenAmount: {amount: string; decimals: number};
-      };
-      return {
-        mint: info.mint,
-        owner: info.owner,
-        amount: info.tokenAmount.amount,
-        decimals: info.tokenAmount.decimals,
-        address: item.pubkey.toBase58(),
-      };
-    });
-  });
-}
-
-export interface GetTransactionHistoryOptions {
-  limit: number;
-  before?: string;
-}
-
-/**
- * Get transaction history for an address.
- */
-export async function getTransactionHistory(
-  connection: Connection,
-  address: PublicKey,
-  options: GetTransactionHistoryOptions,
-): Promise<ParsedTransaction[]> {
-  const {limit, before} = options;
-  // Include 'before' cursor in key so paginated calls are not deduplicated
-  const cursorKey = before ?? 'head';
-  return rpcLimiter.execute(
-    `getTransactionHistory:${address.toBase58()}:${limit}:${cursorKey}`,
-    async () => {
-      const queryOptions: {limit: number; before?: string} = {limit};
-      if (before !== undefined) {
-        queryOptions.before = before;
-      }
-
-      const signatures = await connection.getSignaturesForAddress(address, queryOptions);
-
-      return signatures.map(sig => ({
-        signature: sig.signature,
-        slot: sig.slot,
-        timestamp: sig.blockTime ?? null,
-        type: 'unknown' as const,
-        fee: 0,
-        status: sig.err != null
-          ? ('failed' as const)
-          : ((sig.confirmationStatus ?? 'confirmed') as 'confirmed' | 'finalized' | 'failed'),
-      }));
-    },
-  );
+  return rpcLimiter.execute(`getTokenAccounts:${owner.toBase58()}`, () => tokenAccountsOf(connection, owner, TOKEN_PROGRAM_ID));
 }
 
 export interface AccountInfoSummary {
@@ -128,22 +89,4 @@ export async function getAccountInfo(
     const info = await connection.getAccountInfo(publicKey);
     return {exists: info != null, executable: info?.executable === true};
   });
-}
-
-export type {TxDetail} from './txDetail';
-
-/**
- * Fetch and parse a single transaction for the detail screen (#27). The parsing is `parseTxDetail`
- * (post-M1d §5) with the trusted symbol source. Returns null when the RPC has not indexed the
- * signature yet (the caller retries).
- */
-export async function getTransactionDetail(connection: Connection, signature: string): Promise<TxDetail | null> {
-  // R11: the cast names exactly the fields parseTxDetail reads (RawParsedTx), token balances included
-  const tx = (await connection.getParsedTransaction(signature, {
-    maxSupportedTransactionVersion: 0,
-  })) as unknown as RawParsedTx | null;
-  if (!tx) {
-    return null;
-  }
-  return parseTxDetail(tx, signature, trustedSymbol);
 }

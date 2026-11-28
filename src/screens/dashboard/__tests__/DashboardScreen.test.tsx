@@ -10,6 +10,7 @@ import React from 'react';
 import {Alert, RefreshControl} from 'react-native';
 import {render, act, fireEvent, within} from '@testing-library/react-native';
 import {SafeAreaProvider} from 'react-native-safe-area-context';
+import {A0_TOKEN} from '../../../modules/shielded/a0/screenSupport';
 import type {A0ShieldedView} from '../../../hooks/useA0Shielded';
 import type {A0PoolNoteCount} from '../../../modules/shielded/a0/poolSize';
 
@@ -66,6 +67,10 @@ jest.mock('../../../modules/session/secureStorageSession', () => ({unlockSecureS
 // post-M1d §4 / R2: the link queue, observed here
 const mockDrain = jest.fn(() => 0);
 jest.mock('../../../modules/accounts/linkQueue', () => ({drainLinkQueue: () => mockDrain()}));
+
+// history spec §6.4: the retroactive link scan, observed here
+const mockScanLinks = jest.fn((_main: string | null, _client: unknown) => Promise.resolve(0));
+jest.mock('../../../modules/accounts/linkScanRunner', () => ({scanLinksForWallet: (main: string | null, client: unknown) => mockScanLinks(main, client)}));
 
 // M1d (spec §4.1): the Accounts sheet, stubbed — records its props, renders a marker
 const mockSheetProps: Array<Record<string, unknown>> = [];
@@ -666,10 +671,102 @@ describe('M1d — the Public | Private split inside the balance card (spec §4.5
     expect(r.getAllByTestId('dashboard-split-public-line').map(l => l.props.children)).toEqual(['•••']);
     expect(r.getAllByTestId('dashboard-split-private-line').map(l => l.props.children)).toEqual(['•••']);
     for (const col of [pub(r), priv(r)]) {
-      expect(col.props.accessibilityLabel).toContain('•••');
+      expect(col.props.accessibilityLabel).toContain('Hidden');
+      expect(col.props.accessibilityLabel).not.toContain('•');
       expect(col.props.accessibilityLabel).not.toMatch(/\d/);
       expect(col).not.toHaveTextContent(/\d/);
     }
+  });
+
+  it('Task 11b: hidden → each split line and each sub-balance amount is spoken "Hidden" (visible text unchanged); unhidden → no label', async () => {
+    mockHide.current = true;
+    mockMode.current = 'transparent';
+    let r = await renderDashboard();
+    for (const id of ['dashboard-split-public-line', 'dashboard-split-private-line']) {
+      for (const l of r.getAllByTestId(id)) {
+        expect(l.props.children).toBe('•••');
+        expect(l.props.accessibilityLabel).toBe('Hidden');
+      }
+    }
+    expect(r.getByTestId('dashboard-sub-sol')).toHaveTextContent('••••');
+    expect(r.getByTestId('dashboard-sub-sol').props.accessibilityLabel).toBe('Hidden');
+    expect(r.getByTestId('dashboard-sub-noc').props.accessibilityLabel).toBe('Hidden');
+    const rows = r.getAllByText(/^•{6} \S+/);
+    expect(rows.length).toBeGreaterThan(0); // the token rows
+    for (const row of rows) expect(row.props.accessibilityLabel).toBe(`Hidden ${String(row.props.children[0]).slice(7)}`);
+    r.unmount();
+    mockHide.current = false;
+    r = await renderDashboard();
+    expect(r.queryAllByText(/^•{6} /)).toEqual([]);
+    for (const l of r.getAllByTestId('dashboard-split-public-line')) expect(l.props.accessibilityLabel).toBeUndefined();
+    expect(r.getByTestId('dashboard-sub-sol').props.accessibilityLabel).toBeUndefined();
+  });
+
+  it.each(['transparent', 'shielded'] as const)('Task 11b sweep: hidden (%s mode) → no accessibilityLabel anywhere in the dashboard tree contains a bullet', async mode => {
+    mockHide.current = true;
+    mockMode.current = mode;
+    mockView.current = {kind: 'ready', unspent: 1_003_800_000n, pending: 0n, notes: 1};
+    const r = await renderDashboard();
+    const labels: string[] = [];
+    const walk = (n: {props?: {accessibilityLabel?: unknown}; children?: unknown} | string): void => {
+      if (typeof n === 'string') return;
+      const l = n.props?.accessibilityLabel;
+      if (typeof l === 'string') labels.push(l);
+      for (const c of (n.children as Array<typeof n> | undefined) ?? []) walk(c);
+    };
+    walk(r.toJSON() as never);
+    expect(labels.length).toBeGreaterThan(0);
+    expect(labels.some(l => l.includes('Hidden'))).toBe(true);
+    expect(r.getByTestId('dashboard-hero-hidden').props.accessibilityLabel).toBe('Hidden'); // the hero is in the tree and spoken
+    expect(labels).toContain('Hidden'); // positive control: the walk does see the labels
+    expect(labels.filter(l => l.includes('•'))).toEqual([]);
+  });
+
+  it('Task 11b: the shielded asset row hidden is spoken "Hidden <symbol>" (control: unhidden has no label)', async () => {
+    mockMode.current = 'shielded';
+    mockView.current = {kind: 'ready', unspent: 1_003_800_000n, pending: 0n, notes: 1};
+    mockHide.current = true;
+    let r = await renderDashboard();
+    const row = r.getByTestId('shielded-assets-row');
+    const amt = r.getByText(/^•{6} /);
+    expect(amt.props.accessibilityLabel).toBe(`Hidden ${A0_TOKEN.symbol}`);
+    expect(row).toBeTruthy();
+    r.unmount();
+    mockHide.current = false;
+    r = await renderDashboard();
+    expect(r.getByTestId('shielded-assets-row')).toBeTruthy();
+    expect(r.queryByText(/^•{6} /)).toBeNull();
+    const shown = r.getByTestId('shielded-assets-row');
+    const texts = shown.findAll(n => typeof n.props.accessibilityLabel === 'string');
+    expect(texts).toEqual([]); // unhidden: no label on the row
+  });
+
+  it('Task 11b I1: the hidden hero is spoken "Hidden"; unhidden the dots container is absent', async () => {
+    mockHide.current = true;
+    mockMode.current = 'transparent';
+    let r = await renderDashboard();
+    expect(r.getByTestId('dashboard-hero-hidden').props.accessibilityLabel).toBe('Hidden');
+    expect(r.getByTestId('dashboard-hero-hidden').props.accessible).toBe(true);
+    r.unmount();
+    mockHide.current = false;
+    r = await renderDashboard();
+    expect(r.queryByTestId('dashboard-hero-hidden')).toBeNull();
+  });
+
+  it('Task 11b M1: only the mask becomes Hidden — a token symbol with U+2022 is kept, shown and hidden', async () => {
+    const SYM = 'A\u2022B';
+    mockPublic.current = {...READY_MAIN, tokens: [{mint: 'DOTMINT', symbol: SYM, name: 'Dot Coin', decimals: 6, trust: 'core'}], tokenBalances: {DOTMINT: '5000000'}};
+    mockHide.current = true;
+    let r = await renderDashboard();
+    const hiddenRows = r.getAllByText(`•••••• ${SYM}`);
+    expect(hiddenRows.length).toBeGreaterThan(0);
+    for (const t of hiddenRows) expect(t.props.accessibilityLabel).toBe(`Hidden ${SYM}`);
+    r.unmount();
+    mockHide.current = false;
+    r = await renderDashboard();
+    const shownRows = r.getAllByText(`5 ${SYM}`);
+    expect(shownRows.length).toBeGreaterThan(0);
+    for (const t of shownRows) expect(t.props.accessibilityLabel).toBeUndefined();
   });
 
   it('I1: only priced assets held and prices known → the USD form, Public "$150.00"', async () => {
@@ -734,6 +831,56 @@ describe('M1d — the numbered avatar opens the Accounts sheet (spec §4.1, D5)'
     });
     expect(mockDrain).toHaveBeenCalledTimes(1);
     expect(mockDrain.mock.invocationCallOrder[0]!).toBeLessThan(mockRefreshAccounts.mock.invocationCallOrder[0]!);
+  });
+
+  it('history spec §6.4: opening the sheet starts the link scan for the main wallet AFTER the queue is drained; the sheet does not wait for it', async () => {
+    const r = await renderDashboard();
+    mockDrain.mockClear();
+    mockScanLinks.mockClear();
+    mockScanLinks.mockImplementationOnce(() => new Promise<number>(() => undefined)); // a scan that never ends
+    await act(async () => {
+      fireEvent.press(r.getByTestId('dashboard-avatar'));
+    });
+    expect(mockScanLinks).toHaveBeenCalledTimes(1);
+    expect(mockScanLinks.mock.calls[0]![0]).toBe('AbCdEfAbCdEf'); // walletStore.publicKey: the MAIN account, whichever is selected
+    expect(mockDrain.mock.invocationCallOrder[0]!).toBeLessThan(mockScanLinks.mock.invocationCallOrder[0]!);
+    expect(r.getByTestId('mock-accounts-sheet')).toBeTruthy();
+  });
+
+  it('history spec H5: an open that has to unlock the encrypted store starts the scan again once it is open', async () => {
+    mockListUnreadable.current = true; // the registry cannot be read: the store is closed (mockSecure.current === null)
+    const r = await renderDashboard();
+    mockScanLinks.mockClear();
+    mockRefreshAccounts.mockClear();
+    let opened: () => void = () => undefined;
+    mockUnlock.mockImplementationOnce(() => new Promise<void>(resolve => { opened = resolve; }));
+    await act(async () => {
+      fireEvent.press(r.getByTestId('dashboard-avatar'));
+    });
+    expect(mockScanLinks).toHaveBeenCalledTimes(1); // at the open: with the store closed this one reads nothing
+    await act(async () => {
+      opened();
+    });
+    expect(mockScanLinks).toHaveBeenCalledTimes(2); // after the unlock
+    expect(mockScanLinks.mock.calls[1]![0]).toBe('AbCdEfAbCdEf');
+    expect(mockRefreshAccounts.mock.invocationCallOrder[1]!).toBeLessThan(mockScanLinks.mock.invocationCallOrder[1]!);
+    // control: a readable list unlocks nothing and scans once
+    mockListUnreadable.current = false;
+    mockScanLinks.mockClear();
+    const r2 = await renderDashboard();
+    await act(async () => {
+      fireEvent.press(r2.getByTestId('dashboard-avatar'));
+    });
+    expect(mockScanLinks).toHaveBeenCalledTimes(1);
+  });
+
+  it('history spec §6.4: a scan that rejects is silent', async () => {
+    const r = await renderDashboard();
+    mockScanLinks.mockImplementationOnce(() => Promise.reject(new Error('rpc down')));
+    await act(async () => {
+      fireEvent.press(r.getByTestId('dashboard-avatar'));
+    });
+    expect(r.getByTestId('mock-accounts-sheet')).toBeTruthy();
   });
 
   it('the avatar shows the selected account\'s number and says what it does', async () => {
@@ -953,7 +1100,7 @@ describe('post-M1d §3.2 — a stale public balance', () => {
     expect(r.getByTestId('dashboard-sub-sol')).toHaveTextContent('••••');
     expect(r.queryByText(/5 USDC|\$5\.00|\$150/)).toBeNull();
     const label = r.getByTestId('dashboard-split-public').props.accessibilityLabel as string;
-    expect(label).toBe('Public, •••, not updated');
+    expect(label).toBe('Public, Hidden, not updated');
     expect(label).not.toMatch(/\d/);
     for (const l of r.getAllByTestId('dashboard-split-public-line')) {
       expect(l.props.children).not.toMatch(/\d/);
@@ -1027,7 +1174,7 @@ describe('post-M1d §3.2 — a stale public balance', () => {
     mockHide.current = true;
     r = await renderDashboard();
     expect(r.getByTestId('dashboard-split-public-stale')).toHaveTextContent('not updated');
-    expect(r.getByTestId('dashboard-split-public').props.accessibilityLabel).toMatch(/^Public, •••, not updated/);
+    expect(r.getByTestId('dashboard-split-public').props.accessibilityLabel).toMatch(/^Public, Hidden, not updated/);
     r.unmount();
     mockHide.current = false;
     mockPublic.current = READY_MAIN;

@@ -57,40 +57,59 @@ export interface TxDetail {
   memo: string | null;
 }
 
-export type TxDirection = 'sent' | 'received' | 'none';
-
 export interface RawTokenBalance {
   accountIndex?: number;
   mint?: string;
   owner?: string;
-  uiTokenAmount?: {decimals?: number};
+  /** history spec §4.1: `amount` is the base-unit figure (a decimal string); `uiAmount` is never read */
+  uiTokenAmount?: {decimals?: number; amount?: string};
+}
+
+/**
+ * history spec §4.1: an instruction in either of its two forms — parsed `{program, programId, parsed}` or
+ * unparsed `{programId, accounts, data}` (`data` is base58). `programId` and `accounts` are strings in a
+ * raw RPC response and PublicKey objects from web3.js: read them with `keyString`.
+ */
+export interface RawInstruction {
+  program?: string;
+  programId?: unknown;
+  parsed?: {type?: string; info?: Record<string, unknown>} | string;
+  accounts?: unknown[];
+  data?: string;
 }
 
 export interface RawParsedTx {
   slot?: number;
   blockTime?: number | null;
+  /** 'legacy', 0 or 1 — the history reads with `maxSupportedTransactionVersion: 1` (history spec §3.3) */
+  version?: 'legacy' | number;
   meta?: {
     fee?: number;
     err?: unknown;
+    /** lamports per account key, same order as `accountKeys` (history spec §4.1) */
+    preBalances?: number[];
+    postBalances?: number[];
     preTokenBalances?: RawTokenBalance[] | null;
     postTokenBalances?: RawTokenBalance[] | null;
+    /** the instructions each top-level instruction called (CPI); `index` is the top-level position */
+    innerInstructions?: Array<{index?: number; instructions?: RawInstruction[]}> | null;
   } | null;
   transaction?: {
+    signatures?: string[];
     message?: {
+      /** the FULL list: a parsed response already includes the lookup-table addresses */
       accountKeys?: Array<{pubkey?: unknown; signer?: boolean; writable?: boolean}>;
       instructions?: unknown[];
+      /** a version-1 message only: its compute and fee settings (it has no ComputeBudget instructions). Never read. */
+      transactionConfig?: unknown;
     };
   };
 }
 
-interface RawInstruction {
-  program?: string;
-  parsed?: {type?: string; info?: Record<string, unknown>} | string;
-}
-
 const SOL_DECIMALS = 9;
 
-function keyString(k: unknown): string {
+/** An account key as base58: a string in a raw RPC response, a PublicKey object from web3.js. */
+export function keyString(k: unknown): string {
   if (typeof k === 'string') {
     return k;
   }
@@ -228,21 +247,4 @@ export function parseTxDetail(tx: RawParsedTx, signature: string, symbolOf: (min
     blockTime: tx.blockTime ?? null,
     memo,
   };
-}
-
-/** §5 / R9: judged against ONE address — the account whose history or #21 the detail was opened from. */
-export function txDirection(detail: TxDetail, account: string | null): TxDirection {
-  const t = detail.transfer;
-  // review r1-2: a failed transaction moved nothing — no direction is claimed, whoever looks at it
-  if (detail.status === 'failed' || account === null || t === null) {
-    return 'none';
-  }
-  // review r1-10: `from` is the owner of the funds; it must also have signed (a delegate's move is not "sent")
-  if (t.from === account && detail.signers.includes(account)) {
-    return 'sent';
-  }
-  if ((t.to === account && !t.toIsTokenAccount) || t.toTokenAccount === account) {
-    return 'received';
-  }
-  return 'none';
 }

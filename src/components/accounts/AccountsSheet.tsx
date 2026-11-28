@@ -20,17 +20,20 @@ import type {AccountList, WalletAccount} from '../../modules/accounts/accountLis
 import {formatSide, publicSide} from '../../modules/accounts/valueLine';
 import type {TokenPrice} from '../../modules/prices/priceModule';
 import {isShieldedEnabled} from '../../constants/features';
+import {useLinkCheckUnfinished} from '../../hooks/useLinkCheckUnfinished';
 import {
   ACCOUNTS_CLOSE_A11Y,
   ACCOUNTS_FOOTER,
   ACCOUNTS_TITLE,
   ACCOUNTS_UNREADABLE,
+  LINK_CHECK_UNFINISHED,
   ROW_NOT_CHECKED,
   ROW_UNAVAILABLE,
   TAG_EXIT,
   TAG_LINKED,
   TAG_MAIN,
   VALUE_HIDDEN,
+  VALUE_HIDDEN_SPOKEN,
   rowA11y,
   staleRow,
 } from '../../copy/accounts';
@@ -101,6 +104,8 @@ export function AccountsSheet({visible, list, selectedScheme, hidden, onSelect, 
     return out;
   }, [otherRows, list.accounts, solBalance, nocBalance, tokenBalances, tokens, lastSyncedAt, lastSyncFailedAt]);
   const {prices, havePrices} = useResolvedPrices();
+  // owner Q3: the last link scan of an exit did not read its history through (failed / capped)
+  const linkUnfinished = useLinkCheckUnfinished();
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable className="flex-1 bg-black/60 justify-end" onPress={onClose} accessibilityLabel={ACCOUNTS_CLOSE_A11Y}>
@@ -127,13 +132,18 @@ export function AccountsSheet({visible, list, selectedScheme, hidden, onSelect, 
                 const figure = hidden ? VALUE_HIDDEN : rowBalanceText(row, havePrices ? prices : null);
                 // hidden wins over stale: "•••", and the suffix still says the figure is not current
                 const balanceText = stale ? staleRow(figure) : figure;
+                // the same line for a screen reader: only the mask itself is spoken as "Hidden"
+                const spokenBalance = hidden ? (stale ? staleRow(VALUE_HIDDEN_SPOKEN) : VALUE_HIDDEN_SPOKEN) : balanceText;
+                // a tagged exit needs no caption: the tag already says more than an unfinished check could
+                const unfinished = !a.isMain && !a.linked && linkUnfinished(a.address);
+                const rowLabel = rowA11y(a.label, tags, shortAccountAddress(a.address), spokenBalance);
                 return (
                   <Pressable
                     key={a.scheme}
                     onPress={() => (checked ? onClose() : onSelect(a.scheme))}
                     accessibilityRole="radio"
                     accessibilityState={{checked}}
-                    accessibilityLabel={rowA11y(a.label, tags, shortAccountAddress(a.address), balanceText)}
+                    accessibilityLabel={unfinished ? `${rowLabel}, ${LINK_CHECK_UNFINISHED}` : rowLabel}
                     testID={`accounts-row-${a.scheme}`}
                     className="flex-row items-center px-5 py-3 min-h-touch-rec active:bg-bg-surface-2">
                     <View className="flex-1">
@@ -158,9 +168,14 @@ export function AccountsSheet({visible, list, selectedScheme, hidden, onSelect, 
                       <Text variant="caption" mono className="text-fg-tertiary mt-0.5" testID={`accounts-row-${a.scheme}-address`}>
                         {shortAccountAddress(a.address)}
                       </Text>
-                      <Text variant="body-sm" numeral className={cn('mt-0.5', stale ? 'text-fg-tertiary' : 'text-fg-secondary')} testID={`accounts-row-${a.scheme}-balance`}>
+                      <Text variant="body-sm" numeral className={cn('mt-0.5', stale ? 'text-fg-tertiary' : 'text-fg-secondary')} testID={`accounts-row-${a.scheme}-balance`} accessibilityLabel={hidden ? spokenBalance : undefined}>
                         {balanceText}
                       </Text>
+                      {unfinished ? (
+                        <Text variant="caption" className="text-fg-tertiary mt-0.5" testID={`accounts-row-${a.scheme}-link-unfinished`}>
+                          {LINK_CHECK_UNFINISHED}
+                        </Text>
+                      ) : null}
                     </View>
                     {checked ? (
                       <View testID={`accounts-row-${a.scheme}-check`}>

@@ -130,8 +130,11 @@ export function TransactionStatusScreen({
     if (stage === 'success') {
       queryClient.invalidateQueries({queryKey: ['accountSnapshot', intent.from.address]}).catch(() => undefined);
       queryClient.invalidateQueries({queryKey: ['txHistory', intent.from.address]}).catch(() => undefined);
+      // final review 11: the recipient's history too — when it is one of this wallet's accounts its #26 must not
+      // run 60 s behind (for any other address no such entry exists, and nothing happens)
+      queryClient.invalidateQueries({queryKey: ['txHistory', intent.recipient]}).catch(() => undefined);
     }
-  }, [stage, intent.from.address]);
+  }, [stage, intent.from.address, intent.recipient]);
 
   // post-M1d spec §4 (P3): a CONFIRMED Send between two accounts of this seed links them on chain — tag
   // every fresh-exit account taking part. Only here: 'success' is a confirmed/finalized status with no err

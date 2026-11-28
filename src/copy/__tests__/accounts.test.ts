@@ -55,6 +55,7 @@ describe('src/copy/accounts.ts — the M1d strings', () => {
     expect(c.SPLIT_PRIVATE).toBe('Private');
     expect(c.VALUE_UNKNOWN).toBe('—');
     expect(c.VALUE_HIDDEN).toBe('•••');
+    expect(c.VALUE_HIDDEN_SPOKEN).toBe('Hidden');
     expect(c.moreAssets(1)).toBe('+1 more');
     expect(c.splitA11y('Public', '$12.40', true)).toBe('Public, $12.40');
     expect(c.splitA11y('Private', '1.0038 TEST', false)).toBe('Private, 1.0038 TEST, switch to Private');

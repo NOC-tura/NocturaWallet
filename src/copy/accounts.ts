@@ -17,6 +17,11 @@ export const TAG_EXIT = 'exit';
 export const TAG_LINKED = 'linked';
 /** slip10 wallets only (a cli wallet has one account, S9) */
 export const ACCOUNTS_FOOTER = 'New accounts appear here when you make funds public to “A new account”.';
+/**
+ * Owner Q3 (2026-11-27): an exit whose last "linked" scan ended failed or capped. Neutral: it claims
+ * neither a link nor its absence (never "not linked").
+ */
+export const LINK_CHECK_UNFINISHED = 'Link check not finished';
 /** §3.1: the registry could not be read — the main account only, and this one line */
 export const ACCOUNTS_UNREADABLE = "Other accounts can't be read right now.";
 /** §3.4: a row whose balances were not read yet, or failed */
@@ -86,6 +91,8 @@ export const RECEIVED_BY = 'Received by';
 /** The split row (§4.5, 2026-11-22 addendum) and the sheet rows: an unknown side, and a hidden one */
 export const VALUE_UNKNOWN = '—';
 export const VALUE_HIDDEN = '•••';
+/** what a screen reader says for a figure shown as VALUE_HIDDEN */
+export const VALUE_HIDDEN_SPOKEN = 'Hidden';
 /** A held, priced side worth under half a cent (never "$0.00" for a non-empty side) */
 export const BELOW_ONE_CENT = '<$0.01';
 
@@ -110,9 +117,14 @@ export function avatarA11y(label: string): string {
   return `${label}, switch account`;
 }
 
+/** "Account 1 (main)" for the main account, the bare label for any other */
+export function mainLabelled(label: string, isMain: boolean): string {
+  return `${label}${isMain ? ' (main)' : ''}`;
+}
+
 /** "Account 4 · 3YqEpf…JXT94k" / "Account 1 (main) · HAgk14…3DKpqk" — #20's From row, #21's Received by */
 export function accountWithAddress(label: string, short: string, isMain: boolean): string {
-  return `${label}${isMain ? ' (main)' : ''} · ${short}`;
+  return `${mainLabelled(label, isMain)} · ${short}`;
 }
 
 /** #19's caption (§4.2) */
